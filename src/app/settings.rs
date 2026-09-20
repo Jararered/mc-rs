@@ -11,6 +11,10 @@ pub const MIN_RENDER_DISTANCE: i32 = 4;
 pub const MAX_RENDER_DISTANCE: i32 = 32;
 pub const MIN_BRIGHTNESS: f32 = 0.0;
 pub const MAX_BRIGHTNESS: f32 = 1000.0;
+/// Without a directional sun, the 0..=1000 slider has to light the whole
+/// scene. Bevy's default camera exposure makes 1000 nits of ambient look dim
+/// next to the 10_000 lux sun, so ambient-only uses this extra scale.
+pub const AMBIENT_ONLY_SCALE: f32 = 10.0;
 pub const MIN_FOV: f32 = 30.0;
 pub const MAX_FOV: f32 = 110.0;
 pub const DEFAULT_FOV: f32 = 70.0;
@@ -81,6 +85,17 @@ impl GameSettings {
 
     pub fn change_brightness(&mut self, change: f32) {
         self.brightness = (self.brightness + change).clamp(MIN_BRIGHTNESS, MAX_BRIGHTNESS);
+    }
+
+    /// Value written to Bevy's [`GlobalAmbientLight`]. Directional lighting
+    /// keeps the slider as nits; without it the same numbers are scaled so
+    /// max brightness can actually light the world.
+    pub fn ambient_light_brightness(&self) -> f32 {
+        if self.directional_lighting {
+            self.brightness
+        } else {
+            self.brightness * AMBIENT_ONLY_SCALE
+        }
     }
 
     pub fn change_fov(&mut self, change: f32) {

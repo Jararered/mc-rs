@@ -9,6 +9,7 @@ use bevy::mesh::MeshPlugin;
 use bevy::pbr::ScreenSpaceReflections;
 use bevy::prelude::*;
 use bevy::state::app::StatesPlugin;
+use game::app::settings::AMBIENT_ONLY_SCALE;
 use game::app::settings::DEFAULT_FOV;
 use game::app::settings::GameSettings;
 use game::app::settings::GraphicsQuality;
@@ -47,6 +48,15 @@ fn settings_controls_stay_within_their_ranges() {
     assert_eq!(settings.brightness, MAX_BRIGHTNESS);
     settings.change_brightness(-10_000.0);
     assert_eq!(settings.brightness, MIN_BRIGHTNESS);
+
+    settings.brightness = MAX_BRIGHTNESS;
+    settings.directional_lighting = true;
+    assert_eq!(settings.ambient_light_brightness(), MAX_BRIGHTNESS);
+    settings.directional_lighting = false;
+    assert_eq!(
+        settings.ambient_light_brightness(),
+        MAX_BRIGHTNESS * AMBIENT_ONLY_SCALE
+    );
 
     assert_eq!(settings.fov, DEFAULT_FOV);
     settings.change_fov(1_000.0);
@@ -90,12 +100,26 @@ fn brightness_and_directional_toggle_update_bevy_lights() {
 
     assert_eq!(
         app.world().resource::<GlobalAmbientLight>().brightness,
-        500.0
+        500.0 * AMBIENT_ONLY_SCALE
     );
     let mut suns = app.world_mut().query::<&DirectionalLight>();
     let sun = suns.single(app.world()).unwrap();
     assert_eq!(sun.illuminance, 0.0);
     assert!(!sun.shadow_maps_enabled);
+
+    {
+        let mut settings = app.world_mut().resource_mut::<GameSettings>();
+        settings.directional_lighting = true;
+    }
+    app.update();
+
+    assert_eq!(
+        app.world().resource::<GlobalAmbientLight>().brightness,
+        500.0
+    );
+    let sun = suns.single(app.world()).unwrap();
+    assert_eq!(sun.illuminance, 10_000.0);
+    assert!(sun.shadow_maps_enabled);
 }
 
 #[test]

@@ -23,7 +23,7 @@ use game::app::settings::SettingsPlugin;
 use game::app::settings::load_settings;
 use game::app::settings::save_settings;
 use game::app::state::AppScreen;
-use game::player::Player;
+use game::player::PlayerCamera;
 use game::player::PlayerPlugin;
 use game::world::chunk::WorldChunks;
 use game::world::plugin::WorldPlugin;
@@ -156,7 +156,7 @@ fn fov_setting_updates_player_camera() {
 fn player_fov_radians(app: &mut App) -> f32 {
     let mut cameras = app
         .world_mut()
-        .query_filtered::<&Projection, With<Player>>();
+        .query_filtered::<&Projection, With<PlayerCamera>>();
     match cameras.single(app.world()).unwrap() {
         Projection::Perspective(perspective) => perspective.fov,
         other => panic!("player camera should be perspective, got {other:?}"),

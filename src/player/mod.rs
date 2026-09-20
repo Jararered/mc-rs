@@ -71,6 +71,12 @@ impl Plugin for PlayerPlugin {
                     .chain()
                     .in_set(PhysicsSet::ApplyInput)
                     .run_if(in_state(AppScreen::Playing)),
+            )
+            .add_systems(
+                Update,
+                update_camera_bobbing
+                    .after(PhysicsSet::Integrate)
+                    .run_if(in_state(AppScreen::Playing)),
             );
     }
 }
@@ -85,6 +91,18 @@ impl Plugin for PlayerPlugin {
     StepHeight = StepHeight::PLAYER
 )]
 pub struct Player;
+
+/// The render camera is a child of the physics player so view bobbing does
+/// not move the player's collision box or interaction origin.
+#[derive(Component)]
+pub struct PlayerCamera;
+
+#[derive(Component, Default)]
+struct CameraBobbing {
+    distance_walked: f32,
+    camera_yaw: f32,
+    camera_pitch: f32,
+}
 
 /// Current health in half-hearts. Each HUD heart is two points.
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
@@ -142,23 +160,31 @@ fn spawn_player(
         .and_then(|storage| storage.load_player())
         .map(|player| player.to_transform())
         .unwrap_or_else(|| default_spawn_transform(&chunks));
-    commands.spawn((
-        Name::new("Player"),
-        Player,
-        PlayerHealth::default(),
-        Hotbar::default(),
-        Camera3d::default(),
-        Projection::from(PerspectiveProjection {
-            fov: settings.fov_radians(),
-            ..default()
-        }),
-        transform,
-    ));
+    commands
+        .spawn((
+            Name::new("Player"),
+            Player,
+            PlayerHealth::default(),
+            Hotbar::default(),
+            CameraBobbing::default(),
+            transform,
+        ))
+        .with_children(|parent| {
+            parent.spawn((
+                PlayerCamera,
+                Camera3d::default(),
+                Projection::from(PerspectiveProjection {
+                    fov: settings.fov_radians(),
+                    ..default()
+                }),
+                Transform::default(),
+            ));
+        });
 }
 
 fn apply_camera_fov(
     settings: Res<GameSettings>,
-    mut cameras: Query<&mut Projection, With<Player>>,
+    mut cameras: Query<&mut Projection, With<PlayerCamera>>,
 ) {
     if !settings.is_changed() {
         return;
@@ -167,6 +193,53 @@ fn apply_camera_fov(
     for projection in &mut cameras {
         if let Projection::Perspective(perspective) = projection.into_inner() {
             perspective.fov = fov;
+        }
+    }
+}
+
+/// Reproduces the Beta view-bobbing transform from `EntityRenderer`: walking
+/// distance drives the phase while smoothed horizontal and vertical motion
+/// control the bob's amplitude.
+fn update_camera_bobbing(
+    time: Res<Time>,
+    mut players: Query<(&Velocity, &CollisionState, &mut CameraBobbing, &Children)>,
+    mut cameras: Query<&mut Transform, With<PlayerCamera>>,
+) {
+    let dt = time.delta_secs();
+    if dt <= 0.0 {
+        return;
+    }
+
+    for (velocity, collision, mut bob, children) in &mut players {
+        let horizontal_motion = velocity.0.xz().length() * dt;
+        bob.distance_walked += horizontal_motion * 0.6;
+
+        let target_yaw = if collision.on_ground {
+            horizontal_motion.min(0.1)
+        } else {
+            0.0
+        };
+        let vertical_motion = velocity.0.y * dt;
+        let target_pitch = if collision.on_ground {
+            0.0
+        } else {
+            (-vertical_motion * 0.2).atan() * 15.0
+        };
+        bob.camera_yaw += (target_yaw - bob.camera_yaw) * 0.4;
+        bob.camera_pitch += (target_pitch - bob.camera_pitch) * 0.8;
+
+        let phase = -bob.distance_walked * std::f32::consts::PI;
+        let lateral = phase.sin() * bob.camera_yaw * 0.5;
+        let vertical = -(phase.cos() * bob.camera_yaw).abs();
+        let roll = (phase.sin() * bob.camera_yaw * 3.0).to_radians();
+        let pitch = ((phase - 0.2).cos() * bob.camera_yaw).abs() * 5.0 + bob.camera_pitch;
+
+        for child in children {
+            if let Ok(mut camera) = cameras.get_mut(*child) {
+                camera.translation = Vec3::new(lateral, vertical, 0.0);
+                camera.rotation =
+                    Quat::from_rotation_z(roll) * Quat::from_rotation_x(pitch.to_radians());
+            }
         }
     }
 }
@@ -281,7 +354,7 @@ fn apply_player_input(
         }
     }
 
-    let sneaking = locked && keys.pressed(KeyCode::ControlLeft);
+    let sneaking = locked && sneak_pressed(&keys);
     let sprinting = locked && keys.pressed(KeyCode::ShiftLeft) && !sneaking;
     let jumping = locked && keys.pressed(KeyCode::Space);
     let speed = if sneaking {
@@ -300,6 +373,16 @@ fn apply_player_input(
     if locked && keys.pressed(KeyCode::Space) && collision.on_ground {
         velocity.0.y = JUMP_SPEED;
     }
+}
+
+#[cfg(target_os = "macos")]
+fn sneak_pressed(keys: &ButtonInput<KeyCode>) -> bool {
+    keys.pressed(KeyCode::SuperLeft) || keys.pressed(KeyCode::SuperRight)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn sneak_pressed(keys: &ButtonInput<KeyCode>) -> bool {
+    keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight)
 }
 
 fn select_hotbar(

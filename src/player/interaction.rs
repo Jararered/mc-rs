@@ -25,6 +25,7 @@ use crate::world::persistence::WorldPersistence;
 use crate::world::streaming::WorldStreaming;
 
 use super::Player;
+use super::PlayerCamera;
 use super::mining::MiningState;
 use super::overlay::BlockFocus;
 
@@ -48,6 +49,7 @@ pub(super) fn interact_blocks(
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<(&Window, &CursorOptions), With<PrimaryWindow>>,
     player: Query<(&Transform, &EntitySize, &CollisionState), With<Player>>,
+    camera: Query<&Transform, With<PlayerCamera>>,
     mut chunks: ResMut<WorldChunks>,
     mut streaming: Option<ResMut<WorldStreaming>>,
     mut persistence: Option<ResMut<WorldPersistence>>,
@@ -81,10 +83,20 @@ pub(super) fn interact_blocks(
         state.tick_accum = 0.0;
     }
 
+    let camera_transform = camera.single().ok();
+    let view_rotation = transform.rotation
+        * camera_transform
+            .map(|camera| camera.rotation)
+            .unwrap_or(Quat::IDENTITY);
+    let view_origin = transform.translation
+        + transform.rotation
+            * camera_transform
+                .map(|camera| camera.translation)
+                .unwrap_or(Vec3::ZERO);
     let hit = raycast_blocks(
         &chunks,
-        transform.translation,
-        *transform.forward(),
+        view_origin,
+        view_rotation * Vec3::NEG_Z,
         BLOCK_REACH,
     );
     let in_water = chunks.block_at(

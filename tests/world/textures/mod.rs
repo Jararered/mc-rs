@@ -1,4 +1,5 @@
 mod grass_color;
+mod water;
 
 use bevy::asset::RenderAssetUsages;
 use bevy::prelude::Image;

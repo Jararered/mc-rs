@@ -16,6 +16,7 @@ pub const ATLAS_PAD_TEXELS: u32 = 2;
 
 mod biome_color;
 mod leaf_wiggle;
+mod water;
 
 pub use biome_color::FoliageColors;
 pub use biome_color::GrassColors;
@@ -24,6 +25,11 @@ pub use biome_color::palette_index;
 pub use leaf_wiggle::LeafCutoutMaterial;
 pub use leaf_wiggle::LeafWiggle;
 pub use leaf_wiggle::LeafWiggleSettings;
+pub use water::FlowingWaterTexture;
+pub use water::StillWaterTexture;
+pub use water::WATER_FLOW_TILE;
+pub use water::WATER_STILL_TILE;
+pub use water::write_atlas_tile;
 
 pub struct TerrainTexturePlugin;
 
@@ -32,7 +38,14 @@ impl Plugin for TerrainTexturePlugin {
         leaf_wiggle::plugin(app);
         app.init_resource::<GameSettings>()
             .add_systems(PreStartup, load_terrain_atlas)
-            .add_systems(Update, (apply_terrain_atlas, apply_graphics_materials));
+            .add_systems(
+                Update,
+                (
+                    apply_terrain_atlas,
+                    apply_graphics_materials,
+                    water::animate_water_textures.after(apply_terrain_atlas),
+                ),
+            );
     }
 }
 
@@ -124,8 +137,9 @@ fn apply_terrain_atlas(
         material.base.base_color_texture = Some(handle.clone());
     }
     if let Some(mut material) = materials.get_mut(&water_material.0) {
-        material.base_color_texture = Some(handle);
+        material.base_color_texture = Some(handle.clone());
     }
+    water::start_water_animation(&mut commands, handle, &mut image);
     commands.remove_resource::<PendingTerrainAtlas>();
 }
 
@@ -268,7 +282,7 @@ pub(crate) fn block_tile(
         BlockId::Clay => (8, 4),
         BlockId::Netherrack => (7, 6),
         BlockId::Glowstone => (9, 6),
-        BlockId::Water => (13, 12),
+        BlockId::Water => water::WATER_STILL_TILE,
         BlockId::Ice => (3, 4),
         _ => (1, 0),
     }

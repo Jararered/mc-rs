@@ -183,6 +183,35 @@ fn ultra_graphics_uses_ssr_water_without_changing_blend_on_fancy() {
     assert!(ssr.iter(app.world()).next().is_none());
 }
 
+#[test]
+fn fancy_leaves_mask_does_not_apply_to_solid_terrain() {
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, AssetPlugin::default(), MeshPlugin))
+        .init_asset::<Image>()
+        .init_asset::<StandardMaterial>()
+        .add_plugins(WorldPlugin);
+    app.update();
+
+    let materials: Vec<_> = app
+        .world()
+        .resource::<Assets<StandardMaterial>>()
+        .iter()
+        .map(|(_, material)| material.clone())
+        .collect();
+    assert!(
+        materials.iter().any(|material| {
+            material.alpha_mode == AlphaMode::Opaque && material.cull_mode.is_some()
+        }),
+        "solid terrain should stay opaque so atlas edges are not discarded"
+    );
+    assert!(
+        materials
+            .iter()
+            .any(|material| matches!(material.alpha_mode, AlphaMode::Mask(_))),
+        "fancy leaves should use a separate cutout material"
+    );
+}
+
 fn water_material(app: &App) -> StandardMaterial {
     app.world()
         .resource::<Assets<StandardMaterial>>()

@@ -12,6 +12,7 @@ use crate::world::generation::BiomeMap;
 use crate::world::lighting::Skylight;
 use crate::world::textures::FoliageColors;
 use crate::world::textures::GrassColors;
+use crate::world::textures::atlas_tile_uvs;
 use crate::world::textures::block_tile;
 
 struct Face {
@@ -90,9 +91,10 @@ const FACES: [Face; 6] = [
     },
 ];
 
-/// Opaque terrain and a separate translucent water surface for one chunk.
+/// Opaque terrain, cutout leaves, and a separate translucent water surface.
 pub struct ChunkMeshes {
     pub opaque: Mesh,
+    pub cutout: Mesh,
     pub water: Mesh,
 }
 
@@ -201,6 +203,7 @@ fn mesh_chunk_inner(
     fancy_graphics: bool,
 ) -> ChunkMeshes {
     let mut opaque = MeshBuffers::default();
+    let mut cutout = MeshBuffers::default();
     let mut water = MeshBuffers::default();
 
     for y in 0..CHUNK_HEIGHT {
@@ -256,6 +259,8 @@ fn mesh_chunk_inner(
                     ];
                     let buffers = if block == BlockId::Water {
                         &mut water
+                    } else if fancy_graphics && is_leaf(block) {
+                        &mut cutout
                     } else {
                         &mut opaque
                     };
@@ -282,6 +287,7 @@ fn mesh_chunk_inner(
 
     ChunkMeshes {
         opaque: opaque.into_mesh(),
+        cutout: cutout.into_mesh(),
         water: water.into_mesh(),
     }
 }
@@ -315,12 +321,7 @@ fn neighbor_hides_face(block: BlockId, neighbor: Option<BlockId>, fancy_graphics
 
 fn face_uvs(block: BlockId, face: usize, fancy_graphics: bool) -> [[f32; 2]; 4] {
     let (tile_x, tile_y) = block_tile(block, face, fancy_graphics);
-    // Stay half a texel inside the tile to keep adjacent atlas tiles from bleeding.
-    const INSET: f32 = 0.5 / 256.0;
-    let u0 = tile_x as f32 / 16.0 + INSET;
-    let v0 = tile_y as f32 / 16.0 + INSET;
-    let u1 = (tile_x as f32 + 1.0) / 16.0 - INSET;
-    let v1 = (tile_y as f32 + 1.0) / 16.0 - INSET;
+    let (u0, v0, u1, v1) = atlas_tile_uvs(tile_x, tile_y);
 
     match face {
         0 | 1 => [[u0, v0], [u0, v1], [u1, v1], [u1, v0]],

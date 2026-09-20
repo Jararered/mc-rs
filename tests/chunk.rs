@@ -83,9 +83,10 @@ fn fancy_leaves_keep_internal_faces_and_use_the_cutout_tile() {
     assert_eq!(fast.opaque.count_vertices(), 40);
 
     let fancy = mesh_chunk_with_settings(&chunk, &skylight, true, true);
-    assert_eq!(fancy.opaque.count_vertices(), 48);
+    assert_eq!(fancy.opaque.count_vertices(), 0);
+    assert_eq!(fancy.cutout.count_vertices(), 48);
 
-    let Some(VertexAttributeValues::Float32x2(uvs)) = fancy.opaque.attribute(Mesh::ATTRIBUTE_UV_0)
+    let Some(VertexAttributeValues::Float32x2(uvs)) = fancy.cutout.attribute(Mesh::ATTRIBUTE_UV_0)
     else {
         panic!("chunk mesh should have atlas UVs");
     };
@@ -116,6 +117,31 @@ fn grass_mesh_uses_separate_atlas_tiles_for_top_bottom_and_sides() {
             .iter()
             .all(|uv| (3.0 / 16.0..4.0 / 16.0).contains(&uv[0]))
     );
+}
+
+#[test]
+fn block_face_uvs_stay_inside_the_padded_tile() {
+    let mut chunk = Chunk::new();
+    chunk.set(1, 1, 1, BlockId::Stone);
+    let mesh = mesh_chunk(&chunk, &Skylight::from_chunk(&chunk));
+    let Some(VertexAttributeValues::Float32x2(uvs)) = mesh.attribute(Mesh::ATTRIBUTE_UV_0) else {
+        panic!("chunk mesh should have atlas UVs");
+    };
+    // Stone is terrain.png tile (1, 0). Padding keeps UVs off the 1/16 grid
+    // lines so neighbouring tiles cannot bleed across a block edge.
+    let gutter = 2.0 / 320.0;
+    for uv in uvs {
+        assert!(
+            uv[0] >= 1.0 / 16.0 + gutter - 1e-5 && uv[0] <= 2.0 / 16.0 - gutter + 1e-5,
+            "stone U={:?} should stay in the padded tile",
+            uv[0]
+        );
+        assert!(
+            uv[1] >= gutter - 1e-5 && uv[1] <= 1.0 / 16.0 - gutter + 1e-5,
+            "stone V={:?} should stay in the padded tile",
+            uv[1]
+        );
+    }
 }
 
 #[test]

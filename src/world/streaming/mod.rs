@@ -21,6 +21,7 @@ use super::generation::WorldGenerator;
 use super::lighting::Skylight;
 use super::meshing::ChunkMeshes;
 use super::meshing::mesh_chunk_with_biomes;
+use super::textures::CutoutMaterial;
 use super::textures::FoliageColors;
 use super::textures::GrassColors;
 use super::textures::TerrainMaterial;
@@ -95,6 +96,7 @@ pub(crate) struct WorldStreaming {
     meshing: HashMap<ChunkPos, Task<(ChunkMeshes, Duration)>>,
     rendered: HashMap<ChunkPos, RenderedChunk>,
     material: Handle<StandardMaterial>,
+    cutout_material: Handle<StandardMaterial>,
     water_material: Handle<StandardMaterial>,
     old_lighting: bool,
     fancy_graphics: bool,
@@ -108,6 +110,7 @@ pub(crate) struct WorldStreaming {
 struct RenderedChunk {
     entity: Entity,
     opaque: Option<MeshLayer>,
+    cutout: Option<MeshLayer>,
     water: Option<MeshLayer>,
 }
 
@@ -134,6 +137,7 @@ pub(crate) fn setup_streaming(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     terrain_material: Res<TerrainMaterial>,
+    cutout_material: Res<CutoutMaterial>,
     water_material: Res<WaterMaterial>,
     grass_colors: Res<GrassColors>,
     foliage_colors: Res<FoliageColors>,
@@ -179,6 +183,7 @@ pub(crate) fn setup_streaming(
         settings.graphics.fancy_leaves(),
     );
     let material = terrain_material.0.clone();
+    let cutout_material = cutout_material.0.clone();
     let water_material = water_material.0.clone();
     let rendered = spawn_chunk(
         &mut commands,
@@ -186,6 +191,7 @@ pub(crate) fn setup_streaming(
         ChunkPos::ZERO,
         layers,
         &material,
+        &cutout_material,
         &water_material,
     );
 
@@ -198,6 +204,7 @@ pub(crate) fn setup_streaming(
         meshing: HashMap::new(),
         rendered: HashMap::from([(ChunkPos::ZERO, rendered)]),
         material,
+        cutout_material,
         water_material,
         old_lighting: settings.old_lighting,
         fancy_graphics: settings.graphics.fancy_leaves(),
@@ -318,6 +325,7 @@ pub(crate) fn stream_chunks(
         );
         perf.mesh.record(start.elapsed());
         let material = streaming.material.clone();
+        let cutout_material = streaming.cutout_material.clone();
         let water_material = streaming.water_material.clone();
         if let Some(rendered) = streaming.rendered.get_mut(&position) {
             apply_chunk_meshes(
@@ -326,6 +334,7 @@ pub(crate) fn stream_chunks(
                 rendered,
                 layers,
                 &material,
+                &cutout_material,
                 &water_material,
             );
         }
@@ -370,6 +379,7 @@ pub(crate) fn stream_chunks(
             continue;
         }
         let material = streaming.material.clone();
+        let cutout_material = streaming.cutout_material.clone();
         let water_material = streaming.water_material.clone();
         if let Some(rendered) = streaming.rendered.get_mut(&position) {
             apply_chunk_meshes(
@@ -378,6 +388,7 @@ pub(crate) fn stream_chunks(
                 rendered,
                 layers,
                 &material,
+                &cutout_material,
                 &water_material,
             );
         } else {
@@ -387,6 +398,7 @@ pub(crate) fn stream_chunks(
                 position,
                 layers,
                 &streaming.material,
+                &streaming.cutout_material,
                 &streaming.water_material,
             );
             streaming.rendered.insert(position, rendered);
@@ -524,6 +536,7 @@ fn spawn_chunk(
     position: ChunkPos,
     layers: ChunkMeshes,
     material: &Handle<StandardMaterial>,
+    cutout_material: &Handle<StandardMaterial>,
     water_material: &Handle<StandardMaterial>,
 ) -> RenderedChunk {
     let (x, z) = position.world_origin();
@@ -538,6 +551,7 @@ fn spawn_chunk(
     let mut rendered = RenderedChunk {
         entity,
         opaque: None,
+        cutout: None,
         water: None,
     };
     apply_chunk_meshes(
@@ -546,6 +560,7 @@ fn spawn_chunk(
         &mut rendered,
         layers,
         material,
+        cutout_material,
         water_material,
     );
     rendered
@@ -557,6 +572,7 @@ fn apply_chunk_meshes(
     rendered: &mut RenderedChunk,
     layers: ChunkMeshes,
     material: &Handle<StandardMaterial>,
+    cutout_material: &Handle<StandardMaterial>,
     water_material: &Handle<StandardMaterial>,
 ) {
     apply_layer(
@@ -567,6 +583,15 @@ fn apply_chunk_meshes(
         layers.opaque,
         material,
         "Opaque",
+    );
+    apply_layer(
+        commands,
+        meshes,
+        rendered.entity,
+        &mut rendered.cutout,
+        layers.cutout,
+        cutout_material,
+        "Cutout",
     );
     apply_layer(
         commands,
@@ -629,6 +654,9 @@ fn despawn_rendered_chunk(
 ) {
     commands.entity(rendered.entity).despawn();
     if let Some(layer) = rendered.opaque {
+        meshes.remove(layer.mesh.id());
+    }
+    if let Some(layer) = rendered.cutout {
         meshes.remove(layer.mesh.id());
     }
     if let Some(layer) = rendered.water {

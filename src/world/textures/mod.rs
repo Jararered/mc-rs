@@ -1,10 +1,18 @@
 use bevy::image::ImageLoaderSettings;
 use bevy::image::ImageSampler;
+use bevy::image::ImageSamplerDescriptor;
 use bevy::material::OpaqueRendererMethod;
 use bevy::prelude::*;
 
 use crate::app::settings::GameSettings;
 use crate::app::settings::GraphicsQuality;
+
+/// `terrain.png` is a 16×16 grid of square tiles.
+pub const ATLAS_GRID: u32 = 16;
+/// Beta tile size in pixels. HD packs use a power-of-two multiple of this.
+pub const ATLAS_TILE_PX: u32 = 16;
+/// Extra texels duplicated around each tile so MSAA cannot sample a neighbour.
+pub const ATLAS_PAD_TEXELS: u32 = 2;
 
 mod biome_color;
 
@@ -27,10 +35,20 @@ impl Plugin for TerrainTexturePlugin {
 pub(crate) struct TerrainMaterial(pub Handle<StandardMaterial>);
 
 #[derive(Resource)]
+pub(crate) struct CutoutMaterial(pub Handle<StandardMaterial>);
+
+#[derive(Resource)]
 pub(crate) struct WaterMaterial(pub Handle<StandardMaterial>);
 
 #[derive(Resource)]
 struct PendingTerrainAtlas(Handle<Image>);
+
+fn nearest_atlas_sampler() -> ImageSampler {
+    ImageSampler::Descriptor(ImageSamplerDescriptor {
+        lod_max_clamp: 0.0,
+        ..ImageSamplerDescriptor::nearest()
+    })
+}
 
 fn load_terrain_atlas(
     mut commands: Commands,
@@ -41,12 +59,19 @@ fn load_terrain_atlas(
     let image = asset_server
         .load_builder()
         .with_settings(|settings: &mut ImageLoaderSettings| {
-            settings.sampler = ImageSampler::nearest();
+            settings.sampler = nearest_atlas_sampler();
         })
         .load("terrain.png");
     let material = materials.add(StandardMaterial {
         perceptual_roughness: 1.0,
-        alpha_mode: leaf_alpha_mode(settings.graphics),
+        alpha_mode: AlphaMode::Opaque,
+        ..default()
+    });
+    let cutout = materials.add(StandardMaterial {
+        perceptual_roughness: 1.0,
+        // Fancy leaf tiles have punched holes. Mask discards those texels
+        // without sorting the whole chunk as transparent.
+        alpha_mode: AlphaMode::Mask(0.5),
         ..default()
     });
     let mut water = StandardMaterial {
@@ -57,6 +82,7 @@ fn load_terrain_atlas(
     apply_water_quality(&mut water, settings.graphics);
     let water = materials.add(water);
     commands.insert_resource(TerrainMaterial(material));
+    commands.insert_resource(CutoutMaterial(cutout));
     commands.insert_resource(WaterMaterial(water));
     commands.insert_resource(PendingTerrainAtlas(image));
     commands.insert_resource(GrassColors::load());
@@ -66,51 +92,101 @@ fn load_terrain_atlas(
 fn apply_terrain_atlas(
     mut commands: Commands,
     pending: Option<Res<PendingTerrainAtlas>>,
-    images: Res<Assets<Image>>,
+    mut images: ResMut<Assets<Image>>,
     terrain_material: Res<TerrainMaterial>,
+    cutout_material: Res<CutoutMaterial>,
     water_material: Res<WaterMaterial>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     let Some(pending) = pending else {
         return;
     };
-    if images.get(&pending.0).is_none() {
+    let Some(mut image) = images.get_mut(&pending.0) else {
         return;
-    }
+    };
+    pad_atlas_tiles(&mut image);
+    image.sampler = nearest_atlas_sampler();
+    let handle = pending.0.clone();
     if let Some(mut material) = materials.get_mut(&terrain_material.0) {
-        material.base_color_texture = Some(pending.0.clone());
+        material.base_color_texture = Some(handle.clone());
+    }
+    if let Some(mut material) = materials.get_mut(&cutout_material.0) {
+        material.base_color_texture = Some(handle.clone());
     }
     if let Some(mut material) = materials.get_mut(&water_material.0) {
-        material.base_color_texture = Some(pending.0.clone());
+        material.base_color_texture = Some(handle);
     }
     commands.remove_resource::<PendingTerrainAtlas>();
 }
 
 fn apply_graphics_materials(
     settings: Res<GameSettings>,
-    terrain_material: Res<TerrainMaterial>,
     water_material: Res<WaterMaterial>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     if !settings.is_changed() {
         return;
     }
-    if let Some(mut material) = materials.get_mut(&terrain_material.0) {
-        material.alpha_mode = leaf_alpha_mode(settings.graphics);
-    }
     if let Some(mut material) = materials.get_mut(&water_material.0) {
         apply_water_quality(&mut material, settings.graphics);
     }
 }
 
-fn leaf_alpha_mode(graphics: GraphicsQuality) -> AlphaMode {
-    if graphics.fancy_leaves() {
-        // Fancy leaf tiles have punched holes. Mask discards those texels
-        // without sorting the whole chunk as transparent.
-        AlphaMode::Mask(0.5)
-    } else {
-        AlphaMode::Opaque
+/// UV min/max of one atlas tile, inset to the inner (unpadded) 16×16 texels.
+pub fn atlas_tile_uvs(tile_x: u8, tile_y: u8) -> (f32, f32, f32, f32) {
+    let stride = (ATLAS_TILE_PX + 2 * ATLAS_PAD_TEXELS) as f32;
+    let atlas = ATLAS_GRID as f32 * stride;
+    let pad = ATLAS_PAD_TEXELS as f32;
+    let tile = ATLAS_TILE_PX as f32;
+    let u0 = (f32::from(tile_x) * stride + pad) / atlas;
+    let v0 = (f32::from(tile_y) * stride + pad) / atlas;
+    let u1 = (f32::from(tile_x) * stride + pad + tile) / atlas;
+    let v1 = (f32::from(tile_y) * stride + pad + tile) / atlas;
+    (u0, v0, u1, v1)
+}
+
+/// Duplicate each tile's edge texels into a gutter so filtering and MSAA at a
+/// block edge cannot pick up the neighbouring atlas tile.
+pub fn pad_atlas_tiles(image: &mut Image) {
+    let width = image.texture_descriptor.size.width;
+    let height = image.texture_descriptor.size.height;
+    if width != height || width % ATLAS_GRID != 0 {
+        return;
     }
+    let tile = width / ATLAS_GRID;
+    if tile < ATLAS_TILE_PX || !tile.is_power_of_two() {
+        return;
+    }
+    let pad = ATLAS_PAD_TEXELS * tile / ATLAS_TILE_PX;
+    let stride = tile + 2 * pad;
+    let padded = ATLAS_GRID * stride;
+    let Some(src) = image.data.as_ref() else {
+        return;
+    };
+    let bpp = 4usize;
+    if src.len() != width as usize * height as usize * bpp {
+        return;
+    }
+
+    let mut dst = vec![0u8; padded as usize * padded as usize * bpp];
+    for ty in 0..ATLAS_GRID {
+        for tx in 0..ATLAS_GRID {
+            for py in 0..stride {
+                for px in 0..stride {
+                    let sx = (px as i32 - pad as i32).clamp(0, tile as i32 - 1) as u32;
+                    let sy = (py as i32 - pad as i32).clamp(0, tile as i32 - 1) as u32;
+                    let src_index = ((ty * tile + sy) * width + tx * tile + sx) as usize * bpp;
+                    let dst_index = ((ty * stride + py) * padded + tx * stride + px) as usize * bpp;
+                    dst[dst_index..dst_index + bpp]
+                        .copy_from_slice(&src[src_index..src_index + bpp]);
+                }
+            }
+        }
+    }
+
+    image.texture_descriptor.size.width = padded;
+    image.texture_descriptor.size.height = padded;
+    image.data = Some(dst);
 }
 
 /// Glossy enough for Bevy screen-space reflections, matching the SSR water demo.

@@ -11,6 +11,7 @@ use game::world::generation::WorldGenerator;
 use game::world::generation::generate_chunk;
 use game::world::lighting::Skylight;
 use game::world::meshing::mesh_chunk;
+use game::world::meshing::mesh_chunk_with_settings;
 
 #[test]
 fn generated_chunk_has_solid_ground_and_sunlit_air() {
@@ -69,6 +70,29 @@ fn mesher_culls_faces_between_adjacent_blocks() {
     let mesh = mesh_chunk(&chunk, &Skylight::from_chunk(&chunk));
     assert_eq!(mesh.count_vertices(), 40);
     assert_eq!(mesh.indices().unwrap().len(), 60);
+}
+
+#[test]
+fn fancy_leaves_keep_internal_faces_and_use_the_cutout_tile() {
+    let mut chunk = Chunk::new();
+    chunk.set(1, 1, 1, BlockId::Leaves);
+    chunk.set(2, 1, 1, BlockId::Leaves);
+    let skylight = Skylight::from_chunk(&chunk);
+
+    let fast = mesh_chunk_with_settings(&chunk, &skylight, true, false);
+    assert_eq!(fast.count_vertices(), 40);
+
+    let fancy = mesh_chunk_with_settings(&chunk, &skylight, true, true);
+    assert_eq!(fancy.count_vertices(), 48);
+
+    let Some(VertexAttributeValues::Float32x2(uvs)) = fancy.attribute(Mesh::ATTRIBUTE_UV_0) else {
+        panic!("chunk mesh should have atlas UVs");
+    };
+    assert!(
+        uvs.iter()
+            .all(|uv| (4.0 / 16.0..5.0 / 16.0).contains(&uv[0])),
+        "fancy oak leaves should sample terrain.png tile (4, 3)"
+    );
 }
 
 #[test]

@@ -21,6 +21,7 @@ use game::world::generation::WorldGenerator;
 use game::world::persistence::FORMAT_VERSION;
 use game::world::persistence::PersistencePlugin;
 use game::world::persistence::REGION_SIZE;
+use game::world::persistence::StoredPlayer;
 use game::world::persistence::WorldPersistence;
 use game::world::persistence::WorldStorage;
 use game::world::persistence::chunk_file_name;
@@ -252,13 +253,48 @@ fn open_latest_or_create_makes_a_world_when_none_exists() {
 }
 
 #[test]
+fn player_pose_round_trips_through_player_json() {
+    let saves = temp_saves("player");
+    let storage = WorldStorage::create(&saves, 0, "Player").unwrap();
+    let transform = Transform {
+        translation: Vec3::new(32.5, 71.0, -12.25),
+        rotation: Quat::from_euler(EulerRot::YXZ, 1.2, -0.4, 0.0),
+        ..default()
+    };
+    storage
+        .save_player(&StoredPlayer::from_transform(&transform))
+        .unwrap();
+
+    assert!(storage.root().join("player.json").is_file());
+    let loaded = storage.load_player().expect("player should load");
+    assert_eq!(loaded.format_version, FORMAT_VERSION);
+    assert!((loaded.x - 32.5).abs() < f32::EPSILON);
+    assert!((loaded.y - 71.0).abs() < f32::EPSILON);
+    assert!((loaded.z - -12.25).abs() < f32::EPSILON);
+    let restored = loaded.to_transform();
+    assert!(
+        restored
+            .translation
+            .abs_diff_eq(transform.translation, 0.001)
+    );
+    let (yaw, pitch, _) = restored.rotation.to_euler(EulerRot::YXZ);
+    assert!((yaw - 1.2).abs() < 0.001);
+    assert!((pitch - -0.4).abs() < 0.001);
+}
+
+#[test]
 fn the_world_is_saved_and_resumed_across_runs() {
     let saves = temp_saves("app");
 
     let mut first = persistence_app(&saves);
-    first
-        .world_mut()
-        .spawn((Player, Transform::from_xyz(8.0, 80.0, 8.0)));
+    first.world_mut().spawn((
+        Player,
+        Transform {
+            translation: Vec3::new(48.0, 72.0, -24.0),
+            rotation: Quat::from_euler(EulerRot::YXZ, 0.75, -0.2, 0.0),
+            ..default()
+        },
+    ));
     assert!(run_until(&mut first, Duration::from_secs(5), |app| {
         app.world()
             .resource::<WorldChunks>()
@@ -281,8 +317,13 @@ fn the_world_is_saved_and_resumed_across_runs() {
         .join(region_dir_name((0, 0)))
         .join(chunk_file_name(ChunkPos::ZERO));
     assert!(chunk.is_file(), "missing {}", chunk.display());
+    assert!(
+        root.join("player.json").is_file(),
+        "missing {}",
+        root.join("player.json").display()
+    );
 
-    // A second run resumes the same world and reads the saved chunk back.
+    // A second run resumes the same world and reads the saved chunk and player.
     let mut second = persistence_app(&saves);
     second.update();
     let storage = second
@@ -292,4 +333,10 @@ fn the_world_is_saved_and_resumed_across_runs() {
         .expect("persistence should be enabled");
     assert_eq!(storage.root(), root.as_path());
     assert!(storage.load_chunk(ChunkPos::ZERO).is_some());
+    let player = storage.load_player().expect("player should load");
+    assert!((player.x - 48.0).abs() < 0.001);
+    assert!((player.y - 72.0).abs() < 0.001);
+    assert!((player.z - -24.0).abs() < 0.001);
+    assert!((player.yaw - 0.75).abs() < 0.001);
+    assert!((player.pitch - -0.2).abs() < 0.001);
 }

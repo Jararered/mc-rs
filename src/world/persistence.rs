@@ -7,6 +7,7 @@
 //! saves/
 //!   world-20260920-153012-1a2b3c4d/
 //!     level.json          world manifest: name, seed, creation time
+//!     player.json         camera position and look direction
 //!     regions0,0/         chunks 0..15 x 0..15
 //!       chunk0,0.bin
 //!       chunk1,0.bin
@@ -39,6 +40,7 @@ use bevy::prelude::*;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::player::Player;
 use crate::world::block::block::BlockId;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;
@@ -61,9 +63,43 @@ pub const REGION_SIZE: i32 = 16;
 pub const FORMAT_VERSION: u32 = 1;
 
 const MANIFEST_FILE: &str = "level.json";
+const PLAYER_FILE: &str = "player.json";
 const AUTOSAVE_SECONDS: f32 = 30.0;
 const BLOCKS_PER_CHUNK: usize = CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE;
 const COLUMNS_PER_CHUNK: usize = CHUNK_SIZE * CHUNK_SIZE;
+
+/// Camera pose stored as `player.json` in a world folder.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StoredPlayer {
+    pub format_version: u32,
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
+    pub yaw: f32,
+    pub pitch: f32,
+}
+
+impl StoredPlayer {
+    pub fn from_transform(transform: &Transform) -> Self {
+        let (yaw, pitch, _) = transform.rotation.to_euler(EulerRot::YXZ);
+        Self {
+            format_version: FORMAT_VERSION,
+            x: transform.translation.x,
+            y: transform.translation.y,
+            z: transform.translation.z,
+            yaw,
+            pitch,
+        }
+    }
+
+    pub fn to_transform(&self) -> Transform {
+        Transform {
+            translation: Vec3::new(self.x, self.y, self.z),
+            rotation: Quat::from_euler(EulerRot::YXZ, self.yaw, self.pitch, 0.0),
+            ..default()
+        }
+    }
+}
 
 /// Metadata for one world folder, stored as `level.json`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -155,6 +191,39 @@ impl WorldStorage {
 
     pub fn seed(&self) -> u64 {
         self.manifest.lock().unwrap().seed
+    }
+
+    /// Load the stored player pose, or `None` if it was never saved.
+    pub fn load_player(&self) -> Option<StoredPlayer> {
+        let path = self.root.join(PLAYER_FILE);
+        match fs::read(&path) {
+            Ok(bytes) => match serde_json::from_slice::<StoredPlayer>(&bytes) {
+                Ok(player) if player.format_version == FORMAT_VERSION => Some(player),
+                Ok(_) => {
+                    warn!("Ignoring player save with unsupported format");
+                    None
+                }
+                Err(error) => {
+                    warn!("Ignoring unreadable player {}: {error}", path.display());
+                    None
+                }
+            },
+            Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+            Err(error) => {
+                warn!("Ignoring unreadable player {}: {error}", path.display());
+                None
+            }
+        }
+    }
+
+    /// Write the player pose as pretty-printed JSON.
+    pub fn save_player(&self, player: &StoredPlayer) -> io::Result<()> {
+        let bytes = serde_json::to_vec_pretty(player).map_err(io::Error::other)?;
+        let path = self.root.join(PLAYER_FILE);
+        let temporary = path.with_extension("tmp");
+        fs::write(&temporary, bytes)?;
+        fs::rename(&temporary, path)?;
+        self.touch()
     }
 
     /// Load a stored chunk, or `None` if it was never saved.
@@ -543,8 +612,8 @@ impl WorldPersistence {
         self.regenerating = false;
     }
 
-    /// Write every dirty chunk. Each chunk is its own file under its region folder.
-    pub fn flush(&mut self, chunks: &WorldChunks) {
+    /// Write dirty chunks and the current player pose.
+    pub fn flush(&mut self, chunks: &WorldChunks, player: Option<&Transform>) {
         let Some(storage) = self.storage.clone() else {
             return;
         };
@@ -560,13 +629,16 @@ impl WorldPersistence {
                 batch.push((position, chunk));
             }
         }
-        if batch.is_empty() {
-            return;
+        if !batch.is_empty() {
+            match storage.save_chunks(batch) {
+                Ok(count) => info!("Saved {count} chunks to {}", storage.root().display()),
+                Err(error) => warn!("Failed to save world: {error}"),
+            }
         }
-
-        match storage.save_chunks(batch) {
-            Ok(count) => info!("Saved {count} chunks to {}", storage.root().display()),
-            Err(error) => warn!("Failed to save world: {error}"),
+        if let Some(transform) = player
+            && let Err(error) = storage.save_player(&StoredPlayer::from_transform(transform))
+        {
+            warn!("Failed to save player: {error}");
         }
     }
 }
@@ -591,12 +663,13 @@ fn setup_persistence(mut commands: Commands, config: Res<PersistenceConfig>) {
 fn flush_persistence(
     mut persistence: ResMut<WorldPersistence>,
     chunks: Res<WorldChunks>,
+    player: Query<&Transform, With<Player>>,
     time: Res<Time>,
     mut exit: MessageReader<AppExit>,
 ) {
     let exiting = exit.read().next().is_some();
     persistence.timer.tick(time.delta());
     if exiting || persistence.timer.just_finished() {
-        persistence.flush(&chunks);
+        persistence.flush(&chunks, player.single().ok());
     }
 }

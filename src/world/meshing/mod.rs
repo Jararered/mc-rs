@@ -92,7 +92,17 @@ const FACES: [Face; 6] = [
 
 /// Emit only faces touching air. A missing neighbor is treated as air for this isolated chunk.
 pub fn mesh_chunk(chunk: &Chunk, skylight: &Skylight) -> Mesh {
-    mesh_chunk_inner(chunk, skylight, None, true)
+    mesh_chunk_inner(chunk, skylight, None, true, false)
+}
+
+/// Like [`mesh_chunk`], with lighting and leaf graphics matching the settings menu.
+pub fn mesh_chunk_with_settings(
+    chunk: &Chunk,
+    skylight: &Skylight,
+    old_lighting: bool,
+    fancy_graphics: bool,
+) -> Mesh {
+    mesh_chunk_inner(chunk, skylight, None, old_lighting, fancy_graphics)
 }
 
 /// Per-column biome tints applied to grass tops and leaves.
@@ -108,6 +118,7 @@ pub(crate) fn mesh_chunk_with_biomes(
     grass_colors: &GrassColors,
     foliage_colors: &FoliageColors,
     old_lighting: bool,
+    fancy_graphics: bool,
 ) -> Mesh {
     let tints = ColumnTints {
         grass: std::array::from_fn(|index| {
@@ -117,7 +128,7 @@ pub(crate) fn mesh_chunk_with_biomes(
             foliage_colors.sample(biomes.get(index % CHUNK_SIZE, index / CHUNK_SIZE))
         }),
     };
-    mesh_chunk_inner(chunk, skylight, Some(&tints), old_lighting)
+    mesh_chunk_inner(chunk, skylight, Some(&tints), old_lighting, fancy_graphics)
 }
 
 fn mesh_chunk_inner(
@@ -125,6 +136,7 @@ fn mesh_chunk_inner(
     skylight: &Skylight,
     tints: Option<&ColumnTints>,
     old_lighting: bool,
+    fancy_graphics: bool,
 ) -> Mesh {
     let mut positions = Vec::<[f32; 3]>::new();
     let mut normals = Vec::<[f32; 3]>::new();
@@ -147,7 +159,7 @@ fn mesh_chunk_inner(
                     let neighbor = (nx >= 0 && ny >= 0 && nz >= 0)
                         .then(|| chunk.get(nx as usize, ny as usize, nz as usize))
                         .flatten();
-                    if neighbor.is_some_and(|block| block != BlockId::Air) {
+                    if neighbor_hides_face(block, neighbor, fancy_graphics) {
                         continue;
                     }
 
@@ -182,7 +194,7 @@ fn mesh_chunk_inner(
                         normals.push(face.normal);
                         colors.push(color);
                     }
-                    uvs.extend_from_slice(&face_uvs(block, face_index));
+                    uvs.extend_from_slice(&face_uvs(block, face_index, fancy_graphics));
                     indices.extend_from_slice(&[
                         start,
                         start + 1,
@@ -207,8 +219,34 @@ fn mesh_chunk_inner(
     .with_inserted_indices(Indices::U32(indices))
 }
 
-fn face_uvs(block: BlockId, face: usize) -> [[f32; 2]; 4] {
-    let (tile_x, tile_y) = block_tile(block, face);
+fn is_leaf(block: BlockId) -> bool {
+    matches!(
+        block,
+        BlockId::Leaves | BlockId::SpruceLeaves | BlockId::BirchLeaves
+    )
+}
+
+/// Fast leaves hide every non-air neighbour, like any solid cube. Fancy leaves
+/// are cutout, so leaf-to-leaf faces stay visible and solid faces towards a
+/// canopy are not covered.
+fn neighbor_hides_face(block: BlockId, neighbor: Option<BlockId>, fancy_graphics: bool) -> bool {
+    let Some(neighbor) = neighbor else {
+        return false;
+    };
+    if neighbor == BlockId::Air {
+        return false;
+    }
+    if fancy_graphics && is_leaf(block) && is_leaf(neighbor) {
+        return false;
+    }
+    if fancy_graphics && is_leaf(neighbor) && !is_leaf(block) {
+        return false;
+    }
+    true
+}
+
+fn face_uvs(block: BlockId, face: usize, fancy_graphics: bool) -> [[f32; 2]; 4] {
+    let (tile_x, tile_y) = block_tile(block, face, fancy_graphics);
     // Stay half a texel inside the tile to keep adjacent atlas tiles from bleeding.
     const INSET: f32 = 0.5 / 256.0;
     let u0 = tile_x as f32 / 16.0 + INSET;

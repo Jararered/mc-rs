@@ -20,6 +20,10 @@ fn settings_controls_stay_within_their_ranges() {
     assert_eq!(settings.brightness, MAX_BRIGHTNESS);
     settings.change_brightness(-10_000.0);
     assert_eq!(settings.brightness, MIN_BRIGHTNESS);
+
+    assert!(settings.fancy_graphics);
+    settings.fancy_graphics = false;
+    assert!(!settings.fancy_graphics);
 }
 
 #[test]

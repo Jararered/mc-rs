@@ -11,6 +11,8 @@ pub struct GameSettings {
     pub brightness: f32,
     pub old_lighting: bool,
     pub directional_lighting: bool,
+    /// Beta "Graphics: Fancy": cutout leaf textures and unculled canopy faces.
+    pub fancy_graphics: bool,
 }
 
 impl Default for GameSettings {
@@ -18,8 +20,9 @@ impl Default for GameSettings {
         Self {
             render_distance: MIN_RENDER_DISTANCE,
             brightness: 300.0,
-            old_lighting: true,
+            old_lighting: false,
             directional_lighting: true,
+            fancy_graphics: true,
         }
     }
 }

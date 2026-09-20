@@ -46,6 +46,7 @@ enum MenuAction {
     Brightness(f32),
     OldLighting,
     DirectionalLighting,
+    Graphics,
 }
 
 #[derive(Component, Clone, Copy)]
@@ -54,6 +55,7 @@ enum SettingLabel {
     Brightness,
     OldLighting,
     DirectionalLighting,
+    Graphics,
 }
 
 fn load_menu_textures(mut commands: Commands, asset_server: Res<AssetServer>) {
@@ -192,6 +194,13 @@ fn spawn_settings_menu(commands: &mut Commands, textures: &MenuTextures, setting
             MenuAction::DirectionalLighting,
             SettingLabel::DirectionalLighting,
         );
+        spawn_setting_button(
+            parent,
+            &textures,
+            graphics_text(&settings),
+            MenuAction::Graphics,
+            SettingLabel::Graphics,
+        );
         parent.spawn(Node {
             height: px(16),
             ..default()
@@ -321,6 +330,7 @@ fn handle_buttons(
             MenuAction::DirectionalLighting => {
                 settings.directional_lighting = !settings.directional_lighting;
             }
+            MenuAction::Graphics => settings.fancy_graphics = !settings.fancy_graphics,
         }
     }
 }
@@ -339,6 +349,7 @@ fn refresh_settings_labels(
             SettingLabel::Brightness => brightness_text(&settings),
             SettingLabel::OldLighting => old_lighting_text(&settings),
             SettingLabel::DirectionalLighting => directional_lighting_text(&settings),
+            SettingLabel::Graphics => graphics_text(&settings),
         };
         if let Ok(mut text) = texts.get_mut(entity) {
             **text = value;
@@ -375,6 +386,17 @@ fn directional_lighting_text(settings: &GameSettings) -> String {
             "ON"
         } else {
             "OFF"
+        }
+    )
+}
+
+fn graphics_text(settings: &GameSettings) -> String {
+    format!(
+        "Graphics: {}",
+        if settings.fancy_graphics {
+            "Fancy"
+        } else {
+            "Fast"
         }
     )
 }

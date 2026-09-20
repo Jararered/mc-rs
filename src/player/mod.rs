@@ -7,6 +7,7 @@ use bevy::window::PrimaryWindow;
 use crate::app::state::AppScreen;
 use crate::world::chunk::ChunkPos;
 use crate::world::chunk::WorldChunks;
+use crate::world::persistence::WorldPersistence;
 
 pub struct PlayerPlugin;
 
@@ -32,7 +33,21 @@ const WALK_SPEED: f32 = 5.0;
 const SPRINT_SPEED: f32 = 15.0;
 const MOUSE_SENSITIVITY: f32 = 0.002;
 
-fn spawn_player(mut commands: Commands, chunks: Res<WorldChunks>) {
+fn spawn_player(
+    mut commands: Commands,
+    chunks: Res<WorldChunks>,
+    persistence: Option<Res<WorldPersistence>>,
+) {
+    let transform = persistence
+        .as_ref()
+        .and_then(|persistence| persistence.storage())
+        .and_then(|storage| storage.load_player())
+        .map(|player| player.to_transform())
+        .unwrap_or_else(|| default_spawn_transform(&chunks));
+    commands.spawn((Name::new("Player"), Player, Camera3d::default(), transform));
+}
+
+fn default_spawn_transform(chunks: &WorldChunks) -> Transform {
     let (high, center) = chunks
         .get(ChunkPos::ZERO)
         .map_or((80.0, 64.0), |generated| {
@@ -41,13 +56,7 @@ fn spawn_player(mut commands: Commands, chunks: Res<WorldChunks>) {
                 generated.heightmap.get(8, 8) as f32,
             )
         });
-    commands.spawn((
-        Name::new("Player"),
-        Player,
-        Camera3d::default(),
-        Transform::from_xyz(8.0, high + 18.0, 40.0)
-            .looking_at(Vec3::new(8.0, center, 8.0), Vec3::Y),
-    ));
+    Transform::from_xyz(8.0, high + 18.0, 40.0).looking_at(Vec3::new(8.0, center, 8.0), Vec3::Y)
 }
 
 fn capture_mouse(mut windows: Query<(&Window, &mut CursorOptions), With<PrimaryWindow>>) {

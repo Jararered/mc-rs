@@ -2,6 +2,8 @@ use bevy::image::ImageLoaderSettings;
 use bevy::image::ImageSampler;
 use bevy::prelude::*;
 
+use crate::app::settings::GameSettings;
+
 mod biome_color;
 
 pub use biome_color::FoliageColors;
@@ -13,8 +15,9 @@ pub struct TerrainTexturePlugin;
 
 impl Plugin for TerrainTexturePlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(PreStartup, load_terrain_atlas)
-            .add_systems(Update, apply_terrain_atlas);
+        app.init_resource::<GameSettings>()
+            .add_systems(PreStartup, load_terrain_atlas)
+            .add_systems(Update, (apply_terrain_atlas, apply_leaf_alpha_mode));
     }
 }
 
@@ -28,6 +31,7 @@ fn load_terrain_atlas(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    settings: Res<GameSettings>,
 ) {
     let image = asset_server
         .load_builder()
@@ -37,6 +41,7 @@ fn load_terrain_atlas(
         .load("terrain.png");
     let material = materials.add(StandardMaterial {
         perceptual_roughness: 1.0,
+        alpha_mode: leaf_alpha_mode(settings.fancy_graphics),
         ..default()
     });
     commands.insert_resource(TerrainMaterial(material));
@@ -64,8 +69,35 @@ fn apply_terrain_atlas(
     commands.remove_resource::<PendingTerrainAtlas>();
 }
 
+fn apply_leaf_alpha_mode(
+    settings: Res<GameSettings>,
+    terrain_material: Res<TerrainMaterial>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    if !settings.is_changed() {
+        return;
+    }
+    if let Some(mut material) = materials.get_mut(&terrain_material.0) {
+        material.alpha_mode = leaf_alpha_mode(settings.fancy_graphics);
+    }
+}
+
+fn leaf_alpha_mode(fancy_graphics: bool) -> AlphaMode {
+    if fancy_graphics {
+        // Fancy leaf tiles have punched holes. Mask discards those texels
+        // without sorting the whole chunk as transparent.
+        AlphaMode::Mask(0.5)
+    } else {
+        AlphaMode::Opaque
+    }
+}
+
 // The original terrain.png is a 16 by 16 grid of 16-pixel tiles.
-pub(crate) fn block_tile(block: super::block::block::BlockId, face: usize) -> (u8, u8) {
+pub(crate) fn block_tile(
+    block: super::block::block::BlockId,
+    face: usize,
+    fancy_graphics: bool,
+) -> (u8, u8) {
     use super::block::block::BlockId;
 
     match block {
@@ -85,9 +117,21 @@ pub(crate) fn block_tile(block: super::block::block::BlockId, face: usize) -> (u
         BlockId::SpruceWood => (4, 7),
         BlockId::BirchWood if face == 0 || face == 1 => (5, 1),
         BlockId::BirchWood => (5, 7),
-        // Fast-graphics leaf tiles: opaque, grayscale, and tinted per biome.
-        BlockId::Leaves | BlockId::BirchLeaves => (5, 3),
-        BlockId::SpruceLeaves => (5, 8),
+        // Fancy leaves use the cutout tile; Fast uses the solid tile one column over.
+        BlockId::Leaves | BlockId::BirchLeaves => {
+            if fancy_graphics {
+                (4, 3)
+            } else {
+                (5, 3)
+            }
+        }
+        BlockId::SpruceLeaves => {
+            if fancy_graphics {
+                (4, 8)
+            } else {
+                (5, 8)
+            }
+        }
         BlockId::GoldOre => (0, 2),
         BlockId::IronOre => (1, 2),
         BlockId::CoalOre => (2, 2),

@@ -49,6 +49,7 @@ pub(crate) struct WorldStreaming {
     rendered: HashMap<ChunkPos, (Entity, Handle<Mesh>)>,
     material: Handle<StandardMaterial>,
     old_lighting: bool,
+    fancy_graphics: bool,
     remesh_queue: VecDeque<ChunkPos>,
     desired_generation: Vec<ChunkPos>,
     desired_meshing: Vec<ChunkPos>,
@@ -93,6 +94,7 @@ pub(crate) fn setup_streaming(
         &grass_colors,
         &foliage_colors,
         settings.old_lighting,
+        settings.fancy_graphics,
     ));
     let material = terrain_material.0.clone();
     let entity = spawn_chunk(&mut commands, ChunkPos::ZERO, &mesh, &material);
@@ -107,6 +109,7 @@ pub(crate) fn setup_streaming(
         rendered: HashMap::from([(ChunkPos::ZERO, (entity, mesh))]),
         material,
         old_lighting: settings.old_lighting,
+        fancy_graphics: settings.fancy_graphics,
         remesh_queue: VecDeque::new(),
         desired_generation: Vec::new(),
         desired_meshing: Vec::new(),
@@ -162,9 +165,12 @@ pub(crate) fn stream_chunks(
     let generate_radius = load_radius + GENERATE_MARGIN;
     let unload_radius = generate_radius;
 
-    if streaming.old_lighting != settings.old_lighting {
+    if streaming.old_lighting != settings.old_lighting
+        || streaming.fancy_graphics != settings.fancy_graphics
+    {
         streaming.old_lighting = settings.old_lighting;
-        // In-flight meshes were built with the previous lighting; rebuild them.
+        streaming.fancy_graphics = settings.fancy_graphics;
+        // In-flight meshes were built with the previous lighting or leaf style.
         streaming.meshing.clear();
         streaming.remesh_queue = streaming.rendered.keys().copied().collect();
     }
@@ -204,7 +210,7 @@ pub(crate) fn stream_chunks(
         }
     }
 
-    // Rebuild one loaded mesh per frame when the old skylight/face shading toggle changes.
+    // Rebuild one loaded mesh per frame when lighting or leaf graphics change.
     if let Some(position) = streaming.remesh_queue.pop_front()
         && let Some(generated) = chunks.get(position)
         && let Some((_, handle)) = streaming.rendered.get(&position)
@@ -217,6 +223,7 @@ pub(crate) fn stream_chunks(
             &streaming.grass_colors,
             &streaming.foliage_colors,
             streaming.old_lighting,
+            streaming.fancy_graphics,
         );
         if let Some(mut existing) = meshes.get_mut(handle.id()) {
             *existing = mesh;
@@ -365,6 +372,7 @@ pub(crate) fn stream_chunks(
         let grass_colors = streaming.grass_colors.clone();
         let foliage_colors = streaming.foliage_colors.clone();
         let old_lighting = streaming.old_lighting;
+        let fancy_graphics = streaming.fancy_graphics;
         let task = AsyncComputeTaskPool::get().spawn(async move {
             let skylight = Skylight::from_chunk(&chunk);
             mesh_chunk_with_biomes(
@@ -374,6 +382,7 @@ pub(crate) fn stream_chunks(
                 &grass_colors,
                 &foliage_colors,
                 old_lighting,
+                fancy_graphics,
             )
         });
         streaming.meshing.insert(position, task);

@@ -79,7 +79,7 @@ fn load_menu_textures(mut commands: Commands, asset_server: Res<AssetServer>) {
         background: load("gui/background.png"),
         buttons: load("gui/gui.png"),
         logo: load("gui/logo.png"),
-        font: asset_server.load("font/minecraft.ttf"),
+        font: asset_server.load("font/minecraft.otf"),
     });
 }
 
@@ -145,7 +145,7 @@ fn spawn_main_menu(commands: &mut Commands, textures: &MenuTextures) {
         ));
         parent.spawn((
             Text::new("BETA WORLD"),
-            menu_font(textures, 22.0),
+            menu_font(textures, 16.0),
             TextColor(Color::WHITE),
             TextShadow::default(),
             Node {
@@ -171,7 +171,7 @@ fn spawn_settings_menu(commands: &mut Commands, textures: &MenuTextures, setting
     commands.entity(root).with_children(|parent| {
         parent.spawn((
             Text::new("Settings"),
-            menu_font(textures, 42.0),
+            menu_font(textures, 32.0),
             TextColor(Color::WHITE),
             TextShadow::default(),
             Node {
@@ -298,7 +298,7 @@ fn spawn_button(
     button
         .with_child((
             Text::new(title),
-            menu_font(textures, 22.0),
+            menu_font(textures, 16.0),
             TextColor(Color::WHITE),
             TextShadow::default(),
         ))

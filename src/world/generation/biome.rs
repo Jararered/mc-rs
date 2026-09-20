@@ -1,4 +1,5 @@
-use crate::world::chunk::{CHUNK_SIZE, ChunkPos};
+use crate::world::chunk::CHUNK_SIZE;
+use crate::world::chunk::ChunkPos;
 
 use super::noise::SimplexOctaves;
 

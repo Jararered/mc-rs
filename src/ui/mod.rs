@@ -1,12 +1,12 @@
-use bevy::{
-    ecs::hierarchy::ChildSpawnerCommands,
-    image::{ImageLoaderSettings, ImageSampler},
-    math::Rect,
-    prelude::*,
-    ui::widget::NodeImageMode,
-};
+use bevy::ecs::hierarchy::ChildSpawnerCommands;
+use bevy::image::ImageLoaderSettings;
+use bevy::image::ImageSampler;
+use bevy::math::Rect;
+use bevy::prelude::*;
+use bevy::ui::widget::NodeImageMode;
 
-use crate::app::{settings::GameSettings, state::AppScreen};
+use crate::app::settings::GameSettings;
+use crate::app::state::AppScreen;
 
 pub struct MenuPlugin;
 

@@ -1,15 +1,16 @@
-use bevy::{
-    asset::RenderAssetUsages, mesh::Indices, prelude::Mesh,
-    render::render_resource::PrimitiveTopology,
-};
+use bevy::asset::RenderAssetUsages;
+use bevy::mesh::Indices;
+use bevy::prelude::Mesh;
+use bevy::render::render_resource::PrimitiveTopology;
 
-use crate::world::{
-    block::block::BlockId,
-    chunk::{CHUNK_HEIGHT, CHUNK_SIZE, Chunk},
-    generation::BiomeMap,
-    lighting::Skylight,
-    textures::{GrassColors, block_tile},
-};
+use crate::world::block::block::BlockId;
+use crate::world::chunk::CHUNK_HEIGHT;
+use crate::world::chunk::CHUNK_SIZE;
+use crate::world::chunk::Chunk;
+use crate::world::generation::BiomeMap;
+use crate::world::lighting::Skylight;
+use crate::world::textures::GrassColors;
+use crate::world::textures::block_tile;
 
 struct Face {
     neighbor: [i32; 3],

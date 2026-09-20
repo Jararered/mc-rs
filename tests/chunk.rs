@@ -1,12 +1,16 @@
-use bevy::mesh::{Mesh, VertexAttributeValues};
+use bevy::mesh::Mesh;
+use bevy::mesh::VertexAttributeValues;
 
-use game::world::{
-    block::block::BlockId,
-    chunk::{CHUNK_HEIGHT, CHUNK_SIZE, Chunk, ChunkPos},
-    generation::{Biome, WorldGenerator, generate_chunk},
-    lighting::Skylight,
-    meshing::mesh_chunk,
-};
+use game::world::block::block::BlockId;
+use game::world::chunk::CHUNK_HEIGHT;
+use game::world::chunk::CHUNK_SIZE;
+use game::world::chunk::Chunk;
+use game::world::chunk::ChunkPos;
+use game::world::generation::Biome;
+use game::world::generation::WorldGenerator;
+use game::world::generation::generate_chunk;
+use game::world::lighting::Skylight;
+use game::world::meshing::mesh_chunk;
 
 #[test]
 fn generated_chunk_has_solid_ground_and_sunlit_air() {

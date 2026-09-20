@@ -1,11 +1,11 @@
-use crate::world::chunk::{Chunk, ChunkPos};
+use crate::world::chunk::Chunk;
+use crate::world::chunk::ChunkPos;
 
-use super::{
-    biome::{BiomeGenerator, BiomeMap},
-    heightmap::Heightmap,
-    surface::apply_surface,
-    terrain::TerrainGenerator,
-};
+use super::biome::BiomeGenerator;
+use super::biome::BiomeMap;
+use super::heightmap::Heightmap;
+use super::surface::apply_surface;
+use super::terrain::TerrainGenerator;
 
 pub struct GeneratedChunk {
     pub chunk: Chunk,

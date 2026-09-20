@@ -1,7 +1,7 @@
-use crate::world::{
-    block::block::BlockId,
-    chunk::{CHUNK_HEIGHT, CHUNK_SIZE, Chunk},
-};
+use crate::world::block::block::BlockId;
+use crate::world::chunk::CHUNK_HEIGHT;
+use crate::world::chunk::CHUNK_SIZE;
+use crate::world::chunk::Chunk;
 
 /// First air/water position above solid terrain in each column.
 pub struct Heightmap {

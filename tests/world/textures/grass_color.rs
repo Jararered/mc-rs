@@ -1,7 +1,8 @@
-use game::world::{
-    generation::{Biome, Climate},
-    textures::{GrassColors, PALETTE_SIZE, palette_index},
-};
+use game::world::generation::Biome;
+use game::world::generation::Climate;
+use game::world::textures::GrassColors;
+use game::world::textures::PALETTE_SIZE;
+use game::world::textures::palette_index;
 
 #[test]
 fn grass_palette_uses_temperature_and_temperature_weighted_humidity() {

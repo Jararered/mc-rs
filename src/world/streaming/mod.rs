@@ -1,25 +1,24 @@
-use std::{
-    collections::{HashMap, VecDeque},
-    sync::Arc,
-};
+use std::collections::HashMap;
+use std::collections::VecDeque;
+use std::sync::Arc;
 
-use bevy::{
-    prelude::*,
-    tasks::{AsyncComputeTaskPool, Task, futures::check_ready},
-};
+use bevy::prelude::*;
+use bevy::tasks::AsyncComputeTaskPool;
+use bevy::tasks::Task;
+use bevy::tasks::futures::check_ready;
 
-use crate::{
-    app::{settings::GameSettings, state::AppScreen},
-    player::Player,
-};
+use crate::app::settings::GameSettings;
+use crate::app::state::AppScreen;
+use crate::player::Player;
 
-use super::{
-    chunk::{ChunkPos, WorldChunks},
-    generation::{GeneratedChunk, WorldGenerator},
-    lighting::Skylight,
-    meshing::mesh_chunk_with_biomes,
-    textures::{GrassColors, TerrainMaterial},
-};
+use super::chunk::ChunkPos;
+use super::chunk::WorldChunks;
+use super::generation::GeneratedChunk;
+use super::generation::WorldGenerator;
+use super::lighting::Skylight;
+use super::meshing::mesh_chunk_with_biomes;
+use super::textures::GrassColors;
+use super::textures::TerrainMaterial;
 
 pub const LOAD_RADIUS: i32 = 4;
 pub const UNLOAD_RADIUS: i32 = LOAD_RADIUS + 1;

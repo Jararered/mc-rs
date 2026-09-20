@@ -2,7 +2,8 @@ use std::collections::HashMap;
 
 use bevy::prelude::Resource;
 
-use crate::world::{block::block::BlockId, generation::GeneratedChunk};
+use crate::world::block::block::BlockId;
+use crate::world::generation::GeneratedChunk;
 
 use super::ChunkPos;
 

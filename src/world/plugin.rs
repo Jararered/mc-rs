@@ -2,11 +2,10 @@ use bevy::prelude::*;
 
 use crate::app::settings::GameSettings;
 
-use super::{
-    chunk::WorldChunks,
-    streaming::{setup_streaming, stream_chunks},
-    textures::TerrainTexturePlugin,
-};
+use super::chunk::WorldChunks;
+use super::streaming::setup_streaming;
+use super::streaming::stream_chunks;
+use super::textures::TerrainTexturePlugin;
 
 pub struct WorldPlugin;
 

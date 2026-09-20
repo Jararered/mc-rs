@@ -1,7 +1,8 @@
-use game::world::{
-    chunk::ChunkPos,
-    streaming::{LOAD_RADIUS, UNLOAD_RADIUS, positions_in_radius, within_radius},
-};
+use game::world::chunk::ChunkPos;
+use game::world::streaming::LOAD_RADIUS;
+use game::world::streaming::UNLOAD_RADIUS;
+use game::world::streaming::positions_in_radius;
+use game::world::streaming::within_radius;
 
 #[test]
 fn streaming_radius_is_centered_on_the_player_chunk() {

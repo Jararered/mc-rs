@@ -1,6 +1,8 @@
 use bevy::prelude::*;
 
-use crate::{player::PlayerPlugin, ui::MenuPlugin, world::plugin::WorldPlugin};
+use crate::player::PlayerPlugin;
+use crate::ui::MenuPlugin;
+use crate::world::plugin::WorldPlugin;
 
 use super::state::AppScreen;
 

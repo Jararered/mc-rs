@@ -1,10 +1,12 @@
-use bevy::{asset::AssetPlugin, mesh::MeshPlugin, prelude::*};
-use game::{
-    app::settings::{
-        GameSettings, MAX_BRIGHTNESS, MAX_RENDER_DISTANCE, MIN_BRIGHTNESS, MIN_RENDER_DISTANCE,
-    },
-    world::plugin::WorldPlugin,
-};
+use bevy::asset::AssetPlugin;
+use bevy::mesh::MeshPlugin;
+use bevy::prelude::*;
+use game::app::settings::GameSettings;
+use game::app::settings::MAX_BRIGHTNESS;
+use game::app::settings::MAX_RENDER_DISTANCE;
+use game::app::settings::MIN_BRIGHTNESS;
+use game::app::settings::MIN_RENDER_DISTANCE;
+use game::world::plugin::WorldPlugin;
 
 #[test]
 fn settings_controls_stay_within_their_ranges() {

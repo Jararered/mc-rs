@@ -1,11 +1,12 @@
-use bevy::{
-    input::mouse::AccumulatedMouseMotion,
-    prelude::*,
-    window::{CursorGrabMode, CursorOptions, PrimaryWindow},
-};
+use bevy::input::mouse::AccumulatedMouseMotion;
+use bevy::prelude::*;
+use bevy::window::CursorGrabMode;
+use bevy::window::CursorOptions;
+use bevy::window::PrimaryWindow;
 
 use crate::app::state::AppScreen;
-use crate::world::chunk::{ChunkPos, WorldChunks};
+use crate::world::chunk::ChunkPos;
+use crate::world::chunk::WorldChunks;
 
 pub struct PlayerPlugin;
 

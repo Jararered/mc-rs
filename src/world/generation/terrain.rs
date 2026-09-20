@@ -1,13 +1,12 @@
-use crate::world::{
-    block::block::BlockId,
-    chunk::{CHUNK_HEIGHT, Chunk, ChunkPos},
-};
+use crate::world::block::block::BlockId;
+use crate::world::chunk::CHUNK_HEIGHT;
+use crate::world::chunk::Chunk;
+use crate::world::chunk::ChunkPos;
 
-use super::{
-    biome::BiomeMap,
-    java_random::JavaRandom,
-    noise::{PerlinOctaves, lerp},
-};
+use super::biome::BiomeMap;
+use super::java_random::JavaRandom;
+use super::noise::PerlinOctaves;
+use super::noise::lerp;
 
 const GRID: usize = 5;
 const VERTICAL_GRID: usize = CHUNK_HEIGHT / 8 + 1;

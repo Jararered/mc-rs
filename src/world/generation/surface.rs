@@ -1,9 +1,12 @@
-use crate::world::{
-    block::block::BlockId,
-    chunk::{CHUNK_HEIGHT, CHUNK_SIZE, Chunk, ChunkPos},
-};
+use crate::world::block::block::BlockId;
+use crate::world::chunk::CHUNK_HEIGHT;
+use crate::world::chunk::CHUNK_SIZE;
+use crate::world::chunk::Chunk;
+use crate::world::chunk::ChunkPos;
 
-use super::{biome::BiomeMap, java_random::JavaRandom, terrain::TerrainGenerator};
+use super::biome::BiomeMap;
+use super::java_random::JavaRandom;
+use super::terrain::TerrainGenerator;
 
 const SEA_LEVEL: usize = 64;
 

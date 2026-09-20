@@ -1,10 +1,13 @@
-use std::{fs, sync::Arc};
+use std::fs;
+use std::sync::Arc;
 
-use bevy::{
-    asset::RenderAssetUsages,
-    image::{CompressedImageFormats, ImageSampler, ImageType},
-    prelude::{Color, Image, Resource},
-};
+use bevy::asset::RenderAssetUsages;
+use bevy::image::CompressedImageFormats;
+use bevy::image::ImageSampler;
+use bevy::image::ImageType;
+use bevy::prelude::Color;
+use bevy::prelude::Image;
+use bevy::prelude::Resource;
 
 use crate::world::generation::Climate;
 

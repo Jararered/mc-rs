@@ -1,16 +1,14 @@
-use std::{
-    thread,
-    time::{Duration, Instant},
-};
+use std::thread;
+use std::time::Duration;
+use std::time::Instant;
 
-use bevy::{asset::AssetPlugin, mesh::MeshPlugin, prelude::*};
-use game::{
-    player::Player,
-    world::{
-        chunk::{ChunkPos, WorldChunks},
-        plugin::WorldPlugin,
-    },
-};
+use bevy::asset::AssetPlugin;
+use bevy::mesh::MeshPlugin;
+use bevy::prelude::*;
+use game::player::Player;
+use game::world::chunk::ChunkPos;
+use game::world::chunk::WorldChunks;
+use game::world::plugin::WorldPlugin;
 
 #[test]
 fn distant_chunks_release_world_data_entities_and_meshes() {

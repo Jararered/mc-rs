@@ -1,11 +1,12 @@
-use bevy::{
-    image::{ImageLoaderSettings, ImageSampler},
-    prelude::*,
-};
+use bevy::image::ImageLoaderSettings;
+use bevy::image::ImageSampler;
+use bevy::prelude::*;
 
 mod grass_color;
 
-pub use grass_color::{GrassColors, PALETTE_SIZE, palette_index};
+pub use grass_color::GrassColors;
+pub use grass_color::PALETTE_SIZE;
+pub use grass_color::palette_index;
 
 pub struct TerrainTexturePlugin;
 

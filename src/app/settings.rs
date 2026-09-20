@@ -18,6 +18,7 @@ pub const AMBIENT_ONLY_SCALE: f32 = 10.0;
 pub const MIN_FOV: f32 = 30.0;
 pub const MAX_FOV: f32 = 110.0;
 pub const DEFAULT_FOV: f32 = 70.0;
+pub const DEFAULT_WIGGLE_LEAVES: bool = true;
 
 /// Client options file, relative to the working directory.
 pub const SETTINGS_FILE: &str = "settings.json";
@@ -61,6 +62,7 @@ pub struct GameSettings {
     pub fov: f32,
     pub old_lighting: bool,
     pub directional_lighting: bool,
+    pub wiggle_leaves: bool,
     pub graphics: GraphicsQuality,
 }
 
@@ -72,6 +74,7 @@ impl Default for GameSettings {
             fov: DEFAULT_FOV,
             old_lighting: false,
             directional_lighting: true,
+            wiggle_leaves: DEFAULT_WIGGLE_LEAVES,
             graphics: GraphicsQuality::Fancy,
         }
     }
@@ -169,6 +172,7 @@ struct StoredSettings {
     fov: f32,
     old_lighting: bool,
     directional_lighting: bool,
+    wiggle_leaves: bool,
     graphics: GraphicsQuality,
 }
 
@@ -187,6 +191,7 @@ impl From<&GameSettings> for StoredSettings {
             fov: settings.fov,
             old_lighting: settings.old_lighting,
             directional_lighting: settings.directional_lighting,
+            wiggle_leaves: settings.wiggle_leaves,
             graphics: settings.graphics,
         }
     }
@@ -200,6 +205,7 @@ impl From<StoredSettings> for GameSettings {
             fov: stored.fov,
             old_lighting: stored.old_lighting,
             directional_lighting: stored.directional_lighting,
+            wiggle_leaves: stored.wiggle_leaves,
             graphics: stored.graphics,
         };
         settings.clamp();

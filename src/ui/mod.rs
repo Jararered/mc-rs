@@ -53,6 +53,7 @@ enum MenuAction {
     Fov(f32),
     OldLighting,
     DirectionalLighting,
+    WiggleLeaves,
     Graphics,
 }
 
@@ -63,6 +64,7 @@ enum SettingLabel {
     Fov,
     OldLighting,
     DirectionalLighting,
+    WiggleLeaves,
     Graphics,
 }
 
@@ -210,6 +212,13 @@ fn spawn_settings_menu(commands: &mut Commands, textures: &MenuTextures, setting
         spawn_setting_button(
             parent,
             &textures,
+            wiggle_leaves_text(&settings),
+            MenuAction::WiggleLeaves,
+            SettingLabel::WiggleLeaves,
+        );
+        spawn_setting_button(
+            parent,
+            &textures,
             graphics_text(&settings),
             MenuAction::Graphics,
             SettingLabel::Graphics,
@@ -344,6 +353,7 @@ fn handle_buttons(
             MenuAction::DirectionalLighting => {
                 settings.directional_lighting = !settings.directional_lighting;
             }
+            MenuAction::WiggleLeaves => settings.wiggle_leaves = !settings.wiggle_leaves,
             MenuAction::Graphics => settings.cycle_graphics(),
         }
     }
@@ -364,6 +374,7 @@ fn refresh_settings_labels(
             SettingLabel::Fov => fov_text(&settings),
             SettingLabel::OldLighting => old_lighting_text(&settings),
             SettingLabel::DirectionalLighting => directional_lighting_text(&settings),
+            SettingLabel::WiggleLeaves => wiggle_leaves_text(&settings),
             SettingLabel::Graphics => graphics_text(&settings),
         };
         if let Ok(mut text) = texts.get_mut(entity) {
@@ -417,6 +428,13 @@ fn graphics_text(settings: &GameSettings) -> String {
             GraphicsQuality::Fancy => "Fancy",
             GraphicsQuality::Ultra => "Ultra",
         }
+    )
+}
+
+fn wiggle_leaves_text(settings: &GameSettings) -> String {
+    format!(
+        "Wiggle leaves: {}",
+        if settings.wiggle_leaves { "ON" } else { "OFF" }
     )
 }
 

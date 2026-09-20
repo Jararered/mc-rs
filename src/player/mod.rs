@@ -122,8 +122,11 @@ impl PlayerHealth {
     }
 }
 
+/// Horizontal movement speeds in blocks per second.
 const WALK_SPEED: f32 = 4.317;
-const SPRINT_SPEED: f32 = 8.0;
+const SPRINT_SPEED: f32 = 5.612;
+const SNEAK_SPEED: f32 = 1.295;
+const SPRINT_JUMP_SPEED: f32 = 7.1;
 const JUMP_SPEED: f32 = 8.4;
 const MOUSE_SENSITIVITY: f32 = 0.002;
 
@@ -278,7 +281,14 @@ fn apply_player_input(
         }
     }
 
-    let speed = if locked && keys.pressed(KeyCode::ShiftLeft) {
+    let sneaking = locked && keys.pressed(KeyCode::ControlLeft);
+    let sprinting = locked && keys.pressed(KeyCode::ShiftLeft) && !sneaking;
+    let jumping = locked && keys.pressed(KeyCode::Space);
+    let speed = if sneaking {
+        SNEAK_SPEED
+    } else if sprinting && jumping {
+        SPRINT_JUMP_SPEED
+    } else if sprinting {
         SPRINT_SPEED
     } else {
         WALK_SPEED

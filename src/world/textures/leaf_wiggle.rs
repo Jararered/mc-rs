@@ -9,6 +9,10 @@ use bevy::render::render_resource::ShaderType;
 use bevy::shader::Shader;
 use bevy::shader::ShaderRef;
 
+use crate::app::settings::GameSettings;
+
+pub const LEAF_WIGGLE_AMPLITUDE: f32 = 0.06;
+
 const LEAF_WIGGLE_SHADER_HANDLE: Handle<Shader> =
     uuid_handle!("7e3c1a90-4b2d-4f86-9c51-a8d0e4b17c22");
 const LEAF_WIGGLE_VERTEX_SHADER_HANDLE: Handle<Shader> =
@@ -31,7 +35,7 @@ pub struct LeafWiggleSettings {
 impl Default for LeafWiggleSettings {
     fn default() -> Self {
         Self {
-            amplitude: 0.06,
+            amplitude: LEAF_WIGGLE_AMPLITUDE,
             time: 0.0,
             previous_time: 0.0,
             _padding: 0.0,
@@ -90,11 +94,21 @@ pub(super) fn plugin(app: &mut App) {
     );
 }
 
-fn update_leaf_wiggle_time(time: Res<Time>, mut materials: ResMut<Assets<LeafCutoutMaterial>>) {
+fn update_leaf_wiggle_time(
+    time: Res<Time>,
+    settings: Res<GameSettings>,
+    mut materials: ResMut<Assets<LeafCutoutMaterial>>,
+) {
     let current_time = time.elapsed_secs();
     let previous_time = current_time - time.delta_secs();
+    let amplitude = if settings.wiggle_leaves {
+        LEAF_WIGGLE_AMPLITUDE
+    } else {
+        0.0
+    };
 
     for (_, material) in materials.iter_mut() {
+        material.extension.settings.amplitude = amplitude;
         material.extension.settings.time = current_time;
         material.extension.settings.previous_time = previous_time;
     }

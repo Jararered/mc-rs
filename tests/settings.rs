@@ -262,6 +262,7 @@ fn settings_round_trip_through_json() {
         fov: 90.0,
         old_lighting: true,
         directional_lighting: false,
+        wiggle_leaves: false,
         graphics: GraphicsQuality::Ultra,
     };
     save_settings(&path, &settings).unwrap();
@@ -325,6 +326,7 @@ fn settings_plugin_loads_and_saves_menu_changes() {
         fov: 55.0,
         old_lighting: true,
         directional_lighting: false,
+        wiggle_leaves: true,
         graphics: GraphicsQuality::Fast,
     };
     save_settings(&path, &initial).unwrap();

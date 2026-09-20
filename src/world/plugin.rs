@@ -62,7 +62,11 @@ fn apply_lighting_settings(
     if !settings.is_changed() {
         return;
     }
-    ambient.brightness = settings.ambient_light_brightness();
+    ambient.brightness = if settings.old_lighting {
+        0.0
+    } else {
+        settings.ambient_light_brightness()
+    };
     for mut light in &mut sun {
         light.illuminance = if settings.directional_lighting {
             10_000.0

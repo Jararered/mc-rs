@@ -84,21 +84,33 @@ fn load_terrain_atlas(
     let material = materials.add(StandardMaterial {
         perceptual_roughness: 1.0,
         alpha_mode: AlphaMode::Opaque,
+        unlit: settings.old_lighting,
         ..default()
     });
     let cutout = cutout_materials.add(LeafCutoutMaterial {
         base: StandardMaterial {
             perceptual_roughness: 1.0,
+            unlit: settings.old_lighting,
             // Fancy leaf tiles have punched holes. Mask discards those texels
             // without sorting the whole chunk as transparent.
             alpha_mode: AlphaMode::Mask(0.5),
             ..default()
         },
-        extension: LeafWiggle::default(),
+        extension: LeafWiggle {
+            settings: LeafWiggleSettings {
+                amplitude: if settings.wiggle_leaves {
+                    leaf_wiggle::LEAF_WIGGLE_AMPLITUDE
+                } else {
+                    0.0
+                },
+                ..default()
+            },
+        },
     });
     let mut water = StandardMaterial {
         double_sided: true,
         cull_mode: None,
+        unlit: settings.old_lighting,
         ..default()
     };
     apply_water_quality(&mut water, settings.graphics);
@@ -145,13 +157,23 @@ fn apply_terrain_atlas(
 
 fn apply_graphics_materials(
     settings: Res<GameSettings>,
+    terrain_material: Res<TerrainMaterial>,
+    cutout_material: Res<CutoutMaterial>,
     water_material: Res<WaterMaterial>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut cutout_materials: ResMut<Assets<LeafCutoutMaterial>>,
 ) {
     if !settings.is_changed() {
         return;
     }
+    if let Some(mut material) = materials.get_mut(&terrain_material.0) {
+        material.unlit = settings.old_lighting;
+    }
+    if let Some(mut material) = cutout_materials.get_mut(&cutout_material.0) {
+        material.base.unlit = settings.old_lighting;
+    }
     if let Some(mut material) = materials.get_mut(&water_material.0) {
+        material.unlit = settings.old_lighting;
         apply_water_quality(&mut material, settings.graphics);
     }
 }

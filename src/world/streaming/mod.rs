@@ -370,8 +370,41 @@ pub(crate) fn stream_chunks(
                 z: position.z + 1,
             })
             .map(|chunk| &chunk.chunk);
-        let skylight =
-            Skylight::from_chunk_with_neighbors(&generated.chunk, west, east, north, south);
+        let northwest = chunks
+            .get(ChunkPos {
+                x: position.x - 1,
+                z: position.z - 1,
+            })
+            .map(|chunk| &chunk.chunk);
+        let northeast = chunks
+            .get(ChunkPos {
+                x: position.x + 1,
+                z: position.z - 1,
+            })
+            .map(|chunk| &chunk.chunk);
+        let southwest = chunks
+            .get(ChunkPos {
+                x: position.x - 1,
+                z: position.z + 1,
+            })
+            .map(|chunk| &chunk.chunk);
+        let southeast = chunks
+            .get(ChunkPos {
+                x: position.x + 1,
+                z: position.z + 1,
+            })
+            .map(|chunk| &chunk.chunk);
+        let skylight = Skylight::from_chunk_with_neighbors_and_corners(
+            &generated.chunk,
+            west,
+            east,
+            north,
+            south,
+            northwest,
+            northeast,
+            southwest,
+            southeast,
+        );
         let layers = mesh_chunk_with_biomes(
             &generated.chunk,
             &skylight,
@@ -593,14 +626,42 @@ pub(crate) fn stream_chunks(
                 z: position.z + 1,
             })
             .map(|chunk| chunk.chunk.clone());
+        let northwest = chunks
+            .get(ChunkPos {
+                x: position.x - 1,
+                z: position.z - 1,
+            })
+            .map(|chunk| chunk.chunk.clone());
+        let northeast = chunks
+            .get(ChunkPos {
+                x: position.x + 1,
+                z: position.z - 1,
+            })
+            .map(|chunk| chunk.chunk.clone());
+        let southwest = chunks
+            .get(ChunkPos {
+                x: position.x - 1,
+                z: position.z + 1,
+            })
+            .map(|chunk| chunk.chunk.clone());
+        let southeast = chunks
+            .get(ChunkPos {
+                x: position.x + 1,
+                z: position.z + 1,
+            })
+            .map(|chunk| chunk.chunk.clone());
         let task = AsyncComputeTaskPool::get().spawn(async move {
             let start = Instant::now();
-            let skylight = Skylight::from_chunk_with_neighbors(
+            let skylight = Skylight::from_chunk_with_neighbors_and_corners(
                 &chunk,
                 west.as_ref(),
                 east.as_ref(),
                 north.as_ref(),
                 south.as_ref(),
+                northwest.as_ref(),
+                northeast.as_ref(),
+                southwest.as_ref(),
+                southeast.as_ref(),
             );
             let layers = mesh_chunk_with_biomes(
                 &chunk,

@@ -309,6 +309,29 @@ fn chunk_border_light_uses_loaded_neighbor_values() {
 }
 
 #[test]
+fn chunk_corner_light_uses_loaded_diagonal_neighbor_values() {
+    let center = Chunk::new();
+    let mut northwest = Chunk::new();
+    northwest.set(CHUNK_SIZE - 1, 2, CHUNK_SIZE - 1, BlockId::Stone);
+
+    let isolated = Skylight::from_chunk(&center);
+    let connected = Skylight::from_chunk_with_neighbors_and_corners(
+        &center,
+        None,
+        None,
+        None,
+        None,
+        Some(&northwest),
+        None,
+        None,
+        None,
+    );
+
+    assert_eq!(isolated.get_extended(-1, 2, -1), 15);
+    assert_eq!(connected.get_extended(-1, 2, -1), 0);
+}
+
+#[test]
 fn beta_brightness_curve_keeps_caves_dark() {
     assert!((beta_brightness(15) - 1.0).abs() < f32::EPSILON);
     assert!((beta_brightness(0) - 0.05).abs() < f32::EPSILON);

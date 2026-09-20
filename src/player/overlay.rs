@@ -100,7 +100,9 @@ fn spawn_block_overlays(
 
     let crack_mesh = meshes.add(destroy_overlay_mesh(0));
     let crack_material = materials.add(StandardMaterial {
-        // Beta draws this at 50% with alpha test so only the cracks remain.
+        // Beta's drawBlockBreaking disables tessellator vertex colors and
+        // renders the grayscale destroy tile neutrally at 50% opacity. In
+        // particular, it does not apply BlockGrass.colorMultiplier().
         base_color: Color::srgba(1.0, 1.0, 1.0, 0.5),
         unlit: true,
         alpha_mode: AlphaMode::Blend,

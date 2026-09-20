@@ -15,6 +15,9 @@ pub struct Skylight {
     /// Light on the four exterior faces, copied from loaded neighboring chunks.
     /// A full-sky fallback keeps isolated chunks renderable during startup.
     borders: [Box<[u8]>; 4],
+    /// Light at the four diagonal exterior corners, copied from diagonal
+    /// neighboring chunks for smooth vertex-light samples.
+    corners: [Box<[u8]>; 4],
 }
 
 impl Skylight {
@@ -28,6 +31,39 @@ impl Skylight {
         east: Option<&Chunk>,
         north: Option<&Chunk>,
         south: Option<&Chunk>,
+    ) -> Self {
+        Self::from_chunk_with_neighbors_and_corners(
+            chunk, west, east, north, south, None, None, None, None,
+        )
+    }
+
+    pub fn from_chunk_with_neighbors_and_corners(
+        chunk: &Chunk,
+        west: Option<&Chunk>,
+        east: Option<&Chunk>,
+        north: Option<&Chunk>,
+        south: Option<&Chunk>,
+        northwest: Option<&Chunk>,
+        northeast: Option<&Chunk>,
+        southwest: Option<&Chunk>,
+        southeast: Option<&Chunk>,
+    ) -> Self {
+        Self::from_chunk_with_neighbors_and_corners_impl(
+            chunk, west, east, north, south, northwest, northeast, southwest, southeast, None,
+        )
+    }
+
+    fn from_chunk_with_neighbors_and_corners_impl(
+        chunk: &Chunk,
+        west: Option<&Chunk>,
+        east: Option<&Chunk>,
+        north: Option<&Chunk>,
+        south: Option<&Chunk>,
+        northwest: Option<&Chunk>,
+        northeast: Option<&Chunk>,
+        southwest: Option<&Chunk>,
+        southeast: Option<&Chunk>,
+        suppressed_edge: Option<usize>,
     ) -> Self {
         let mut sky = vec![0; LIGHT_CELLS].into_boxed_slice();
         let mut block = vec![0; LIGHT_CELLS].into_boxed_slice();
@@ -56,13 +92,25 @@ impl Skylight {
             }
         }
         for y in 0..CHUNK_HEIGHT {
-            for z in 0..CHUNK_SIZE {
-                seed_sky_edge(chunk, &mut sky, &mut sky_queue, 0, y, z);
-                seed_sky_edge(chunk, &mut sky, &mut sky_queue, CHUNK_SIZE - 1, y, z);
+            if west.is_none() && suppressed_edge != Some(0) {
+                for z in 0..CHUNK_SIZE {
+                    seed_sky_edge(chunk, &mut sky, &mut sky_queue, 0, y, z);
+                }
             }
-            for x in 0..CHUNK_SIZE {
-                seed_sky_edge(chunk, &mut sky, &mut sky_queue, x, y, 0);
-                seed_sky_edge(chunk, &mut sky, &mut sky_queue, x, y, CHUNK_SIZE - 1);
+            if east.is_none() && suppressed_edge != Some(1) {
+                for z in 0..CHUNK_SIZE {
+                    seed_sky_edge(chunk, &mut sky, &mut sky_queue, CHUNK_SIZE - 1, y, z);
+                }
+            }
+            if north.is_none() && suppressed_edge != Some(2) {
+                for x in 0..CHUNK_SIZE {
+                    seed_sky_edge(chunk, &mut sky, &mut sky_queue, x, y, 0);
+                }
+            }
+            if south.is_none() && suppressed_edge != Some(3) {
+                for x in 0..CHUNK_SIZE {
+                    seed_sky_edge(chunk, &mut sky, &mut sky_queue, x, y, CHUNK_SIZE - 1);
+                }
             }
         }
 
@@ -84,12 +132,66 @@ impl Skylight {
         propagate(chunk, &mut block, &mut block_queue);
 
         let mut borders = std::array::from_fn(|_| vec![MAX_LIGHT; LIGHT_CELLS].into_boxed_slice());
+        let mut corners = std::array::from_fn(|_| vec![MAX_LIGHT; CHUNK_HEIGHT].into_boxed_slice());
         let neighbors = [west, east, north, south];
         for (border_index, neighbor) in neighbors.into_iter().enumerate() {
             let Some(neighbor) = neighbor else {
                 continue;
             };
-            let neighbor_light = Self::from_chunk(neighbor);
+            // Compute the neighbor without seeding its shared face as open
+            // sky. Otherwise both chunks treat that face as an independent
+            // light source, which leaks light through caves and produces a
+            // visible seam.
+            let neighbor_light = match border_index {
+                0 => Self::from_chunk_with_neighbors_and_corners_impl(
+                    neighbor,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some(1),
+                ),
+                1 => Self::from_chunk_with_neighbors_and_corners_impl(
+                    neighbor,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some(0),
+                ),
+                2 => Self::from_chunk_with_neighbors_and_corners_impl(
+                    neighbor,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some(3),
+                ),
+                _ => Self::from_chunk_with_neighbors_and_corners_impl(
+                    neighbor,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some(2),
+                ),
+            };
             match border_index {
                 0 => {
                     for y in 0..CHUNK_HEIGHT {
@@ -161,12 +263,36 @@ impl Skylight {
                 }
             }
         }
+
+        // A smooth-lit corner can sample a cell that is outside two faces at
+        // once. Face borders cannot describe that cell, so retain the light
+        // from the corresponding diagonal chunk explicitly.
+        let diagonal_neighbors = [northwest, northeast, southwest, southeast];
+        let diagonal_coords = [
+            (CHUNK_SIZE - 1, CHUNK_SIZE - 1),
+            (0, CHUNK_SIZE - 1),
+            (CHUNK_SIZE - 1, 0),
+            (0, 0),
+        ];
+        for (corner_index, diagonal) in diagonal_neighbors.into_iter().enumerate() {
+            let Some(diagonal) = diagonal else {
+                continue;
+            };
+            let diagonal_light = Self::from_chunk(diagonal);
+            let (local_x, local_z) = diagonal_coords[corner_index];
+            for y in 0..CHUNK_HEIGHT {
+                corners[corner_index][y] = diagonal_light
+                    .get(local_x * (CHUNK_SIZE - 1), y, local_z * (CHUNK_SIZE - 1))
+                    .unwrap_or(0);
+            }
+        }
         propagate(chunk, &mut sky, &mut sky_queue);
 
         Self {
             sky,
             block,
             borders,
+            corners,
         }
     }
 
@@ -218,6 +344,18 @@ impl Skylight {
         }
         if z >= CHUNK_SIZE as i32 && (0..CHUNK_SIZE as i32).contains(&x) {
             return self.borders[3][Chunk::index(x as usize, y as usize, CHUNK_SIZE - 1)];
+        }
+        if x < 0 && z < 0 {
+            return self.corners[0][y as usize];
+        }
+        if x >= CHUNK_SIZE as i32 && z < 0 {
+            return self.corners[1][y as usize];
+        }
+        if x < 0 && z >= CHUNK_SIZE as i32 {
+            return self.corners[2][y as usize];
+        }
+        if x >= CHUNK_SIZE as i32 && z >= CHUNK_SIZE as i32 {
+            return self.corners[3][y as usize];
         }
         MAX_LIGHT
     }

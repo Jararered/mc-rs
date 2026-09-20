@@ -4,6 +4,9 @@ pub const MIN_RENDER_DISTANCE: i32 = 4;
 pub const MAX_RENDER_DISTANCE: i32 = 32;
 pub const MIN_BRIGHTNESS: f32 = 0.0;
 pub const MAX_BRIGHTNESS: f32 = 1000.0;
+pub const MIN_FOV: f32 = 30.0;
+pub const MAX_FOV: f32 = 110.0;
+pub const DEFAULT_FOV: f32 = 70.0;
 
 /// Player-facing graphics quality. Fast and Fancy match Beta leaves; Ultra keeps
 /// Fancy leaves and switches water to Bevy screen-space reflections.
@@ -39,6 +42,7 @@ impl GraphicsQuality {
 pub struct GameSettings {
     pub render_distance: i32,
     pub brightness: f32,
+    pub fov: f32,
     pub old_lighting: bool,
     pub directional_lighting: bool,
     pub graphics: GraphicsQuality,
@@ -49,6 +53,7 @@ impl Default for GameSettings {
         Self {
             render_distance: MIN_RENDER_DISTANCE,
             brightness: 300.0,
+            fov: DEFAULT_FOV,
             old_lighting: false,
             directional_lighting: true,
             graphics: GraphicsQuality::Fancy,
@@ -64,6 +69,14 @@ impl GameSettings {
 
     pub fn change_brightness(&mut self, change: f32) {
         self.brightness = (self.brightness + change).clamp(MIN_BRIGHTNESS, MAX_BRIGHTNESS);
+    }
+
+    pub fn change_fov(&mut self, change: f32) {
+        self.fov = (self.fov + change).clamp(MIN_FOV, MAX_FOV);
+    }
+
+    pub fn fov_radians(&self) -> f32 {
+        self.fov.to_radians()
     }
 
     pub fn cycle_graphics(&mut self) {

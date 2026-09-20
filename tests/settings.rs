@@ -3,12 +3,20 @@ use bevy::material::OpaqueRendererMethod;
 use bevy::mesh::MeshPlugin;
 use bevy::pbr::ScreenSpaceReflections;
 use bevy::prelude::*;
+use bevy::state::app::StatesPlugin;
+use game::app::settings::DEFAULT_FOV;
 use game::app::settings::GameSettings;
 use game::app::settings::GraphicsQuality;
 use game::app::settings::MAX_BRIGHTNESS;
+use game::app::settings::MAX_FOV;
 use game::app::settings::MAX_RENDER_DISTANCE;
 use game::app::settings::MIN_BRIGHTNESS;
+use game::app::settings::MIN_FOV;
 use game::app::settings::MIN_RENDER_DISTANCE;
+use game::app::state::AppScreen;
+use game::player::Player;
+use game::player::PlayerPlugin;
+use game::world::chunk::WorldChunks;
 use game::world::plugin::WorldPlugin;
 
 #[test]
@@ -23,6 +31,12 @@ fn settings_controls_stay_within_their_ranges() {
     assert_eq!(settings.brightness, MAX_BRIGHTNESS);
     settings.change_brightness(-10_000.0);
     assert_eq!(settings.brightness, MIN_BRIGHTNESS);
+
+    assert_eq!(settings.fov, DEFAULT_FOV);
+    settings.change_fov(1_000.0);
+    assert_eq!(settings.fov, MAX_FOV);
+    settings.change_fov(-1_000.0);
+    assert_eq!(settings.fov, MIN_FOV);
 
     assert_eq!(settings.graphics, GraphicsQuality::Fancy);
     assert!(settings.graphics.fancy_leaves());
@@ -66,6 +80,46 @@ fn brightness_and_directional_toggle_update_bevy_lights() {
     let sun = suns.single(app.world()).unwrap();
     assert_eq!(sun.illuminance, 0.0);
     assert!(!sun.shadow_maps_enabled);
+}
+
+#[test]
+fn fov_setting_updates_player_camera() {
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        AssetPlugin::default(),
+        MeshPlugin,
+        StatesPlugin,
+    ))
+    .init_asset::<Image>()
+    .init_state::<AppScreen>()
+    .init_resource::<GameSettings>()
+    .init_resource::<WorldChunks>()
+    .add_plugins(PlayerPlugin);
+    app.update();
+
+    assert!(
+        (player_fov_radians(&mut app) - DEFAULT_FOV.to_radians()).abs() < f32::EPSILON,
+        "spawned camera should use the default FOV"
+    );
+
+    {
+        let mut settings = app.world_mut().resource_mut::<GameSettings>();
+        settings.change_fov(20.0);
+    }
+    app.update();
+
+    assert!((player_fov_radians(&mut app) - 90.0_f32.to_radians()).abs() < f32::EPSILON);
+}
+
+fn player_fov_radians(app: &mut App) -> f32 {
+    let mut cameras = app
+        .world_mut()
+        .query_filtered::<&Projection, With<Player>>();
+    match cameras.single(app.world()).unwrap() {
+        Projection::Perspective(perspective) => perspective.fov,
+        other => panic!("player camera should be perspective, got {other:?}"),
+    }
 }
 
 #[test]

@@ -50,6 +50,7 @@ enum MenuAction {
     Back,
     RenderDistance(i32),
     Brightness(f32),
+    Fov(f32),
     OldLighting,
     DirectionalLighting,
     Graphics,
@@ -59,6 +60,7 @@ enum MenuAction {
 enum SettingLabel {
     RenderDistance,
     Brightness,
+    Fov,
     OldLighting,
     DirectionalLighting,
     Graphics,
@@ -184,6 +186,14 @@ fn spawn_settings_menu(commands: &mut Commands, textures: &MenuTextures, setting
             render_distance_text(&settings),
             MenuAction::RenderDistance(-1),
             MenuAction::RenderDistance(1),
+        );
+        spawn_stepper(
+            parent,
+            &textures,
+            SettingLabel::Fov,
+            fov_text(&settings),
+            MenuAction::Fov(-5.0),
+            MenuAction::Fov(5.0),
         );
         spawn_stepper(
             parent,
@@ -339,6 +349,7 @@ fn handle_buttons(
             MenuAction::Back => next_screen.set(AppScreen::Menu),
             MenuAction::RenderDistance(change) => settings.change_render_distance(*change),
             MenuAction::Brightness(change) => settings.change_brightness(*change),
+            MenuAction::Fov(change) => settings.change_fov(*change),
             MenuAction::OldLighting => settings.old_lighting = !settings.old_lighting,
             MenuAction::DirectionalLighting => {
                 settings.directional_lighting = !settings.directional_lighting;
@@ -360,6 +371,7 @@ fn refresh_settings_labels(
         let value = match label {
             SettingLabel::RenderDistance => render_distance_text(&settings),
             SettingLabel::Brightness => brightness_text(&settings),
+            SettingLabel::Fov => fov_text(&settings),
             SettingLabel::OldLighting => old_lighting_text(&settings),
             SettingLabel::DirectionalLighting => directional_lighting_text(&settings),
             SettingLabel::Graphics => graphics_text(&settings),
@@ -383,6 +395,10 @@ fn render_distance_text(settings: &GameSettings) -> String {
 
 fn brightness_text(settings: &GameSettings) -> String {
     format!("Ambient brightness: {:.0}", settings.brightness)
+}
+
+fn fov_text(settings: &GameSettings) -> String {
+    format!("FOV: {:.0}", settings.fov)
 }
 
 fn old_lighting_text(settings: &GameSettings) -> String {

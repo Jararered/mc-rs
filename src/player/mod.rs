@@ -5,6 +5,7 @@ use bevy::window::CursorGrabMode;
 use bevy::window::CursorOptions;
 use bevy::window::PrimaryWindow;
 
+use crate::app::settings::GameSettings;
 use crate::app::state::AppScreen;
 use crate::entity::CollisionState;
 use crate::entity::EntitySize;
@@ -40,6 +41,7 @@ impl Plugin for PlayerPlugin {
             .add_systems(OnEnter(AppScreen::Playing), capture_mouse)
             .add_systems(OnEnter(AppScreen::Menu), release_mouse)
             .add_systems(OnEnter(AppScreen::Settings), release_mouse)
+            .add_systems(Update, apply_camera_fov)
             .add_systems(
                 Update,
                 (
@@ -111,6 +113,7 @@ fn spawn_player(
     mut commands: Commands,
     chunks: Res<WorldChunks>,
     persistence: Option<Res<WorldPersistence>>,
+    settings: Res<GameSettings>,
 ) {
     let transform = persistence
         .as_ref()
@@ -124,8 +127,27 @@ fn spawn_player(
         PlayerHealth::default(),
         Hotbar::default(),
         Camera3d::default(),
+        Projection::from(PerspectiveProjection {
+            fov: settings.fov_radians(),
+            ..default()
+        }),
         transform,
     ));
+}
+
+fn apply_camera_fov(
+    settings: Res<GameSettings>,
+    mut cameras: Query<&mut Projection, With<Player>>,
+) {
+    if !settings.is_changed() {
+        return;
+    }
+    let fov = settings.fov_radians();
+    for projection in &mut cameras {
+        if let Projection::Perspective(perspective) = projection.into_inner() {
+            perspective.fov = fov;
+        }
+    }
 }
 
 fn default_spawn_transform(chunks: &WorldChunks) -> Transform {

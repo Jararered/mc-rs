@@ -6,6 +6,7 @@ use bevy::prelude::*;
 use bevy::ui::widget::NodeImageMode;
 
 use crate::app::settings::GameSettings;
+use crate::app::settings::GraphicsQuality;
 use crate::app::state::AppScreen;
 
 mod hud;
@@ -342,7 +343,7 @@ fn handle_buttons(
             MenuAction::DirectionalLighting => {
                 settings.directional_lighting = !settings.directional_lighting;
             }
-            MenuAction::Graphics => settings.fancy_graphics = !settings.fancy_graphics,
+            MenuAction::Graphics => settings.cycle_graphics(),
         }
     }
 }
@@ -405,10 +406,10 @@ fn directional_lighting_text(settings: &GameSettings) -> String {
 fn graphics_text(settings: &GameSettings) -> String {
     format!(
         "Graphics: {}",
-        if settings.fancy_graphics {
-            "Fancy"
-        } else {
-            "Fast"
+        match settings.graphics {
+            GraphicsQuality::Fast => "Fast",
+            GraphicsQuality::Fancy => "Fancy",
+            GraphicsQuality::Ultra => "Ultra",
         }
     )
 }

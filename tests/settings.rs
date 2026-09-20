@@ -1,7 +1,10 @@
 use bevy::asset::AssetPlugin;
+use bevy::material::OpaqueRendererMethod;
 use bevy::mesh::MeshPlugin;
+use bevy::pbr::ScreenSpaceReflections;
 use bevy::prelude::*;
 use game::app::settings::GameSettings;
+use game::app::settings::GraphicsQuality;
 use game::app::settings::MAX_BRIGHTNESS;
 use game::app::settings::MAX_RENDER_DISTANCE;
 use game::app::settings::MIN_BRIGHTNESS;
@@ -21,9 +24,22 @@ fn settings_controls_stay_within_their_ranges() {
     settings.change_brightness(-10_000.0);
     assert_eq!(settings.brightness, MIN_BRIGHTNESS);
 
-    assert!(settings.fancy_graphics);
-    settings.fancy_graphics = false;
-    assert!(!settings.fancy_graphics);
+    assert_eq!(settings.graphics, GraphicsQuality::Fancy);
+    assert!(settings.graphics.fancy_leaves());
+    assert!(!settings.graphics.realistic_water());
+
+    settings.cycle_graphics();
+    assert_eq!(settings.graphics, GraphicsQuality::Ultra);
+    assert!(settings.graphics.fancy_leaves());
+    assert!(settings.graphics.realistic_water());
+
+    settings.cycle_graphics();
+    assert_eq!(settings.graphics, GraphicsQuality::Fast);
+    assert!(!settings.graphics.fancy_leaves());
+    assert!(!settings.graphics.realistic_water());
+
+    settings.cycle_graphics();
+    assert_eq!(settings.graphics, GraphicsQuality::Fancy);
 }
 
 #[test]
@@ -50,4 +66,58 @@ fn brightness_and_directional_toggle_update_bevy_lights() {
     let sun = suns.single(app.world()).unwrap();
     assert_eq!(sun.illuminance, 0.0);
     assert!(!sun.shadow_maps_enabled);
+}
+
+#[test]
+fn ultra_graphics_uses_ssr_water_without_changing_blend_on_fancy() {
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, AssetPlugin::default(), MeshPlugin))
+        .init_asset::<Image>()
+        .init_asset::<StandardMaterial>()
+        .add_plugins(WorldPlugin);
+    app.world_mut().spawn(Camera3d::default());
+    app.update();
+
+    let fancy_water = water_material(&app);
+    assert_eq!(fancy_water.alpha_mode, AlphaMode::Blend);
+    assert!((fancy_water.perceptual_roughness - 1.0).abs() < f32::EPSILON);
+    assert_eq!(fancy_water.opaque_render_method, OpaqueRendererMethod::Auto);
+    let mut ssr = app.world_mut().query::<&ScreenSpaceReflections>();
+    assert!(ssr.iter(app.world()).next().is_none());
+
+    {
+        let mut settings = app.world_mut().resource_mut::<GameSettings>();
+        settings.graphics = GraphicsQuality::Ultra;
+    }
+    app.update();
+
+    let ultra_water = water_material(&app);
+    assert_eq!(ultra_water.alpha_mode, AlphaMode::Opaque);
+    assert!((ultra_water.perceptual_roughness - 0.09).abs() < f32::EPSILON);
+    assert_eq!(
+        ultra_water.opaque_render_method,
+        OpaqueRendererMethod::Deferred
+    );
+    let mut ssr = app.world_mut().query::<&ScreenSpaceReflections>();
+    assert!(ssr.single(app.world()).is_ok());
+
+    {
+        let mut settings = app.world_mut().resource_mut::<GameSettings>();
+        settings.graphics = GraphicsQuality::Fancy;
+    }
+    app.update();
+
+    let fancy_again = water_material(&app);
+    assert_eq!(fancy_again.alpha_mode, AlphaMode::Blend);
+    let mut ssr = app.world_mut().query::<&ScreenSpaceReflections>();
+    assert!(ssr.iter(app.world()).next().is_none());
+}
+
+fn water_material(app: &App) -> StandardMaterial {
+    app.world()
+        .resource::<Assets<StandardMaterial>>()
+        .iter()
+        .map(|(_, material)| material.clone())
+        .find(|material| material.cull_mode.is_none() && material.double_sided)
+        .expect("water material should be double-sided with no cull")
 }

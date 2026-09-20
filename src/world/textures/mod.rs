@@ -1,8 +1,10 @@
 use bevy::image::ImageLoaderSettings;
 use bevy::image::ImageSampler;
+use bevy::material::OpaqueRendererMethod;
 use bevy::prelude::*;
 
 use crate::app::settings::GameSettings;
+use crate::app::settings::GraphicsQuality;
 
 mod biome_color;
 
@@ -17,7 +19,7 @@ impl Plugin for TerrainTexturePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<GameSettings>()
             .add_systems(PreStartup, load_terrain_atlas)
-            .add_systems(Update, (apply_terrain_atlas, apply_leaf_alpha_mode));
+            .add_systems(Update, (apply_terrain_atlas, apply_graphics_materials));
     }
 }
 
@@ -44,16 +46,16 @@ fn load_terrain_atlas(
         .load("terrain.png");
     let material = materials.add(StandardMaterial {
         perceptual_roughness: 1.0,
-        alpha_mode: leaf_alpha_mode(settings.fancy_graphics),
+        alpha_mode: leaf_alpha_mode(settings.graphics),
         ..default()
     });
-    let water = materials.add(StandardMaterial {
-        perceptual_roughness: 1.0,
-        alpha_mode: AlphaMode::Blend,
+    let mut water = StandardMaterial {
         double_sided: true,
         cull_mode: None,
         ..default()
-    });
+    };
+    apply_water_quality(&mut water, settings.graphics);
+    let water = materials.add(water);
     commands.insert_resource(TerrainMaterial(material));
     commands.insert_resource(WaterMaterial(water));
     commands.insert_resource(PendingTerrainAtlas(image));
@@ -84,26 +86,48 @@ fn apply_terrain_atlas(
     commands.remove_resource::<PendingTerrainAtlas>();
 }
 
-fn apply_leaf_alpha_mode(
+fn apply_graphics_materials(
     settings: Res<GameSettings>,
     terrain_material: Res<TerrainMaterial>,
+    water_material: Res<WaterMaterial>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     if !settings.is_changed() {
         return;
     }
     if let Some(mut material) = materials.get_mut(&terrain_material.0) {
-        material.alpha_mode = leaf_alpha_mode(settings.fancy_graphics);
+        material.alpha_mode = leaf_alpha_mode(settings.graphics);
+    }
+    if let Some(mut material) = materials.get_mut(&water_material.0) {
+        apply_water_quality(&mut material, settings.graphics);
     }
 }
 
-fn leaf_alpha_mode(fancy_graphics: bool) -> AlphaMode {
-    if fancy_graphics {
+fn leaf_alpha_mode(graphics: GraphicsQuality) -> AlphaMode {
+    if graphics.fancy_leaves() {
         // Fancy leaf tiles have punched holes. Mask discards those texels
         // without sorting the whole chunk as transparent.
         AlphaMode::Mask(0.5)
     } else {
         AlphaMode::Opaque
+    }
+}
+
+/// Glossy enough for Bevy screen-space reflections, matching the SSR water demo.
+const ULTRA_WATER_ROUGHNESS: f32 = 0.09;
+
+fn apply_water_quality(material: &mut StandardMaterial, graphics: GraphicsQuality) {
+    if graphics.realistic_water() {
+        // Opaque so the surface writes the deferred G-buffer SSR reads.
+        material.perceptual_roughness = ULTRA_WATER_ROUGHNESS;
+        material.alpha_mode = AlphaMode::Opaque;
+        material.opaque_render_method = OpaqueRendererMethod::Deferred;
+        material.reflectance = 0.5;
+    } else {
+        material.perceptual_roughness = 1.0;
+        material.alpha_mode = AlphaMode::Blend;
+        material.opaque_render_method = OpaqueRendererMethod::Auto;
+        material.reflectance = 0.5;
     }
 }
 

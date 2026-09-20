@@ -1,3 +1,8 @@
+use bevy::camera::Hdr;
+use bevy::core_pipeline::prepass::DeferredPrepass;
+use bevy::core_pipeline::prepass::DepthPrepass;
+use bevy::pbr::DefaultOpaqueRendererMethod;
+use bevy::pbr::ScreenSpaceReflections;
 use bevy::prelude::*;
 
 use crate::app::settings::GameSettings;
@@ -24,6 +29,7 @@ impl Plugin for WorldPlugin {
                 Update,
                 (
                     apply_lighting_settings,
+                    apply_graphics_pipeline,
                     (regenerate_loaded_chunks, stream_chunks).chain(),
                 ),
             );
@@ -61,5 +67,38 @@ fn apply_lighting_settings(
             0.0
         };
         light.shadow_maps_enabled = settings.directional_lighting;
+    }
+}
+
+/// Ultra water uses Bevy screen-space reflections, which need deferred rendering
+/// and MSAA off. Fast/Fancy stay on the forward path.
+fn apply_graphics_pipeline(
+    mut commands: Commands,
+    settings: Res<GameSettings>,
+    cameras: Query<(Entity, Option<&ScreenSpaceReflections>), With<Camera3d>>,
+    renderer_method: Option<ResMut<DefaultOpaqueRendererMethod>>,
+) {
+    let ultra = settings.graphics.realistic_water();
+    for (entity, ssr) in &cameras {
+        if ultra && ssr.is_none() {
+            commands
+                .entity(entity)
+                .insert((ScreenSpaceReflections::default(), Msaa::Off, Hdr));
+        } else if !ultra && ssr.is_some() {
+            commands
+                .entity(entity)
+                .remove::<ScreenSpaceReflections>()
+                .remove::<DepthPrepass>()
+                .remove::<DeferredPrepass>()
+                .remove::<Hdr>()
+                .insert(Msaa::Sample4);
+        }
+    }
+    if let Some(mut method) = renderer_method {
+        if ultra {
+            method.set_to_deferred();
+        } else {
+            method.set_to_forward();
+        }
     }
 }

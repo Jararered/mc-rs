@@ -103,7 +103,7 @@ pub struct ChunkMeshes {
 
 /// Emit only faces touching air. A missing neighbor is treated as air for this isolated chunk.
 pub fn mesh_chunk(chunk: &Chunk, skylight: &Skylight) -> Mesh {
-    mesh_chunk_inner(chunk, skylight, None, true, false).opaque
+    mesh_chunk_inner(chunk, skylight, None, true, true, false).opaque
 }
 
 /// Like [`mesh_chunk`], with lighting and leaf graphics matching the settings menu.
@@ -113,7 +113,24 @@ pub fn mesh_chunk_with_settings(
     old_lighting: bool,
     fancy_graphics: bool,
 ) -> ChunkMeshes {
-    mesh_chunk_inner(chunk, skylight, None, old_lighting, fancy_graphics)
+    mesh_chunk_inner(chunk, skylight, None, old_lighting, true, fancy_graphics)
+}
+
+pub fn mesh_chunk_with_settings_and_smooth_lighting(
+    chunk: &Chunk,
+    skylight: &Skylight,
+    old_lighting: bool,
+    smooth_lighting: bool,
+    fancy_graphics: bool,
+) -> ChunkMeshes {
+    mesh_chunk_inner(
+        chunk,
+        skylight,
+        None,
+        old_lighting,
+        smooth_lighting,
+        fancy_graphics,
+    )
 }
 
 /// Per-column biome tints applied to grass tops and leaves.
@@ -129,6 +146,7 @@ pub(crate) fn mesh_chunk_with_biomes(
     grass_colors: &GrassColors,
     foliage_colors: &FoliageColors,
     old_lighting: bool,
+    smooth_lighting: bool,
     fancy_graphics: bool,
 ) -> ChunkMeshes {
     let tints = ColumnTints {
@@ -139,7 +157,14 @@ pub(crate) fn mesh_chunk_with_biomes(
             foliage_colors.sample(biomes.get(index % CHUNK_SIZE, index / CHUNK_SIZE))
         }),
     };
-    mesh_chunk_inner(chunk, skylight, Some(&tints), old_lighting, fancy_graphics)
+    mesh_chunk_inner(
+        chunk,
+        skylight,
+        Some(&tints),
+        old_lighting,
+        smooth_lighting,
+        fancy_graphics,
+    )
 }
 
 const FACE_TOP: usize = 0;
@@ -169,6 +194,7 @@ impl MeshBuffers {
         face_index: usize,
         color: [f32; 4],
         corner_ao: [f32; 4],
+        corner_light: [f32; 4],
         block: BlockId,
         fancy_graphics: bool,
         y_drop: f32,
@@ -177,7 +203,7 @@ impl MeshBuffers {
         let corners = face
             .corners
             .map(|corner| [corner[0], corner[1] - y_drop, corner[2]]);
-        self.push_quad(x, y, z, face, corners, uvs, color, corner_ao);
+        self.push_quad(x, y, z, face, corners, uvs, color, corner_ao, corner_light);
     }
 
     /// Beta's fancy grass pass: the transparent overlay tile contains only
@@ -191,6 +217,7 @@ impl MeshBuffers {
         face_index: usize,
         color: [f32; 4],
         corner_ao: [f32; 4],
+        corner_light: [f32; 4],
     ) {
         let uvs = face_uvs_for_tile(6, 2, face_index);
         let corners = face.corners.map(|corner| {
@@ -200,7 +227,7 @@ impl MeshBuffers {
                 corner[2] + face.normal[2] * 0.001,
             ]
         });
-        self.push_quad(x, y, z, face, corners, uvs, color, corner_ao);
+        self.push_quad(x, y, z, face, corners, uvs, color, corner_ao, corner_light);
     }
 
     fn push_quad(
@@ -213,6 +240,7 @@ impl MeshBuffers {
         uvs: [[f32; 2]; 4],
         color: [f32; 4],
         corner_ao: [f32; 4],
+        corner_light: [f32; 4],
     ) {
         let start = self.positions.len() as u32;
         for (corner_index, corner) in corners.into_iter().enumerate() {
@@ -223,9 +251,9 @@ impl MeshBuffers {
             ]);
             self.normals.push(face.normal);
             self.colors.push([
-                color[0] * corner_ao[corner_index],
-                color[1] * corner_ao[corner_index],
-                color[2] * corner_ao[corner_index],
+                color[0] * corner_ao[corner_index] * corner_light[corner_index],
+                color[1] * corner_ao[corner_index] * corner_light[corner_index],
+                color[2] * corner_ao[corner_index] * corner_light[corner_index],
                 color[3],
             ]);
         }
@@ -252,6 +280,7 @@ fn mesh_chunk_inner(
     skylight: &Skylight,
     tints: Option<&ColumnTints>,
     old_lighting: bool,
+    smooth_lighting: bool,
     fancy_graphics: bool,
 ) -> ChunkMeshes {
     let mut opaque = MeshBuffers::default();
@@ -310,12 +339,7 @@ fn mesh_chunk_inner(
                     } else {
                         1.0
                     };
-                    let color = [
-                        base[0] * brightness,
-                        base[1] * brightness,
-                        base[2] * brightness,
-                        alpha,
-                    ];
+                    let color = [base[0], base[1], base[2], alpha];
                     let buffers = if block == BlockId::Water {
                         &mut water
                     } else if fancy_graphics && is_leaf(block) {
@@ -328,9 +352,20 @@ fn mesh_chunk_inner(
                     } else {
                         0.0
                     };
-                    let corner_ao = face_corner_ao(chunk, x, y, z, face);
+                    let corner_ao = if smooth_lighting {
+                        face_corner_ao(chunk, x, y, z, face)
+                    } else {
+                        [1.0; 4]
+                    };
+                    let corner_light = if old_lighting && smooth_lighting {
+                        face_corner_light(chunk, skylight, x, y, z, face)
+                    } else if old_lighting {
+                        [brightness; 4]
+                    } else {
+                        [1.0; 4]
+                    };
                     let side_color = if grass_side {
-                        [brightness, brightness, brightness, 1.0]
+                        [1.0, 1.0, 1.0, 1.0]
                     } else {
                         color
                     };
@@ -342,17 +377,13 @@ fn mesh_chunk_inner(
                         face_index,
                         side_color,
                         corner_ao,
+                        corner_light,
                         block,
                         fancy_graphics,
                         y_drop,
                     );
                     if grass_side && fancy_graphics {
-                        let overlay_color = [
-                            grass_tint[0] * brightness,
-                            grass_tint[1] * brightness,
-                            grass_tint[2] * brightness,
-                            1.0,
-                        ];
+                        let overlay_color = [grass_tint[0], grass_tint[1], grass_tint[2], 1.0];
                         grass_overlay.push_grass_overlay(
                             x,
                             y,
@@ -361,6 +392,7 @@ fn mesh_chunk_inner(
                             face_index,
                             overlay_color,
                             corner_ao,
+                            corner_light,
                         );
                     }
                 }
@@ -379,6 +411,56 @@ fn mesh_chunk_inner(
 /// Per-corner ambient occlusion matching the original voxel renderer. A
 /// corner is darkened by its two face-adjacent blocks and its diagonal block;
 /// when both side blocks are present the diagonal is treated as occluded too.
+fn face_corner_light(
+    _chunk: &Chunk,
+    skylight: &Skylight,
+    x: usize,
+    y: usize,
+    z: usize,
+    face: &Face,
+) -> [f32; 4] {
+    let tangent_axes = match face.normal {
+        [0.0, 1.0, 0.0] | [0.0, -1.0, 0.0] => [0, 2],
+        [1.0, 0.0, 0.0] | [-1.0, 0.0, 0.0] => [1, 2],
+        _ => [0, 1],
+    };
+
+    std::array::from_fn(|corner_index| {
+        let corner = face.corners[corner_index];
+        let directions = [
+            if corner[tangent_axes[0]] < 0.5 { -1 } else { 1 },
+            if corner[tangent_axes[1]] < 0.5 { -1 } else { 1 },
+        ];
+        let samples = [[0, 0], [directions[0], 0], [0, directions[1]], directions];
+        let sum: f32 = samples
+            .into_iter()
+            .map(|sample| {
+                let mut offset = face.neighbor;
+                offset[tangent_axes[0]] += sample[0];
+                offset[tangent_axes[1]] += sample[1];
+                let position = [
+                    x as i32 + offset[0],
+                    y as i32 + offset[1],
+                    z as i32 + offset[2],
+                ];
+                let level = if position.iter().any(|&coordinate| coordinate < 0) {
+                    15
+                } else {
+                    skylight
+                        .get(
+                            position[0] as usize,
+                            position[1] as usize,
+                            position[2] as usize,
+                        )
+                        .unwrap_or(15)
+                };
+                beta_brightness(level)
+            })
+            .sum();
+        sum * face.shade * 0.25
+    })
+}
+
 fn face_corner_ao(chunk: &Chunk, x: usize, y: usize, z: usize, face: &Face) -> [f32; 4] {
     let tangent_axes = match face.normal {
         [0.0, 1.0, 0.0] | [0.0, -1.0, 0.0] => [0, 2],

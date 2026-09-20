@@ -104,6 +104,7 @@ pub(crate) struct WorldStreaming {
     cutout_material: Handle<LeafCutoutMaterial>,
     water_material: Handle<StandardMaterial>,
     old_lighting: bool,
+    smooth_lighting: bool,
     fancy_graphics: bool,
     remesh_queue: VecDeque<ChunkPos>,
     desired_generation: Vec<ChunkPos>,
@@ -199,6 +200,7 @@ pub(crate) fn setup_streaming(
         &grass_colors,
         &foliage_colors,
         settings.old_lighting,
+        settings.smooth_lighting,
         settings.graphics.fancy_leaves(),
     );
     let material = terrain_material.0.clone();
@@ -229,6 +231,7 @@ pub(crate) fn setup_streaming(
         cutout_material,
         water_material,
         old_lighting: settings.old_lighting,
+        smooth_lighting: settings.smooth_lighting,
         fancy_graphics: settings.graphics.fancy_leaves(),
         remesh_queue: VecDeque::new(),
         desired_generation: Vec::new(),
@@ -287,9 +290,11 @@ pub(crate) fn stream_chunks(
     let unload_radius = generate_radius;
 
     if streaming.old_lighting != settings.old_lighting
+        || streaming.smooth_lighting != settings.smooth_lighting
         || streaming.fancy_graphics != settings.graphics.fancy_leaves()
     {
         streaming.old_lighting = settings.old_lighting;
+        streaming.smooth_lighting = settings.smooth_lighting;
         streaming.fancy_graphics = settings.graphics.fancy_leaves();
         // In-flight meshes were built with the previous lighting or leaf style.
         streaming.meshing.clear();
@@ -349,6 +354,7 @@ pub(crate) fn stream_chunks(
             &streaming.grass_colors,
             &streaming.foliage_colors,
             streaming.old_lighting,
+            streaming.smooth_lighting,
             streaming.fancy_graphics,
         );
         perf.mesh.record(start.elapsed());
@@ -536,6 +542,7 @@ pub(crate) fn stream_chunks(
         let grass_colors = streaming.grass_colors.clone();
         let foliage_colors = streaming.foliage_colors.clone();
         let old_lighting = streaming.old_lighting;
+        let smooth_lighting = streaming.smooth_lighting;
         let fancy_graphics = streaming.fancy_graphics;
         let task = AsyncComputeTaskPool::get().spawn(async move {
             let start = Instant::now();
@@ -547,6 +554,7 @@ pub(crate) fn stream_chunks(
                 &grass_colors,
                 &foliage_colors,
                 old_lighting,
+                smooth_lighting,
                 fancy_graphics,
             );
             (layers, start.elapsed())

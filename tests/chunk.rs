@@ -19,6 +19,7 @@ use game::world::lighting::Skylight;
 use game::world::lighting::beta_brightness;
 use game::world::meshing::mesh_chunk;
 use game::world::meshing::mesh_chunk_with_settings;
+use game::world::meshing::mesh_chunk_with_settings_and_smooth_lighting;
 
 #[test]
 fn generated_chunk_has_solid_ground_and_sunlit_air() {
@@ -79,6 +80,30 @@ fn ambient_occlusion_darkens_enclosed_face_corners() {
             .is_some_and(|(min, max)| min < max),
         "occluded top-face corners should not all have the same brightness"
     );
+}
+
+#[test]
+fn smooth_lighting_toggle_controls_corner_interpolation() {
+    let mut chunk = Chunk::new();
+    chunk.set(1, 1, 1, BlockId::Stone);
+    chunk.set(2, 2, 1, BlockId::Stone);
+    chunk.set(1, 2, 2, BlockId::Stone);
+    chunk.set(2, 2, 2, BlockId::Stone);
+    let skylight = Skylight::from_chunk(&chunk);
+
+    let smooth = mesh_chunk_with_settings_and_smooth_lighting(&chunk, &skylight, true, true, false);
+    let flat = mesh_chunk_with_settings_and_smooth_lighting(&chunk, &skylight, true, false, false);
+    let colors = |mesh: &Mesh| {
+        let Some(VertexAttributeValues::Float32x4(colors)) = mesh.attribute(Mesh::ATTRIBUTE_COLOR)
+        else {
+            panic!("terrain mesh should have vertex colors");
+        };
+        colors[0..4].to_vec()
+    };
+    let smooth_colors = colors(&smooth.opaque);
+    let flat_colors = colors(&flat.opaque);
+    assert!(smooth_colors.windows(2).any(|pair| pair[0] != pair[1]));
+    assert!(flat_colors.windows(2).all(|pair| pair[0] == pair[1]));
 }
 
 #[test]

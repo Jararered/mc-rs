@@ -52,6 +52,7 @@ enum MenuAction {
     Brightness(f32),
     Fov(f32),
     OldLighting,
+    SmoothLighting,
     DirectionalLighting,
     WiggleLeaves,
     Graphics,
@@ -63,6 +64,7 @@ enum SettingLabel {
     Brightness,
     Fov,
     OldLighting,
+    SmoothLighting,
     DirectionalLighting,
     WiggleLeaves,
     Graphics,
@@ -201,6 +203,13 @@ fn spawn_settings_menu(commands: &mut Commands, textures: &MenuTextures, setting
             old_lighting_text(&settings),
             MenuAction::OldLighting,
             SettingLabel::OldLighting,
+        );
+        spawn_setting_button(
+            parent,
+            &textures,
+            smooth_lighting_text(&settings),
+            MenuAction::SmoothLighting,
+            SettingLabel::SmoothLighting,
         );
         spawn_setting_button(
             parent,
@@ -350,6 +359,7 @@ fn handle_buttons(
             MenuAction::Brightness(change) => settings.change_brightness(*change),
             MenuAction::Fov(change) => settings.change_fov(*change),
             MenuAction::OldLighting => settings.old_lighting = !settings.old_lighting,
+            MenuAction::SmoothLighting => settings.smooth_lighting = !settings.smooth_lighting,
             MenuAction::DirectionalLighting => {
                 settings.directional_lighting = !settings.directional_lighting;
             }
@@ -373,6 +383,7 @@ fn refresh_settings_labels(
             SettingLabel::Brightness => brightness_text(&settings),
             SettingLabel::Fov => fov_text(&settings),
             SettingLabel::OldLighting => old_lighting_text(&settings),
+            SettingLabel::SmoothLighting => smooth_lighting_text(&settings),
             SettingLabel::DirectionalLighting => directional_lighting_text(&settings),
             SettingLabel::WiggleLeaves => wiggle_leaves_text(&settings),
             SettingLabel::Graphics => graphics_text(&settings),
@@ -413,6 +424,17 @@ fn directional_lighting_text(settings: &GameSettings) -> String {
     format!(
         "Directional lighting: {}",
         if settings.directional_lighting {
+            "ON"
+        } else {
+            "OFF"
+        }
+    )
+}
+
+fn smooth_lighting_text(settings: &GameSettings) -> String {
+    format!(
+        "Smooth lighting: {}",
+        if settings.smooth_lighting {
             "ON"
         } else {
             "OFF"

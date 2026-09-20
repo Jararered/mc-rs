@@ -16,6 +16,7 @@ use game::world::generation::Heightmap;
 use game::world::generation::WorldGenerator;
 use game::world::generation::generate_chunk;
 use game::world::lighting::Skylight;
+use game::world::lighting::beta_brightness;
 use game::world::meshing::mesh_chunk;
 use game::world::meshing::mesh_chunk_with_settings;
 
@@ -238,8 +239,37 @@ fn skylight_passes_through_water_and_stops_at_stone() {
     chunk.set(1, 0, 1, BlockId::Stone);
     let light = Skylight::from_chunk(&chunk);
     assert_eq!(light.get(1, 2, 1), Some(15));
-    assert_eq!(light.get(1, 1, 1), Some(14));
+    assert_eq!(light.get(1, 1, 1), Some(12));
     assert_eq!(light.get(1, 0, 1), Some(0));
+}
+
+#[test]
+fn skylight_propagates_sideways_under_an_overhang() {
+    let mut chunk = Chunk::new();
+    for x in 1..=3 {
+        chunk.set(x, 3, 1, BlockId::Stone);
+    }
+    let light = Skylight::from_chunk(&chunk);
+
+    assert!(light.get(2, 2, 1).unwrap() > 0);
+}
+
+#[test]
+fn beta_brightness_curve_keeps_caves_dark() {
+    assert!((beta_brightness(15) - 1.0).abs() < f32::EPSILON);
+    assert!((beta_brightness(0) - 0.05).abs() < f32::EPSILON);
+    assert!(beta_brightness(4) < 0.3);
+}
+
+#[test]
+fn block_light_propagates_from_beta_emitters() {
+    let mut chunk = Chunk::new();
+    chunk.set(2, 2, 2, BlockId::Glowstone);
+    let light = Skylight::from_chunk(&chunk);
+
+    assert_eq!(light.block(2, 2, 2), Some(15));
+    assert_eq!(light.block(3, 2, 2), Some(14));
+    assert_eq!(light.block(4, 2, 2), Some(13));
 }
 
 #[test]

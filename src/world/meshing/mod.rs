@@ -11,6 +11,7 @@ use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::Chunk;
 use crate::world::generation::BiomeMap;
 use crate::world::lighting::Skylight;
+use crate::world::lighting::beta_brightness;
 use crate::world::textures::FoliageColors;
 use crate::world::textures::GrassColors;
 use crate::world::textures::atlas_tile_uvs;
@@ -55,7 +56,7 @@ const FACES: [Face; 6] = [
             [1.0, 1.0, 1.0],
             [1.0, 0.0, 1.0],
         ],
-        shade: 0.8,
+        shade: 0.6,
     },
     Face {
         neighbor: [-1, 0, 0],
@@ -66,7 +67,7 @@ const FACES: [Face; 6] = [
             [0.0, 1.0, 1.0],
             [0.0, 1.0, 0.0],
         ],
-        shade: 0.8,
+        shade: 0.6,
     },
     Face {
         neighbor: [0, 0, 1],
@@ -77,7 +78,7 @@ const FACES: [Face; 6] = [
             [1.0, 1.0, 1.0],
             [0.0, 1.0, 1.0],
         ],
-        shade: 0.9,
+        shade: 0.8,
     },
     Face {
         neighbor: [0, 0, -1],
@@ -88,7 +89,7 @@ const FACES: [Face; 6] = [
             [1.0, 1.0, 0.0],
             [1.0, 0.0, 0.0],
         ],
-        shade: 0.9,
+        shade: 0.8,
     },
 ];
 
@@ -246,7 +247,7 @@ fn mesh_chunk_inner(
                         .flatten()
                         .unwrap_or(15);
                     let brightness = if old_lighting {
-                        (0.35 + 0.65 * level as f32 / 15.0) * face.shade
+                        beta_brightness(level) * face.shade
                     } else {
                         1.0
                     };

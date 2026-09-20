@@ -6,6 +6,7 @@ use bevy::pbr::ScreenSpaceReflections;
 use bevy::prelude::*;
 
 use crate::app::settings::GameSettings;
+use crate::physics::PhysicsSet;
 
 use super::chunk::WorldChunks;
 use super::streaming::StreamingPerf;
@@ -30,7 +31,9 @@ impl Plugin for WorldPlugin {
                 (
                     apply_lighting_settings,
                     apply_graphics_pipeline,
-                    (regenerate_loaded_chunks, stream_chunks).chain(),
+                    (regenerate_loaded_chunks, stream_chunks)
+                        .chain()
+                        .after(PhysicsSet::ApplyInput),
                 ),
             );
     }

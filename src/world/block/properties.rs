@@ -25,3 +25,21 @@ pub fn is_opaque_cube(block: BlockId) -> bool {
 pub fn blocks_movement(block: BlockId) -> bool {
     !matches!(block, BlockId::Air | BlockId::Water)
 }
+
+/// Whether a pick ray should stop on this block.
+///
+/// Water is skipped unless the ray is a bucket trace (`canCollideCheck` is
+/// false for fluids when `stopOnLiquid` is false).
+pub fn is_targetable(block: BlockId) -> bool {
+    !matches!(block, BlockId::Air | BlockId::Water)
+}
+
+/// Whether a placed block may replace this cell.
+pub fn is_replaceable(block: BlockId) -> bool {
+    matches!(block, BlockId::Air | BlockId::Water)
+}
+
+/// Whether the player may mine this block. Bedrock is unbreakable.
+pub fn is_breakable(block: BlockId) -> bool {
+    is_targetable(block) && block != BlockId::Bedrock
+}

@@ -34,6 +34,8 @@ pub const LOAD_RADIUS: i32 = 4;
 pub const GENERATE_MARGIN: i32 = 1;
 pub const UNLOAD_RADIUS: i32 = LOAD_RADIUS + GENERATE_MARGIN;
 const MAX_IN_FLIGHT: usize = 2;
+/// Player edits touch one to three chunks; settings remesh is the large case.
+const MAX_REMESH_PER_FRAME: usize = 8;
 
 /// The result of a generation job. `loaded` distinguishes a chunk read from disk
 /// from one the generator produced, so only new chunks are marked for saving.
@@ -130,6 +132,18 @@ impl WorldStreaming {
 
     pub fn meshing_job_count(&self) -> usize {
         self.meshing.len()
+    }
+
+    /// Rebuild this chunk's mesh from current world data.
+    ///
+    /// Cancels an in-flight first mesh so it cannot apply stale geometry after
+    /// an edit. Already-rendered chunks are queued; unrendered ones are meshed
+    /// again on the next streaming pass.
+    pub fn request_remesh(&mut self, position: ChunkPos) {
+        self.meshing.remove(&position);
+        if self.rendered.contains_key(&position) && !self.remesh_queue.contains(&position) {
+            self.remesh_queue.push_back(position);
+        }
     }
 }
 
@@ -308,10 +322,16 @@ pub(crate) fn stream_chunks(
         }
     }
 
-    // Rebuild one loaded mesh per frame when lighting or leaf graphics change.
-    if let Some(position) = streaming.remesh_queue.pop_front()
-        && let Some(generated) = chunks.get(position)
-    {
+    // Rebuild a few loaded meshes per frame. Player edits need the changed
+    // chunks to appear immediately; a lighting or leaf-graphics change still
+    // spreads across several frames.
+    for _ in 0..MAX_REMESH_PER_FRAME {
+        let Some(position) = streaming.remesh_queue.pop_front() else {
+            break;
+        };
+        let Some(generated) = chunks.get(position) else {
+            continue;
+        };
         let start = Instant::now();
         let skylight = Skylight::from_chunk(&generated.chunk);
         let layers = mesh_chunk_with_biomes(

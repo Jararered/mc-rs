@@ -115,4 +115,60 @@ impl WorldChunks {
         let local_z = z.rem_euclid(CHUNK_SIZE as i32) as usize;
         chunk.chunk.get(local_x, y as usize, local_z)
     }
+
+    /// Replace a loaded block and refresh that column's heightmap.
+    ///
+    /// Returns the previous block, or `None` when the cell is outside the world
+    /// or its chunk is not loaded.
+    pub fn set_block(&mut self, x: i32, y: i32, z: i32, block: BlockId) -> Option<BlockId> {
+        if y < 0 || y >= CHUNK_HEIGHT as i32 {
+            return None;
+        }
+        let generated = self.get_mut(ChunkPos::from_block(x, z))?;
+        let local_x = x.rem_euclid(CHUNK_SIZE as i32) as usize;
+        let local_z = z.rem_euclid(CHUNK_SIZE as i32) as usize;
+        let previous = generated.chunk.get(local_x, y as usize, local_z)?;
+        if previous != block {
+            generated.chunk.set(local_x, y as usize, local_z, block);
+            generated
+                .heightmap
+                .recompute_column(&generated.chunk, local_x, local_z);
+        }
+        Some(previous)
+    }
+}
+
+/// Chunks whose meshes can change when the block at `(x, z)` is edited.
+///
+/// The edited chunk is always included. A neighbour is included when the block
+/// sits on that shared face, because meshing currently treats a missing
+/// neighbour as air.
+pub fn remesh_chunks_touching(x: i32, z: i32) -> Vec<ChunkPos> {
+    let position = ChunkPos::from_block(x, z);
+    let local_x = x.rem_euclid(CHUNK_SIZE as i32);
+    let local_z = z.rem_euclid(CHUNK_SIZE as i32);
+    let mut positions = vec![position];
+    if local_x == 0 {
+        positions.push(ChunkPos {
+            x: position.x - 1,
+            z: position.z,
+        });
+    } else if local_x == CHUNK_SIZE as i32 - 1 {
+        positions.push(ChunkPos {
+            x: position.x + 1,
+            z: position.z,
+        });
+    }
+    if local_z == 0 {
+        positions.push(ChunkPos {
+            x: position.x,
+            z: position.z - 1,
+        });
+    } else if local_z == CHUNK_SIZE as i32 - 1 {
+        positions.push(ChunkPos {
+            x: position.x,
+            z: position.z + 1,
+        });
+    }
+    positions
 }

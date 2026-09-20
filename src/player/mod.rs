@@ -13,6 +13,12 @@ use crate::entity::Gravity;
 use crate::entity::StepHeight;
 use crate::entity::Velocity;
 use crate::inventory::Hotbar;
+mod interaction;
+
+pub use interaction::PLACED_BLOCK;
+pub use interaction::break_block;
+pub use interaction::place_block;
+
 use crate::physics::PhysicsSet;
 use crate::world::chunk::ChunkPos;
 use crate::world::chunk::WorldChunks;
@@ -45,8 +51,9 @@ impl Plugin for PlayerPlugin {
             .add_systems(
                 Update,
                 (
-                    update_mouse_capture,
                     look_player,
+                    interaction::interact_blocks,
+                    update_mouse_capture,
                     apply_player_input,
                     select_hotbar,
                 )
@@ -191,7 +198,9 @@ fn update_mouse_capture(
     } else if !window.focused {
         cursor.grab_mode = CursorGrabMode::None;
         cursor.visible = true;
-    } else if mouse_buttons.just_pressed(MouseButton::Left) {
+    } else if cursor.grab_mode != CursorGrabMode::Locked
+        && mouse_buttons.just_pressed(MouseButton::Left)
+    {
         cursor.grab_mode = CursorGrabMode::Locked;
         cursor.visible = false;
     }

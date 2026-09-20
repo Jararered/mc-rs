@@ -7,11 +7,17 @@ use game::entity::EntitySize;
 use game::entity::Gravity;
 use game::entity::Velocity;
 use game::physics::Aabb;
+use game::physics::BLOCK_REACH;
+use game::physics::BlockFace;
 use game::physics::PhysicsPlugin;
 use game::physics::move_entity;
+use game::physics::raycast_blocks;
 use game::player::Player;
 use game::world::block::block::BlockId;
 use game::world::block::properties::blocks_movement;
+use game::world::block::properties::is_breakable;
+use game::world::block::properties::is_replaceable;
+use game::world::block::properties::is_targetable;
 use game::world::chunk::CHUNK_SIZE;
 use game::world::chunk::Chunk;
 use game::world::chunk::ChunkPos;
@@ -59,6 +65,21 @@ fn air_and_water_do_not_block_movement() {
     assert!(blocks_movement(BlockId::Stone));
     assert!(blocks_movement(BlockId::Leaves));
     assert!(blocks_movement(BlockId::Ice));
+}
+
+#[test]
+fn fluids_are_replaceable_and_bedrock_is_unbreakable() {
+    assert!(!is_targetable(BlockId::Air));
+    assert!(!is_targetable(BlockId::Water));
+    assert!(is_targetable(BlockId::Stone));
+    assert!(is_targetable(BlockId::Bedrock));
+    assert!(is_replaceable(BlockId::Air));
+    assert!(is_replaceable(BlockId::Water));
+    assert!(!is_replaceable(BlockId::Stone));
+    assert!(is_breakable(BlockId::Stone));
+    assert!(is_breakable(BlockId::Leaves));
+    assert!(!is_breakable(BlockId::Bedrock));
+    assert!(!is_breakable(BlockId::Water));
 }
 
 #[test]
@@ -180,4 +201,51 @@ fn physics_plugin_applies_gravity_until_the_player_lands() {
 
     let y = landed_y.expect("player should land on the stone floor");
     assert!((y - (65.0 + EntitySize::PLAYER.y_offset)).abs() < 0.05);
+}
+
+#[test]
+fn raycast_hits_the_top_of_a_stone_block() {
+    let chunks = floor_world(64);
+    let hit = raycast_blocks(&chunks, Vec3::new(8.5, 66.5, 8.5), Vec3::NEG_Y, BLOCK_REACH)
+        .expect("should hit the floor");
+    assert_eq!(hit.x, 8);
+    assert_eq!(hit.y, 64);
+    assert_eq!(hit.z, 8);
+    assert_eq!(hit.face, BlockFace::Up);
+    assert_eq!(hit.block, BlockId::Stone);
+}
+
+#[test]
+fn raycast_reports_the_face_the_ray_entered() {
+    let mut chunk = Chunk::new();
+    chunk.set(10, 65, 8, BlockId::Dirt);
+    let mut chunks = WorldChunks::default();
+    chunks.insert(ChunkPos::ZERO, generated(chunk));
+
+    let hit = raycast_blocks(&chunks, Vec3::new(8.5, 65.5, 8.5), Vec3::X, BLOCK_REACH)
+        .expect("should hit the wall");
+    assert_eq!((hit.x, hit.y, hit.z), (10, 65, 8));
+    assert_eq!(hit.face, BlockFace::West);
+    assert_eq!(hit.block, BlockId::Dirt);
+}
+
+#[test]
+fn raycast_skips_water_and_hits_the_block_behind_it() {
+    let mut chunk = Chunk::new();
+    chunk.set(8, 64, 8, BlockId::Stone);
+    chunk.set(8, 65, 8, BlockId::Water);
+    chunk.set(8, 66, 8, BlockId::Water);
+    let mut chunks = WorldChunks::default();
+    chunks.insert(ChunkPos::ZERO, generated(chunk));
+
+    let hit = raycast_blocks(&chunks, Vec3::new(8.5, 68.0, 8.5), Vec3::NEG_Y, BLOCK_REACH)
+        .expect("should pass through water");
+    assert_eq!((hit.x, hit.y, hit.z), (8, 64, 8));
+    assert_eq!(hit.block, BlockId::Stone);
+}
+
+#[test]
+fn raycast_misses_when_nothing_is_in_range() {
+    let chunks = WorldChunks::default();
+    assert!(raycast_blocks(&chunks, Vec3::new(8.5, 70.0, 8.5), Vec3::NEG_Y, 4.0).is_none());
 }

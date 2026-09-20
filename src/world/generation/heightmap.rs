@@ -38,6 +38,15 @@ impl Heightmap {
         self.heights[x * CHUNK_SIZE + z]
     }
 
+    /// Recompute one column after a block in that column changes.
+    pub fn recompute_column(&mut self, chunk: &Chunk, x: usize, z: usize) {
+        let top = (0..CHUNK_HEIGHT)
+            .rev()
+            .find(|&y| !matches!(chunk.get(x, y, z), Some(BlockId::Air | BlockId::Water)))
+            .map_or(0, |y| y + 1);
+        self.heights[x * CHUNK_SIZE + z] = top as u8;
+    }
+
     pub fn max(&self) -> u8 {
         self.heights.iter().copied().max().unwrap_or(0)
     }

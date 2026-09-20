@@ -3,6 +3,13 @@
 //! Bodies are Bevy entities with [`Velocity`] and [`EntitySize`]. The player is
 //! the first user; later mobs reuse the same move.
 
+mod raycast;
+
+pub use raycast::BLOCK_REACH;
+pub use raycast::BlockFace;
+pub use raycast::BlockHit;
+pub use raycast::raycast_blocks;
+
 use bevy::prelude::*;
 
 use crate::app::state::AppScreen;

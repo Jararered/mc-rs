@@ -6,7 +6,13 @@ use game::world::chunk::CHUNK_HEIGHT;
 use game::world::chunk::CHUNK_SIZE;
 use game::world::chunk::Chunk;
 use game::world::chunk::ChunkPos;
+use game::world::chunk::WorldChunks;
+use game::world::chunk::remesh_chunks_touching;
 use game::world::generation::Biome;
+use game::world::generation::BiomeMap;
+use game::world::generation::Climate;
+use game::world::generation::GeneratedChunk;
+use game::world::generation::Heightmap;
 use game::world::generation::WorldGenerator;
 use game::world::generation::generate_chunk;
 use game::world::lighting::Skylight;
@@ -238,4 +244,56 @@ fn climate_matches_the_local_cpp_reference_at_seed_zero() {
     assert!((desert.temperature - 0.971755).abs() < 0.00001);
     assert_eq!(desert.humidity, 0.0);
     assert_eq!(desert.biome, Biome::Desert);
+}
+
+#[test]
+fn set_block_updates_the_column_heightmap() {
+    let mut chunk = Chunk::new();
+    chunk.set(3, 10, 4, BlockId::Stone);
+    let mut chunks = WorldChunks::default();
+    chunks.insert(
+        ChunkPos::ZERO,
+        GeneratedChunk {
+            heightmap: Heightmap::from_chunk(&chunk),
+            biomes: BiomeMap::from_cells(
+                [Climate {
+                    temperature: 0.5,
+                    humidity: 0.5,
+                    biome: Biome::Plains,
+                }; CHUNK_SIZE * CHUNK_SIZE],
+            ),
+            chunk,
+        },
+    );
+    assert_eq!(chunks.get(ChunkPos::ZERO).unwrap().heightmap.get(3, 4), 11);
+
+    assert_eq!(
+        chunks.set_block(3, 20, 4, BlockId::Dirt),
+        Some(BlockId::Air)
+    );
+    assert_eq!(chunks.block_at(3, 20, 4), Some(BlockId::Dirt));
+    assert_eq!(chunks.get(ChunkPos::ZERO).unwrap().heightmap.get(3, 4), 21);
+
+    assert_eq!(
+        chunks.set_block(3, 20, 4, BlockId::Air),
+        Some(BlockId::Dirt)
+    );
+    assert_eq!(chunks.get(ChunkPos::ZERO).unwrap().heightmap.get(3, 4), 11);
+}
+
+#[test]
+fn remesh_includes_the_neighbour_when_an_edge_block_changes() {
+    assert_eq!(remesh_chunks_touching(8, 8), vec![ChunkPos::ZERO]);
+    assert_eq!(
+        remesh_chunks_touching(0, 8),
+        vec![ChunkPos::ZERO, ChunkPos { x: -1, z: 0 }]
+    );
+    assert_eq!(
+        remesh_chunks_touching(15, 0),
+        vec![
+            ChunkPos::ZERO,
+            ChunkPos { x: 1, z: 0 },
+            ChunkPos { x: 0, z: -1 }
+        ]
+    );
 }

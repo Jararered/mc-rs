@@ -8,6 +8,10 @@ use bevy::ui::widget::NodeImageMode;
 use crate::app::settings::GameSettings;
 use crate::app::state::AppScreen;
 
+mod hud;
+
+pub use hud::HudPlugin;
+
 pub struct MenuPlugin;
 
 impl Plugin for MenuPlugin {
@@ -31,6 +35,7 @@ struct MenuTextures {
     background: Handle<Image>,
     buttons: Handle<Image>,
     logo: Handle<Image>,
+    font: Handle<Font>,
 }
 
 #[derive(Component)]
@@ -71,7 +76,14 @@ fn load_menu_textures(mut commands: Commands, asset_server: Res<AssetServer>) {
         background: load("gui/background.png"),
         buttons: load("gui/gui.png"),
         logo: load("gui/logo.png"),
+        font: asset_server.load("font/minecraft.ttf"),
     });
+}
+
+fn menu_font(textures: &MenuTextures, size: f32) -> TextFont {
+    TextFont::from_font_size(size)
+        .with_font(textures.font.clone())
+        .with_font_smoothing(FontSmoothing::None)
 }
 
 fn spawn_root(commands: &mut Commands, textures: &MenuTextures) -> Entity {
@@ -130,7 +142,7 @@ fn spawn_main_menu(commands: &mut Commands, textures: &MenuTextures) {
         ));
         parent.spawn((
             Text::new("BETA WORLD"),
-            TextFont::from_font_size(22.0),
+            menu_font(textures, 22.0),
             TextColor(Color::WHITE),
             TextShadow::default(),
             Node {
@@ -156,7 +168,7 @@ fn spawn_settings_menu(commands: &mut Commands, textures: &MenuTextures, setting
     commands.entity(root).with_children(|parent| {
         parent.spawn((
             Text::new("Settings"),
-            TextFont::from_font_size(42.0),
+            menu_font(textures, 42.0),
             TextColor(Color::WHITE),
             TextShadow::default(),
             Node {
@@ -230,7 +242,7 @@ fn spawn_stepper(
             row.spawn((
                 label,
                 Text::new(value),
-                TextFont::from_font_size(21.0),
+                menu_font(textures, 21.0),
                 TextColor(Color::WHITE),
                 TextShadow::default(),
             ));
@@ -275,7 +287,7 @@ fn spawn_button(
     button
         .with_child((
             Text::new(title),
-            TextFont::from_font_size(22.0),
+            menu_font(textures, 22.0),
             TextColor(Color::WHITE),
             TextShadow::default(),
         ))

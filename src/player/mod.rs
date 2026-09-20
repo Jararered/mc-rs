@@ -1,13 +1,30 @@
 use bevy::input::mouse::AccumulatedMouseMotion;
+use bevy::input::mouse::AccumulatedMouseScroll;
 use bevy::prelude::*;
 use bevy::window::CursorGrabMode;
 use bevy::window::CursorOptions;
 use bevy::window::PrimaryWindow;
 
 use crate::app::state::AppScreen;
+use crate::inventory::Hotbar;
 use crate::world::chunk::ChunkPos;
 use crate::world::chunk::WorldChunks;
 use crate::world::persistence::WorldPersistence;
+
+/// Full player health in half-hearts. Ten hearts on the HUD.
+pub const MAX_PLAYER_HEALTH: u8 = 20;
+
+const HOTBAR_KEYS: [KeyCode; 9] = [
+    KeyCode::Digit1,
+    KeyCode::Digit2,
+    KeyCode::Digit3,
+    KeyCode::Digit4,
+    KeyCode::Digit5,
+    KeyCode::Digit6,
+    KeyCode::Digit7,
+    KeyCode::Digit8,
+    KeyCode::Digit9,
+];
 
 pub struct PlayerPlugin;
 
@@ -19,7 +36,7 @@ impl Plugin for PlayerPlugin {
             .add_systems(OnEnter(AppScreen::Settings), release_mouse)
             .add_systems(
                 Update,
-                (update_mouse_capture, move_player)
+                (update_mouse_capture, move_player, select_hotbar)
                     .chain()
                     .run_if(in_state(AppScreen::Playing)),
             );
@@ -28,6 +45,42 @@ impl Plugin for PlayerPlugin {
 
 #[derive(Component)]
 pub struct Player;
+
+/// Current health in half-hearts. Each HUD heart is two points.
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PlayerHealth {
+    pub current: u8,
+}
+
+impl Default for PlayerHealth {
+    fn default() -> Self {
+        Self {
+            current: MAX_PLAYER_HEALTH,
+        }
+    }
+}
+
+/// How a single HUD heart should be filled from current health.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HeartFill {
+    Empty,
+    Half,
+    Full,
+}
+
+impl PlayerHealth {
+    pub fn heart_fill(self, index: usize) -> HeartFill {
+        let health = self.current.min(MAX_PLAYER_HEALTH);
+        let start = (index as u8).saturating_mul(2);
+        if health >= start + 2 {
+            HeartFill::Full
+        } else if health == start + 1 {
+            HeartFill::Half
+        } else {
+            HeartFill::Empty
+        }
+    }
+}
 
 const WALK_SPEED: f32 = 5.0;
 const SPRINT_SPEED: f32 = 15.0;
@@ -44,7 +97,14 @@ fn spawn_player(
         .and_then(|storage| storage.load_player())
         .map(|player| player.to_transform())
         .unwrap_or_else(|| default_spawn_transform(&chunks));
-    commands.spawn((Name::new("Player"), Player, Camera3d::default(), transform));
+    commands.spawn((
+        Name::new("Player"),
+        Player,
+        PlayerHealth::default(),
+        Hotbar::default(),
+        Camera3d::default(),
+        transform,
+    ));
 }
 
 fn default_spawn_transform(chunks: &WorldChunks) -> Transform {
@@ -150,4 +210,23 @@ fn move_player(
         WALK_SPEED
     };
     transform.translation += direction.normalize_or_zero() * speed * time.delta_secs();
+}
+
+fn select_hotbar(
+    keys: Res<ButtonInput<KeyCode>>,
+    scroll: Res<AccumulatedMouseScroll>,
+    mut hotbar: Query<&mut Hotbar, With<Player>>,
+) {
+    let Ok(mut hotbar) = hotbar.single_mut() else {
+        return;
+    };
+
+    if scroll.delta.y != 0.0 {
+        hotbar.scroll(if scroll.delta.y > 0.0 { 1 } else { -1 });
+    }
+    for (slot, key) in HOTBAR_KEYS.iter().enumerate() {
+        if keys.just_pressed(*key) {
+            hotbar.select(slot);
+        }
+    }
 }

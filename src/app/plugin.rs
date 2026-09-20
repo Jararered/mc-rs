@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 
 use crate::player::PlayerPlugin;
+use crate::ui::HudPlugin;
 use crate::ui::MenuPlugin;
 use crate::world::persistence::PersistencePlugin;
 use crate::world::plugin::WorldPlugin;
@@ -18,6 +19,7 @@ impl Plugin for GamePlugin {
             PersistencePlugin::default(),
             PlayerPlugin,
             MenuPlugin,
+            HudPlugin,
             ScreenshotPlugin,
             PerfPlugin,
         ));

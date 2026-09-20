@@ -54,8 +54,13 @@ impl MaterialExtension for LeafWiggle {
 }
 
 pub(super) fn plugin(app: &mut App) {
-    app.init_asset::<Shader>()
-        .add_plugins(MaterialPlugin::<LeafCutoutMaterial>::default());
+    // RenderPlugin already `init_asset::<Shader>()` and fills the collection.
+    // Calling it again replaces that resource and panics later when old shader
+    // indices are used (`index out of bounds: the len is 2 but the index is 2`).
+    if !app.world().contains_resource::<Assets<Shader>>() {
+        app.init_asset::<Shader>();
+    }
+    app.add_plugins(MaterialPlugin::<LeafCutoutMaterial>::default());
     load_internal_asset!(
         app,
         LEAF_WIGGLE_SHADER_HANDLE,

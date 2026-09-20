@@ -2,11 +2,12 @@ use bevy::image::ImageLoaderSettings;
 use bevy::image::ImageSampler;
 use bevy::prelude::*;
 
-mod grass_color;
+mod biome_color;
 
-pub use grass_color::GrassColors;
-pub use grass_color::PALETTE_SIZE;
-pub use grass_color::palette_index;
+pub use biome_color::FoliageColors;
+pub use biome_color::GrassColors;
+pub use biome_color::PALETTE_SIZE;
+pub use biome_color::palette_index;
 
 pub struct TerrainTexturePlugin;
 
@@ -41,6 +42,7 @@ fn load_terrain_atlas(
     commands.insert_resource(TerrainMaterial(material));
     commands.insert_resource(PendingTerrainAtlas(image));
     commands.insert_resource(GrassColors::load());
+    commands.insert_resource(FoliageColors::load());
 }
 
 fn apply_terrain_atlas(
@@ -79,6 +81,13 @@ pub(crate) fn block_tile(block: super::block::block::BlockId, face: usize) -> (u
         BlockId::Gravel => (3, 1),
         BlockId::Wood if face == 0 || face == 1 => (5, 1),
         BlockId::Wood => (4, 1),
+        BlockId::SpruceWood if face == 0 || face == 1 => (5, 1),
+        BlockId::SpruceWood => (4, 7),
+        BlockId::BirchWood if face == 0 || face == 1 => (5, 1),
+        BlockId::BirchWood => (5, 7),
+        // Fast-graphics leaf tiles: opaque, grayscale, and tinted per biome.
+        BlockId::Leaves | BlockId::BirchLeaves => (5, 3),
+        BlockId::SpruceLeaves => (5, 8),
         BlockId::GoldOre => (0, 2),
         BlockId::IronOre => (1, 2),
         BlockId::CoalOre => (2, 2),

@@ -1,0 +1,295 @@
+use std::fs;
+use std::path::Path;
+use std::path::PathBuf;
+use std::thread;
+use std::time::Duration;
+use std::time::Instant;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
+
+use bevy::asset::AssetPlugin;
+use bevy::mesh::MeshPlugin;
+use bevy::prelude::*;
+use game::player::Player;
+use game::world::block::block::BlockId;
+use game::world::chunk::CHUNK_HEIGHT;
+use game::world::chunk::CHUNK_SIZE;
+use game::world::chunk::Chunk;
+use game::world::chunk::ChunkPos;
+use game::world::chunk::WorldChunks;
+use game::world::generation::WorldGenerator;
+use game::world::persistence::FORMAT_VERSION;
+use game::world::persistence::PersistencePlugin;
+use game::world::persistence::REGION_SIZE;
+use game::world::persistence::WorldPersistence;
+use game::world::persistence::WorldStorage;
+use game::world::persistence::chunk_file_name;
+use game::world::persistence::region_dir_name;
+use game::world::persistence::region_of;
+use game::world::plugin::WorldPlugin;
+
+/// A unique, empty directory under the system temp directory.
+fn temp_saves(label: &str) -> PathBuf {
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let directory = std::env::temp_dir().join(format!("game-persistence-{label}-{unique}"));
+    fs::create_dir_all(&directory).unwrap();
+    directory
+}
+
+fn assert_same_blocks(left: &Chunk, right: &Chunk) {
+    for y in 0..CHUNK_HEIGHT {
+        for z in 0..CHUNK_SIZE {
+            for x in 0..CHUNK_SIZE {
+                assert_eq!(
+                    left.get(x, y, z),
+                    right.get(x, y, z),
+                    "block at {x},{y},{z}"
+                );
+            }
+        }
+    }
+}
+
+/// A headless app with the world and persistence plugins, matching how
+/// `GamePlugin` wires them together.
+fn persistence_app(saves: &Path) -> App {
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, AssetPlugin::default(), MeshPlugin))
+        .init_asset::<Image>()
+        .init_asset::<StandardMaterial>()
+        .init_resource::<ButtonInput<KeyCode>>()
+        .add_plugins(WorldPlugin)
+        .add_plugins(PersistencePlugin::new(saves.to_path_buf()));
+    app
+}
+
+fn run_until(
+    app: &mut App,
+    timeout: Duration,
+    mut condition: impl FnMut(&mut App) -> bool,
+) -> bool {
+    let deadline = Instant::now() + timeout;
+    loop {
+        if condition(app) {
+            return true;
+        }
+        if Instant::now() >= deadline {
+            return false;
+        }
+        thread::sleep(Duration::from_millis(5));
+        app.update();
+    }
+}
+
+#[test]
+fn world_folders_are_unique_and_named_from_the_creation_time() {
+    let saves = temp_saves("unique");
+    let first = WorldStorage::create(&saves, 0, "First").unwrap();
+    let second = WorldStorage::create(&saves, 0, "Second").unwrap();
+    assert_ne!(first.root(), second.root());
+
+    let name = first.root().file_name().unwrap().to_str().unwrap();
+    let parts: Vec<_> = name.split('-').collect();
+    assert_eq!(parts.len(), 4, "unexpected world folder name {name}");
+    assert_eq!(parts[0], "world");
+    assert_eq!(parts[1].len(), 8, "date part of {name}");
+    assert_eq!(parts[2].len(), 6, "time part of {name}");
+    assert_eq!(parts[3].len(), 8, "hash part of {name}");
+    assert!(first.root().join("level.json").is_file());
+}
+
+#[test]
+fn manifest_records_the_seed_and_name() {
+    let saves = temp_saves("manifest");
+    let storage = WorldStorage::create(&saves, 12345, "Test World").unwrap();
+    let manifest = storage.manifest();
+    assert_eq!(manifest.seed, 12345);
+    assert_eq!(manifest.name, "Test World");
+    assert_eq!(manifest.format_version, FORMAT_VERSION);
+    assert!(manifest.created_unix_millis > 0);
+}
+
+#[test]
+fn chunk_round_trips_through_a_chunk_file() {
+    let saves = temp_saves("roundtrip");
+    let storage = WorldStorage::create(&saves, 0, "Roundtrip").unwrap();
+    let position = ChunkPos { x: -1, z: 2 };
+    let generated = WorldGenerator::new(0).generate(position);
+    storage.save_chunk(position, &generated).unwrap();
+
+    let loaded = storage.load_chunk(position).expect("chunk should load");
+    assert_same_blocks(&loaded.chunk, &generated.chunk);
+    for z in 0..CHUNK_SIZE {
+        for x in 0..CHUNK_SIZE {
+            assert_eq!(loaded.heightmap.get(x, z), generated.heightmap.get(x, z));
+            let before = generated.biomes.get(x, z);
+            let after = loaded.biomes.get(x, z);
+            assert_eq!(after.biome, before.biome);
+            // Climate is stored quantized to a byte, which is lossless for the
+            // 256x256 grass and foliage palette lookups.
+            assert!((after.temperature - before.temperature).abs() < 0.01);
+            assert!((after.humidity - before.humidity).abs() < 0.01);
+        }
+    }
+}
+
+#[test]
+fn region_folders_group_sixteen_by_sixteen_chunks() {
+    let saves = temp_saves("regions");
+    let storage = WorldStorage::create(&saves, 0, "Regions").unwrap();
+    let generator = WorldGenerator::new(0);
+    let positions = [
+        ChunkPos { x: 0, z: 0 },
+        ChunkPos { x: 15, z: 15 },
+        ChunkPos { x: 16, z: 0 },
+        ChunkPos { x: -1, z: -1 },
+        ChunkPos { x: -16, z: -16 },
+        ChunkPos { x: -17, z: 0 },
+    ];
+    for position in positions {
+        storage
+            .save_chunk(position, &generator.generate(position))
+            .unwrap();
+    }
+
+    assert_eq!(REGION_SIZE, 16);
+    assert_eq!(region_of(ChunkPos { x: 15, z: 15 }), (0, 0));
+    assert_eq!(region_of(ChunkPos { x: 16, z: 0 }), (1, 0));
+    assert_eq!(region_of(ChunkPos { x: -1, z: -1 }), (-1, -1));
+    assert_eq!(region_of(ChunkPos { x: -17, z: 0 }), (-2, 0));
+
+    for position in positions {
+        let path = storage
+            .root()
+            .join(region_dir_name(region_of(position)))
+            .join(chunk_file_name(position));
+        assert!(path.is_file(), "missing {}", path.display());
+    }
+}
+
+#[test]
+fn saving_one_chunk_keeps_the_others_in_its_region() {
+    let saves = temp_saves("merge");
+    let storage = WorldStorage::create(&saves, 0, "Merge").unwrap();
+    let generator = WorldGenerator::new(0);
+    let first = ChunkPos { x: 1, z: 1 };
+    let second = ChunkPos { x: 2, z: 2 };
+    storage
+        .save_chunk(first, &generator.generate(first))
+        .unwrap();
+    storage
+        .save_chunk(second, &generator.generate(second))
+        .unwrap();
+
+    // Rewrite the first chunk with an edit and confirm the second is untouched.
+    let mut edited = generator.generate(first);
+    edited.chunk.set(4, 70, 4, BlockId::GoldBlock);
+    storage.save_chunk(first, &edited).unwrap();
+
+    let reloaded = storage.load_chunk(first).unwrap();
+    assert_eq!(reloaded.chunk.get(4, 70, 4), Some(BlockId::GoldBlock));
+    assert_same_blocks(
+        &storage.load_chunk(second).unwrap().chunk,
+        &generator.generate(second).chunk,
+    );
+}
+
+#[test]
+fn save_chunks_writes_every_chunk_once() {
+    let saves = temp_saves("batch");
+    let storage = WorldStorage::create(&saves, 0, "Batch").unwrap();
+    let generator = WorldGenerator::new(0);
+    let positions = [
+        ChunkPos { x: 0, z: 0 },
+        ChunkPos { x: 1, z: 0 },
+        ChunkPos { x: 16, z: 0 },
+    ];
+    let chunks: Vec<_> = positions
+        .iter()
+        .map(|position| (*position, generator.generate(*position)))
+        .collect();
+    let batch: Vec<_> = chunks
+        .iter()
+        .map(|(position, chunk)| (*position, chunk))
+        .collect();
+
+    assert_eq!(storage.save_chunks(batch).unwrap(), 3);
+    for position in positions {
+        assert!(storage.load_chunk(position).is_some());
+    }
+}
+
+#[test]
+fn missing_chunks_load_as_none() {
+    let saves = temp_saves("missing");
+    let storage = WorldStorage::create(&saves, 0, "Missing").unwrap();
+    assert!(storage.load_chunk(ChunkPos { x: 3, z: 3 }).is_none());
+}
+
+#[test]
+fn open_latest_or_create_resumes_the_newest_world() {
+    let saves = temp_saves("resume");
+    WorldStorage::create(&saves, 7, "First").unwrap();
+    // Creation times are stored in milliseconds, so separate the two worlds.
+    thread::sleep(Duration::from_millis(10));
+    let second = WorldStorage::create(&saves, 9, "Second").unwrap();
+
+    let resumed = WorldStorage::open_latest_or_create(&saves, 0).unwrap();
+    assert_eq!(resumed.root(), second.root());
+    assert_eq!(resumed.seed(), 9);
+    assert_eq!(resumed.manifest().name, "Second");
+}
+
+#[test]
+fn open_latest_or_create_makes_a_world_when_none_exists() {
+    let saves = temp_saves("empty");
+    let storage = WorldStorage::open_latest_or_create(&saves, 42).unwrap();
+    assert_eq!(storage.seed(), 42);
+    assert!(storage.root().join("level.json").is_file());
+}
+
+#[test]
+fn the_world_is_saved_and_resumed_across_runs() {
+    let saves = temp_saves("app");
+
+    let mut first = persistence_app(&saves);
+    first
+        .world_mut()
+        .spawn((Player, Transform::from_xyz(8.0, 80.0, 8.0)));
+    assert!(run_until(&mut first, Duration::from_secs(5), |app| {
+        app.world()
+            .resource::<WorldChunks>()
+            .get(ChunkPos::ZERO)
+            .is_some()
+    }));
+
+    let root = first
+        .world()
+        .resource::<WorldPersistence>()
+        .storage()
+        .expect("persistence should be enabled")
+        .root()
+        .to_path_buf();
+
+    // Exiting flushes the dirty chunks.
+    first.world_mut().write_message(AppExit::Success);
+    first.update();
+    let chunk = root
+        .join(region_dir_name((0, 0)))
+        .join(chunk_file_name(ChunkPos::ZERO));
+    assert!(chunk.is_file(), "missing {}", chunk.display());
+
+    // A second run resumes the same world and reads the saved chunk back.
+    let mut second = persistence_app(&saves);
+    second.update();
+    let storage = second
+        .world()
+        .resource::<WorldPersistence>()
+        .storage()
+        .expect("persistence should be enabled");
+    assert_eq!(storage.root(), root.as_path());
+    assert!(storage.load_chunk(ChunkPos::ZERO).is_some());
+}

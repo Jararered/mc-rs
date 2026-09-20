@@ -13,14 +13,15 @@ use crate::world::generation::Climate;
 
 pub const PALETTE_SIZE: usize = 256;
 
-#[derive(Clone, Resource, Default)]
-pub struct GrassColors {
+/// A 256×256 climate palette, as used by `grasscolor.png` and `foliagecolor.png`.
+#[derive(Clone, Default)]
+struct ColorPalette {
     rgba: Option<Arc<[u8]>>,
 }
 
-impl GrassColors {
-    pub(crate) fn load() -> Self {
-        let Ok(bytes) = fs::read("assets/misc/grasscolor.png") else {
+impl ColorPalette {
+    fn load(path: &str) -> Self {
+        let Ok(bytes) = fs::read(path) else {
             return Self::default();
         };
         let Ok(image) = Image::from_buffer(
@@ -49,21 +50,57 @@ impl GrassColors {
         }
     }
 
-    /// Build a palette from raw RGBA bytes, primarily for tests and future
-    /// texture-pack loading paths.
-    pub fn from_rgba(rgba: Vec<u8>) -> Self {
+    fn from_rgba(rgba: Vec<u8>) -> Self {
         Self {
             rgba: Some(rgba.into()),
         }
     }
 
-    pub fn sample(&self, climate: Climate) -> [f32; 3] {
+    fn sample(&self, climate: Climate, fallback: [f32; 3]) -> [f32; 3] {
         let Some(rgba) = &self.rgba else {
-            return [0.55, 0.8, 0.4];
+            return fallback;
         };
         let offset = palette_index(climate.temperature, climate.humidity) * 4;
         let color = Color::srgb_u8(rgba[offset], rgba[offset + 1], rgba[offset + 2]).to_linear();
         [color.red, color.green, color.blue]
+    }
+}
+
+/// Climate-sampled grass tint, loaded from `grasscolor.png`.
+#[derive(Clone, Resource, Default)]
+pub struct GrassColors(ColorPalette);
+
+impl GrassColors {
+    pub(crate) fn load() -> Self {
+        Self(ColorPalette::load("assets/misc/grasscolor.png"))
+    }
+
+    /// Build a palette from raw RGBA bytes, primarily for tests and future
+    /// texture-pack loading paths.
+    pub fn from_rgba(rgba: Vec<u8>) -> Self {
+        Self(ColorPalette::from_rgba(rgba))
+    }
+
+    pub fn sample(&self, climate: Climate) -> [f32; 3] {
+        self.0.sample(climate, [0.55, 0.8, 0.4])
+    }
+}
+
+/// Climate-sampled foliage tint, loaded from `foliagecolor.png`.
+#[derive(Clone, Resource, Default)]
+pub struct FoliageColors(ColorPalette);
+
+impl FoliageColors {
+    pub(crate) fn load() -> Self {
+        Self(ColorPalette::load("assets/misc/foliagecolor.png"))
+    }
+
+    pub fn from_rgba(rgba: Vec<u8>) -> Self {
+        Self(ColorPalette::from_rgba(rgba))
+    }
+
+    pub fn sample(&self, climate: Climate) -> [f32; 3] {
+        self.0.sample(climate, [0.28, 0.71, 0.09])
     }
 }
 

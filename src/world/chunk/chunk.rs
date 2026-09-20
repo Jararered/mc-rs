@@ -10,6 +10,7 @@ use super::ChunkPos;
 pub const CHUNK_SIZE: usize = 16;
 pub const CHUNK_HEIGHT: usize = 128;
 
+#[derive(Clone)]
 pub struct Chunk {
     blocks: Box<[BlockId]>,
 }
@@ -19,6 +20,23 @@ impl Chunk {
         Self {
             blocks: vec![BlockId::Air; CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE].into_boxed_slice(),
         }
+    }
+
+    /// Rebuild a chunk from a flat block array, as produced by [`Self::blocks`].
+    pub fn from_blocks(blocks: Vec<BlockId>) -> Self {
+        assert_eq!(
+            blocks.len(),
+            CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE,
+            "a chunk holds exactly one block per position"
+        );
+        Self {
+            blocks: blocks.into_boxed_slice(),
+        }
+    }
+
+    /// The flat block array in [`Self::index`] order.
+    pub fn blocks(&self) -> &[BlockId] {
+        &self.blocks
     }
 
     pub fn get(&self, x: usize, y: usize, z: usize) -> Option<BlockId> {
@@ -58,8 +76,20 @@ impl WorldChunks {
         self.chunks.get(&position)
     }
 
+    pub fn get_mut(&mut self, position: ChunkPos) -> Option<&mut GeneratedChunk> {
+        self.chunks.get_mut(&position)
+    }
+
     pub fn contains(&self, position: ChunkPos) -> bool {
         self.chunks.contains_key(&position)
+    }
+
+    pub fn positions(&self) -> impl Iterator<Item = ChunkPos> + '_ {
+        self.chunks.keys().copied()
+    }
+
+    pub fn clear(&mut self) {
+        self.chunks.clear();
     }
 
     pub fn remove(&mut self, position: ChunkPos) -> Option<GeneratedChunk> {

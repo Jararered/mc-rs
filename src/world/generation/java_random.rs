@@ -45,4 +45,15 @@ impl JavaRandom {
         let bits = ((self.next_bits(26) as u64) << 27) | self.next_bits(27) as u64;
         bits as f64 / (1u64 << 53) as f64
     }
+
+    pub fn next_float(&mut self) -> f32 {
+        self.next_bits(24) as f32 / (1u32 << 24) as f32
+    }
+
+    /// Java's `nextLong`, which sign-extends each 32-bit half before combining.
+    pub fn next_long(&mut self) -> i64 {
+        let high = self.next_bits(32) as i32 as i64;
+        let low = self.next_bits(32) as i32 as i64;
+        (high << 32).wrapping_add(low)
+    }
 }

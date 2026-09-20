@@ -1,5 +1,6 @@
 use bevy::asset::RenderAssetUsages;
 use bevy::mesh::Indices;
+use bevy::prelude::Color;
 use bevy::prelude::Mesh;
 use bevy::render::render_resource::PrimitiveTopology;
 
@@ -9,6 +10,7 @@ use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::Chunk;
 use crate::world::generation::BiomeMap;
 use crate::world::lighting::Skylight;
+use crate::world::textures::FoliageColors;
 use crate::world::textures::GrassColors;
 use crate::world::textures::block_tile;
 
@@ -93,23 +95,35 @@ pub fn mesh_chunk(chunk: &Chunk, skylight: &Skylight) -> Mesh {
     mesh_chunk_inner(chunk, skylight, None, true)
 }
 
+/// Per-column biome tints applied to grass tops and leaves.
+struct ColumnTints {
+    grass: [[f32; 3]; CHUNK_SIZE * CHUNK_SIZE],
+    foliage: [[f32; 3]; CHUNK_SIZE * CHUNK_SIZE],
+}
+
 pub(crate) fn mesh_chunk_with_biomes(
     chunk: &Chunk,
     skylight: &Skylight,
     biomes: &BiomeMap,
     grass_colors: &GrassColors,
+    foliage_colors: &FoliageColors,
     old_lighting: bool,
 ) -> Mesh {
-    let grass_tints: [[f32; 3]; CHUNK_SIZE * CHUNK_SIZE] = std::array::from_fn(|index| {
-        grass_colors.sample(biomes.get(index % CHUNK_SIZE, index / CHUNK_SIZE))
-    });
-    mesh_chunk_inner(chunk, skylight, Some(&grass_tints), old_lighting)
+    let tints = ColumnTints {
+        grass: std::array::from_fn(|index| {
+            grass_colors.sample(biomes.get(index % CHUNK_SIZE, index / CHUNK_SIZE))
+        }),
+        foliage: std::array::from_fn(|index| {
+            foliage_colors.sample(biomes.get(index % CHUNK_SIZE, index / CHUNK_SIZE))
+        }),
+    };
+    mesh_chunk_inner(chunk, skylight, Some(&tints), old_lighting)
 }
 
 fn mesh_chunk_inner(
     chunk: &Chunk,
     skylight: &Skylight,
-    grass_tints: Option<&[[f32; 3]; CHUNK_SIZE * CHUNK_SIZE]>,
+    tints: Option<&ColumnTints>,
     old_lighting: bool,
 ) -> Mesh {
     let mut positions = Vec::<[f32; 3]>::new();
@@ -147,9 +161,9 @@ fn mesh_chunk_inner(
                         1.0
                     };
                     let base = if block == BlockId::Grass && face_index == 0 {
-                        grass_tints.map_or([0.55, 0.8, 0.4], |tints| tints[z * CHUNK_SIZE + x])
+                        tints.map_or([0.55, 0.8, 0.4], |tints| tints.grass[z * CHUNK_SIZE + x])
                     } else {
-                        block_tint(block)
+                        block_tint(block, tints.map(|tints| tints.foliage[z * CHUNK_SIZE + x]))
                     };
                     let color = [
                         base[0] * brightness,
@@ -209,9 +223,17 @@ fn face_uvs(block: BlockId, face: usize) -> [[f32; 2]; 4] {
     }
 }
 
-fn block_tint(block: BlockId) -> [f32; 3] {
+fn block_tint(block: BlockId, foliage: Option<[f32; 3]>) -> [f32; 3] {
     match block {
         BlockId::Water => [0.4, 0.6, 0.95],
+        BlockId::Leaves => foliage.unwrap_or([0.28, 0.71, 0.09]),
+        BlockId::BirchLeaves => linear_rgb(128, 167, 85),
+        BlockId::SpruceLeaves => linear_rgb(97, 153, 97),
         _ => [1.0, 1.0, 1.0],
     }
+}
+
+fn linear_rgb(r: u8, g: u8, b: u8) -> [f32; 3] {
+    let color = Color::srgb_u8(r, g, b).to_linear();
+    [color.red, color.green, color.blue]
 }

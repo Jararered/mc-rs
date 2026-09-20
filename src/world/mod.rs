@@ -3,6 +3,7 @@ pub mod chunk;
 pub mod generation;
 pub mod lighting;
 pub mod meshing;
+pub mod persistence;
 pub mod plugin;
 pub mod streaming;
 pub mod textures;

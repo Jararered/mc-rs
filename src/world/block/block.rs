@@ -15,6 +15,7 @@ pub enum BlockId {
     IronOre = 15,
     CoalOre = 16,
     Wood = 17,
+    Leaves = 18,
     Sponge = 19,
     LapisOre = 21,
     LapisBlock = 22,
@@ -45,4 +46,73 @@ pub enum BlockId {
     Netherrack = 87,
     Glowstone = 89,
     JackOLantern = 91,
+    // Beta stores wood and leaf species in block metadata. The chunk stores a
+    // single compact value per block, so each species gets its own variant.
+    SpruceLeaves = 92,
+    BirchLeaves = 93,
+    SpruceWood = 94,
+    BirchWood = 95,
+}
+
+impl BlockId {
+    /// The Beta block id stored in a chunk. Persistence writes this value rather
+    /// than the enum's variant index so saves survive new variants being added.
+    pub const fn as_u8(self) -> u8 {
+        self as u8
+    }
+
+    pub const fn from_u8(value: u8) -> Option<Self> {
+        Some(match value {
+            0 => Self::Air,
+            1 => Self::Stone,
+            2 => Self::Grass,
+            3 => Self::Dirt,
+            4 => Self::Cobblestone,
+            5 => Self::WoodenPlanks,
+            7 => Self::Bedrock,
+            9 => Self::Water,
+            12 => Self::Sand,
+            13 => Self::Gravel,
+            14 => Self::GoldOre,
+            15 => Self::IronOre,
+            16 => Self::CoalOre,
+            17 => Self::Wood,
+            18 => Self::Leaves,
+            19 => Self::Sponge,
+            21 => Self::LapisOre,
+            22 => Self::LapisBlock,
+            23 => Self::Dispenser,
+            24 => Self::Sandstone,
+            25 => Self::NoteBlock,
+            35 => Self::Wool,
+            41 => Self::GoldBlock,
+            42 => Self::IronBlock,
+            43 => Self::DoubleStoneSlab,
+            45 => Self::Bricks,
+            46 => Self::Tnt,
+            47 => Self::Bookshelf,
+            48 => Self::MossyCobblestone,
+            49 => Self::Obsidian,
+            56 => Self::DiamondOre,
+            57 => Self::DiamondBlock,
+            58 => Self::CraftingTable,
+            61 => Self::Furnace,
+            62 => Self::LitFurnace,
+            73 => Self::RedstoneOre,
+            74 => Self::LitRedstoneOre,
+            79 => Self::Ice,
+            80 => Self::Snow,
+            82 => Self::Clay,
+            84 => Self::Jukebox,
+            86 => Self::Pumpkin,
+            87 => Self::Netherrack,
+            89 => Self::Glowstone,
+            91 => Self::JackOLantern,
+            92 => Self::SpruceLeaves,
+            93 => Self::BirchLeaves,
+            94 => Self::SpruceWood,
+            95 => Self::BirchWood,
+            _ => return None,
+        })
+    }
 }

@@ -28,7 +28,11 @@ fn generated_chunk_has_solid_ground_and_sunlit_air() {
             ));
             assert_eq!(chunk.get(x, 0, z), Some(BlockId::Bedrock));
             assert_eq!(light.get(x, height - 1, z), Some(0));
-            if chunk.get(x, height, z) == Some(BlockId::Air) {
+            // Trees can shadow the air directly above the terrain, so only
+            // assert sunlight where the column is clear above the surface.
+            let clear_above =
+                (height..CHUNK_HEIGHT).all(|y| chunk.get(x, y, z) == Some(BlockId::Air));
+            if clear_above {
                 assert_eq!(light.get(x, height, z), Some(15));
             }
         }

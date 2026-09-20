@@ -6,17 +6,73 @@ use bevy::asset::AssetPlugin;
 use bevy::mesh::MeshPlugin;
 use bevy::prelude::*;
 use game::player::Player;
+use game::world::block::block::BlockId;
+use game::world::chunk::CHUNK_HEIGHT;
+use game::world::chunk::CHUNK_SIZE;
+use game::world::chunk::Chunk;
 use game::world::chunk::ChunkPos;
 use game::world::chunk::WorldChunks;
 use game::world::plugin::WorldPlugin;
+use game::world::streaming::GENERATE_MARGIN;
+use game::world::streaming::LOAD_RADIUS;
+use game::world::streaming::positions_in_radius;
 
-#[test]
-fn distant_chunks_release_world_data_entities_and_meshes() {
+fn test_app() -> App {
     let mut app = App::new();
     app.add_plugins((MinimalPlugins, AssetPlugin::default(), MeshPlugin))
         .init_asset::<Image>()
         .init_asset::<StandardMaterial>()
+        .init_resource::<ButtonInput<KeyCode>>()
         .add_plugins(WorldPlugin);
+    app
+}
+
+fn run_until(
+    app: &mut App,
+    timeout: Duration,
+    mut condition: impl FnMut(&mut App) -> bool,
+) -> bool {
+    let deadline = Instant::now() + timeout;
+    loop {
+        if condition(app) {
+            return true;
+        }
+        if Instant::now() >= deadline {
+            return false;
+        }
+        thread::sleep(Duration::from_millis(5));
+        app.update();
+    }
+}
+
+fn rendered_positions(app: &mut App) -> Vec<ChunkPos> {
+    let mut query = app.world_mut().query::<&ChunkPos>();
+    query.iter(app.world()).copied().collect()
+}
+
+fn block_at(app: &App, position: ChunkPos, x: usize, y: usize, z: usize) -> Option<BlockId> {
+    app.world()
+        .resource::<WorldChunks>()
+        .get(position)
+        .and_then(|chunk| chunk.chunk.get(x, y, z))
+}
+
+fn top_solid(chunk: &Chunk) -> (usize, usize, usize) {
+    for y in (0..CHUNK_HEIGHT).rev() {
+        for z in 0..CHUNK_SIZE {
+            for x in 0..CHUNK_SIZE {
+                if chunk.get(x, y, z) != Some(BlockId::Air) {
+                    return (x, y, z);
+                }
+            }
+        }
+    }
+    (0, 0, 0)
+}
+
+#[test]
+fn distant_chunks_release_world_data_entities_and_meshes() {
+    let mut app = test_app();
     app.world_mut()
         .spawn((Player, Transform::from_xyz(128.0, 80.0, 0.0)));
 
@@ -29,31 +85,87 @@ fn distant_chunks_release_world_data_entities_and_meshes() {
             .is_none()
     );
     assert!(app.world().resource::<Assets<Mesh>>().is_empty());
-    let mut chunk_positions = app.world_mut().query::<&ChunkPos>();
-    assert_eq!(chunk_positions.iter(app.world()).count(), 0);
+    assert_eq!(rendered_positions(&mut app).len(), 0);
 
     let destination = ChunkPos { x: 8, z: 0 };
-    let deadline = Instant::now() + Duration::from_secs(3);
-    while app
-        .world()
-        .resource::<WorldChunks>()
-        .get(destination)
-        .is_none()
-        && Instant::now() < deadline
-    {
-        thread::sleep(Duration::from_millis(5));
-        app.update();
-    }
+    // Generation and meshing are separate stages, so wait for the rendered
+    // entity rather than just the stored chunk data.
+    assert!(run_until(&mut app, Duration::from_secs(3), |app| {
+        rendered_positions(app).contains(&destination)
+    }));
     assert!(
         app.world()
             .resource::<WorldChunks>()
             .get(destination)
             .is_some()
     );
-    let mut chunk_positions = app.world_mut().query::<&ChunkPos>();
-    assert!(
-        chunk_positions
-            .iter(app.world())
-            .any(|position| *position == destination)
-    );
+}
+
+#[test]
+fn generation_runs_one_ring_ahead_of_meshing() {
+    let mut app = test_app();
+    app.world_mut()
+        .spawn((Player, Transform::from_xyz(8.0, 80.0, 8.0)));
+
+    // A chunk on the generation ring is stored but never rendered, because it
+    // sits outside the render distance.
+    let ring = ChunkPos {
+        x: LOAD_RADIUS + GENERATE_MARGIN,
+        z: 0,
+    };
+    assert!(run_until(&mut app, Duration::from_secs(20), |app| {
+        app.world().resource::<WorldChunks>().get(ring).is_some()
+    }));
+    assert!(!rendered_positions(&mut app).contains(&ring));
+}
+
+#[test]
+fn pressing_f3_regenerates_loaded_chunks_from_scratch() {
+    let mut app = test_app();
+    app.world_mut()
+        .spawn((Player, Transform::from_xyz(8.0, 80.0, 8.0)));
+
+    let origin = ChunkPos::ZERO;
+    assert!(run_until(&mut app, Duration::from_secs(3), |app| {
+        rendered_positions(app).contains(&origin)
+    }));
+
+    // Corrupt a block in the stored chunk. Regeneration must discard the edit,
+    // which a plain re-mesh of the cached chunk would keep.
+    let (x, y, z) = {
+        let mut chunks = app.world_mut().resource_mut::<WorldChunks>();
+        let chunk = chunks.get_mut(origin).unwrap();
+        let (x, y, z) = top_solid(&chunk.chunk);
+        chunk.chunk.set(x, y, z, BlockId::Air);
+        (x, y, z)
+    };
+    assert_eq!(block_at(&app, origin, x, y, z), Some(BlockId::Air));
+
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .press(KeyCode::F3);
+    app.update();
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .clear();
+
+    // The chunk is dropped and regenerated, so the edit disappears while the
+    // chunk stays rendered.
+    assert!(run_until(&mut app, Duration::from_secs(5), |app| {
+        block_at(app, origin, x, y, z).is_some_and(|block| block != BlockId::Air)
+    }));
+    assert!(rendered_positions(&mut app).contains(&origin));
+}
+
+#[test]
+fn generation_radius_is_one_ring_beyond_the_render_distance() {
+    let center = ChunkPos { x: 3, z: -2 };
+    let generated = positions_in_radius(center, LOAD_RADIUS + GENERATE_MARGIN);
+    let rendered = positions_in_radius(center, LOAD_RADIUS);
+    assert_eq!(GENERATE_MARGIN, 1);
+    assert_eq!(rendered.len(), 81);
+    assert_eq!(generated.len(), 121);
+    for position in &rendered {
+        assert!(generated.contains(position));
+    }
 }

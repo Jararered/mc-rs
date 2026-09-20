@@ -5,6 +5,7 @@ mod java_random;
 mod noise;
 mod surface;
 mod terrain;
+mod trees;
 
 pub use biome::Biome;
 pub use biome::BiomeMap;

@@ -23,6 +23,17 @@ impl Heightmap {
         Self { heights }
     }
 
+    /// Rebuild a heightmap from stored column heights, as produced by
+    /// [`Self::heights`].
+    pub fn from_heights(heights: [u8; CHUNK_SIZE * CHUNK_SIZE]) -> Self {
+        Self { heights }
+    }
+
+    /// The raw column heights in `x * CHUNK_SIZE + z` order.
+    pub fn heights(&self) -> &[u8; CHUNK_SIZE * CHUNK_SIZE] {
+        &self.heights
+    }
+
     pub fn get(&self, x: usize, z: usize) -> u8 {
         self.heights[x * CHUNK_SIZE + z]
     }

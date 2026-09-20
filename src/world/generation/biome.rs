@@ -3,6 +3,7 @@ use crate::world::chunk::ChunkPos;
 
 use super::noise::SimplexOctaves;
 
+#[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Biome {
     Rainforest,
@@ -18,6 +19,31 @@ pub enum Biome {
     Tundra,
 }
 
+impl Biome {
+    /// Stable on-disk value. Persistence stores this rather than the enum's
+    /// variant index so saves survive new biomes being added.
+    pub const fn as_u8(self) -> u8 {
+        self as u8
+    }
+
+    pub const fn from_u8(value: u8) -> Option<Self> {
+        Some(match value {
+            0 => Self::Rainforest,
+            1 => Self::Swampland,
+            2 => Self::SeasonalForest,
+            3 => Self::Forest,
+            4 => Self::Savanna,
+            5 => Self::Shrubland,
+            6 => Self::Taiga,
+            7 => Self::Desert,
+            8 => Self::Plains,
+            9 => Self::IceDesert,
+            10 => Self::Tundra,
+            _ => return None,
+        })
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Climate {
     pub temperature: f64,
@@ -25,11 +51,22 @@ pub struct Climate {
     pub biome: Biome,
 }
 
+#[derive(Clone)]
 pub struct BiomeMap {
     cells: [Climate; CHUNK_SIZE * CHUNK_SIZE],
 }
 
 impl BiomeMap {
+    /// Rebuild a biome map from stored cells, as produced by [`Self::cells`].
+    pub fn from_cells(cells: [Climate; CHUNK_SIZE * CHUNK_SIZE]) -> Self {
+        Self { cells }
+    }
+
+    /// The per-column climate in `x * CHUNK_SIZE + z` order.
+    pub fn cells(&self) -> &[Climate; CHUNK_SIZE * CHUNK_SIZE] {
+        &self.cells
+    }
+
     pub fn get(&self, x: usize, z: usize) -> Climate {
         self.cells[x * CHUNK_SIZE + z]
     }
@@ -57,42 +94,48 @@ impl BiomeGenerator {
                 let z = index % CHUNK_SIZE;
                 let wx = (position.x * CHUNK_SIZE as i32 + x as i32) as f64;
                 let wz = (position.z * CHUNK_SIZE as i32 + z as i32) as f64;
-                let precipitation =
-                    self.precipitation
-                        .sample(wx, wz, 0.25 / 1.5, 0.5882352941176471)
-                        * 1.1
-                        + 0.5;
-                let temperature =
-                    (self
-                        .temperature
-                        .sample(wx, wz, 0.02500000037252903 / 1.5, 0.25)
-                        * 0.15
-                        + 0.7)
-                        * 0.99
-                        + precipitation * 0.01;
-                let temperature = (1.0 - (1.0 - temperature).powi(2)).clamp(0.0, 1.0);
-                let humidity =
-                    ((self
-                        .humidity
-                        .sample(wx, wz, 0.05000000074505806 / 1.5, 1.0 / 3.0)
-                        * 0.15
-                        + 0.5)
-                        * 0.998
-                        + precipitation * 0.002)
-                        .clamp(0.0, 1.0);
-                // The source quantizes temperature and humidity to a 64×64 lookup table.
-                let quantized_temperature = (temperature * 63.0) as u8;
-                let quantized_humidity = (humidity * 63.0) as u8;
-                let biome = classify(
-                    quantized_temperature as f64 / 63.0,
-                    quantized_humidity as f64 / 63.0,
-                );
-                Climate {
-                    temperature,
-                    humidity,
-                    biome,
-                }
+                self.climate_at(wx, wz)
             }),
+        }
+    }
+
+    /// Climate at an arbitrary world column, independent of chunk boundaries.
+    ///
+    /// This is the same computation [`Self::generate`] performs per cell, exposed
+    /// so decoration can sample climate outside the chunk it is generating.
+    pub fn climate_at(&self, wx: f64, wz: f64) -> Climate {
+        let precipitation = self
+            .precipitation
+            .sample(wx, wz, 0.25 / 1.5, 0.5882352941176471)
+            * 1.1
+            + 0.5;
+        let temperature = (self
+            .temperature
+            .sample(wx, wz, 0.02500000037252903 / 1.5, 0.25)
+            * 0.15
+            + 0.7)
+            * 0.99
+            + precipitation * 0.01;
+        let temperature = (1.0 - (1.0 - temperature).powi(2)).clamp(0.0, 1.0);
+        let humidity = ((self
+            .humidity
+            .sample(wx, wz, 0.05000000074505806 / 1.5, 1.0 / 3.0)
+            * 0.15
+            + 0.5)
+            * 0.998
+            + precipitation * 0.002)
+            .clamp(0.0, 1.0);
+        // The source quantizes temperature and humidity to a 64×64 lookup table.
+        let quantized_temperature = (temperature * 63.0) as u8;
+        let quantized_humidity = (humidity * 63.0) as u8;
+        let biome = classify(
+            quantized_temperature as f64 / 63.0,
+            quantized_humidity as f64 / 63.0,
+        );
+        Climate {
+            temperature,
+            humidity,
+            biome,
         }
     }
 }

@@ -3,6 +3,7 @@ use bevy::prelude::*;
 use crate::app::settings::GameSettings;
 
 use super::chunk::WorldChunks;
+use super::streaming::regenerate_loaded_chunks;
 use super::streaming::setup_streaming;
 use super::streaming::stream_chunks;
 use super::textures::TerrainTexturePlugin;
@@ -17,7 +18,13 @@ impl Plugin for WorldPlugin {
             .init_resource::<GlobalAmbientLight>()
             .init_resource::<WorldChunks>()
             .add_systems(Startup, (setup_streaming, spawn_sun))
-            .add_systems(Update, (apply_lighting_settings, stream_chunks));
+            .add_systems(
+                Update,
+                (
+                    apply_lighting_settings,
+                    (regenerate_loaded_chunks, stream_chunks).chain(),
+                ),
+            );
     }
 }
 

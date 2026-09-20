@@ -140,7 +140,9 @@ pub(crate) fn mesh_chunk_with_biomes(
 }
 
 const FACE_TOP: usize = 0;
-const WATER_ALPHA: f32 = 0.55;
+/// Keep the animated Beta-blue texture visible instead of washing it out
+/// against the sky and lake bed through two stacked alpha layers.
+const WATER_ALPHA: f32 = 0.8;
 /// Two texels of a 16-pixel block, matching Beta's still-water surface drop.
 const WATER_SURFACE_DROP: f32 = 2.0 / 16.0;
 

@@ -166,7 +166,7 @@ fn water_renders_as_a_transparent_top_face() {
         panic!("water mesh should have vertex colors");
     };
     assert!(
-        colors.iter().all(|color| (color[3] - 0.55).abs() < 0.001),
+        colors.iter().all(|color| (color[3] - 0.8).abs() < 0.001),
         "water vertices should be translucent"
     );
 

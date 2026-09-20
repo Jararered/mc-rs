@@ -135,20 +135,10 @@ fn spawn_main_menu(commands: &mut Commands, textures: &MenuTextures) {
     let root = spawn_root(commands, textures);
     commands.entity(root).with_children(|parent| {
         parent.spawn((
-            ImageNode::new(textures.logo.clone()).with_rect(Rect::new(0.0, 0.0, 256.0, 32.0)),
+            ImageNode::new(textures.logo.clone()).with_rect(Rect::new(0.0, 0.0, 256.0, 64.0)),
             Node {
                 width: px(512),
-                height: px(64),
-                margin: UiRect::bottom(px(12)),
-                ..default()
-            },
-        ));
-        parent.spawn((
-            Text::new("BETA WORLD"),
-            menu_font(textures, 16.0),
-            TextColor(Color::WHITE),
-            TextShadow::default(),
-            Node {
+                height: px(128),
                 margin: UiRect::bottom(px(24)),
                 ..default()
             },

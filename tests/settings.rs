@@ -25,6 +25,7 @@ use game::app::settings::save_settings;
 use game::app::state::AppScreen;
 use game::player::PlayerCamera;
 use game::player::PlayerPlugin;
+use game::ui::UiCameraPlugin;
 use game::world::chunk::WorldChunks;
 use game::world::plugin::WorldPlugin;
 use game::world::textures::LeafCutoutMaterial;
@@ -161,6 +162,64 @@ fn player_fov_radians(app: &mut App) -> f32 {
         Projection::Perspective(perspective) => perspective.fov,
         other => panic!("player camera should be perspective, got {other:?}"),
     }
+}
+
+#[test]
+fn first_person_arm_has_separate_camera_and_skin_mesh() {
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        AssetPlugin::default(),
+        MeshPlugin,
+        StatesPlugin,
+    ))
+    .init_asset::<Image>()
+    .init_state::<AppScreen>()
+    .init_resource::<GameSettings>()
+    .init_resource::<WorldChunks>()
+    .add_plugins((PlayerPlugin, UiCameraPlugin));
+    app.update();
+
+    let mut cameras = app.world_mut().query::<(&Camera, &Projection)>();
+    let camera_orders: Vec<_> = cameras
+        .iter(app.world())
+        .map(|(camera, _)| camera.order)
+        .collect();
+    assert_eq!(camera_orders.len(), 3);
+    assert!(camera_orders.contains(&0));
+    assert!(camera_orders.contains(&1));
+    assert!(camera_orders.contains(&2));
+    let mut ui_cameras = app
+        .world_mut()
+        .query_filtered::<&Camera, With<bevy::ui::IsDefaultUiCamera>>();
+    let ui_camera = ui_cameras.single(app.world()).unwrap();
+    assert_eq!(ui_camera.order, 2, "UI must render after the arm");
+
+    let mut arms = app.world_mut().query::<(&Name, &Mesh3d, &Transform)>();
+    let (_, arm_mesh, pose) = arms
+        .iter(app.world())
+        .find(|(name, _, _)| name.as_str() == "Right arm")
+        .expect("first-person arm should spawn");
+    let mesh = app
+        .world()
+        .resource::<Assets<Mesh>>()
+        .get(&arm_mesh.0)
+        .unwrap();
+    let positions = mesh.attribute(Mesh::ATTRIBUTE_POSITION).unwrap();
+    let bevy::mesh::VertexAttributeValues::Float32x3(positions) = positions else {
+        panic!("arm positions should be 3D floats");
+    };
+    assert_eq!(positions.len(), 24, "one textured cuboid with six faces");
+    assert_eq!(mesh.count_vertices(), 24);
+    let point = pose.transform_point(Vec3::from_array(positions[0]));
+    assert!(point.is_finite());
+    assert!(
+        positions.iter().any(|position| {
+            let point = pose.transform_point(Vec3::from_array(*position));
+            point.z < -0.01 && point.x.abs() < -point.z && point.y.abs() < -point.z * 0.7
+        }),
+        "part of the resting arm should be inside the view"
+    );
 }
 
 #[test]

@@ -4,6 +4,7 @@ use crate::physics::PhysicsPlugin;
 use crate::player::PlayerPlugin;
 use crate::ui::HudPlugin;
 use crate::ui::MenuPlugin;
+use crate::ui::UiCameraPlugin;
 use crate::world::persistence::PersistencePlugin;
 use crate::world::plugin::WorldPlugin;
 
@@ -22,6 +23,7 @@ impl Plugin for GamePlugin {
             PersistencePlugin::default(),
             PlayerPlugin,
             PhysicsPlugin,
+            UiCameraPlugin,
             MenuPlugin,
             HudPlugin,
             ScreenshotPlugin,

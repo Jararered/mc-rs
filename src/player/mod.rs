@@ -13,6 +13,7 @@ use crate::entity::Gravity;
 use crate::entity::StepHeight;
 use crate::entity::Velocity;
 use crate::inventory::Hotbar;
+mod arm;
 mod interaction;
 mod mining;
 mod overlay;
@@ -54,6 +55,7 @@ pub struct PlayerPlugin;
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         overlay::overlay_plugin(app);
+        arm::plugin(app);
         app.add_systems(PostStartup, spawn_player)
             .add_systems(OnEnter(AppScreen::Playing), capture_mouse)
             .add_systems(OnEnter(AppScreen::Menu), release_mouse)
@@ -153,6 +155,7 @@ fn spawn_player(
     chunks: Res<WorldChunks>,
     persistence: Option<Res<WorldPersistence>>,
     settings: Res<GameSettings>,
+    arm_assets: Res<arm::ArmAssets>,
 ) {
     let transform = persistence
         .as_ref()
@@ -170,15 +173,17 @@ fn spawn_player(
             transform,
         ))
         .with_children(|parent| {
-            parent.spawn((
-                PlayerCamera,
-                Camera3d::default(),
-                Projection::from(PerspectiveProjection {
-                    fov: settings.fov_radians(),
-                    ..default()
-                }),
-                Transform::default(),
-            ));
+            parent
+                .spawn((
+                    PlayerCamera,
+                    Camera3d::default(),
+                    Projection::from(PerspectiveProjection {
+                        fov: settings.fov_radians(),
+                        ..default()
+                    }),
+                    Transform::default(),
+                ))
+                .with_children(|camera| arm::spawn(camera, &arm_assets, settings.fov_radians()));
         });
 }
 
@@ -228,20 +233,23 @@ fn update_camera_bobbing(
         bob.camera_yaw += (target_yaw - bob.camera_yaw) * 0.4;
         bob.camera_pitch += (target_pitch - bob.camera_pitch) * 0.8;
 
-        let phase = -bob.distance_walked * std::f32::consts::PI;
-        let lateral = phase.sin() * bob.camera_yaw * 0.5;
-        let vertical = -(phase.cos() * bob.camera_yaw).abs();
-        let roll = (phase.sin() * bob.camera_yaw * 3.0).to_radians();
-        let pitch = ((phase - 0.2).cos() * bob.camera_yaw).abs() * 5.0 + bob.camera_pitch;
-
         for child in children {
             if let Ok(mut camera) = cameras.get_mut(*child) {
-                camera.translation = Vec3::new(lateral, vertical, 0.0);
-                camera.rotation =
-                    Quat::from_rotation_z(roll) * Quat::from_rotation_x(pitch.to_radians());
+                *camera = Transform::from_matrix(camera_bob_pose(&bob));
             }
         }
     }
+}
+
+fn camera_bob_pose(bob: &CameraBobbing) -> Mat4 {
+    let phase = -bob.distance_walked * std::f32::consts::PI;
+    let lateral = phase.sin() * bob.camera_yaw * 0.5;
+    let vertical = -(phase.cos() * bob.camera_yaw).abs();
+    let roll = (phase.sin() * bob.camera_yaw * 3.0).to_radians();
+    let pitch = ((phase - 0.2).cos() * bob.camera_yaw).abs() * 5.0 + bob.camera_pitch;
+    Mat4::from_translation(Vec3::new(lateral, vertical, 0.0))
+        * Mat4::from_rotation_z(roll)
+        * Mat4::from_rotation_x(pitch.to_radians())
 }
 
 fn default_spawn_transform(chunks: &WorldChunks) -> Transform {

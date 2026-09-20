@@ -1,0 +1,267 @@
+//! Beta's empty-hand first-person arm, rendered in its own depth pass.
+
+use bevy::asset::RenderAssetUsages;
+use bevy::camera::visibility::RenderLayers;
+use bevy::ecs::hierarchy::ChildSpawnerCommands;
+use bevy::image::ImageLoaderSettings;
+use bevy::image::ImageSampler;
+use bevy::mesh::Indices;
+use bevy::prelude::*;
+use bevy::render::render_resource::PrimitiveTopology;
+use bevy::window::CursorGrabMode;
+use bevy::window::CursorOptions;
+use bevy::window::PrimaryWindow;
+
+use crate::app::settings::GameSettings;
+use crate::app::state::AppScreen;
+
+use super::CameraBobbing;
+use super::Player;
+use super::camera_bob_pose;
+use super::update_camera_bobbing;
+
+const ARM_LAYER: usize = 1;
+const SWING_SECONDS: f32 = 8.0 / 20.0;
+
+#[derive(Resource)]
+pub(super) struct ArmAssets {
+    mesh: Handle<Mesh>,
+    material: Handle<StandardMaterial>,
+}
+
+#[derive(Component)]
+struct ArmCamera;
+
+#[derive(Component, Default)]
+struct FirstPersonArm {
+    swing_time: Option<f32>,
+}
+
+pub(super) fn plugin(app: &mut App) {
+    app.init_asset::<StandardMaterial>()
+        .add_systems(PreStartup, prepare_arm)
+        .add_systems(OnEnter(AppScreen::Playing), show_arm_camera)
+        .add_systems(OnExit(AppScreen::Playing), hide_arm_camera)
+        .add_systems(
+            Update,
+            animate_arm
+                .after(update_camera_bobbing)
+                .run_if(in_state(AppScreen::Playing)),
+        );
+}
+
+fn show_arm_camera(mut cameras: Query<&mut Camera, With<ArmCamera>>) {
+    for mut camera in &mut cameras {
+        camera.is_active = true;
+    }
+}
+
+fn hide_arm_camera(mut cameras: Query<&mut Camera, With<ArmCamera>>) {
+    for mut camera in &mut cameras {
+        camera.is_active = false;
+    }
+}
+
+fn prepare_arm(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    asset_server: Res<AssetServer>,
+) {
+    // Reference skins are local development files, never bundled game content.
+    // A colored cuboid still renders if no skin is available.
+    let skin = std::path::Path::new("assets/mob/char.png")
+        .exists()
+        .then(|| {
+            asset_server
+                .load_builder()
+                .with_settings(|settings: &mut ImageLoaderSettings| {
+                    settings.sampler = ImageSampler::nearest();
+                })
+                .load("mob/char.png")
+        });
+    commands.insert_resource(ArmAssets {
+        mesh: meshes.add(right_arm_mesh()),
+        material: materials.add(StandardMaterial {
+            base_color: if skin.is_some() {
+                Color::WHITE
+            } else {
+                Color::srgb_u8(190, 141, 106)
+            },
+            base_color_texture: skin,
+            unlit: true,
+            cull_mode: None,
+            ..default()
+        }),
+    });
+}
+
+pub(super) fn spawn(parent: &mut ChildSpawnerCommands, assets: &ArmAssets, fov: f32) {
+    parent
+        .spawn((
+            Name::new("First-person arm camera"),
+            ArmCamera,
+            Camera3d::default(),
+            Camera {
+                order: 1,
+                is_active: false,
+                clear_color: ClearColorConfig::None,
+                ..default()
+            },
+            Projection::from(PerspectiveProjection {
+                fov,
+                near: 0.01,
+                far: 10.0,
+                ..default()
+            }),
+            RenderLayers::layer(ARM_LAYER),
+        ))
+        .with_children(|camera| {
+            camera.spawn((
+                Name::new("Right arm"),
+                FirstPersonArm::default(),
+                Mesh3d(assets.mesh.clone()),
+                MeshMaterial3d(assets.material.clone()),
+                RenderLayers::layer(ARM_LAYER),
+                Transform::from_matrix(arm_pose(0.0)),
+            ));
+        });
+}
+
+fn animate_arm(
+    time: Res<Time>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    windows: Query<(&Window, &CursorOptions), With<PrimaryWindow>>,
+    settings: Res<GameSettings>,
+    players: Query<&CameraBobbing, With<Player>>,
+    mut arms: Query<(&mut FirstPersonArm, &mut Transform)>,
+    mut cameras: Query<&mut Projection, With<ArmCamera>>,
+) {
+    if settings.is_changed() {
+        for mut projection in &mut cameras {
+            if let Projection::Perspective(perspective) = projection.as_mut() {
+                perspective.fov = settings.fov_radians();
+            }
+        }
+    }
+
+    let locked = windows
+        .single()
+        .is_ok_and(|(window, cursor)| window.focused && cursor.grab_mode == CursorGrabMode::Locked);
+    let walk_pose = players
+        .single()
+        .map(camera_bob_pose)
+        .unwrap_or(Mat4::IDENTITY);
+    for (mut arm, mut transform) in &mut arms {
+        if !locked {
+            arm.swing_time = None;
+        } else if mouse.just_pressed(MouseButton::Left)
+            || mouse.just_pressed(MouseButton::Right)
+            || (mouse.pressed(MouseButton::Left) && arm.swing_time.is_none())
+        {
+            arm.swing_time = Some(0.0);
+        }
+
+        let progress = arm
+            .swing_time
+            .map_or(0.0, |elapsed| elapsed / SWING_SECONDS);
+        *transform = Transform::from_matrix(walk_pose * arm_pose(progress));
+        if let Some(elapsed) = &mut arm.swing_time {
+            *elapsed += time.delta_secs();
+            if *elapsed >= SWING_SECONDS {
+                arm.swing_time = None;
+            }
+        }
+    }
+}
+
+/// ModelRenderer(40, 16).addBox(-3, -2, -2, 4, 12, 4), with
+/// its pivot (-5, 2, 0). UVs follow the six classic 64x32 skin rectangles.
+fn right_arm_mesh() -> Mesh {
+    let x0 = -3.0 / 16.0;
+    let x1 = 1.0 / 16.0;
+    let y0 = -2.0 / 16.0;
+    let y1 = 10.0 / 16.0;
+    let z0 = -2.0 / 16.0;
+    let z1 = 2.0 / 16.0;
+    let faces: [([[f32; 3]; 4], [f32; 3], [f32; 4]); 6] = [
+        (
+            [[x1, y0, z1], [x1, y0, z0], [x1, y1, z0], [x1, y1, z1]],
+            [1.0, 0.0, 0.0],
+            [48.0, 20.0, 52.0, 32.0],
+        ),
+        (
+            [[x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0]],
+            [-1.0, 0.0, 0.0],
+            [40.0, 20.0, 44.0, 32.0],
+        ),
+        (
+            [[x1, y0, z1], [x0, y0, z1], [x0, y0, z0], [x1, y0, z0]],
+            [0.0, -1.0, 0.0],
+            [44.0, 16.0, 48.0, 20.0],
+        ),
+        (
+            [[x1, y1, z0], [x0, y1, z0], [x0, y1, z1], [x1, y1, z1]],
+            [0.0, 1.0, 0.0],
+            [48.0, 16.0, 52.0, 20.0],
+        ),
+        (
+            [[x1, y0, z0], [x0, y0, z0], [x0, y1, z0], [x1, y1, z0]],
+            [0.0, 0.0, -1.0],
+            [44.0, 20.0, 48.0, 32.0],
+        ),
+        (
+            [[x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]],
+            [0.0, 0.0, 1.0],
+            [52.0, 20.0, 56.0, 32.0],
+        ),
+    ];
+    let mut positions = Vec::with_capacity(24);
+    let mut normals = Vec::with_capacity(24);
+    let mut uvs = Vec::with_capacity(24);
+    let mut indices = Vec::with_capacity(36);
+    for (corners, normal, [u0, v0, u1, v1]) in faces {
+        let base = positions.len() as u32;
+        positions.extend(corners);
+        normals.extend([normal; 4]);
+        // TexturedQuad assigns its first vertex the far U, near V.
+        uvs.extend([
+            [(u1 - 0.1) / 64.0, (v0 + 0.1) / 32.0],
+            [(u0 + 0.1) / 64.0, (v0 + 0.1) / 32.0],
+            [(u0 + 0.1) / 64.0, (v1 - 0.1) / 32.0],
+            [(u1 - 0.1) / 64.0, (v1 - 0.1) / 32.0],
+        ]);
+        indices.extend([base, base + 1, base + 2, base, base + 2, base + 3]);
+    }
+    Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::default(),
+    )
+    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+    .with_inserted_indices(Indices::U32(indices))
+}
+
+/// Exact empty-hand transform sequence from Beta's `ItemRenderer`, including
+/// the swing translation, yaw/roll and the arm's ModelBiped pivot.
+fn arm_pose(progress: f32) -> Mat4 {
+    let p = progress.clamp(0.0, 1.0);
+    let root = p.sqrt() * std::f32::consts::PI;
+    let swing = (p * std::f32::consts::PI).sin();
+    let curve = (p * p * std::f32::consts::PI).sin();
+    Mat4::from_translation(Vec3::new(
+        -root.sin() * 0.3,
+        (root * 2.0).sin() * 0.4,
+        -swing * 0.4,
+    )) * Mat4::from_translation(Vec3::new(0.64, -0.6, -0.72))
+        * Mat4::from_rotation_y(45.0_f32.to_radians())
+        * Mat4::from_rotation_y((root.sin() * 70.0).to_radians())
+        * Mat4::from_rotation_z((-curve * 20.0).to_radians())
+        * Mat4::from_translation(Vec3::new(-1.0, 3.6, 3.5))
+        * Mat4::from_rotation_z(120.0_f32.to_radians())
+        * Mat4::from_rotation_x(200.0_f32.to_radians())
+        * Mat4::from_rotation_y((-135.0_f32).to_radians())
+        * Mat4::from_translation(Vec3::new(5.6, 0.0, 0.0))
+        * Mat4::from_translation(Vec3::new(-5.0 / 16.0, 2.0 / 16.0, 0.0))
+}

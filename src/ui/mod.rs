@@ -13,6 +13,28 @@ mod hud;
 
 pub use hud::HudPlugin;
 
+/// Composites all HUD and menu nodes after the world and first-person arm.
+pub struct UiCameraPlugin;
+
+impl Plugin for UiCameraPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(Startup, spawn_ui_camera);
+    }
+}
+
+fn spawn_ui_camera(mut commands: Commands) {
+    commands.spawn((
+        Name::new("UI camera"),
+        Camera2d,
+        Camera {
+            order: 2,
+            clear_color: ClearColorConfig::None,
+            ..default()
+        },
+        bevy::ui::IsDefaultUiCamera,
+    ));
+}
+
 pub struct MenuPlugin;
 
 impl Plugin for MenuPlugin {

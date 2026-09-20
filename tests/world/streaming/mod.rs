@@ -7,12 +7,12 @@ use game::world::{
 fn streaming_radius_is_centered_on_the_player_chunk() {
     let center = ChunkPos { x: -2, z: 3 };
     let positions = positions_in_radius(center, LOAD_RADIUS);
-    assert_eq!(positions.len(), 25);
+    assert_eq!(positions.len(), 81);
     assert!(positions.contains(&center));
-    assert!(positions.contains(&ChunkPos { x: -4, z: 1 }));
-    assert!(positions.contains(&ChunkPos { x: 0, z: 5 }));
+    assert!(positions.contains(&ChunkPos { x: -6, z: -1 }));
+    assert!(positions.contains(&ChunkPos { x: 2, z: 7 }));
     assert!(!within_radius(
-        ChunkPos { x: 2, z: 3 },
+        ChunkPos { x: 4, z: 3 },
         center,
         UNLOAD_RADIUS
     ));

@@ -4,15 +4,23 @@ use bevy::{
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
 
+use crate::app::state::AppScreen;
 use crate::world::chunk::{ChunkPos, WorldChunks};
 
 pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, capture_mouse)
-            .add_systems(PostStartup, spawn_player)
-            .add_systems(Update, (update_mouse_capture, move_player).chain());
+        app.add_systems(PostStartup, spawn_player)
+            .add_systems(OnEnter(AppScreen::Playing), capture_mouse)
+            .add_systems(OnEnter(AppScreen::Menu), release_mouse)
+            .add_systems(OnEnter(AppScreen::Settings), release_mouse)
+            .add_systems(
+                Update,
+                (update_mouse_capture, move_player)
+                    .chain()
+                    .run_if(in_state(AppScreen::Playing)),
+            );
     }
 }
 
@@ -50,16 +58,28 @@ fn capture_mouse(mut windows: Query<(&Window, &mut CursorOptions), With<PrimaryW
     }
 }
 
+fn release_mouse(mut windows: Query<&mut CursorOptions, With<PrimaryWindow>>) {
+    if let Ok(mut cursor) = windows.single_mut() {
+        cursor.grab_mode = CursorGrabMode::None;
+        cursor.visible = true;
+    }
+}
+
 fn update_mouse_capture(
     keys: Res<ButtonInput<KeyCode>>,
     mouse_buttons: Res<ButtonInput<MouseButton>>,
     mut windows: Query<(&Window, &mut CursorOptions), With<PrimaryWindow>>,
+    mut next_screen: ResMut<NextState<AppScreen>>,
 ) {
     let Ok((window, mut cursor)) = windows.single_mut() else {
         return;
     };
 
-    if !window.focused || keys.just_pressed(KeyCode::Escape) {
+    if keys.just_pressed(KeyCode::Escape) {
+        next_screen.set(AppScreen::Menu);
+        cursor.grab_mode = CursorGrabMode::None;
+        cursor.visible = true;
+    } else if !window.focused {
         cursor.grab_mode = CursorGrabMode::None;
         cursor.visible = true;
     } else if mouse_buttons.just_pressed(MouseButton::Left) {

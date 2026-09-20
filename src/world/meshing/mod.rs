@@ -89,7 +89,7 @@ const FACES: [Face; 6] = [
 
 /// Emit only faces touching air. A missing neighbor is treated as air for this isolated chunk.
 pub fn mesh_chunk(chunk: &Chunk, skylight: &Skylight) -> Mesh {
-    mesh_chunk_inner(chunk, skylight, None)
+    mesh_chunk_inner(chunk, skylight, None, true)
 }
 
 pub(crate) fn mesh_chunk_with_biomes(
@@ -97,17 +97,19 @@ pub(crate) fn mesh_chunk_with_biomes(
     skylight: &Skylight,
     biomes: &BiomeMap,
     grass_colors: &GrassColors,
+    old_lighting: bool,
 ) -> Mesh {
     let grass_tints: [[f32; 3]; CHUNK_SIZE * CHUNK_SIZE] = std::array::from_fn(|index| {
         grass_colors.sample(biomes.get(index % CHUNK_SIZE, index / CHUNK_SIZE))
     });
-    mesh_chunk_inner(chunk, skylight, Some(&grass_tints))
+    mesh_chunk_inner(chunk, skylight, Some(&grass_tints), old_lighting)
 }
 
 fn mesh_chunk_inner(
     chunk: &Chunk,
     skylight: &Skylight,
     grass_tints: Option<&[[f32; 3]; CHUNK_SIZE * CHUNK_SIZE]>,
+    old_lighting: bool,
 ) -> Mesh {
     let mut positions = Vec::<[f32; 3]>::new();
     let mut normals = Vec::<[f32; 3]>::new();
@@ -138,7 +140,11 @@ fn mesh_chunk_inner(
                         .then(|| skylight.get(nx as usize, ny as usize, nz as usize))
                         .flatten()
                         .unwrap_or(15);
-                    let brightness = (0.35 + 0.65 * level as f32 / 15.0) * face.shade;
+                    let brightness = if old_lighting {
+                        (0.35 + 0.65 * level as f32 / 15.0) * face.shade
+                    } else {
+                        1.0
+                    };
                     let base = if block == BlockId::Grass && face_index == 0 {
                         grass_tints.map_or([0.55, 0.8, 0.4], |tints| tints[z * CHUNK_SIZE + x])
                     } else {

@@ -1,12 +1,14 @@
 //! Break and place blocks along the camera ray.
 //!
-//! Inventory is not implemented yet, so every placement is stone.
+//! Inventory is not implemented yet, so every placement is stone and mining
+//! uses the empty-hand strength from Beta.
 
 use bevy::prelude::*;
 use bevy::window::CursorGrabMode;
 use bevy::window::CursorOptions;
 use bevy::window::PrimaryWindow;
 
+use crate::entity::CollisionState;
 use crate::entity::EntitySize;
 use crate::physics::Aabb;
 use crate::physics::BLOCK_REACH;
@@ -23,38 +25,45 @@ use crate::world::persistence::WorldPersistence;
 use crate::world::streaming::WorldStreaming;
 
 use super::Player;
+use super::mining::MiningState;
 
-/// Held-button repeat, matching Beta's `ticksPerSecond / 4` (~4 actions/sec).
+/// Held-button place repeat, matching Beta's `ticksPerSecond / 4`.
 const INTERACT_REPEAT_SECS: f32 = 0.25;
+const TICK_SECS: f32 = 1.0 / 20.0;
+const MAX_TICKS_PER_FRAME: u32 = 4;
 
 /// The only block that can be placed until inventory exists.
 pub const PLACED_BLOCK: BlockId = BlockId::Stone;
 
 #[derive(Default)]
 pub(super) struct BlockInteractState {
-    cooldown: f32,
+    place_cooldown: f32,
+    tick_accum: f32,
+    mining: MiningState,
 }
 
 pub(super) fn interact_blocks(
     time: Res<Time>,
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<(&Window, &CursorOptions), With<PrimaryWindow>>,
-    player: Query<(&Transform, &EntitySize), With<Player>>,
+    player: Query<(&Transform, &EntitySize, &CollisionState), With<Player>>,
     mut chunks: ResMut<WorldChunks>,
     mut streaming: Option<ResMut<WorldStreaming>>,
     mut persistence: Option<ResMut<WorldPersistence>>,
     mut state: Local<BlockInteractState>,
 ) {
-    state.cooldown = (state.cooldown - time.delta_secs()).max(0.0);
+    state.place_cooldown = (state.place_cooldown - time.delta_secs()).max(0.0);
 
     let locked = windows
         .single()
         .is_ok_and(|(window, cursor)| window.focused && cursor.grab_mode == CursorGrabMode::Locked);
     if !locked {
+        state.mining.reset();
+        state.tick_accum = 0.0;
         return;
     }
 
-    let Ok((transform, size)) = player.single() else {
+    let Ok((transform, size, collision)) = player.single() else {
         return;
     };
 
@@ -62,45 +71,63 @@ pub(super) fn interact_blocks(
     let right_click = mouse.just_pressed(MouseButton::Right);
     let left_held = mouse.pressed(MouseButton::Left);
     let right_held = mouse.pressed(MouseButton::Right);
-    if !left_click && !right_click && !left_held && !right_held {
-        return;
+
+    if !left_held {
+        state.mining.reset();
+        state.tick_accum = 0.0;
     }
 
-    let can_repeat = state.cooldown <= 0.0;
-    let break_now = left_click || (left_held && can_repeat && !right_click);
-    let place_now = !break_now && (right_click || (right_held && can_repeat));
-    if !break_now && !place_now {
-        return;
-    }
-
-    let Some(hit) = raycast_blocks(
+    let hit = raycast_blocks(
         &chunks,
         transform.translation,
         *transform.forward(),
         BLOCK_REACH,
-    ) else {
-        if left_click || right_click {
-            state.cooldown = INTERACT_REPEAT_SECS;
-        }
-        return;
-    };
+    );
+    let in_water = chunks.block_at(
+        transform.translation.x.floor() as i32,
+        transform.translation.y.floor() as i32,
+        transform.translation.z.floor() as i32,
+    ) == Some(BlockId::Water);
+    let on_ground = collision.on_ground;
 
-    let changed = if break_now {
-        break_block(&mut chunks, hit)
-    } else {
-        place_block(&mut chunks, hit, size.aabb(transform.translation))
-    };
-    state.cooldown = INTERACT_REPEAT_SECS;
-    if !changed {
-        return;
+    if left_held {
+        if left_click && let Some(hit) = hit {
+            if let Some(broken) = state.mining.try_instant(hit, on_ground, in_water) {
+                apply_break(&mut chunks, &mut streaming, &mut persistence, broken);
+            }
+        }
+        state.tick_accum += time.delta_secs();
+        let mut ticks = 0;
+        while state.tick_accum >= TICK_SECS && ticks < MAX_TICKS_PER_FRAME {
+            state.tick_accum -= TICK_SECS;
+            ticks += 1;
+            if let Some(broken) = state.mining.tick(hit, on_ground, in_water) {
+                apply_break(&mut chunks, &mut streaming, &mut persistence, broken);
+            }
+        }
     }
 
-    let (x, _, z) = if break_now {
-        (hit.x, hit.y, hit.z)
-    } else {
-        hit.face.neighbor(hit.x, hit.y, hit.z)
-    };
-    notify_edit(&mut streaming, &mut persistence, x, z);
+    let can_place = right_click || (right_held && state.place_cooldown <= 0.0 && !left_held);
+    if can_place {
+        state.place_cooldown = INTERACT_REPEAT_SECS;
+        if let Some(hit) = hit
+            && place_block(&mut chunks, hit, size.aabb(transform.translation))
+        {
+            let (x, _, z) = hit.face.neighbor(hit.x, hit.y, hit.z);
+            notify_edit(&mut streaming, &mut persistence, x, z);
+        }
+    }
+}
+
+fn apply_break(
+    chunks: &mut WorldChunks,
+    streaming: &mut Option<ResMut<WorldStreaming>>,
+    persistence: &mut Option<ResMut<WorldPersistence>>,
+    hit: BlockHit,
+) {
+    if break_block(chunks, hit) {
+        notify_edit(streaming, persistence, hit.x, hit.z);
+    }
 }
 
 /// Remove a targeted block. Bedrock and missing chunks are left unchanged.

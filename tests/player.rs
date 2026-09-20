@@ -5,11 +5,16 @@ use game::physics::BlockFace;
 use game::physics::BlockHit;
 use game::player::HeartFill;
 use game::player::MAX_PLAYER_HEALTH;
+use game::player::MiningState;
 use game::player::PLACED_BLOCK;
 use game::player::PlayerHealth;
 use game::player::break_block;
+use game::player::hand_ticks_to_break;
 use game::player::place_block;
 use game::world::block::block::BlockId;
+use game::world::block::properties::hand_mine_progress_per_tick;
+use game::world::block::properties::hardness;
+use game::world::block::properties::harvestable_by_hand;
 use game::world::chunk::CHUNK_SIZE;
 use game::world::chunk::Chunk;
 use game::world::chunk::ChunkPos;
@@ -161,4 +166,77 @@ fn placing_replaces_water_and_not_solid_blocks() {
         player
     ));
     assert_eq!(chunks.block_at(9, 64, 8), Some(BlockId::Dirt));
+}
+
+#[test]
+fn usual_blocks_use_beta_hand_break_times() {
+    let grounded = |block| hand_ticks_to_break(block, true, false);
+    assert_eq!(grounded(BlockId::Dirt), Some(15));
+    assert_eq!(grounded(BlockId::Grass), Some(18));
+    assert_eq!(grounded(BlockId::Sand), Some(15));
+    assert_eq!(grounded(BlockId::Gravel), Some(18));
+    assert_eq!(grounded(BlockId::Leaves), Some(6));
+    assert_eq!(grounded(BlockId::Wood), Some(60));
+    assert_eq!(grounded(BlockId::WoodenPlanks), Some(60));
+    assert_eq!(grounded(BlockId::Stone), Some(150));
+    assert_eq!(grounded(BlockId::Cobblestone), Some(200));
+    assert_eq!(grounded(BlockId::CoalOre), Some(300));
+    assert_eq!(grounded(BlockId::Netherrack), Some(40));
+    assert_eq!(grounded(BlockId::Obsidian), Some(1000));
+    assert_eq!(grounded(BlockId::Tnt), Some(1));
+    assert_eq!(grounded(BlockId::Bedrock), None);
+}
+
+#[test]
+fn airborne_and_water_only_slow_blocks_harvestable_by_hand() {
+    assert!(harvestable_by_hand(BlockId::Dirt));
+    assert!(!harvestable_by_hand(BlockId::Stone));
+    assert_eq!(hand_ticks_to_break(BlockId::Dirt, false, false), Some(75));
+    assert_eq!(hand_ticks_to_break(BlockId::Dirt, true, true), Some(75));
+    assert_eq!(hand_ticks_to_break(BlockId::Stone, false, true), Some(150));
+}
+
+#[test]
+fn punching_accumulates_until_the_block_breaks() {
+    let dirt = hit(8, 64, 8, BlockFace::Up, BlockId::Dirt);
+    let mut mining = MiningState::default();
+    assert!(mining.tick(Some(dirt), true, false).is_none());
+    let mut ticks = 0;
+    let broken = loop {
+        ticks += 1;
+        assert!(ticks <= 20, "dirt should break within 15 damaging ticks");
+        if mining.tick(Some(dirt), true, false).is_some() {
+            break ticks;
+        }
+    };
+    assert_eq!(broken, 15);
+    assert_eq!(mining.damage(), 0.0);
+}
+
+#[test]
+fn hardness_zero_breaks_on_the_click() {
+    let tnt = hit(4, 10, 4, BlockFace::North, BlockId::Tnt);
+    let mut mining = MiningState::default();
+    assert!(mining.try_instant(tnt, true, false).is_some());
+    assert!(
+        mining
+            .try_instant(hit(4, 10, 4, BlockFace::North, BlockId::Dirt), true, false)
+            .is_none()
+    );
+}
+
+#[test]
+fn looking_at_a_new_block_resets_mining_progress() {
+    let dirt = hit(8, 64, 8, BlockFace::Up, BlockId::Dirt);
+    let grass = hit(8, 65, 8, BlockFace::Up, BlockId::Grass);
+    let mut mining = MiningState::default();
+    mining.tick(Some(dirt), true, false);
+    for _ in 0..10 {
+        mining.tick(Some(dirt), true, false);
+    }
+    assert!(mining.damage() > 0.0);
+    mining.tick(Some(grass), true, false);
+    assert_eq!(mining.damage(), 0.0);
+    assert!((hardness(BlockId::Grass) - 0.6).abs() < f32::EPSILON);
+    assert!(hand_mine_progress_per_tick(BlockId::Dirt, true, false) > 0.0);
 }

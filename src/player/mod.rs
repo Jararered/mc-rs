@@ -14,10 +14,13 @@ use crate::entity::StepHeight;
 use crate::entity::Velocity;
 use crate::inventory::Hotbar;
 mod interaction;
+mod mining;
 
 pub use interaction::PLACED_BLOCK;
 pub use interaction::break_block;
 pub use interaction::place_block;
+pub use mining::MiningState;
+pub use mining::hand_ticks_to_break;
 
 use crate::physics::PhysicsSet;
 use crate::world::chunk::ChunkPos;

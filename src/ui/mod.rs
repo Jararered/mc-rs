@@ -90,7 +90,7 @@ fn spawn_root(commands: &mut Commands, textures: &MenuTextures) -> Entity {
                 .with_mode(NodeImageMode::Tiled {
                     tile_x: true,
                     tile_y: true,
-                    stretch_value: 1.0,
+                    stretch_value: 3.0,
                 }),
             BackgroundColor(Color::srgb(0.18, 0.15, 0.13)),
         ))

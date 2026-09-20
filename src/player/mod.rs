@@ -128,10 +128,10 @@ fn move_player(
     if keys.pressed(KeyCode::KeyA) {
         direction -= *transform.right();
     }
-    if keys.pressed(KeyCode::KeyE) {
+    if keys.pressed(KeyCode::Space) || keys.pressed(KeyCode::KeyE) {
         direction += Vec3::Y;
     }
-    if keys.pressed(KeyCode::KeyQ) {
+    if keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::KeyQ) {
         direction -= Vec3::Y;
     }
 

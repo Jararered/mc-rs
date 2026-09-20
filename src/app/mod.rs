@@ -1,5 +1,6 @@
 mod app;
 mod plugin;
+pub mod screenshot;
 pub mod settings;
 pub mod state;
 

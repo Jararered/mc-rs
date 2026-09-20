@@ -21,6 +21,15 @@ impl MiningState {
         self.damage
     }
 
+    pub fn target(&self) -> Option<(i32, i32, i32)> {
+        self.target
+    }
+
+    /// Destroy-stage tile 0–9 from current damage, or `None` when not mining.
+    pub fn destroy_stage(&self) -> Option<u8> {
+        destroy_stage(self.damage)
+    }
+
     pub fn reset(&mut self) {
         self.target = None;
         self.damage = 0.0;
@@ -85,6 +94,17 @@ impl MiningState {
         } else {
             None
         }
+    }
+}
+
+/// Atlas tile index along the bottom row of `terrain.png` for this damage.
+///
+/// Matches `240 + (int)(damagePartialTime * 10)` in `RenderGlobal.drawBlockBreaking`.
+pub fn destroy_stage(damage: f32) -> Option<u8> {
+    if damage <= 0.0 {
+        None
+    } else {
+        Some((damage * 10.0).min(9.0) as u8)
     }
 }
 

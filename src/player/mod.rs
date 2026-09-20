@@ -15,12 +15,17 @@ use crate::entity::Velocity;
 use crate::inventory::Hotbar;
 mod interaction;
 mod mining;
+mod overlay;
 
 pub use interaction::PLACED_BLOCK;
 pub use interaction::break_block;
 pub use interaction::place_block;
 pub use mining::MiningState;
+pub use mining::destroy_stage;
 pub use mining::hand_ticks_to_break;
+pub use overlay::BlockFocus;
+pub use overlay::destroy_overlay_mesh;
+pub use overlay::selection_outline_mesh;
 
 use crate::physics::PhysicsSet;
 use crate::world::chunk::ChunkPos;
@@ -46,6 +51,7 @@ pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
+        overlay::overlay_plugin(app);
         app.add_systems(PostStartup, spawn_player)
             .add_systems(OnEnter(AppScreen::Playing), capture_mouse)
             .add_systems(OnEnter(AppScreen::Menu), release_mouse)

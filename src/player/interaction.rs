@@ -26,6 +26,7 @@ use crate::world::streaming::WorldStreaming;
 
 use super::Player;
 use super::mining::MiningState;
+use super::overlay::BlockFocus;
 
 /// Held-button place repeat, matching Beta's `ticksPerSecond / 4`.
 const INTERACT_REPEAT_SECS: f32 = 0.25;
@@ -50,6 +51,7 @@ pub(super) fn interact_blocks(
     mut chunks: ResMut<WorldChunks>,
     mut streaming: Option<ResMut<WorldStreaming>>,
     mut persistence: Option<ResMut<WorldPersistence>>,
+    mut focus: ResMut<BlockFocus>,
     mut state: Local<BlockInteractState>,
 ) {
     state.place_cooldown = (state.place_cooldown - time.delta_secs()).max(0.0);
@@ -60,10 +62,12 @@ pub(super) fn interact_blocks(
     if !locked {
         state.mining.reset();
         state.tick_accum = 0.0;
+        *focus = BlockFocus::default();
         return;
     }
 
     let Ok((transform, size, collision)) = player.single() else {
+        *focus = BlockFocus::default();
         return;
     };
 
@@ -117,6 +121,9 @@ pub(super) fn interact_blocks(
             notify_edit(&mut streaming, &mut persistence, x, z);
         }
     }
+
+    focus.hit = hit;
+    focus.mining_damage = state.mining.damage();
 }
 
 fn apply_break(

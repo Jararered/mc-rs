@@ -1,16 +1,22 @@
+use bevy::mesh::VertexAttributeValues;
+use bevy::prelude::Mesh;
 use bevy::prelude::Vec3;
 use game::entity::EntitySize;
 use game::physics::Aabb;
 use game::physics::BlockFace;
 use game::physics::BlockHit;
+use game::player::BlockFocus;
 use game::player::HeartFill;
 use game::player::MAX_PLAYER_HEALTH;
 use game::player::MiningState;
 use game::player::PLACED_BLOCK;
 use game::player::PlayerHealth;
 use game::player::break_block;
+use game::player::destroy_overlay_mesh;
+use game::player::destroy_stage;
 use game::player::hand_ticks_to_break;
 use game::player::place_block;
+use game::player::selection_outline_mesh;
 use game::world::block::block::BlockId;
 use game::world::block::properties::hand_mine_progress_per_tick;
 use game::world::block::properties::hardness;
@@ -239,4 +245,69 @@ fn looking_at_a_new_block_resets_mining_progress() {
     assert_eq!(mining.damage(), 0.0);
     assert!((hardness(BlockId::Grass) - 0.6).abs() < f32::EPSILON);
     assert!(hand_mine_progress_per_tick(BlockId::Dirt, true, false) > 0.0);
+}
+
+#[test]
+fn destroy_stage_follows_beta_damage_partial_time() {
+    assert_eq!(destroy_stage(0.0), None);
+    assert_eq!(destroy_stage(0.05), Some(0));
+    assert_eq!(destroy_stage(0.15), Some(1));
+    assert_eq!(destroy_stage(0.95), Some(9));
+    assert_eq!(destroy_stage(1.0), Some(9));
+}
+
+#[test]
+fn mining_reset_clears_the_destroy_overlay_stage() {
+    let dirt = hit(8, 64, 8, BlockFace::Up, BlockId::Dirt);
+    let mut mining = MiningState::default();
+    mining.tick(Some(dirt), true, false);
+    for _ in 0..10 {
+        mining.tick(Some(dirt), true, false);
+    }
+    assert!(mining.destroy_stage().is_some());
+    mining.reset();
+    assert_eq!(mining.destroy_stage(), None);
+    assert_eq!(mining.damage(), 0.0);
+
+    let mut focus = BlockFocus {
+        hit: Some(dirt),
+        mining_damage: 0.4,
+    };
+    assert_eq!(focus.destroy_stage(), Some(4));
+    focus.mining_damage = 0.0;
+    assert_eq!(focus.destroy_stage(), None);
+}
+
+#[test]
+fn selection_outline_is_a_twelve_edge_wire_cube() {
+    let mesh = selection_outline_mesh();
+    assert_eq!(
+        mesh.primitive_topology(),
+        bevy::render::render_resource::PrimitiveTopology::LineList
+    );
+    assert_eq!(mesh.count_vertices(), 24);
+    assert_eq!(mesh.indices().unwrap().len(), 24);
+}
+
+#[test]
+fn destroy_overlay_samples_the_terrain_atlas_crack_tiles() {
+    let mesh = destroy_overlay_mesh(3);
+    assert_eq!(mesh.count_vertices(), 24);
+    let Some(VertexAttributeValues::Float32x2(uvs)) = mesh.attribute(Mesh::ATTRIBUTE_UV_0) else {
+        panic!("destroy overlay should have atlas UVs");
+    };
+    // Stage 3 is terrain.png tile (3, 15). Padding keeps UVs inside the tile.
+    let gutter = 2.0 / 320.0;
+    for uv in uvs {
+        assert!(
+            uv[0] >= 3.0 / 16.0 + gutter - 1e-5 && uv[0] <= 4.0 / 16.0 - gutter + 1e-5,
+            "destroy stage 3 U={:?} should stay in tile (3, 15)",
+            uv[0]
+        );
+        assert!(
+            uv[1] >= 15.0 / 16.0 + gutter - 1e-5 && uv[1] <= 1.0 - gutter + 1e-5,
+            "destroy stage 3 V={:?} should stay on the last atlas row",
+            uv[1]
+        );
+    }
 }

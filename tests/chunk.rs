@@ -158,6 +158,23 @@ fn grass_mesh_uses_separate_atlas_tiles_for_top_bottom_and_sides() {
 }
 
 #[test]
+fn fancy_grass_adds_the_transparent_biome_overlay_tile() {
+    let mut chunk = Chunk::new();
+    chunk.set(1, 1, 1, BlockId::Grass);
+    let meshes = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true, true);
+    let Some(VertexAttributeValues::Float32x2(uvs)) =
+        meshes.grass_overlay.attribute(Mesh::ATTRIBUTE_UV_0)
+    else {
+        panic!("chunk mesh should have atlas UVs");
+    };
+    assert_eq!(uvs.len(), 16);
+    assert!(
+        uvs.iter()
+            .all(|uv| (6.0 / 16.0..7.0 / 16.0).contains(&uv[0]))
+    );
+}
+
+#[test]
 fn block_face_uvs_stay_inside_the_padded_tile() {
     let mut chunk = Chunk::new();
     chunk.set(1, 1, 1, BlockId::Stone);

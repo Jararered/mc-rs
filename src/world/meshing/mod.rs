@@ -96,6 +96,7 @@ const FACES: [Face; 6] = [
 /// Opaque terrain, cutout leaves, and a separate translucent water surface.
 pub struct ChunkMeshes {
     pub opaque: Mesh,
+    pub grass_overlay: Mesh,
     pub cutout: Mesh,
     pub water: Mesh,
 }
@@ -142,6 +143,7 @@ pub(crate) fn mesh_chunk_with_biomes(
 }
 
 const FACE_TOP: usize = 0;
+const FACE_BOTTOM: usize = 1;
 /// Keep the animated Beta-blue texture visible instead of washing it out
 /// against the sky and lake bed through two stacked alpha layers.
 const WATER_ALPHA: f32 = 0.8;
@@ -171,11 +173,52 @@ impl MeshBuffers {
         fancy_graphics: bool,
         y_drop: f32,
     ) {
+        let uvs = face_uvs(block, face_index, fancy_graphics);
+        let corners = face
+            .corners
+            .map(|corner| [corner[0], corner[1] - y_drop, corner[2]]);
+        self.push_quad(x, y, z, face, corners, uvs, color, corner_ao);
+    }
+
+    /// Beta's fancy grass pass: the transparent overlay tile contains only
+    /// the hanging grass pixels, leaving the normal dirt side unmodified.
+    fn push_grass_overlay(
+        &mut self,
+        x: usize,
+        y: usize,
+        z: usize,
+        face: &Face,
+        face_index: usize,
+        color: [f32; 4],
+        corner_ao: [f32; 4],
+    ) {
+        let uvs = face_uvs_for_tile(6, 2, face_index);
+        let corners = face.corners.map(|corner| {
+            [
+                corner[0] + face.normal[0] * 0.001,
+                corner[1] + face.normal[1] * 0.001,
+                corner[2] + face.normal[2] * 0.001,
+            ]
+        });
+        self.push_quad(x, y, z, face, corners, uvs, color, corner_ao);
+    }
+
+    fn push_quad(
+        &mut self,
+        x: usize,
+        y: usize,
+        z: usize,
+        face: &Face,
+        corners: [[f32; 3]; 4],
+        uvs: [[f32; 2]; 4],
+        color: [f32; 4],
+        corner_ao: [f32; 4],
+    ) {
         let start = self.positions.len() as u32;
-        for (corner_index, corner) in face.corners.into_iter().enumerate() {
+        for (corner_index, corner) in corners.into_iter().enumerate() {
             self.positions.push([
                 x as f32 + corner[0],
-                y as f32 + corner[1] - y_drop,
+                y as f32 + corner[1],
                 z as f32 + corner[2],
             ]);
             self.normals.push(face.normal);
@@ -186,8 +229,7 @@ impl MeshBuffers {
                 color[3],
             ]);
         }
-        self.uvs
-            .extend_from_slice(&face_uvs(block, face_index, fancy_graphics));
+        self.uvs.extend_from_slice(&uvs);
         self.indices
             .extend_from_slice(&[start, start + 1, start + 2, start, start + 2, start + 3]);
     }
@@ -213,6 +255,7 @@ fn mesh_chunk_inner(
     fancy_graphics: bool,
 ) -> ChunkMeshes {
     let mut opaque = MeshBuffers::default();
+    let mut grass_overlay = MeshBuffers::default();
     let mut cutout = MeshBuffers::default();
     let mut water = MeshBuffers::default();
 
@@ -251,8 +294,14 @@ fn mesh_chunk_inner(
                     } else {
                         1.0
                     };
+                    let grass_side = block == BlockId::Grass
+                        && face_index != FACE_TOP
+                        && face_index != FACE_BOTTOM;
+                    let grass_tint = tints
+                        .map(|tints| tints.grass[z * CHUNK_SIZE + x])
+                        .unwrap_or([0.55, 0.8, 0.4]);
                     let base = if block == BlockId::Grass && face_index == FACE_TOP {
-                        tints.map_or([0.55, 0.8, 0.4], |tints| tints.grass[z * CHUNK_SIZE + x])
+                        grass_tint
                     } else {
                         block_tint(block, tints.map(|tints| tints.foliage[z * CHUNK_SIZE + x]))
                     };
@@ -280,18 +329,40 @@ fn mesh_chunk_inner(
                         0.0
                     };
                     let corner_ao = face_corner_ao(chunk, x, y, z, face);
+                    let side_color = if grass_side {
+                        [brightness, brightness, brightness, 1.0]
+                    } else {
+                        color
+                    };
                     buffers.push_face(
                         x,
                         y,
                         z,
                         face,
                         face_index,
-                        color,
+                        side_color,
                         corner_ao,
                         block,
                         fancy_graphics,
                         y_drop,
                     );
+                    if grass_side && fancy_graphics {
+                        let overlay_color = [
+                            grass_tint[0] * brightness,
+                            grass_tint[1] * brightness,
+                            grass_tint[2] * brightness,
+                            1.0,
+                        ];
+                        grass_overlay.push_grass_overlay(
+                            x,
+                            y,
+                            z,
+                            face,
+                            face_index,
+                            overlay_color,
+                            corner_ao,
+                        );
+                    }
                 }
             }
         }
@@ -299,6 +370,7 @@ fn mesh_chunk_inner(
 
     ChunkMeshes {
         opaque: opaque.into_mesh(),
+        grass_overlay: grass_overlay.into_mesh(),
         cutout: cutout.into_mesh(),
         water: water.into_mesh(),
     }
@@ -387,6 +459,10 @@ fn neighbor_hides_face(block: BlockId, neighbor: Option<BlockId>, fancy_graphics
 
 fn face_uvs(block: BlockId, face: usize, fancy_graphics: bool) -> [[f32; 2]; 4] {
     let (tile_x, tile_y) = block_tile(block, face, fancy_graphics);
+    face_uvs_for_tile(tile_x, tile_y, face)
+}
+
+fn face_uvs_for_tile(tile_x: u8, tile_y: u8, face: usize) -> [[f32; 2]; 4] {
     let (u0, v0, u1, v1) = atlas_tile_uvs(tile_x, tile_y);
 
     match face {

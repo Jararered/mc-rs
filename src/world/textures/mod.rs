@@ -53,6 +53,9 @@ impl Plugin for TerrainTexturePlugin {
 pub(crate) struct TerrainMaterial(pub Handle<StandardMaterial>);
 
 #[derive(Resource)]
+pub(crate) struct GrassOverlayMaterial(pub Handle<StandardMaterial>);
+
+#[derive(Resource)]
 pub(crate) struct CutoutMaterial(pub Handle<LeafCutoutMaterial>);
 
 #[derive(Resource)]
@@ -87,6 +90,12 @@ fn load_terrain_atlas(
         unlit: settings.old_lighting,
         ..default()
     });
+    let grass_overlay = materials.add(StandardMaterial {
+        perceptual_roughness: 1.0,
+        alpha_mode: AlphaMode::Mask(0.5),
+        unlit: settings.old_lighting,
+        ..default()
+    });
     let cutout = cutout_materials.add(LeafCutoutMaterial {
         base: StandardMaterial {
             perceptual_roughness: 1.0,
@@ -116,6 +125,7 @@ fn load_terrain_atlas(
     apply_water_quality(&mut water, settings.graphics);
     let water = materials.add(water);
     commands.insert_resource(TerrainMaterial(material));
+    commands.insert_resource(GrassOverlayMaterial(grass_overlay));
     commands.insert_resource(CutoutMaterial(cutout));
     commands.insert_resource(WaterMaterial(water));
     commands.insert_resource(PendingTerrainAtlas(image));
@@ -128,6 +138,7 @@ fn apply_terrain_atlas(
     pending: Option<Res<PendingTerrainAtlas>>,
     mut images: ResMut<Assets<Image>>,
     terrain_material: Res<TerrainMaterial>,
+    grass_overlay_material: Res<GrassOverlayMaterial>,
     cutout_material: Res<CutoutMaterial>,
     water_material: Res<WaterMaterial>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -145,6 +156,9 @@ fn apply_terrain_atlas(
     if let Some(mut material) = materials.get_mut(&terrain_material.0) {
         material.base_color_texture = Some(handle.clone());
     }
+    if let Some(mut material) = materials.get_mut(&grass_overlay_material.0) {
+        material.base_color_texture = Some(handle.clone());
+    }
     if let Some(mut material) = cutout_materials.get_mut(&cutout_material.0) {
         material.base.base_color_texture = Some(handle.clone());
     }
@@ -158,6 +172,7 @@ fn apply_terrain_atlas(
 fn apply_graphics_materials(
     settings: Res<GameSettings>,
     terrain_material: Res<TerrainMaterial>,
+    grass_overlay_material: Res<GrassOverlayMaterial>,
     cutout_material: Res<CutoutMaterial>,
     water_material: Res<WaterMaterial>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -167,6 +182,9 @@ fn apply_graphics_materials(
         return;
     }
     if let Some(mut material) = materials.get_mut(&terrain_material.0) {
+        material.unlit = settings.old_lighting;
+    }
+    if let Some(mut material) = materials.get_mut(&grass_overlay_material.0) {
         material.unlit = settings.old_lighting;
     }
     if let Some(mut material) = cutout_materials.get_mut(&cutout_material.0) {

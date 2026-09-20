@@ -27,6 +27,7 @@ use game::player::Player;
 use game::player::PlayerPlugin;
 use game::world::chunk::WorldChunks;
 use game::world::plugin::WorldPlugin;
+use game::world::textures::LeafCutoutMaterial;
 
 fn temp_settings_path(label: &str) -> PathBuf {
     let unique = SystemTime::now()
@@ -229,9 +230,10 @@ fn fancy_leaves_mask_does_not_apply_to_solid_terrain() {
         "solid terrain should stay opaque so atlas edges are not discarded"
     );
     assert!(
-        materials
+        app.world()
+            .resource::<Assets<LeafCutoutMaterial>>()
             .iter()
-            .any(|material| matches!(material.alpha_mode, AlphaMode::Mask(_))),
+            .any(|(_, material)| matches!(material.base.alpha_mode, AlphaMode::Mask(_))),
         "fancy leaves should use a separate cutout material"
     );
 }

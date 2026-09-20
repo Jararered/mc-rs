@@ -15,16 +15,21 @@ pub const ATLAS_TILE_PX: u32 = 16;
 pub const ATLAS_PAD_TEXELS: u32 = 2;
 
 mod biome_color;
+mod leaf_wiggle;
 
 pub use biome_color::FoliageColors;
 pub use biome_color::GrassColors;
 pub use biome_color::PALETTE_SIZE;
 pub use biome_color::palette_index;
+pub use leaf_wiggle::LeafCutoutMaterial;
+pub use leaf_wiggle::LeafWiggle;
+pub use leaf_wiggle::LeafWiggleSettings;
 
 pub struct TerrainTexturePlugin;
 
 impl Plugin for TerrainTexturePlugin {
     fn build(&self, app: &mut App) {
+        leaf_wiggle::plugin(app);
         app.init_resource::<GameSettings>()
             .add_systems(PreStartup, load_terrain_atlas)
             .add_systems(Update, (apply_terrain_atlas, apply_graphics_materials));
@@ -35,7 +40,7 @@ impl Plugin for TerrainTexturePlugin {
 pub(crate) struct TerrainMaterial(pub Handle<StandardMaterial>);
 
 #[derive(Resource)]
-pub(crate) struct CutoutMaterial(pub Handle<StandardMaterial>);
+pub(crate) struct CutoutMaterial(pub Handle<LeafCutoutMaterial>);
 
 #[derive(Resource)]
 pub(crate) struct WaterMaterial(pub Handle<StandardMaterial>);
@@ -54,6 +59,7 @@ fn load_terrain_atlas(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut cutout_materials: ResMut<Assets<LeafCutoutMaterial>>,
     settings: Res<GameSettings>,
 ) {
     let image = asset_server
@@ -67,12 +73,15 @@ fn load_terrain_atlas(
         alpha_mode: AlphaMode::Opaque,
         ..default()
     });
-    let cutout = materials.add(StandardMaterial {
-        perceptual_roughness: 1.0,
-        // Fancy leaf tiles have punched holes. Mask discards those texels
-        // without sorting the whole chunk as transparent.
-        alpha_mode: AlphaMode::Mask(0.5),
-        ..default()
+    let cutout = cutout_materials.add(LeafCutoutMaterial {
+        base: StandardMaterial {
+            perceptual_roughness: 1.0,
+            // Fancy leaf tiles have punched holes. Mask discards those texels
+            // without sorting the whole chunk as transparent.
+            alpha_mode: AlphaMode::Mask(0.5),
+            ..default()
+        },
+        extension: LeafWiggle::default(),
     });
     let mut water = StandardMaterial {
         double_sided: true,
@@ -97,6 +106,7 @@ fn apply_terrain_atlas(
     cutout_material: Res<CutoutMaterial>,
     water_material: Res<WaterMaterial>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut cutout_materials: ResMut<Assets<LeafCutoutMaterial>>,
 ) {
     let Some(pending) = pending else {
         return;
@@ -110,8 +120,8 @@ fn apply_terrain_atlas(
     if let Some(mut material) = materials.get_mut(&terrain_material.0) {
         material.base_color_texture = Some(handle.clone());
     }
-    if let Some(mut material) = materials.get_mut(&cutout_material.0) {
-        material.base_color_texture = Some(handle.clone());
+    if let Some(mut material) = cutout_materials.get_mut(&cutout_material.0) {
+        material.base.base_color_texture = Some(handle.clone());
     }
     if let Some(mut material) = materials.get_mut(&water_material.0) {
         material.base_color_texture = Some(handle);

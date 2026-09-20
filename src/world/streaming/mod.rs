@@ -24,6 +24,7 @@ use super::meshing::mesh_chunk_with_biomes;
 use super::textures::CutoutMaterial;
 use super::textures::FoliageColors;
 use super::textures::GrassColors;
+use super::textures::LeafCutoutMaterial;
 use super::textures::TerrainMaterial;
 use super::textures::WaterMaterial;
 
@@ -98,7 +99,7 @@ pub(crate) struct WorldStreaming {
     meshing: HashMap<ChunkPos, Task<(ChunkMeshes, Duration)>>,
     rendered: HashMap<ChunkPos, RenderedChunk>,
     material: Handle<StandardMaterial>,
-    cutout_material: Handle<StandardMaterial>,
+    cutout_material: Handle<LeafCutoutMaterial>,
     water_material: Handle<StandardMaterial>,
     old_lighting: bool,
     fancy_graphics: bool,
@@ -556,7 +557,7 @@ fn spawn_chunk(
     position: ChunkPos,
     layers: ChunkMeshes,
     material: &Handle<StandardMaterial>,
-    cutout_material: &Handle<StandardMaterial>,
+    cutout_material: &Handle<LeafCutoutMaterial>,
     water_material: &Handle<StandardMaterial>,
 ) -> RenderedChunk {
     let (x, z) = position.world_origin();
@@ -592,7 +593,7 @@ fn apply_chunk_meshes(
     rendered: &mut RenderedChunk,
     layers: ChunkMeshes,
     material: &Handle<StandardMaterial>,
-    cutout_material: &Handle<StandardMaterial>,
+    cutout_material: &Handle<LeafCutoutMaterial>,
     water_material: &Handle<StandardMaterial>,
 ) {
     apply_layer(
@@ -626,13 +627,13 @@ fn apply_chunk_meshes(
 
 /// Bevy 0.19's mesh allocator logs a use-after-free error if an empty mesh is
 /// spawned or uploaded. Skip those layers until they have faces.
-fn apply_layer(
+fn apply_layer<M: Material>(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     parent: Entity,
     layer: &mut Option<MeshLayer>,
     mesh: Mesh,
-    material: &Handle<StandardMaterial>,
+    material: &Handle<M>,
     name: &'static str,
 ) {
     let empty = mesh.count_vertices() == 0;

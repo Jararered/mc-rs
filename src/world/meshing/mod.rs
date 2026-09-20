@@ -314,10 +314,7 @@ fn mesh_chunk_inner(
                         continue;
                     }
 
-                    let level = (nx >= 0 && ny >= 0 && nz >= 0)
-                        .then(|| skylight.get(nx as usize, ny as usize, nz as usize))
-                        .flatten()
-                        .unwrap_or(15);
+                    let level = skylight.get_extended(nx, ny, nz);
                     let brightness = if old_lighting {
                         beta_brightness(level) * face.shade
                     } else {
@@ -443,17 +440,7 @@ fn face_corner_light(
                     y as i32 + offset[1],
                     z as i32 + offset[2],
                 ];
-                let level = if position.iter().any(|&coordinate| coordinate < 0) {
-                    15
-                } else {
-                    skylight
-                        .get(
-                            position[0] as usize,
-                            position[1] as usize,
-                            position[2] as usize,
-                        )
-                        .unwrap_or(15)
-                };
+                let level = skylight.get_extended(position[0], position[1], position[2]);
                 beta_brightness(level)
             })
             .sum();

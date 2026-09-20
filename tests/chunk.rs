@@ -297,6 +297,18 @@ fn skylight_propagates_sideways_under_an_overhang() {
 }
 
 #[test]
+fn chunk_border_light_uses_loaded_neighbor_values() {
+    let center = Chunk::new();
+    let mut west = Chunk::new();
+    west.set(CHUNK_SIZE - 1, 2, 1, BlockId::Stone);
+
+    let isolated = Skylight::from_chunk(&center);
+    let connected = Skylight::from_chunk_with_neighbors(&center, Some(&west), None, None, None);
+    assert_eq!(isolated.get_extended(-1, 2, 1), 15);
+    assert_eq!(connected.get_extended(-1, 2, 1), 0);
+}
+
+#[test]
 fn beta_brightness_curve_keeps_caves_dark() {
     assert!((beta_brightness(15) - 1.0).abs() < f32::EPSILON);
     assert!((beta_brightness(0) - 0.05).abs() < f32::EPSILON);

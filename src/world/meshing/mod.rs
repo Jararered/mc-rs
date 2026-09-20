@@ -5,6 +5,7 @@ use bevy::prelude::Mesh;
 use bevy::render::render_resource::PrimitiveTopology;
 
 use crate::world::block::block::BlockId;
+use crate::world::block::properties::is_opaque_cube;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::Chunk;
@@ -164,19 +165,25 @@ impl MeshBuffers {
         face: &Face,
         face_index: usize,
         color: [f32; 4],
+        corner_ao: [f32; 4],
         block: BlockId,
         fancy_graphics: bool,
         y_drop: f32,
     ) {
         let start = self.positions.len() as u32;
-        for corner in face.corners {
+        for (corner_index, corner) in face.corners.into_iter().enumerate() {
             self.positions.push([
                 x as f32 + corner[0],
                 y as f32 + corner[1] - y_drop,
                 z as f32 + corner[2],
             ]);
             self.normals.push(face.normal);
-            self.colors.push(color);
+            self.colors.push([
+                color[0] * corner_ao[corner_index],
+                color[1] * corner_ao[corner_index],
+                color[2] * corner_ao[corner_index],
+                color[3],
+            ]);
         }
         self.uvs
             .extend_from_slice(&face_uvs(block, face_index, fancy_graphics));
@@ -271,6 +278,7 @@ fn mesh_chunk_inner(
                     } else {
                         0.0
                     };
+                    let corner_ao = face_corner_ao(chunk, x, y, z, face);
                     buffers.push_face(
                         x,
                         y,
@@ -278,6 +286,7 @@ fn mesh_chunk_inner(
                         face,
                         face_index,
                         color,
+                        corner_ao,
                         block,
                         fancy_graphics,
                         y_drop,
@@ -292,6 +301,60 @@ fn mesh_chunk_inner(
         cutout: cutout.into_mesh(),
         water: water.into_mesh(),
     }
+}
+
+/// Per-corner ambient occlusion matching the original voxel renderer. A
+/// corner is darkened by its two face-adjacent blocks and its diagonal block;
+/// when both side blocks are present the diagonal is treated as occluded too.
+fn face_corner_ao(chunk: &Chunk, x: usize, y: usize, z: usize, face: &Face) -> [f32; 4] {
+    let tangent_axes = match face.normal {
+        [0.0, 1.0, 0.0] | [0.0, -1.0, 0.0] => [0, 2],
+        [1.0, 0.0, 0.0] | [-1.0, 0.0, 0.0] => [1, 2],
+        _ => [0, 1],
+    };
+
+    std::array::from_fn(|corner_index| {
+        let corner = face.corners[corner_index];
+        let tangent_direction = [
+            if corner[tangent_axes[0]] < 0.5 { -1 } else { 1 },
+            if corner[tangent_axes[1]] < 0.5 { -1 } else { 1 },
+        ];
+        let mut side_a = face.neighbor;
+        let mut side_b = face.neighbor;
+        let mut diagonal = face.neighbor;
+        side_a[tangent_axes[0]] += tangent_direction[0];
+        side_b[tangent_axes[1]] += tangent_direction[1];
+        diagonal[tangent_axes[0]] += tangent_direction[0];
+        diagonal[tangent_axes[1]] += tangent_direction[1];
+
+        let side_a = opaque_at(chunk, x, y, z, side_a);
+        let side_b = opaque_at(chunk, x, y, z, side_b);
+        let diagonal = opaque_at(chunk, x, y, z, diagonal);
+        let level = if side_a && side_b {
+            3
+        } else {
+            side_a as u8 + side_b as u8 + diagonal as u8
+        };
+        1.0 - level as f32 * 0.2
+    })
+}
+
+fn opaque_at(chunk: &Chunk, x: usize, y: usize, z: usize, offset: [i32; 3]) -> bool {
+    let position = [
+        x as i32 + offset[0],
+        y as i32 + offset[1],
+        z as i32 + offset[2],
+    ];
+    if position.iter().any(|&coordinate| coordinate < 0) {
+        return false;
+    }
+    chunk
+        .get(
+            position[0] as usize,
+            position[1] as usize,
+            position[2] as usize,
+        )
+        .is_some_and(is_opaque_cube)
 }
 
 fn is_leaf(block: BlockId) -> bool {

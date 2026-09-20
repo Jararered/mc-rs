@@ -50,6 +50,37 @@ fn generated_chunk_has_solid_ground_and_sunlit_air() {
 }
 
 #[test]
+fn ambient_occlusion_darkens_enclosed_face_corners() {
+    let mut chunk = Chunk::new();
+    chunk.set(1, 1, 1, BlockId::Stone);
+    chunk.set(2, 2, 1, BlockId::Stone);
+    chunk.set(1, 2, 2, BlockId::Stone);
+    chunk.set(2, 2, 2, BlockId::Stone);
+
+    let meshes = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true, false);
+    let Some(VertexAttributeValues::Float32x4(colors)) =
+        meshes.opaque.attribute(Mesh::ATTRIBUTE_COLOR)
+    else {
+        panic!("terrain mesh should have vertex colors");
+    };
+    let top_colors = &colors[0..4];
+    assert!(
+        top_colors
+            .iter()
+            .map(|color| color[0])
+            .min_by(f32::total_cmp)
+            .zip(
+                top_colors
+                    .iter()
+                    .map(|color| color[0])
+                    .max_by(f32::total_cmp)
+            )
+            .is_some_and(|(min, max)| min < max),
+        "occluded top-face corners should not all have the same brightness"
+    );
+}
+
+#[test]
 fn terrain_generation_is_deterministic_at_a_chunk_position() {
     let position = ChunkPos { x: -2, z: 3 };
     let first = generate_chunk(position);

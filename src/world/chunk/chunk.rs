@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use bevy::prelude::Resource;
 
-use crate::world::block::block::BlockId;
+use crate::world::{block::block::BlockId, generation::GeneratedChunk};
 
 use super::ChunkPos;
 
@@ -45,15 +45,23 @@ impl Default for Chunk {
 
 #[derive(Resource, Default)]
 pub struct WorldChunks {
-    chunks: HashMap<ChunkPos, Chunk>,
+    chunks: HashMap<ChunkPos, GeneratedChunk>,
 }
 
 impl WorldChunks {
-    pub fn insert(&mut self, position: ChunkPos, chunk: Chunk) {
+    pub fn insert(&mut self, position: ChunkPos, chunk: GeneratedChunk) {
         self.chunks.insert(position, chunk);
     }
 
-    pub fn get(&self, position: ChunkPos) -> Option<&Chunk> {
+    pub fn get(&self, position: ChunkPos) -> Option<&GeneratedChunk> {
         self.chunks.get(&position)
+    }
+
+    pub fn contains(&self, position: ChunkPos) -> bool {
+        self.chunks.contains_key(&position)
+    }
+
+    pub fn remove(&mut self, position: ChunkPos) -> Option<GeneratedChunk> {
+        self.chunks.remove(&position)
     }
 }

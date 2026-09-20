@@ -46,3 +46,4 @@ The current repository only has the beginnings of `app`, `world/block`, `world/c
 - Add tests for behavior and invariants that matter, especially chunk indexing, coordinates, generation determinism, lighting, and block interaction. A standalone Bevy mesh test may use one entity for a block; that does not set the production world representation.
 - Keep changes focused and avoid filling planned modules with placeholders. Run `cargo fmt` and relevant checks or tests for code changes, and report any verification limits.
 - Preserve the user's in-progress changes. The existing source files and tests may be mid-implementation.
+- Treat `assets/` as local, reference-only Minecraft Beta content. Never commit files from it. Players will eventually supply their own texture ZIP; the current `terrain.png` loader is a development path, not a bundled asset.

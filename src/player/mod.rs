@@ -4,11 +4,14 @@ use bevy::{
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
 
+use crate::world::chunk::{ChunkPos, WorldChunks};
+
 pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, (spawn_player, capture_mouse))
+        app.add_systems(Startup, capture_mouse)
+            .add_systems(PostStartup, spawn_player)
             .add_systems(Update, (update_mouse_capture, move_player).chain());
     }
 }
@@ -20,12 +23,21 @@ const WALK_SPEED: f32 = 5.0;
 const SPRINT_SPEED: f32 = 15.0;
 const MOUSE_SENSITIVITY: f32 = 0.002;
 
-fn spawn_player(mut commands: Commands) {
+fn spawn_player(mut commands: Commands, chunks: Res<WorldChunks>) {
+    let (high, center) = chunks
+        .get(ChunkPos::ZERO)
+        .map_or((80.0, 64.0), |generated| {
+            (
+                generated.heightmap.max() as f32,
+                generated.heightmap.get(8, 8) as f32,
+            )
+        });
     commands.spawn((
         Name::new("Player"),
         Player,
         Camera3d::default(),
-        Transform::from_xyz(8.0, 14.0, 27.0).looking_at(Vec3::new(8.0, 5.0, 8.0), Vec3::Y),
+        Transform::from_xyz(8.0, high + 18.0, 40.0)
+            .looking_at(Vec3::new(8.0, center, 8.0), Vec3::Y),
     ));
 }
 

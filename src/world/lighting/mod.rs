@@ -14,10 +14,14 @@ impl Skylight {
 
         for z in 0..CHUNK_SIZE {
             for x in 0..CHUNK_SIZE {
-                let mut sunlight = 15;
+                let mut sunlight: u8 = 15;
                 for y in (0..CHUNK_HEIGHT).rev() {
-                    if chunk.get(x, y, z) != Some(BlockId::Air) {
-                        sunlight = 0;
+                    match chunk.get(x, y, z) {
+                        Some(BlockId::Water | BlockId::Ice) => {
+                            sunlight = sunlight.saturating_sub(1);
+                        }
+                        Some(BlockId::Air) => {}
+                        _ => sunlight = 0,
                     }
                     levels[Chunk::index(x, y, z)] = sunlight;
                 }

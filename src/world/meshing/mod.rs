@@ -7,6 +7,7 @@ use crate::world::{
     block::block::BlockId,
     chunk::{CHUNK_HEIGHT, CHUNK_SIZE, Chunk},
     lighting::Skylight,
+    textures::block_tile,
 };
 
 struct Face {
@@ -90,6 +91,7 @@ pub fn mesh_chunk(chunk: &Chunk, skylight: &Skylight) -> Mesh {
     let mut positions = Vec::<[f32; 3]>::new();
     let mut normals = Vec::<[f32; 3]>::new();
     let mut colors = Vec::<[f32; 4]>::new();
+    let mut uvs = Vec::<[f32; 2]>::new();
     let mut indices = Vec::<u32>::new();
 
     for y in 0..CHUNK_HEIGHT {
@@ -116,7 +118,7 @@ pub fn mesh_chunk(chunk: &Chunk, skylight: &Skylight) -> Mesh {
                         .flatten()
                         .unwrap_or(15);
                     let brightness = (0.35 + 0.65 * level as f32 / 15.0) * face.shade;
-                    let base = block_color(block, face_index == 0);
+                    let base = block_tint(block, face_index == 0);
                     let color = [
                         base[0] * brightness,
                         base[1] * brightness,
@@ -134,6 +136,7 @@ pub fn mesh_chunk(chunk: &Chunk, skylight: &Skylight) -> Mesh {
                         normals.push(face.normal);
                         colors.push(color);
                     }
+                    uvs.extend_from_slice(&face_uvs(block, face_index));
                     indices.extend_from_slice(&[
                         start,
                         start + 1,
@@ -154,14 +157,30 @@ pub fn mesh_chunk(chunk: &Chunk, skylight: &Skylight) -> Mesh {
     .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
     .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
     .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, colors)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
     .with_inserted_indices(Indices::U32(indices))
 }
 
-fn block_color(block: BlockId, top: bool) -> [f32; 3] {
+fn face_uvs(block: BlockId, face: usize) -> [[f32; 2]; 4] {
+    let (tile_x, tile_y) = block_tile(block, face);
+    // Stay half a texel inside the tile to keep adjacent atlas tiles from bleeding.
+    const INSET: f32 = 0.5 / 256.0;
+    let u0 = tile_x as f32 / 16.0 + INSET;
+    let v0 = tile_y as f32 / 16.0 + INSET;
+    let u1 = (tile_x as f32 + 1.0) / 16.0 - INSET;
+    let v1 = (tile_y as f32 + 1.0) / 16.0 - INSET;
+
+    match face {
+        0 | 1 => [[u0, v0], [u0, v1], [u1, v1], [u1, v0]],
+        2 | 5 => [[u0, v1], [u0, v0], [u1, v0], [u1, v1]],
+        _ => [[u0, v1], [u1, v1], [u1, v0], [u0, v0]],
+    }
+}
+
+fn block_tint(block: BlockId, top: bool) -> [f32; 3] {
     match block {
-        BlockId::Grass if top => [0.32, 0.68, 0.22],
-        BlockId::Grass | BlockId::Dirt => [0.48, 0.32, 0.18],
-        BlockId::Stone => [0.54, 0.54, 0.54],
-        _ => [0.8, 0.8, 0.8],
+        BlockId::Grass if top => [0.55, 0.8, 0.4],
+        BlockId::Water => [0.4, 0.6, 0.95],
+        _ => [1.0, 1.0, 1.0],
     }
 }

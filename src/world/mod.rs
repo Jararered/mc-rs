@@ -4,3 +4,5 @@ pub mod generation;
 pub mod lighting;
 pub mod meshing;
 pub mod plugin;
+pub mod streaming;
+pub mod textures;

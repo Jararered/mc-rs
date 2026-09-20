@@ -5,14 +5,13 @@ use bevy::diagnostic::DiagnosticPath;
 use bevy::diagnostic::DiagnosticsStore;
 use bevy::diagnostic::EntityCountDiagnosticsPlugin;
 use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
-use bevy::diagnostic::SystemInformationDiagnosticsPlugin;
 use bevy::prelude::*;
 
 use crate::world::chunk::WorldChunks;
+use crate::world::streaming::stream_chunks;
 use crate::world::streaming::StreamingPerf;
 use crate::world::streaming::TimingStats;
 use crate::world::streaming::WorldStreaming;
-use crate::world::streaming::stream_chunks;
 
 const PERF_INTERVAL_SECS: f32 = 10.0;
 
@@ -23,7 +22,6 @@ impl Plugin for PerfPlugin {
         app.add_plugins((
             FrameTimeDiagnosticsPlugin::default(),
             EntityCountDiagnosticsPlugin::default(),
-            SystemInformationDiagnosticsPlugin,
         ))
         .insert_resource(PerfTimer(Timer::from_seconds(
             PERF_INTERVAL_SECS,
@@ -57,26 +55,6 @@ fn print_perf_stats(
         .map(|value| format!("{value:.0}"))
         .unwrap_or_else(|| "n/a".into());
     let entities = fmt_diag(&diagnostics, &EntityCountDiagnosticsPlugin::ENTITY_COUNT, 0);
-    let process_cpu = fmt_diag(
-        &diagnostics,
-        &SystemInformationDiagnosticsPlugin::PROCESS_CPU_USAGE,
-        1,
-    );
-    let process_mem = fmt_diag(
-        &diagnostics,
-        &SystemInformationDiagnosticsPlugin::PROCESS_MEM_USAGE,
-        2,
-    );
-    let system_cpu = fmt_diag(
-        &diagnostics,
-        &SystemInformationDiagnosticsPlugin::SYSTEM_CPU_USAGE,
-        1,
-    );
-    let system_mem = fmt_diag(
-        &diagnostics,
-        &SystemInformationDiagnosticsPlugin::SYSTEM_MEM_USAGE,
-        1,
-    );
 
     let loaded_chunks = chunks.as_ref().map_or(0, |chunks| chunks.len());
     let (rendered, generating, meshing) = streaming.as_ref().map_or((0, 0, 0), |streaming| {
@@ -102,10 +80,6 @@ fn print_perf_stats(
          frame time      {frame_ms} ms\n  \
          frames          {frames}\n  \
          entities        {entities}\n  \
-         process cpu     {process_cpu} %\n  \
-         process mem     {process_mem} GiB\n  \
-         system cpu      {system_cpu} %\n  \
-         system mem      {system_mem} %\n  \
          chunks          {loaded_chunks} loaded, {generating} generating\n  \
          meshes          {rendered} rendered, {meshing} meshing\n  \
          chunk generate  {}\n  \

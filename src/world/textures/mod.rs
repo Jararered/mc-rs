@@ -25,6 +25,9 @@ impl Plugin for TerrainTexturePlugin {
 pub(crate) struct TerrainMaterial(pub Handle<StandardMaterial>);
 
 #[derive(Resource)]
+pub(crate) struct WaterMaterial(pub Handle<StandardMaterial>);
+
+#[derive(Resource)]
 struct PendingTerrainAtlas(Handle<Image>);
 
 fn load_terrain_atlas(
@@ -44,7 +47,15 @@ fn load_terrain_atlas(
         alpha_mode: leaf_alpha_mode(settings.fancy_graphics),
         ..default()
     });
+    let water = materials.add(StandardMaterial {
+        perceptual_roughness: 1.0,
+        alpha_mode: AlphaMode::Blend,
+        double_sided: true,
+        cull_mode: None,
+        ..default()
+    });
     commands.insert_resource(TerrainMaterial(material));
+    commands.insert_resource(WaterMaterial(water));
     commands.insert_resource(PendingTerrainAtlas(image));
     commands.insert_resource(GrassColors::load());
     commands.insert_resource(FoliageColors::load());
@@ -55,6 +66,7 @@ fn apply_terrain_atlas(
     pending: Option<Res<PendingTerrainAtlas>>,
     images: Res<Assets<Image>>,
     terrain_material: Res<TerrainMaterial>,
+    water_material: Res<WaterMaterial>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     let Some(pending) = pending else {
@@ -64,6 +76,9 @@ fn apply_terrain_atlas(
         return;
     }
     if let Some(mut material) = materials.get_mut(&terrain_material.0) {
+        material.base_color_texture = Some(pending.0.clone());
+    }
+    if let Some(mut material) = materials.get_mut(&water_material.0) {
         material.base_color_texture = Some(pending.0.clone());
     }
     commands.remove_resource::<PendingTerrainAtlas>();

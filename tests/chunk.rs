@@ -80,12 +80,13 @@ fn fancy_leaves_keep_internal_faces_and_use_the_cutout_tile() {
     let skylight = Skylight::from_chunk(&chunk);
 
     let fast = mesh_chunk_with_settings(&chunk, &skylight, true, false);
-    assert_eq!(fast.count_vertices(), 40);
+    assert_eq!(fast.opaque.count_vertices(), 40);
 
     let fancy = mesh_chunk_with_settings(&chunk, &skylight, true, true);
-    assert_eq!(fancy.count_vertices(), 48);
+    assert_eq!(fancy.opaque.count_vertices(), 48);
 
-    let Some(VertexAttributeValues::Float32x2(uvs)) = fancy.attribute(Mesh::ATTRIBUTE_UV_0) else {
+    let Some(VertexAttributeValues::Float32x2(uvs)) = fancy.opaque.attribute(Mesh::ATTRIBUTE_UV_0)
+    else {
         panic!("chunk mesh should have atlas UVs");
     };
     assert!(
@@ -114,6 +115,56 @@ fn grass_mesh_uses_separate_atlas_tiles_for_top_bottom_and_sides() {
         uvs[8..24]
             .iter()
             .all(|uv| (3.0 / 16.0..4.0 / 16.0).contains(&uv[0]))
+    );
+}
+
+#[test]
+fn water_renders_as_a_transparent_top_face() {
+    let mut chunk = Chunk::new();
+    chunk.set(1, 1, 1, BlockId::Water);
+    let skylight = Skylight::from_chunk(&chunk);
+    let meshes = mesh_chunk_with_settings(&chunk, &skylight, true, true);
+    assert_eq!(meshes.opaque.count_vertices(), 0);
+    assert_eq!(meshes.water.count_vertices(), 4);
+    assert_eq!(meshes.water.indices().unwrap().len(), 6);
+
+    let Some(VertexAttributeValues::Float32x4(colors)) =
+        meshes.water.attribute(Mesh::ATTRIBUTE_COLOR)
+    else {
+        panic!("water mesh should have vertex colors");
+    };
+    assert!(
+        colors.iter().all(|color| (color[3] - 0.55).abs() < 0.001),
+        "water vertices should be translucent"
+    );
+
+    let Some(VertexAttributeValues::Float32x3(positions)) =
+        meshes.water.attribute(Mesh::ATTRIBUTE_POSITION)
+    else {
+        panic!("water mesh should have positions");
+    };
+    let surface_y = 1.0 + 1.0 - 2.0 / 16.0;
+    assert!(
+        positions
+            .iter()
+            .all(|pos| (pos[1] - surface_y).abs() < 0.001),
+        "water surface should sit two texels below the block top"
+    );
+
+    chunk.set(1, 2, 1, BlockId::Water);
+    let stacked = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true, true);
+    assert_eq!(
+        stacked.water.count_vertices(),
+        4,
+        "only the surface of a water column should be meshed"
+    );
+
+    chunk.set(1, 0, 1, BlockId::Stone);
+    let with_bed = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true, true);
+    assert_eq!(
+        with_bed.opaque.count_vertices(),
+        24,
+        "water must not hide the lake bed"
     );
 }
 

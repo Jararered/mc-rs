@@ -19,10 +19,12 @@ use super::chunk::WorldChunks;
 use super::generation::GeneratedChunk;
 use super::generation::WorldGenerator;
 use super::lighting::Skylight;
+use super::meshing::ChunkMeshes;
 use super::meshing::mesh_chunk_with_biomes;
 use super::textures::FoliageColors;
 use super::textures::GrassColors;
 use super::textures::TerrainMaterial;
+use super::textures::WaterMaterial;
 
 pub const LOAD_RADIUS: i32 = 4;
 /// Chunks are generated one ring beyond the render distance. Decoration such as
@@ -90,9 +92,10 @@ pub(crate) struct WorldStreaming {
     /// Terrain and decoration jobs inside the generation radius.
     generating: HashMap<ChunkPos, Task<ChunkJob>>,
     /// Mesh jobs for already generated chunks inside the render distance.
-    meshing: HashMap<ChunkPos, Task<(Mesh, Duration)>>,
-    rendered: HashMap<ChunkPos, (Entity, Handle<Mesh>)>,
+    meshing: HashMap<ChunkPos, Task<(ChunkMeshes, Duration)>>,
+    rendered: HashMap<ChunkPos, RenderedChunk>,
     material: Handle<StandardMaterial>,
+    water_material: Handle<StandardMaterial>,
     old_lighting: bool,
     fancy_graphics: bool,
     remesh_queue: VecDeque<ChunkPos>,
@@ -100,6 +103,17 @@ pub(crate) struct WorldStreaming {
     desired_meshing: Vec<ChunkPos>,
     desired_center: Option<ChunkPos>,
     desired_radius: i32,
+}
+
+struct RenderedChunk {
+    entity: Entity,
+    opaque: Option<MeshLayer>,
+    water: Option<MeshLayer>,
+}
+
+struct MeshLayer {
+    entity: Entity,
+    mesh: Handle<Mesh>,
 }
 
 impl WorldStreaming {
@@ -120,6 +134,7 @@ pub(crate) fn setup_streaming(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     terrain_material: Res<TerrainMaterial>,
+    water_material: Res<WaterMaterial>,
     grass_colors: Res<GrassColors>,
     foliage_colors: Res<FoliageColors>,
     settings: Res<GameSettings>,
@@ -154,7 +169,7 @@ pub(crate) fn setup_streaming(
         }
     };
     let skylight = Skylight::from_chunk(&generated.chunk);
-    let mesh = meshes.add(mesh_chunk_with_biomes(
+    let layers = mesh_chunk_with_biomes(
         &generated.chunk,
         &skylight,
         &generated.biomes,
@@ -162,9 +177,17 @@ pub(crate) fn setup_streaming(
         &foliage_colors,
         settings.old_lighting,
         settings.fancy_graphics,
-    ));
+    );
     let material = terrain_material.0.clone();
-    let entity = spawn_chunk(&mut commands, ChunkPos::ZERO, &mesh, &material);
+    let water_material = water_material.0.clone();
+    let rendered = spawn_chunk(
+        &mut commands,
+        &mut meshes,
+        ChunkPos::ZERO,
+        layers,
+        &material,
+        &water_material,
+    );
 
     chunks.insert(ChunkPos::ZERO, generated);
     commands.insert_resource(WorldStreaming {
@@ -173,8 +196,9 @@ pub(crate) fn setup_streaming(
         foliage_colors: foliage_colors.clone(),
         generating: HashMap::new(),
         meshing: HashMap::new(),
-        rendered: HashMap::from([(ChunkPos::ZERO, (entity, mesh))]),
+        rendered: HashMap::from([(ChunkPos::ZERO, rendered)]),
         material,
+        water_material,
         old_lighting: settings.old_lighting,
         fancy_graphics: settings.fancy_graphics,
         remesh_queue: VecDeque::new(),
@@ -258,9 +282,8 @@ pub(crate) fn stream_chunks(
         .filter(|position| !within_radius(*position, center, unload_radius))
         .collect();
     for position in expired {
-        if let Some((entity, mesh)) = streaming.rendered.remove(&position) {
-            commands.entity(entity).despawn();
-            meshes.remove(mesh.id());
+        if let Some(rendered) = streaming.rendered.remove(&position) {
+            despawn_rendered_chunk(&mut commands, &mut meshes, rendered);
         }
     }
 
@@ -281,11 +304,10 @@ pub(crate) fn stream_chunks(
     // Rebuild one loaded mesh per frame when lighting or leaf graphics change.
     if let Some(position) = streaming.remesh_queue.pop_front()
         && let Some(generated) = chunks.get(position)
-        && let Some((_, handle)) = streaming.rendered.get(&position)
     {
         let start = Instant::now();
         let skylight = Skylight::from_chunk(&generated.chunk);
-        let mesh = mesh_chunk_with_biomes(
+        let layers = mesh_chunk_with_biomes(
             &generated.chunk,
             &skylight,
             &generated.biomes,
@@ -295,8 +317,17 @@ pub(crate) fn stream_chunks(
             streaming.fancy_graphics,
         );
         perf.mesh.record(start.elapsed());
-        if let Some(mut existing) = meshes.get_mut(handle.id()) {
-            *existing = mesh;
+        let material = streaming.material.clone();
+        let water_material = streaming.water_material.clone();
+        if let Some(rendered) = streaming.rendered.get_mut(&position) {
+            apply_chunk_meshes(
+                &mut commands,
+                &mut meshes,
+                rendered,
+                layers,
+                &material,
+                &water_material,
+            );
         }
     }
 
@@ -332,24 +363,33 @@ pub(crate) fn stream_chunks(
         .iter_mut()
         .filter_map(|(position, task)| check_ready(task).map(|job| (*position, job)))
         .collect();
-    for (position, (mesh, elapsed)) in meshed {
+    for (position, (layers, elapsed)) in meshed {
         streaming.meshing.remove(&position);
         perf.mesh.record(elapsed);
         if !within_radius(position, center, load_radius) {
             continue;
         }
-        let existing = streaming
-            .rendered
-            .get(&position)
-            .map(|(_, handle)| handle.id());
-        if let Some(id) = existing {
-            if let Some(mut existing) = meshes.get_mut(id) {
-                *existing = mesh;
-            }
+        let material = streaming.material.clone();
+        let water_material = streaming.water_material.clone();
+        if let Some(rendered) = streaming.rendered.get_mut(&position) {
+            apply_chunk_meshes(
+                &mut commands,
+                &mut meshes,
+                rendered,
+                layers,
+                &material,
+                &water_material,
+            );
         } else {
-            let handle = meshes.add(mesh);
-            let entity = spawn_chunk(&mut commands, position, &handle, &streaming.material);
-            streaming.rendered.insert(position, (entity, handle));
+            let rendered = spawn_chunk(
+                &mut commands,
+                &mut meshes,
+                position,
+                layers,
+                &streaming.material,
+                &streaming.water_material,
+            );
+            streaming.rendered.insert(position, rendered);
         }
     }
 
@@ -455,7 +495,7 @@ pub(crate) fn stream_chunks(
         let task = AsyncComputeTaskPool::get().spawn(async move {
             let start = Instant::now();
             let skylight = Skylight::from_chunk(&chunk);
-            let mesh = mesh_chunk_with_biomes(
+            let layers = mesh_chunk_with_biomes(
                 &chunk,
                 &skylight,
                 &biomes,
@@ -464,7 +504,7 @@ pub(crate) fn stream_chunks(
                 old_lighting,
                 fancy_graphics,
             );
-            (mesh, start.elapsed())
+            (layers, start.elapsed())
         });
         streaming.meshing.insert(position, task);
     }
@@ -480,20 +520,120 @@ fn sort_by_distance(positions: &mut [ChunkPos], center: ChunkPos) {
 
 fn spawn_chunk(
     commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
     position: ChunkPos,
-    mesh: &Handle<Mesh>,
+    layers: ChunkMeshes,
     material: &Handle<StandardMaterial>,
-) -> Entity {
+    water_material: &Handle<StandardMaterial>,
+) -> RenderedChunk {
     let (x, z) = position.world_origin();
-    commands
+    let entity = commands
         .spawn((
             Name::new(format!("Chunk {}, {}", position.x, position.z)),
             position,
-            Mesh3d(mesh.clone()),
-            MeshMaterial3d(material.clone()),
             Transform::from_xyz(x, 0.0, z),
+            Visibility::default(),
         ))
-        .id()
+        .id();
+    let mut rendered = RenderedChunk {
+        entity,
+        opaque: None,
+        water: None,
+    };
+    apply_chunk_meshes(
+        commands,
+        meshes,
+        &mut rendered,
+        layers,
+        material,
+        water_material,
+    );
+    rendered
+}
+
+fn apply_chunk_meshes(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    rendered: &mut RenderedChunk,
+    layers: ChunkMeshes,
+    material: &Handle<StandardMaterial>,
+    water_material: &Handle<StandardMaterial>,
+) {
+    apply_layer(
+        commands,
+        meshes,
+        rendered.entity,
+        &mut rendered.opaque,
+        layers.opaque,
+        material,
+        "Opaque",
+    );
+    apply_layer(
+        commands,
+        meshes,
+        rendered.entity,
+        &mut rendered.water,
+        layers.water,
+        water_material,
+        "Water",
+    );
+}
+
+/// Bevy 0.19's mesh allocator logs a use-after-free error if an empty mesh is
+/// spawned or uploaded. Skip those layers until they have faces.
+fn apply_layer(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    parent: Entity,
+    layer: &mut Option<MeshLayer>,
+    mesh: Mesh,
+    material: &Handle<StandardMaterial>,
+    name: &'static str,
+) {
+    let empty = mesh.count_vertices() == 0;
+    match (layer.take(), empty) {
+        (Some(existing), false) => {
+            if let Some(mut current) = meshes.get_mut(existing.mesh.id()) {
+                *current = mesh;
+            }
+            *layer = Some(existing);
+        }
+        (Some(existing), true) => {
+            commands.entity(existing.entity).despawn();
+            meshes.remove(existing.mesh.id());
+        }
+        (None, false) => {
+            let handle = meshes.add(mesh);
+            let entity = commands
+                .spawn((
+                    Name::new(name),
+                    Mesh3d(handle.clone()),
+                    MeshMaterial3d(material.clone()),
+                    Transform::default(),
+                    ChildOf(parent),
+                ))
+                .id();
+            *layer = Some(MeshLayer {
+                entity,
+                mesh: handle,
+            });
+        }
+        (None, true) => {}
+    }
+}
+
+fn despawn_rendered_chunk(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    rendered: RenderedChunk,
+) {
+    commands.entity(rendered.entity).despawn();
+    if let Some(layer) = rendered.opaque {
+        meshes.remove(layer.mesh.id());
+    }
+    if let Some(layer) = rendered.water {
+        meshes.remove(layer.mesh.id());
+    }
 }
 
 pub fn within_radius(position: ChunkPos, center: ChunkPos, radius: i32) -> bool {

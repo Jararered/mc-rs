@@ -172,7 +172,14 @@ pub(super) fn apply_surface(
                                     filler = BlockId::Sand;
                                 }
                             }
-                            chunk.set(x, y, z, top);
+                            // Beta only places the biome top (grass) at y >= 63.
+                            // Lower underwater surfaces get filler, so lake beds
+                            // are dirt (or sand/gravel) rather than grass.
+                            if y >= SEA_LEVEL - 1 {
+                                chunk.set(x, y, z, top);
+                            } else {
+                                chunk.set(x, y, z, filler);
+                            }
                         }
                     }
                     BlockId::Stone if remaining > 0 => {

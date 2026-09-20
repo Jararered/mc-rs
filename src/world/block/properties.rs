@@ -17,3 +17,11 @@ pub fn is_opaque_cube(block: BlockId) -> bool {
             | BlockId::BirchLeaves
     )
 }
+
+/// Whether an entity AABB should collide with this block.
+///
+/// Fluids have no collision box in Beta (`getCollisionBoundingBoxFromPool`
+/// returns null). Everything else currently in the registry is a full cube.
+pub fn blocks_movement(block: BlockId) -> bool {
+    !matches!(block, BlockId::Air | BlockId::Water)
+}

@@ -6,7 +6,13 @@ use bevy::window::CursorOptions;
 use bevy::window::PrimaryWindow;
 
 use crate::app::state::AppScreen;
+use crate::entity::CollisionState;
+use crate::entity::EntitySize;
+use crate::entity::Gravity;
+use crate::entity::StepHeight;
+use crate::entity::Velocity;
 use crate::inventory::Hotbar;
+use crate::physics::PhysicsSet;
 use crate::world::chunk::ChunkPos;
 use crate::world::chunk::WorldChunks;
 use crate::world::persistence::WorldPersistence;
@@ -36,14 +42,28 @@ impl Plugin for PlayerPlugin {
             .add_systems(OnEnter(AppScreen::Settings), release_mouse)
             .add_systems(
                 Update,
-                (update_mouse_capture, move_player, select_hotbar)
+                (
+                    update_mouse_capture,
+                    look_player,
+                    apply_player_input,
+                    select_hotbar,
+                )
                     .chain()
+                    .in_set(PhysicsSet::ApplyInput)
                     .run_if(in_state(AppScreen::Playing)),
             );
     }
 }
 
 #[derive(Component)]
+#[require(
+    Transform,
+    Velocity,
+    CollisionState,
+    Gravity,
+    EntitySize = EntitySize::PLAYER,
+    StepHeight = StepHeight::PLAYER
+)]
 pub struct Player;
 
 /// Current health in half-hearts. Each HUD heart is two points.
@@ -82,8 +102,9 @@ impl PlayerHealth {
     }
 }
 
-const WALK_SPEED: f32 = 5.0;
-const SPRINT_SPEED: f32 = 15.0;
+const WALK_SPEED: f32 = 4.317;
+const SPRINT_SPEED: f32 = 8.0;
+const JUMP_SPEED: f32 = 8.4;
 const MOUSE_SENSITIVITY: f32 = 0.002;
 
 fn spawn_player(
@@ -108,15 +129,11 @@ fn spawn_player(
 }
 
 fn default_spawn_transform(chunks: &WorldChunks) -> Transform {
-    let (high, center) = chunks
+    let surface = chunks
         .get(ChunkPos::ZERO)
-        .map_or((80.0, 64.0), |generated| {
-            (
-                generated.heightmap.max() as f32,
-                generated.heightmap.get(8, 8) as f32,
-            )
-        });
-    Transform::from_xyz(8.0, high + 18.0, 40.0).looking_at(Vec3::new(8.0, center, 8.0), Vec3::Y)
+        .map_or(64.0, |generated| generated.heightmap.get(8, 8) as f32);
+    let eye = surface + EntitySize::PLAYER.y_offset;
+    Transform::from_xyz(8.5, eye, 8.5).looking_at(Vec3::new(8.5, eye, 16.5), Vec3::Y)
 }
 
 fn capture_mouse(mut windows: Query<(&Window, &mut CursorOptions), With<PrimaryWindow>>) {
@@ -158,9 +175,7 @@ fn update_mouse_capture(
     }
 }
 
-fn move_player(
-    time: Res<Time>,
-    keys: Res<ButtonInput<KeyCode>>,
+fn look_player(
     mouse_motion: Res<AccumulatedMouseMotion>,
     windows: Query<(&Window, &CursorOptions), With<PrimaryWindow>>,
     mut player: Query<&mut Transform, With<Player>>,
@@ -183,33 +198,56 @@ fn move_player(
         std::f32::consts::FRAC_PI_2 - 0.01,
     );
     transform.rotation = Quat::from_euler(EulerRot::YXZ, yaw, pitch, 0.0);
+}
+
+fn apply_player_input(
+    keys: Res<ButtonInput<KeyCode>>,
+    windows: Query<(&Window, &CursorOptions), With<PrimaryWindow>>,
+    mut player: Query<(&Transform, &mut Velocity, &CollisionState), With<Player>>,
+) {
+    let Ok((transform, mut velocity, collision)) = player.single_mut() else {
+        return;
+    };
+
+    let locked = windows
+        .single()
+        .is_ok_and(|(window, cursor)| window.focused && cursor.grab_mode == CursorGrabMode::Locked);
 
     let mut direction = Vec3::ZERO;
-    if keys.pressed(KeyCode::KeyW) {
-        direction += *transform.forward();
-    }
-    if keys.pressed(KeyCode::KeyS) {
-        direction -= *transform.forward();
-    }
-    if keys.pressed(KeyCode::KeyD) {
-        direction += *transform.right();
-    }
-    if keys.pressed(KeyCode::KeyA) {
-        direction -= *transform.right();
-    }
-    if keys.pressed(KeyCode::Space) || keys.pressed(KeyCode::KeyE) {
-        direction += Vec3::Y;
-    }
-    if keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::KeyQ) {
-        direction -= Vec3::Y;
+    if locked {
+        let mut forward = *transform.forward();
+        forward.y = 0.0;
+        let forward = forward.normalize_or_zero();
+        let mut right = *transform.right();
+        right.y = 0.0;
+        let right = right.normalize_or_zero();
+
+        if keys.pressed(KeyCode::KeyW) {
+            direction += forward;
+        }
+        if keys.pressed(KeyCode::KeyS) {
+            direction -= forward;
+        }
+        if keys.pressed(KeyCode::KeyD) {
+            direction += right;
+        }
+        if keys.pressed(KeyCode::KeyA) {
+            direction -= right;
+        }
     }
 
-    let speed = if keys.pressed(KeyCode::ShiftLeft) {
+    let speed = if locked && keys.pressed(KeyCode::ShiftLeft) {
         SPRINT_SPEED
     } else {
         WALK_SPEED
     };
-    transform.translation += direction.normalize_or_zero() * speed * time.delta_secs();
+    let horizontal = direction.normalize_or_zero() * speed;
+    velocity.0.x = horizontal.x;
+    velocity.0.z = horizontal.z;
+
+    if locked && keys.pressed(KeyCode::Space) && collision.on_ground {
+        velocity.0.y = JUMP_SPEED;
+    }
 }
 
 fn select_hotbar(

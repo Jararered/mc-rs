@@ -103,4 +103,16 @@ impl WorldChunks {
     pub fn remove(&mut self, position: ChunkPos) -> Option<GeneratedChunk> {
         self.chunks.remove(&position)
     }
+
+    /// Block at a world-space integer position, if that chunk is loaded and `y`
+    /// is inside the world height.
+    pub fn block_at(&self, x: i32, y: i32, z: i32) -> Option<BlockId> {
+        if y < 0 || y >= CHUNK_HEIGHT as i32 {
+            return None;
+        }
+        let chunk = self.get(ChunkPos::from_block(x, z))?;
+        let local_x = x.rem_euclid(CHUNK_SIZE as i32) as usize;
+        let local_z = z.rem_euclid(CHUNK_SIZE as i32) as usize;
+        chunk.chunk.get(local_x, y as usize, local_z)
+    }
 }

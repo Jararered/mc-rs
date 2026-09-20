@@ -18,6 +18,13 @@ impl ChunkPos {
         }
     }
 
+    pub fn from_block(x: i32, z: i32) -> Self {
+        Self {
+            x: x.div_euclid(CHUNK_SIZE as i32),
+            z: z.div_euclid(CHUNK_SIZE as i32),
+        }
+    }
+
     pub fn world_origin(self) -> (f32, f32) {
         (
             (self.x * CHUNK_SIZE as i32) as f32,

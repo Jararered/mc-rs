@@ -5,7 +5,7 @@ use bevy::{
 
 mod grass_color;
 
-pub(crate) use grass_color::GrassColors;
+pub use grass_color::{GrassColors, PALETTE_SIZE, palette_index};
 
 pub struct TerrainTexturePlugin;
 

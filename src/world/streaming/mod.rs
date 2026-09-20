@@ -15,8 +15,8 @@ use super::{
     textures::{GrassColors, TerrainMaterial},
 };
 
-const LOAD_RADIUS: i32 = 2;
-const UNLOAD_RADIUS: i32 = 3;
+pub const LOAD_RADIUS: i32 = 2;
+pub const UNLOAD_RADIUS: i32 = 3;
 const MAX_IN_FLIGHT: usize = 2;
 
 #[derive(Resource)]
@@ -157,12 +157,12 @@ fn spawn_chunk(
         .id()
 }
 
-fn within_radius(position: ChunkPos, center: ChunkPos, radius: i32) -> bool {
+pub fn within_radius(position: ChunkPos, center: ChunkPos, radius: i32) -> bool {
     (i64::from(position.x) - i64::from(center.x)).abs() <= i64::from(radius)
         && (i64::from(position.z) - i64::from(center.z)).abs() <= i64::from(radius)
 }
 
-fn positions_in_radius(center: ChunkPos, radius: i32) -> Vec<ChunkPos> {
+pub fn positions_in_radius(center: ChunkPos, radius: i32) -> Vec<ChunkPos> {
     let mut positions = Vec::with_capacity(((radius * 2 + 1) * (radius * 2 + 1)) as usize);
     for z in -radius..=radius {
         for x in -radius..=radius {
@@ -173,24 +173,4 @@ fn positions_in_radius(center: ChunkPos, radius: i32) -> Vec<ChunkPos> {
         }
     }
     positions
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn streaming_radius_is_centered_on_the_player_chunk() {
-        let center = ChunkPos { x: -2, z: 3 };
-        let positions = positions_in_radius(center, LOAD_RADIUS);
-        assert_eq!(positions.len(), 25);
-        assert!(positions.contains(&center));
-        assert!(positions.contains(&ChunkPos { x: -4, z: 1 }));
-        assert!(positions.contains(&ChunkPos { x: 0, z: 5 }));
-        assert!(!within_radius(
-            ChunkPos { x: 2, z: 3 },
-            center,
-            UNLOAD_RADIUS
-        ));
-    }
 }

@@ -8,10 +8,10 @@ use bevy::{
 
 use crate::world::generation::Climate;
 
-const PALETTE_SIZE: usize = 256;
+pub const PALETTE_SIZE: usize = 256;
 
 #[derive(Clone, Resource, Default)]
-pub(crate) struct GrassColors {
+pub struct GrassColors {
     rgba: Option<Arc<[u8]>>,
 }
 
@@ -46,7 +46,15 @@ impl GrassColors {
         }
     }
 
-    pub(crate) fn sample(&self, climate: Climate) -> [f32; 3] {
+    /// Build a palette from raw RGBA bytes, primarily for tests and future
+    /// texture-pack loading paths.
+    pub fn from_rgba(rgba: Vec<u8>) -> Self {
+        Self {
+            rgba: Some(rgba.into()),
+        }
+    }
+
+    pub fn sample(&self, climate: Climate) -> [f32; 3] {
         let Some(rgba) = &self.rgba else {
             return [0.55, 0.8, 0.4];
         };
@@ -56,47 +64,10 @@ impl GrassColors {
     }
 }
 
-fn palette_index(temperature: f64, humidity: f64) -> usize {
+pub fn palette_index(temperature: f64, humidity: f64) -> usize {
     let temperature = temperature.clamp(0.0, 1.0);
     let humidity = humidity.clamp(0.0, 1.0);
     let x = ((1.0 - temperature) * 255.0) as usize;
     let y = ((1.0 - temperature * humidity) * 255.0) as usize;
     y * PALETTE_SIZE + x
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::world::generation::Biome;
-
-    #[test]
-    fn grass_palette_uses_temperature_and_temperature_weighted_humidity() {
-        assert_eq!(palette_index(1.0, 1.0), 0);
-        assert_eq!(palette_index(0.0, 0.0), 255 * 256 + 255);
-        assert_eq!(palette_index(1.0, 0.0), 255 * 256);
-        assert_eq!(palette_index(0.5, 1.0), 127 * 256 + 127);
-    }
-
-    #[test]
-    fn grass_color_varies_with_climate_within_one_biome() {
-        let mut rgba = vec![0; PALETTE_SIZE * PALETTE_SIZE * 4];
-        rgba[0..4].copy_from_slice(&[0, 255, 0, 255]);
-        let dry = palette_index(1.0, 0.0) * 4;
-        rgba[dry..dry + 4].copy_from_slice(&[255, 0, 0, 255]);
-        let colors = GrassColors {
-            rgba: Some(rgba.into()),
-        };
-        let wet = colors.sample(Climate {
-            temperature: 1.0,
-            humidity: 1.0,
-            biome: Biome::Forest,
-        });
-        let dry = colors.sample(Climate {
-            temperature: 1.0,
-            humidity: 0.0,
-            biome: Biome::Forest,
-        });
-        assert_eq!(wet, [0.0, 1.0, 0.0]);
-        assert_eq!(dry, [1.0, 0.0, 0.0]);
-    }
 }

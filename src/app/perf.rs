@@ -8,10 +8,10 @@ use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
 use bevy::prelude::*;
 
 use crate::world::chunk::WorldChunks;
-use crate::world::streaming::stream_chunks;
 use crate::world::streaming::StreamingPerf;
 use crate::world::streaming::TimingStats;
 use crate::world::streaming::WorldStreaming;
+use crate::world::streaming::stream_chunks;
 
 const PERF_INTERVAL_SECS: f32 = 10.0;
 

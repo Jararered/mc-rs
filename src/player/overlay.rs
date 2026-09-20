@@ -16,13 +16,16 @@ use super::mining::destroy_stage;
 /// Slight inflate so the outline and cracks sit outside the block, like Beta's
 /// `expand(0.002)` / `glPolygonOffset(-3, -3)`.
 const OVERLAY_EXPAND: f32 = 0.002;
-/// World-space thickness of the hover box. LineList is one pixel; this is a
-/// filled frame about one and a half texels of a 16×16 block.
-pub const OUTLINE_THICKNESS: f32 = 1.5 / 16.0;
+/// World-space thickness of the hover box. Keep the filled frame close to the
+/// one-pixel selection border used by the original game.
+pub const OUTLINE_THICKNESS: f32 = 1.0 / 32.0;
 /// `terrain.png` row of the ten destroy-stage tiles (`240..249`).
 const DESTROY_TILE_Y: u8 = 15;
 /// Destroy stages store empty texels as white with alpha 1. Treat those as air.
 const OVERLAY_ALPHA_CUTOFF: u8 = 16;
+/// The reference destroy-stage tiles also contain opaque pale-grey background
+/// texels. They are part of the mask, not visible crack marks.
+const OVERLAY_LIGHT_GREY_CUTOFF: u8 = 192;
 
 /// What the crosshair is pointing at, plus punching progress for the overlay.
 #[derive(Resource, Clone, Debug, Default)]
@@ -239,11 +242,15 @@ fn hide_block_overlays(overlays: Option<Res<BlockOverlays>>, mut visible: Query<
     }
 }
 
-/// Empty destroy-stage texels are white with alpha 1 in `terrain.png`. Force
-/// those to zero so the overlay only draws the cracks.
+/// Empty destroy-stage texels are white or pale grey in `terrain.png`, sometimes
+/// with opaque alpha. Force those to zero so the overlay only draws the cracks.
 pub fn punch_nearly_transparent_texels(data: &mut [u8]) {
     for pixel in data.chunks_exact_mut(4) {
-        if pixel[3] < OVERLAY_ALPHA_CUTOFF {
+        let max_channel = pixel[0].max(pixel[1]).max(pixel[2]);
+        let min_channel = pixel[0].min(pixel[1]).min(pixel[2]);
+        let light_grey = max_channel >= OVERLAY_LIGHT_GREY_CUTOFF
+            && max_channel.saturating_sub(min_channel) <= 8;
+        if pixel[3] < OVERLAY_ALPHA_CUTOFF || light_grey {
             pixel[0] = 0;
             pixel[1] = 0;
             pixel[2] = 0;

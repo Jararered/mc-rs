@@ -290,7 +290,7 @@ fn selection_outline_is_a_twelve_edge_wire_cube() {
     // 12 edges × 6 faces × 4 corners of a thickness box.
     assert_eq!(mesh.count_vertices(), 12 * 24);
     assert_eq!(mesh.indices().unwrap().len(), 12 * 36);
-    assert!(OUTLINE_THICKNESS > 1.0 / 32.0);
+    assert!(OUTLINE_THICKNESS >= 1.0 / 32.0);
 }
 
 #[test]
@@ -298,13 +298,15 @@ fn destroy_stage_empty_texels_become_fully_transparent() {
     let mut pixels = [
         255, 255, 255, 1, // empty destroy-stage background
         61, 61, 61, 255, // crack
-        255, 255, 255, 15, 120, 120, 120, 200,
+        255, 255, 255, 15, 120, 120, 120, 200, 210, 210, 210,
+        255, // opaque pale-grey background
     ];
     punch_nearly_transparent_texels(&mut pixels);
     assert_eq!(&pixels[0..4], &[0, 0, 0, 0]);
     assert_eq!(&pixels[4..8], &[61, 61, 61, 255]);
     assert_eq!(&pixels[8..12], &[0, 0, 0, 0]);
     assert_eq!(&pixels[12..16], &[120, 120, 120, 200]);
+    assert_eq!(&pixels[16..20], &[0, 0, 0, 0]);
 }
 
 #[test]

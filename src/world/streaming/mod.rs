@@ -11,8 +11,8 @@ use super::{
     chunk::{ChunkPos, WorldChunks},
     generation::{GeneratedChunk, WorldGenerator},
     lighting::Skylight,
-    meshing::mesh_chunk,
-    textures::TerrainMaterial,
+    meshing::mesh_chunk_with_biomes,
+    textures::{GrassColors, TerrainMaterial},
 };
 
 const LOAD_RADIUS: i32 = 2;
@@ -22,6 +22,7 @@ const MAX_IN_FLIGHT: usize = 2;
 #[derive(Resource)]
 pub(crate) struct WorldStreaming {
     generator: Arc<WorldGenerator>,
+    grass_colors: GrassColors,
     pending: HashMap<ChunkPos, Task<(GeneratedChunk, Mesh)>>,
     rendered: HashMap<ChunkPos, (Entity, Handle<Mesh>)>,
     material: Handle<StandardMaterial>,
@@ -31,19 +32,26 @@ pub(crate) fn setup_streaming(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     terrain_material: Res<TerrainMaterial>,
+    grass_colors: Res<GrassColors>,
     mut chunks: ResMut<WorldChunks>,
 ) {
     let generator = Arc::new(WorldGenerator::new(0));
     // The player starts in PostStartup and needs this heightmap immediately.
     let generated = generator.generate(ChunkPos::ZERO);
     let skylight = Skylight::from_chunk(&generated.chunk);
-    let mesh = meshes.add(mesh_chunk(&generated.chunk, &skylight));
+    let mesh = meshes.add(mesh_chunk_with_biomes(
+        &generated.chunk,
+        &skylight,
+        &generated.biomes,
+        &grass_colors,
+    ));
     let material = terrain_material.0.clone();
     let entity = spawn_chunk(&mut commands, ChunkPos::ZERO, &mesh, &material);
 
     chunks.insert(ChunkPos::ZERO, generated);
     commands.insert_resource(WorldStreaming {
         generator,
+        grass_colors: grass_colors.clone(),
         pending: HashMap::new(),
         rendered: HashMap::from([(ChunkPos::ZERO, (entity, mesh))]),
         material,
@@ -115,10 +123,16 @@ pub(crate) fn stream_chunks(
         }
 
         let generator = Arc::clone(&streaming.generator);
+        let grass_colors = streaming.grass_colors.clone();
         let task = AsyncComputeTaskPool::get().spawn(async move {
             let generated = generator.generate(position);
             let skylight = Skylight::from_chunk(&generated.chunk);
-            let mesh = mesh_chunk(&generated.chunk, &skylight);
+            let mesh = mesh_chunk_with_biomes(
+                &generated.chunk,
+                &skylight,
+                &generated.biomes,
+                &grass_colors,
+            );
             (generated, mesh)
         });
         streaming.pending.insert(position, task);

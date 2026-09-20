@@ -3,6 +3,10 @@ use bevy::{
     prelude::*,
 };
 
+mod grass_color;
+
+pub(crate) use grass_color::GrassColors;
+
 pub struct TerrainTexturePlugin;
 
 impl Plugin for TerrainTexturePlugin {
@@ -35,6 +39,7 @@ fn load_terrain_atlas(
     });
     commands.insert_resource(TerrainMaterial(material));
     commands.insert_resource(PendingTerrainAtlas(image));
+    commands.insert_resource(GrassColors::load());
 }
 
 fn apply_terrain_atlas(

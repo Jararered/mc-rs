@@ -6,8 +6,9 @@ use bevy::{
 use crate::world::{
     block::block::BlockId,
     chunk::{CHUNK_HEIGHT, CHUNK_SIZE, Chunk},
+    generation::BiomeMap,
     lighting::Skylight,
-    textures::block_tile,
+    textures::{GrassColors, block_tile},
 };
 
 struct Face {
@@ -88,6 +89,26 @@ const FACES: [Face; 6] = [
 
 /// Emit only faces touching air. A missing neighbor is treated as air for this isolated chunk.
 pub fn mesh_chunk(chunk: &Chunk, skylight: &Skylight) -> Mesh {
+    mesh_chunk_inner(chunk, skylight, None)
+}
+
+pub(crate) fn mesh_chunk_with_biomes(
+    chunk: &Chunk,
+    skylight: &Skylight,
+    biomes: &BiomeMap,
+    grass_colors: &GrassColors,
+) -> Mesh {
+    let grass_tints: [[f32; 3]; CHUNK_SIZE * CHUNK_SIZE] = std::array::from_fn(|index| {
+        grass_colors.sample(biomes.get(index % CHUNK_SIZE, index / CHUNK_SIZE))
+    });
+    mesh_chunk_inner(chunk, skylight, Some(&grass_tints))
+}
+
+fn mesh_chunk_inner(
+    chunk: &Chunk,
+    skylight: &Skylight,
+    grass_tints: Option<&[[f32; 3]; CHUNK_SIZE * CHUNK_SIZE]>,
+) -> Mesh {
     let mut positions = Vec::<[f32; 3]>::new();
     let mut normals = Vec::<[f32; 3]>::new();
     let mut colors = Vec::<[f32; 4]>::new();
@@ -118,7 +139,11 @@ pub fn mesh_chunk(chunk: &Chunk, skylight: &Skylight) -> Mesh {
                         .flatten()
                         .unwrap_or(15);
                     let brightness = (0.35 + 0.65 * level as f32 / 15.0) * face.shade;
-                    let base = block_tint(block, face_index == 0);
+                    let base = if block == BlockId::Grass && face_index == 0 {
+                        grass_tints.map_or([0.55, 0.8, 0.4], |tints| tints[z * CHUNK_SIZE + x])
+                    } else {
+                        block_tint(block)
+                    };
                     let color = [
                         base[0] * brightness,
                         base[1] * brightness,
@@ -177,9 +202,8 @@ fn face_uvs(block: BlockId, face: usize) -> [[f32; 2]; 4] {
     }
 }
 
-fn block_tint(block: BlockId, top: bool) -> [f32; 3] {
+fn block_tint(block: BlockId) -> [f32; 3] {
     match block {
-        BlockId::Grass if top => [0.55, 0.8, 0.4],
         BlockId::Water => [0.4, 0.6, 0.95],
         _ => [1.0, 1.0, 1.0],
     }

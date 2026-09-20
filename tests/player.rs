@@ -9,6 +9,7 @@ use game::player::BlockFocus;
 use game::player::HeartFill;
 use game::player::MAX_PLAYER_HEALTH;
 use game::player::MiningState;
+use game::player::OUTLINE_THICKNESS;
 use game::player::PLACED_BLOCK;
 use game::player::PlayerHealth;
 use game::player::break_block;
@@ -16,6 +17,7 @@ use game::player::destroy_overlay_mesh;
 use game::player::destroy_stage;
 use game::player::hand_ticks_to_break;
 use game::player::place_block;
+use game::player::punch_nearly_transparent_texels;
 use game::player::selection_outline_mesh;
 use game::world::block::block::BlockId;
 use game::world::block::properties::hand_mine_progress_per_tick;
@@ -283,10 +285,26 @@ fn selection_outline_is_a_twelve_edge_wire_cube() {
     let mesh = selection_outline_mesh();
     assert_eq!(
         mesh.primitive_topology(),
-        bevy::render::render_resource::PrimitiveTopology::LineList
+        bevy::render::render_resource::PrimitiveTopology::TriangleList
     );
-    assert_eq!(mesh.count_vertices(), 24);
-    assert_eq!(mesh.indices().unwrap().len(), 24);
+    // 12 edges × 6 faces × 4 corners of a thickness box.
+    assert_eq!(mesh.count_vertices(), 12 * 24);
+    assert_eq!(mesh.indices().unwrap().len(), 12 * 36);
+    assert!(OUTLINE_THICKNESS > 1.0 / 32.0);
+}
+
+#[test]
+fn destroy_stage_empty_texels_become_fully_transparent() {
+    let mut pixels = [
+        255, 255, 255, 1, // empty destroy-stage background
+        61, 61, 61, 255, // crack
+        255, 255, 255, 15, 120, 120, 120, 200,
+    ];
+    punch_nearly_transparent_texels(&mut pixels);
+    assert_eq!(&pixels[0..4], &[0, 0, 0, 0]);
+    assert_eq!(&pixels[4..8], &[61, 61, 61, 255]);
+    assert_eq!(&pixels[8..12], &[0, 0, 0, 0]);
+    assert_eq!(&pixels[12..16], &[120, 120, 120, 200]);
 }
 
 #[test]

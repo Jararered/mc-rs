@@ -24,7 +24,9 @@ pub use mining::MiningState;
 pub use mining::destroy_stage;
 pub use mining::hand_ticks_to_break;
 pub use overlay::BlockFocus;
+pub use overlay::OUTLINE_THICKNESS;
 pub use overlay::destroy_overlay_mesh;
+pub use overlay::punch_nearly_transparent_texels;
 pub use overlay::selection_outline_mesh;
 
 use crate::physics::PhysicsSet;

@@ -14,6 +14,7 @@ Organize code by gameplay and engine subsystem, not broad `components/` and `sys
 - `src/world/generation/`: staged terrain generation, including noise, biomes, caves, ores, and structures.
 - `src/world/meshing/`: visible faces, mesh construction, lighting data for meshes, and background mesh jobs.
 - `src/world/streaming/`: chunk loading, unloading, view distance, and work priorities.
+- `src/world/textures/`: the terrain atlas plugin, block-face tile mappings, and climate-based grass colors.
 - `src/world/lighting/`: sunlight, block light, and propagation in world data.
 - `src/world/persistence/`: saving and loading. Add Beta format adapters here when compatibility becomes a priority.
 - `src/player/`: controller, movement, camera, interaction, mining, and placement.
@@ -25,15 +26,17 @@ Organize code by gameplay and engine subsystem, not broad `components/` and `sys
 - `src/ui/`, `src/input/`, and `src/audio/`: presentation, controls, and sound.
 - `src/networking/`: multiplayer and, eventually, Beta 1.7.3 protocol adapters. Do not introduce protocol constraints into the core simulation prematurely.
 - `src/util/`: small shared utilities that do not belong to a specific subsystem.
-- `assets/`: game assets; group textures by blocks, items, entities, and UI as needed, with separate models, shaders, audio, fonts, and data when those appear.
-- `tests/` and `benches/`: behavior tests and targeted performance benchmarks.
+- `assets/`: local Minecraft Beta reference files only. This directory is ignored by Git and must never be committed or treated as distributable game content.
+- `tests/`: all tests for this repository, including tests for individual modules and integration behavior. Do not put test modules in `src/`.
+- `benches/`: targeted performance benchmarks.
 
-The current repository only has the beginnings of `app`, `world/block`, `world/chunk`, `world/generation`, and `player`. `src/main.rs` is the executable entry point, and `src/lib.rs` exposes modules for reuse and tests. Extend these areas incrementally rather than treating the proposed layout as already implemented.
+The current game has a flying player, full-height Beta-style generated chunks, skylight, chunk meshes, streaming around the player, and terrain atlas rendering. `src/main.rs` is the executable entry point, and `src/lib.rs` exposes modules for reuse and tests. The remaining directories describe future responsibilities; add them only as working features require them.
 
 # Data and performance rules
 
 - Store blocks as compact values inside chunks. Do not represent every world block as a Bevy entity. Use Bevy entities for rendered chunks and for independently simulated objects such as players, mobs, and dropped items.
-- Keep the world data path clear: generation writes chunk storage; lighting updates world light data; meshing reads chunk and light data; Bevy renders the resulting chunk meshes.
+- Keep the world data path clear: generation produces chunk blocks, heightmaps, and per-column biome climate; lighting derives skylight; meshing reads blocks, light, and climate to build atlas UVs and grass vertex colors; Bevy renders the resulting chunk meshes.
+- Use generated temperature and humidity to sample `grasscolor.png` for grass tops. The discrete biome name alone is not enough for this color. Keep visual coloring in textures and meshing, separate from the local C++ terrain-generation reference.
 - Player interaction should raycast into world data, modify the relevant chunk, mark affected chunks dirty, and schedule remeshing. Handle chunk boundaries when a changed block affects neighboring meshes or light.
 - Keep generation, lighting, meshing, and streaming distinct. Run expensive independent work off the main thread where practical, then apply results to Bevy assets and entities on the appropriate thread. Prioritize nearby or visible chunks.
 - Prefer data-oriented storage, bounded allocations, and reusable buffers in hot paths. Profile before adding complex optimizations; use benchmarks for generation, meshing, and streaming changes with meaningful performance risk.
@@ -43,7 +46,7 @@ The current repository only has the beginnings of `app`, `world/block`, `world/c
 
 - Implement as much of the requested behavior as is practical in each task. Prefer complete, usable features over scaffolding, speculative abstractions, or APIs with no working implementation. Add a module, trait, plugin, or configuration option when it serves an actual feature or a clear near-term need.
 - Follow the existing Rust style and use Bevy APIs supported by the version in `Cargo.toml`.
-- Add tests for behavior and invariants that matter, especially chunk indexing, coordinates, generation determinism, lighting, and block interaction. A standalone Bevy mesh test may use one entity for a block; that does not set the production world representation.
+- Put all tests under the repository root's `tests/` directory. Add tests for behavior and invariants that matter, especially chunk indexing, coordinates, generation determinism, lighting, and block interaction. A standalone Bevy mesh test may use one entity for a block; that does not set the production world representation.
 - Keep changes focused and avoid filling planned modules with placeholders. Run `cargo fmt` and relevant checks or tests for code changes, and report any verification limits.
 - Preserve the user's in-progress changes. The existing source files and tests may be mid-implementation.
-- Treat `assets/` as local, reference-only Minecraft Beta content. Never commit files from it. Players will eventually supply their own texture ZIP; the current `terrain.png` loader is a development path, not a bundled asset.
+- Treat `assets/` as local, reference-only Minecraft Beta content. Never stage or commit files from it, including `terrain.png` and `misc/grasscolor.png`. Players will eventually supply their own texture ZIP; the current loaders are development paths, not bundled assets. Keep the game able to start when these reference files are absent.

@@ -1,3 +1,8 @@
+use std::fs;
+use std::path::PathBuf;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
+
 use bevy::asset::AssetPlugin;
 use bevy::material::OpaqueRendererMethod;
 use bevy::mesh::MeshPlugin;
@@ -13,11 +18,22 @@ use game::app::settings::MAX_RENDER_DISTANCE;
 use game::app::settings::MIN_BRIGHTNESS;
 use game::app::settings::MIN_FOV;
 use game::app::settings::MIN_RENDER_DISTANCE;
+use game::app::settings::SettingsPlugin;
+use game::app::settings::load_settings;
+use game::app::settings::save_settings;
 use game::app::state::AppScreen;
 use game::player::Player;
 use game::player::PlayerPlugin;
 use game::world::chunk::WorldChunks;
 use game::world::plugin::WorldPlugin;
+
+fn temp_settings_path(label: &str) -> PathBuf {
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    std::env::temp_dir().join(format!("game-settings-{label}-{unique}.json"))
+}
 
 #[test]
 fn settings_controls_stay_within_their_ranges() {
@@ -174,4 +190,111 @@ fn water_material(app: &App) -> StandardMaterial {
         .map(|(_, material)| material.clone())
         .find(|material| material.cull_mode.is_none() && material.double_sided)
         .expect("water material should be double-sided with no cull")
+}
+
+#[test]
+fn missing_settings_file_uses_defaults() {
+    let path = temp_settings_path("missing");
+    assert_eq!(load_settings(&path), GameSettings::default());
+}
+
+#[test]
+fn settings_round_trip_through_json() {
+    let path = temp_settings_path("roundtrip");
+    let settings = GameSettings {
+        render_distance: 12,
+        brightness: 450.0,
+        fov: 90.0,
+        old_lighting: true,
+        directional_lighting: false,
+        graphics: GraphicsQuality::Ultra,
+    };
+    save_settings(&path, &settings).unwrap();
+    assert_eq!(load_settings(&path), settings);
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn settings_json_fills_in_missing_menu_fields() {
+    let path = temp_settings_path("partial");
+    fs::write(&path, r#"{ "render_distance": 16 }"#).unwrap();
+    let loaded = load_settings(&path);
+    assert_eq!(loaded.render_distance, 16);
+    assert_eq!(loaded.brightness, GameSettings::default().brightness);
+    assert_eq!(loaded.fov, DEFAULT_FOV);
+    assert_eq!(loaded.old_lighting, false);
+    assert_eq!(loaded.directional_lighting, true);
+    assert_eq!(loaded.graphics, GraphicsQuality::Fancy);
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn settings_json_clamps_out_of_range_values() {
+    let path = temp_settings_path("clamp");
+    fs::write(
+        &path,
+        r#"{
+            "render_distance": 99,
+            "brightness": -50.0,
+            "fov": 180.0,
+            "old_lighting": true,
+            "directional_lighting": false,
+            "graphics": "Fast"
+        }"#,
+    )
+    .unwrap();
+    let loaded = load_settings(&path);
+    assert_eq!(loaded.render_distance, MAX_RENDER_DISTANCE);
+    assert_eq!(loaded.brightness, MIN_BRIGHTNESS);
+    assert_eq!(loaded.fov, MAX_FOV);
+    assert!(loaded.old_lighting);
+    assert!(!loaded.directional_lighting);
+    assert_eq!(loaded.graphics, GraphicsQuality::Fast);
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn unreadable_settings_json_falls_back_to_defaults() {
+    let path = temp_settings_path("corrupt");
+    fs::write(&path, "not json").unwrap();
+    assert_eq!(load_settings(&path), GameSettings::default());
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn settings_plugin_loads_and_saves_menu_changes() {
+    let path = temp_settings_path("plugin");
+    let initial = GameSettings {
+        render_distance: 8,
+        brightness: 200.0,
+        fov: 55.0,
+        old_lighting: true,
+        directional_lighting: false,
+        graphics: GraphicsQuality::Fast,
+    };
+    save_settings(&path, &initial).unwrap();
+
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins)
+        .add_plugins(SettingsPlugin::new(path.clone()));
+    app.update();
+    assert_eq!(app.world().resource::<GameSettings>(), &initial);
+    assert!(fs::read_to_string(&path).unwrap().contains("\"Fast\""));
+
+    {
+        let mut settings = app.world_mut().resource_mut::<GameSettings>();
+        settings.change_render_distance(1);
+        settings.change_fov(10.0);
+        settings.cycle_graphics();
+        settings.old_lighting = false;
+    }
+    app.update();
+
+    let saved = load_settings(&path);
+    assert_eq!(saved.render_distance, 9);
+    assert_eq!(saved.graphics, GraphicsQuality::Fancy);
+    assert!(!saved.old_lighting);
+    assert_eq!(saved.brightness, 200.0);
+    assert_eq!(saved.fov, 65.0);
+    let _ = fs::remove_file(path);
 }

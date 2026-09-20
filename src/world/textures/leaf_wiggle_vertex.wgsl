@@ -5,12 +5,14 @@
     morph::{morph_position, morph_normal, morph_tangent},
     forward_io::{Vertex, VertexOutput},
     view_transformations::position_world_to_clip,
-    mesh_view_bindings::globals,
 }
 #import game::leaf_wiggle::leaf_offset
 
 struct LeafWiggleSettings {
     amplitude: f32,
+    time: f32,
+    previous_time: f32,
+    _padding: f32,
 }
 
 @group(#{MATERIAL_BIND_GROUP}) @binding(100)
@@ -82,7 +84,7 @@ fn vertex(vertex_no_morph: Vertex) -> VertexOutput {
 #ifdef VERTEX_POSITIONS
     out.world_position = mesh_functions::mesh_position_local_to_world(world_from_local, vec4<f32>(vertex.position, 1.0));
     out.world_position = vec4(
-        out.world_position.xyz + leaf_offset(out.world_position.xyz, globals.time, leaf_wiggle.amplitude),
+        out.world_position.xyz + leaf_offset(out.world_position.xyz, leaf_wiggle.time, leaf_wiggle.amplitude),
         out.world_position.w
     );
     out.position = position_world_to_clip(out.world_position.xyz);

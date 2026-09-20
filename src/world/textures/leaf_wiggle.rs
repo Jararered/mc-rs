@@ -23,11 +23,19 @@ pub type LeafCutoutMaterial = ExtendedMaterial<StandardMaterial, LeafWiggle>;
 #[derive(Clone, Copy, Debug, ShaderType, Reflect)]
 pub struct LeafWiggleSettings {
     pub amplitude: f32,
+    pub time: f32,
+    pub previous_time: f32,
+    pub _padding: f32,
 }
 
 impl Default for LeafWiggleSettings {
     fn default() -> Self {
-        Self { amplitude: 0.06 }
+        Self {
+            amplitude: 0.06,
+            time: 0.0,
+            previous_time: 0.0,
+            _padding: 0.0,
+        }
     }
 }
 
@@ -61,6 +69,7 @@ pub(super) fn plugin(app: &mut App) {
         app.init_asset::<Shader>();
     }
     app.add_plugins(MaterialPlugin::<LeafCutoutMaterial>::default());
+    app.add_systems(Update, update_leaf_wiggle_time);
     load_internal_asset!(
         app,
         LEAF_WIGGLE_SHADER_HANDLE,
@@ -79,4 +88,14 @@ pub(super) fn plugin(app: &mut App) {
         "leaf_wiggle_prepass.wgsl",
         Shader::from_wgsl
     );
+}
+
+fn update_leaf_wiggle_time(time: Res<Time>, mut materials: ResMut<Assets<LeafCutoutMaterial>>) {
+    let current_time = time.elapsed_secs();
+    let previous_time = current_time - time.delta_secs();
+
+    for (_, material) in materials.iter_mut() {
+        material.extension.settings.time = current_time;
+        material.extension.settings.previous_time = previous_time;
+    }
 }

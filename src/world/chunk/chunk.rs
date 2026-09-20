@@ -84,6 +84,14 @@ impl WorldChunks {
         self.chunks.contains_key(&position)
     }
 
+    pub fn len(&self) -> usize {
+        self.chunks.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.chunks.is_empty()
+    }
+
     pub fn positions(&self) -> impl Iterator<Item = ChunkPos> + '_ {
         self.chunks.keys().copied()
     }

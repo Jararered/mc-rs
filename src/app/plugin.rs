@@ -5,6 +5,7 @@ use crate::ui::MenuPlugin;
 use crate::world::persistence::PersistencePlugin;
 use crate::world::plugin::WorldPlugin;
 
+use super::perf::PerfPlugin;
 use super::screenshot::ScreenshotPlugin;
 use super::state::AppScreen;
 
@@ -18,6 +19,7 @@ impl Plugin for GamePlugin {
             PlayerPlugin,
             MenuPlugin,
             ScreenshotPlugin,
+            PerfPlugin,
         ));
     }
 }

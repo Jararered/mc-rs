@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::sync::Arc;
+use std::time::Duration;
+use std::time::Instant;
 
 use bevy::prelude::*;
 use bevy::tasks::AsyncComputeTaskPool;
@@ -35,6 +37,49 @@ const MAX_IN_FLIGHT: usize = 2;
 pub(crate) struct ChunkJob {
     pub chunk: GeneratedChunk,
     pub loaded: bool,
+    pub elapsed: Duration,
+}
+
+/// Timing samples collected since the last performance print.
+#[derive(Resource, Default)]
+pub struct StreamingPerf {
+    pub generate: TimingStats,
+    pub load: TimingStats,
+    pub mesh: TimingStats,
+}
+
+#[derive(Default)]
+pub struct TimingStats {
+    count: u32,
+    sum_secs: f64,
+    max_secs: f64,
+}
+
+impl TimingStats {
+    pub fn record(&mut self, duration: Duration) {
+        let secs = duration.as_secs_f64();
+        self.count += 1;
+        self.sum_secs += secs;
+        if secs > self.max_secs {
+            self.max_secs = secs;
+        }
+    }
+
+    pub fn count(&self) -> u32 {
+        self.count
+    }
+
+    pub fn average_ms(&self) -> Option<f64> {
+        (self.count > 0).then_some(self.sum_secs / f64::from(self.count) * 1000.0)
+    }
+
+    pub fn max_ms(&self) -> Option<f64> {
+        (self.count > 0).then_some(self.max_secs * 1000.0)
+    }
+
+    pub fn take(&mut self) -> Self {
+        std::mem::take(self)
+    }
 }
 
 #[derive(Resource)]
@@ -45,7 +90,7 @@ pub(crate) struct WorldStreaming {
     /// Terrain and decoration jobs inside the generation radius.
     generating: HashMap<ChunkPos, Task<ChunkJob>>,
     /// Mesh jobs for already generated chunks inside the render distance.
-    meshing: HashMap<ChunkPos, Task<Mesh>>,
+    meshing: HashMap<ChunkPos, Task<(Mesh, Duration)>>,
     rendered: HashMap<ChunkPos, (Entity, Handle<Mesh>)>,
     material: Handle<StandardMaterial>,
     old_lighting: bool,
@@ -57,6 +102,20 @@ pub(crate) struct WorldStreaming {
     desired_radius: i32,
 }
 
+impl WorldStreaming {
+    pub fn rendered_mesh_count(&self) -> usize {
+        self.rendered.len()
+    }
+
+    pub fn generating_job_count(&self) -> usize {
+        self.generating.len()
+    }
+
+    pub fn meshing_job_count(&self) -> usize {
+        self.meshing.len()
+    }
+}
+
 pub(crate) fn setup_streaming(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -66,6 +125,7 @@ pub(crate) fn setup_streaming(
     settings: Res<GameSettings>,
     mut persistence: Option<ResMut<WorldPersistence>>,
     mut chunks: ResMut<WorldChunks>,
+    mut perf: ResMut<StreamingPerf>,
 ) {
     let seed = persistence
         .as_ref()
@@ -73,17 +133,24 @@ pub(crate) fn setup_streaming(
     let generator = Arc::new(WorldGenerator::new(seed));
     // The player starts in PostStartup and needs this heightmap immediately, so
     // the spawn chunk is loaded or generated synchronously.
+    let load_start = Instant::now();
     let stored = persistence
         .as_ref()
         .and_then(|persistence| persistence.storage())
         .and_then(|storage| storage.load_chunk(ChunkPos::ZERO));
     let generated = match stored {
-        Some(chunk) => chunk,
+        Some(chunk) => {
+            perf.load.record(load_start.elapsed());
+            chunk
+        }
         None => {
             if let Some(persistence) = persistence.as_deref_mut() {
                 persistence.mark_dirty(ChunkPos::ZERO);
             }
-            generator.generate(ChunkPos::ZERO)
+            let generate_start = Instant::now();
+            let chunk = generator.generate(ChunkPos::ZERO);
+            perf.generate.record(generate_start.elapsed());
+            chunk
         }
     };
     let skylight = Skylight::from_chunk(&generated.chunk);
@@ -156,6 +223,7 @@ pub(crate) fn stream_chunks(
     settings: Res<GameSettings>,
     screen: Option<Res<State<AppScreen>>>,
     mut persistence: Option<ResMut<WorldPersistence>>,
+    mut perf: ResMut<StreamingPerf>,
 ) {
     let Ok(player) = player.single() else {
         return;
@@ -215,6 +283,7 @@ pub(crate) fn stream_chunks(
         && let Some(generated) = chunks.get(position)
         && let Some((_, handle)) = streaming.rendered.get(&position)
     {
+        let start = Instant::now();
         let skylight = Skylight::from_chunk(&generated.chunk);
         let mesh = mesh_chunk_with_biomes(
             &generated.chunk,
@@ -225,6 +294,7 @@ pub(crate) fn stream_chunks(
             streaming.old_lighting,
             streaming.fancy_graphics,
         );
+        perf.mesh.record(start.elapsed());
         if let Some(mut existing) = meshes.get_mut(handle.id()) {
             *existing = mesh;
         }
@@ -239,6 +309,11 @@ pub(crate) fn stream_chunks(
         .collect();
     for (position, job) in generated {
         streaming.generating.remove(&position);
+        if job.loaded {
+            perf.load.record(job.elapsed);
+        } else {
+            perf.generate.record(job.elapsed);
+        }
         if within_radius(position, center, generate_radius) {
             if !job.loaded
                 && let Some(persistence) = persistence.as_deref_mut()
@@ -255,10 +330,11 @@ pub(crate) fn stream_chunks(
     let meshed: Vec<_> = streaming
         .meshing
         .iter_mut()
-        .filter_map(|(position, task)| check_ready(task).map(|mesh| (*position, mesh)))
+        .filter_map(|(position, task)| check_ready(task).map(|job| (*position, job)))
         .collect();
-    for (position, mesh) in meshed {
+    for (position, (mesh, elapsed)) in meshed {
         streaming.meshing.remove(&position);
+        perf.mesh.record(elapsed);
         if !within_radius(position, center, load_radius) {
             continue;
         }
@@ -320,17 +396,20 @@ pub(crate) fn stream_chunks(
             .filter(|_| !bypass_load)
             .cloned();
         let task = AsyncComputeTaskPool::get().spawn(async move {
+            let start = Instant::now();
             if let Some(storage) = storage
                 && let Some(chunk) = storage.load_chunk(position)
             {
                 return ChunkJob {
                     chunk,
                     loaded: true,
+                    elapsed: start.elapsed(),
                 };
             }
             ChunkJob {
                 chunk: generator.generate(position),
                 loaded: false,
+                elapsed: start.elapsed(),
             }
         });
         streaming.generating.insert(position, task);
@@ -374,8 +453,9 @@ pub(crate) fn stream_chunks(
         let old_lighting = streaming.old_lighting;
         let fancy_graphics = streaming.fancy_graphics;
         let task = AsyncComputeTaskPool::get().spawn(async move {
+            let start = Instant::now();
             let skylight = Skylight::from_chunk(&chunk);
-            mesh_chunk_with_biomes(
+            let mesh = mesh_chunk_with_biomes(
                 &chunk,
                 &skylight,
                 &biomes,
@@ -383,7 +463,8 @@ pub(crate) fn stream_chunks(
                 &foliage_colors,
                 old_lighting,
                 fancy_graphics,
-            )
+            );
+            (mesh, start.elapsed())
         });
         streaming.meshing.insert(position, task);
     }

@@ -3,6 +3,7 @@ use bevy::prelude::*;
 use crate::app::settings::GameSettings;
 
 use super::chunk::WorldChunks;
+use super::streaming::StreamingPerf;
 use super::streaming::regenerate_loaded_chunks;
 use super::streaming::setup_streaming;
 use super::streaming::stream_chunks;
@@ -17,6 +18,7 @@ impl Plugin for WorldPlugin {
             .init_resource::<GameSettings>()
             .init_resource::<GlobalAmbientLight>()
             .init_resource::<WorldChunks>()
+            .init_resource::<StreamingPerf>()
             .add_systems(Startup, (setup_streaming, spawn_sun))
             .add_systems(
                 Update,

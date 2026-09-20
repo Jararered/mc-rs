@@ -340,3 +340,30 @@ fn the_world_is_saved_and_resumed_across_runs() {
     assert!((player.yaw - 0.75).abs() < 0.001);
     assert!((player.pitch - -0.2).abs() < 0.001);
 }
+
+#[test]
+fn exit_requested_during_update_saves_the_latest_player_pose() {
+    fn request_exit(mut exit: MessageWriter<AppExit>) {
+        exit.write(AppExit::Success);
+    }
+
+    let saves = temp_saves("exit-pose");
+    let mut app = persistence_app(&saves);
+    app.world_mut()
+        .spawn((Player, Transform::from_xyz(91.0, 73.0, -17.0)));
+    app.add_systems(Update, request_exit);
+
+    app.update();
+
+    let storage = app
+        .world()
+        .resource::<WorldPersistence>()
+        .storage()
+        .expect("persistence should be enabled");
+    let player = storage
+        .load_player()
+        .expect("player should be saved on exit");
+    assert!((player.x - 91.0).abs() < 0.001);
+    assert!((player.y - 73.0).abs() < 0.001);
+    assert!((player.z - -17.0).abs() < 0.001);
+}

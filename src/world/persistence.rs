@@ -53,7 +53,6 @@ use crate::world::generation::Climate;
 use crate::world::generation::GeneratedChunk;
 use crate::world::generation::Heightmap;
 use crate::world::streaming::setup_streaming;
-use crate::world::streaming::stream_chunks;
 
 /// Default directory, relative to the working directory, that holds world folders.
 pub const SAVES_DIRECTORY: &str = "saves";
@@ -540,7 +539,10 @@ impl Plugin for PersistencePlugin {
             seed: self.seed,
         })
         .add_systems(Startup, setup_persistence.before(setup_streaming))
-        .add_systems(Update, flush_persistence.after(stream_chunks));
+        // AppExit can be written by a UI system during Update. Run the final
+        // flush after all Update systems so the exit message and the latest
+        // player transform are both visible before Bevy shuts down.
+        .add_systems(Last, flush_persistence);
     }
 }
 

@@ -141,34 +141,33 @@ impl WorldChunks {
 /// Chunks whose meshes can change when the block at `(x, z)` is edited.
 ///
 /// The edited chunk is always included. A neighbour is included when the block
-/// sits on that shared face, because meshing currently treats a missing
-/// neighbour as air.
+/// sits on that shared face. A corner edit also affects diagonal ambient
+/// occlusion and lighting samples, so the diagonal chunk is included.
 pub fn remesh_chunks_touching(x: i32, z: i32) -> Vec<ChunkPos> {
     let position = ChunkPos::from_block(x, z);
     let local_x = x.rem_euclid(CHUNK_SIZE as i32);
     let local_z = z.rem_euclid(CHUNK_SIZE as i32);
     let mut positions = vec![position];
+    let mut x_neighbor = None;
+    let mut z_neighbor = None;
     if local_x == 0 {
-        positions.push(ChunkPos {
-            x: position.x - 1,
-            z: position.z,
-        });
+        x_neighbor = Some(position.x - 1);
     } else if local_x == CHUNK_SIZE as i32 - 1 {
-        positions.push(ChunkPos {
-            x: position.x + 1,
-            z: position.z,
-        });
+        x_neighbor = Some(position.x + 1);
     }
     if local_z == 0 {
-        positions.push(ChunkPos {
-            x: position.x,
-            z: position.z - 1,
-        });
+        z_neighbor = Some(position.z - 1);
     } else if local_z == CHUNK_SIZE as i32 - 1 {
-        positions.push(ChunkPos {
-            x: position.x,
-            z: position.z + 1,
-        });
+        z_neighbor = Some(position.z + 1);
+    }
+    if let Some(x) = x_neighbor {
+        positions.push(ChunkPos { x, z: position.z });
+    }
+    if let Some(z) = z_neighbor {
+        positions.push(ChunkPos { x: position.x, z });
+    }
+    if let (Some(x), Some(z)) = (x_neighbor, z_neighbor) {
+        positions.push(ChunkPos { x, z });
     }
     positions
 }

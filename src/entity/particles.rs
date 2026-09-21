@@ -276,6 +276,7 @@ fn collides(chunks: &WorldChunks, point: Vec3) -> bool {
 
 #[derive(Resource)]
 struct ParticleRenderer {
+    entity: Entity,
     mesh: Handle<Mesh>,
     material: Handle<StandardMaterial>,
     has_geometry: bool,
@@ -286,7 +287,9 @@ fn setup_renderer(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    let mesh = meshes.add(empty_mesh());
+    // Bevy 0.19 does not allocate zero-vertex meshes but may still try to
+    // upload their data. Keep a nonempty mesh allocated and hide it while idle.
+    let mesh = meshes.add(placeholder_mesh());
     let material = materials.add(StandardMaterial {
         alpha_mode: AlphaMode::Mask(0.5),
         unlit: true,
@@ -294,14 +297,18 @@ fn setup_renderer(
         cull_mode: None,
         ..default()
     });
-    commands.spawn((
-        Name::new("Block particles"),
-        Mesh3d(mesh.clone()),
-        MeshMaterial3d(material.clone()),
-        NoFrustumCulling,
-        NotShadowCaster,
-    ));
+    let entity = commands
+        .spawn((
+            Name::new("Block particles"),
+            Mesh3d(mesh.clone()),
+            MeshMaterial3d(material.clone()),
+            Visibility::Hidden,
+            NoFrustumCulling,
+            NotShadowCaster,
+        ))
+        .id();
     commands.insert_resource(ParticleRenderer {
+        entity,
         mesh,
         material,
         has_geometry: false,
@@ -332,6 +339,7 @@ fn update_particles(
     mut particles: ResMut<BlockParticles>,
     mut renderer: ResMut<ParticleRenderer>,
     mut meshes: ResMut<Assets<Mesh>>,
+    mut visibility: Query<&mut Visibility>,
 ) {
     particles.spawn_pending(&chunks, foliage.as_deref());
     particles.tick_remainder += time
@@ -345,7 +353,13 @@ fn update_particles(
             .retain_mut(|particle| particle.tick(&chunks));
         ticks += 1;
     }
-    if particles.active.is_empty() && !renderer.has_geometry {
+    if particles.active.is_empty() {
+        if renderer.has_geometry {
+            if let Ok(mut visible) = visibility.get_mut(renderer.entity) {
+                *visible = Visibility::Hidden;
+            }
+            renderer.has_geometry = false;
+        }
         return;
     }
     let rotation = camera
@@ -361,11 +375,22 @@ fn update_particles(
             particles.tick_remainder / TICK_SECONDS,
         );
         renderer.has_geometry = !particles.active.is_empty();
+        if let Ok(mut visible) = visibility.get_mut(renderer.entity) {
+            *visible = Visibility::Visible;
+        }
     }
 }
 
-fn empty_mesh() -> Mesh {
-    particle_mesh(std::iter::empty(), Vec3::X, Vec3::Y, 0.0)
+fn placeholder_mesh() -> Mesh {
+    Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::default(),
+    )
+    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, vec![[0.0; 3]; 3])
+    .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, vec![[0.0, 0.0, 1.0]; 3])
+    .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, vec![[0.0; 4]; 3])
+    .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, vec![[0.0; 2]; 3])
+    .with_inserted_indices(Indices::U32(vec![0, 1, 2]))
 }
 
 fn particle_mesh<'a>(

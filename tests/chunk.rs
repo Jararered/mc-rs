@@ -17,7 +17,9 @@ use game::world::generation::WorldGenerator;
 use game::world::generation::generate_chunk;
 use game::world::lighting::Skylight;
 use game::world::lighting::beta_brightness;
+use game::world::meshing::ChunkNeighbors;
 use game::world::meshing::mesh_chunk;
+use game::world::meshing::mesh_chunk_with_neighbors;
 use game::world::meshing::mesh_chunk_with_settings;
 use game::world::meshing::mesh_chunk_with_settings_and_smooth_lighting;
 
@@ -79,6 +81,60 @@ fn ambient_occlusion_darkens_enclosed_face_corners() {
             )
             .is_some_and(|(min, max)| min < max),
         "occluded top-face corners should not all have the same brightness"
+    );
+}
+
+#[test]
+fn neighboring_block_data_culls_shared_faces_and_darkens_border_corners() {
+    let mut center = Chunk::new();
+    center.set(CHUNK_SIZE - 1, 1, 1, BlockId::Stone);
+    let mut east = Chunk::new();
+    east.set(0, 1, 1, BlockId::Stone);
+    let light = Skylight::from_chunk(&center);
+    let isolated = mesh_chunk(&center, &light);
+    let connected = mesh_chunk_with_neighbors(
+        &center,
+        &ChunkNeighbors {
+            east: Some(&east),
+            ..Default::default()
+        },
+        &light,
+    );
+    assert_eq!(isolated.count_vertices(), 24);
+    assert_eq!(
+        connected.count_vertices(),
+        20,
+        "shared face should be culled"
+    );
+
+    east.set(0, 1, 1, BlockId::Air);
+    east.set(0, 2, 1, BlockId::Stone);
+    let connected = mesh_chunk_with_neighbors(
+        &center,
+        &ChunkNeighbors {
+            east: Some(&east),
+            ..Default::default()
+        },
+        &light,
+    );
+    let colors = |mesh: &Mesh| {
+        let Some(VertexAttributeValues::Float32x4(colors)) = mesh.attribute(Mesh::ATTRIBUTE_COLOR)
+        else {
+            panic!("terrain mesh should have vertex colors");
+        };
+        colors[0..4]
+            .iter()
+            .map(|color| color[0])
+            .collect::<Vec<_>>()
+    };
+    let isolated = colors(&isolated);
+    let connected = colors(&connected);
+    assert!(
+        isolated
+            .iter()
+            .zip(&connected)
+            .any(|(before, after)| after < before),
+        "neighboring stone should darken the border AO corner"
     );
 }
 
@@ -431,7 +487,8 @@ fn remesh_includes_the_neighbour_when_an_edge_block_changes() {
         vec![
             ChunkPos::ZERO,
             ChunkPos { x: 1, z: 0 },
-            ChunkPos { x: 0, z: -1 }
+            ChunkPos { x: 0, z: -1 },
+            ChunkPos { x: 1, z: -1 },
         ]
     );
 }

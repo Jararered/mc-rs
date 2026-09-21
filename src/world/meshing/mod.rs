@@ -101,9 +101,82 @@ pub struct ChunkMeshes {
     pub water: Mesh,
 }
 
+/// Block data surrounding a chunk, used for face culling and ambient
+/// occlusion at its edges. Streaming supplies all eight neighbors before
+/// meshing; isolated mesh helpers may leave them absent.
+#[derive(Default)]
+pub struct ChunkNeighbors<'a> {
+    pub west: Option<&'a Chunk>,
+    pub east: Option<&'a Chunk>,
+    pub north: Option<&'a Chunk>,
+    pub south: Option<&'a Chunk>,
+    pub northwest: Option<&'a Chunk>,
+    pub northeast: Option<&'a Chunk>,
+    pub southwest: Option<&'a Chunk>,
+    pub southeast: Option<&'a Chunk>,
+}
+
+impl ChunkNeighbors<'_> {
+    fn get(&self, center: &Chunk, x: i32, y: i32, z: i32) -> Option<BlockId> {
+        if !(0..CHUNK_HEIGHT as i32).contains(&y) {
+            return None;
+        }
+        if (0..CHUNK_SIZE as i32).contains(&x) && (0..CHUNK_SIZE as i32).contains(&z) {
+            return center.get(x as usize, y as usize, z as usize);
+        }
+        let region_x = if x < 0 {
+            -1
+        } else if x >= CHUNK_SIZE as i32 {
+            1
+        } else {
+            0
+        };
+        let region_z = if z < 0 {
+            -1
+        } else if z >= CHUNK_SIZE as i32 {
+            1
+        } else {
+            0
+        };
+        let chunk = match (region_x, region_z) {
+            (0, 0) => Some(center),
+            (-1, 0) => self.west,
+            (1, 0) => self.east,
+            (0, -1) => self.north,
+            (0, 1) => self.south,
+            (-1, -1) => self.northwest,
+            (1, -1) => self.northeast,
+            (-1, 1) => self.southwest,
+            (1, 1) => self.southeast,
+            _ => None,
+        }?;
+        let local_x = (x - region_x * CHUNK_SIZE as i32) as usize;
+        let local_z = (z - region_z * CHUNK_SIZE as i32) as usize;
+        chunk.get(local_x, y as usize, local_z)
+    }
+}
+
 /// Emit only faces touching air. A missing neighbor is treated as air for this isolated chunk.
 pub fn mesh_chunk(chunk: &Chunk, skylight: &Skylight) -> Mesh {
-    mesh_chunk_inner(chunk, skylight, None, true, true, false).opaque
+    mesh_chunk_inner(
+        chunk,
+        &ChunkNeighbors::default(),
+        skylight,
+        None,
+        true,
+        true,
+        false,
+    )
+    .opaque
+}
+
+/// Opaque mesh with neighboring block data available across chunk boundaries.
+pub fn mesh_chunk_with_neighbors(
+    chunk: &Chunk,
+    neighbors: &ChunkNeighbors<'_>,
+    skylight: &Skylight,
+) -> Mesh {
+    mesh_chunk_inner(chunk, neighbors, skylight, None, true, true, false).opaque
 }
 
 /// Like [`mesh_chunk`], with lighting and leaf graphics matching the settings menu.
@@ -113,7 +186,15 @@ pub fn mesh_chunk_with_settings(
     old_lighting: bool,
     fancy_graphics: bool,
 ) -> ChunkMeshes {
-    mesh_chunk_inner(chunk, skylight, None, old_lighting, true, fancy_graphics)
+    mesh_chunk_inner(
+        chunk,
+        &ChunkNeighbors::default(),
+        skylight,
+        None,
+        old_lighting,
+        true,
+        fancy_graphics,
+    )
 }
 
 pub fn mesh_chunk_with_settings_and_smooth_lighting(
@@ -125,6 +206,7 @@ pub fn mesh_chunk_with_settings_and_smooth_lighting(
 ) -> ChunkMeshes {
     mesh_chunk_inner(
         chunk,
+        &ChunkNeighbors::default(),
         skylight,
         None,
         old_lighting,
@@ -141,6 +223,7 @@ struct ColumnTints {
 
 pub(crate) fn mesh_chunk_with_biomes(
     chunk: &Chunk,
+    neighbors: &ChunkNeighbors<'_>,
     skylight: &Skylight,
     biomes: &BiomeMap,
     grass_colors: &GrassColors,
@@ -159,6 +242,7 @@ pub(crate) fn mesh_chunk_with_biomes(
     };
     mesh_chunk_inner(
         chunk,
+        neighbors,
         skylight,
         Some(&tints),
         old_lighting,
@@ -277,6 +361,7 @@ impl MeshBuffers {
 
 fn mesh_chunk_inner(
     chunk: &Chunk,
+    neighbors: &ChunkNeighbors<'_>,
     skylight: &Skylight,
     tints: Option<&ColumnTints>,
     old_lighting: bool,
@@ -304,9 +389,7 @@ fn mesh_chunk_inner(
                     let nx = x as i32 + face.neighbor[0];
                     let ny = y as i32 + face.neighbor[1];
                     let nz = z as i32 + face.neighbor[2];
-                    let neighbor = (nx >= 0 && ny >= 0 && nz >= 0)
-                        .then(|| chunk.get(nx as usize, ny as usize, nz as usize))
-                        .flatten();
+                    let neighbor = neighbors.get(chunk, nx, ny, nz);
                     if block == BlockId::Water && neighbor == Some(BlockId::Water) {
                         continue;
                     }
@@ -350,7 +433,7 @@ fn mesh_chunk_inner(
                         0.0
                     };
                     let corner_ao = if smooth_lighting {
-                        face_corner_ao(chunk, x, y, z, face)
+                        face_corner_ao(chunk, neighbors, x, y, z, face)
                     } else {
                         [1.0; 4]
                     };
@@ -448,7 +531,14 @@ fn face_corner_light(
     })
 }
 
-fn face_corner_ao(chunk: &Chunk, x: usize, y: usize, z: usize, face: &Face) -> [f32; 4] {
+fn face_corner_ao(
+    chunk: &Chunk,
+    neighbors: &ChunkNeighbors<'_>,
+    x: usize,
+    y: usize,
+    z: usize,
+    face: &Face,
+) -> [f32; 4] {
     let tangent_axes = match face.normal {
         [0.0, 1.0, 0.0] | [0.0, -1.0, 0.0] => [0, 2],
         [1.0, 0.0, 0.0] | [-1.0, 0.0, 0.0] => [1, 2],
@@ -469,9 +559,9 @@ fn face_corner_ao(chunk: &Chunk, x: usize, y: usize, z: usize, face: &Face) -> [
         diagonal[tangent_axes[0]] += tangent_direction[0];
         diagonal[tangent_axes[1]] += tangent_direction[1];
 
-        let side_a = opaque_at(chunk, x, y, z, side_a);
-        let side_b = opaque_at(chunk, x, y, z, side_b);
-        let diagonal = opaque_at(chunk, x, y, z, diagonal);
+        let side_a = opaque_at(chunk, neighbors, x, y, z, side_a);
+        let side_b = opaque_at(chunk, neighbors, x, y, z, side_b);
+        let diagonal = opaque_at(chunk, neighbors, x, y, z, diagonal);
         let level = if side_a && side_b {
             3
         } else {
@@ -481,21 +571,21 @@ fn face_corner_ao(chunk: &Chunk, x: usize, y: usize, z: usize, face: &Face) -> [
     })
 }
 
-fn opaque_at(chunk: &Chunk, x: usize, y: usize, z: usize, offset: [i32; 3]) -> bool {
+fn opaque_at(
+    chunk: &Chunk,
+    neighbors: &ChunkNeighbors<'_>,
+    x: usize,
+    y: usize,
+    z: usize,
+    offset: [i32; 3],
+) -> bool {
     let position = [
         x as i32 + offset[0],
         y as i32 + offset[1],
         z as i32 + offset[2],
     ];
-    if position.iter().any(|&coordinate| coordinate < 0) {
-        return false;
-    }
-    chunk
-        .get(
-            position[0] as usize,
-            position[1] as usize,
-            position[2] as usize,
-        )
+    neighbors
+        .get(chunk, position[0], position[1], position[2])
         .is_some_and(is_opaque_cube)
 }
 

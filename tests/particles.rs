@@ -49,6 +49,23 @@ fn stone_hit() -> BlockHit {
 #[test]
 fn block_break_spawns_sixty_four_textured_billboards_and_expires() {
     let mut app = test_app();
+    {
+        let mut renderers = app.world_mut().query::<(&Name, &Mesh3d, &Visibility)>();
+        let (_, handle, visible) = renderers
+            .iter(app.world())
+            .find(|(name, _, _)| name.as_str() == "Block particles")
+            .unwrap();
+        assert_eq!(*visible, Visibility::Hidden);
+        assert!(
+            app.world()
+                .resource::<Assets<Mesh>>()
+                .get(&handle.0)
+                .unwrap()
+                .count_vertices()
+                > 0,
+            "an idle particle renderer must never upload an empty mesh"
+        );
+    }
     app.world_mut()
         .resource_mut::<BlockParticles>()
         .emit_break(stone_hit());
@@ -81,6 +98,33 @@ fn block_break_spawns_sixty_four_textured_billboards_and_expires() {
         app.update();
     }
     assert_eq!(app.world().resource::<BlockParticles>().active_count(), 0);
+    let mut renderers = app.world_mut().query::<(&Name, &Mesh3d, &Visibility)>();
+    let (_, handle, visible) = renderers
+        .iter(app.world())
+        .find(|(name, _, _)| name.as_str() == "Block particles")
+        .unwrap();
+    assert_eq!(*visible, Visibility::Hidden);
+    assert!(
+        app.world()
+            .resource::<Assets<Mesh>>()
+            .get(&handle.0)
+            .unwrap()
+            .count_vertices()
+            > 0,
+        "expired particles should hide the mesh rather than upload zero vertices"
+    );
+
+    app.world_mut()
+        .resource_mut::<BlockParticles>()
+        .emit_break(stone_hit());
+    app.update();
+    assert_eq!(app.world().resource::<BlockParticles>().active_count(), 64);
+    let mut renderers = app.world_mut().query::<(&Name, &Visibility)>();
+    let (_, visible) = renderers
+        .iter(app.world())
+        .find(|(name, _)| name.as_str() == "Block particles")
+        .unwrap();
+    assert_eq!(*visible, Visibility::Visible);
 }
 
 #[test]

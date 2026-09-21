@@ -15,6 +15,7 @@ use game::world::chunk::WorldChunks;
 use game::world::plugin::WorldPlugin;
 use game::world::streaming::GENERATE_MARGIN;
 use game::world::streaming::LOAD_RADIUS;
+use game::world::streaming::WorldStreaming;
 use game::world::streaming::positions_in_radius;
 
 fn test_app() -> App {
@@ -117,6 +118,93 @@ fn generation_runs_one_ring_ahead_of_meshing() {
         app.world().resource::<WorldChunks>().get(ring).is_some()
     }));
     assert!(!rendered_positions(&mut app).contains(&ring));
+
+    let edge = ChunkPos {
+        x: LOAD_RADIUS,
+        z: 0,
+    };
+    assert!(run_until(&mut app, Duration::from_secs(5), |app| {
+        rendered_positions(app).contains(&edge)
+    }));
+    let chunks = app.world().resource::<WorldChunks>();
+    for dx in -1..=1 {
+        for dz in -1..=1 {
+            assert!(
+                chunks.contains(ChunkPos {
+                    x: edge.x + dx,
+                    z: edge.z + dz,
+                }),
+                "render-distance edge chunk meshed without neighbor ({dx}, {dz})"
+            );
+        }
+    }
+}
+
+#[test]
+fn spawn_chunk_waits_for_all_neighbor_block_data_before_its_first_mesh() {
+    let mut app = test_app();
+    app.world_mut()
+        .spawn((Player, Transform::from_xyz(8.0, 80.0, 8.0)));
+
+    app.update();
+    assert!(
+        !rendered_positions(&mut app).contains(&ChunkPos::ZERO),
+        "the spawn chunk must not mesh before its neighbors are loaded"
+    );
+    assert!(run_until(&mut app, Duration::from_secs(5), |app| {
+        rendered_positions(app).contains(&ChunkPos::ZERO)
+    }));
+    let chunks = app.world().resource::<WorldChunks>();
+    for dx in -1..=1 {
+        for dz in -1..=1 {
+            assert!(
+                chunks.contains(ChunkPos { x: dx, z: dz }),
+                "missing neighbor ({dx}, {dz}) when the spawn chunk was meshed"
+            );
+        }
+    }
+}
+
+#[test]
+fn edited_chunk_remesh_is_dispatched_without_main_thread_meshing() {
+    let mut app = test_app();
+    app.world_mut()
+        .spawn((Player, Transform::from_xyz(8.0, 80.0, 8.0)));
+    let origin = ChunkPos::ZERO;
+    assert!(run_until(&mut app, Duration::from_secs(5), |app| {
+        rendered_positions(app).contains(&origin)
+    }));
+    assert!(run_until(&mut app, Duration::from_secs(20), |app| {
+        app.world().resource::<WorldStreaming>().meshing_job_count() == 0
+    }));
+
+    let (x, y, z) = {
+        let mut chunks = app.world_mut().resource_mut::<WorldChunks>();
+        let chunk = chunks.get_mut(origin).unwrap();
+        let (x, y, z) = top_solid(&chunk.chunk);
+        chunk.chunk.set(x, y, z, BlockId::Air);
+        (x, y, z)
+    };
+    app.world_mut()
+        .resource_mut::<WorldStreaming>()
+        .request_remesh(origin);
+    app.update();
+    assert_eq!(block_at(&app, origin, x, y, z), Some(BlockId::Air));
+    assert!(app.world().resource::<WorldStreaming>().meshing_job_count() > 0);
+
+    // A second edit before the first job is applied must replace that job.
+    app.world_mut()
+        .resource_mut::<WorldChunks>()
+        .get_mut(origin)
+        .unwrap()
+        .chunk
+        .set(x, y, z, BlockId::Stone);
+    app.world_mut()
+        .resource_mut::<WorldStreaming>()
+        .request_remesh(origin);
+    app.update();
+    assert_eq!(block_at(&app, origin, x, y, z), Some(BlockId::Stone));
+    assert!(app.world().resource::<WorldStreaming>().meshing_job_count() > 0);
 }
 
 #[test]

@@ -20,6 +20,7 @@ use super::generation::GeneratedChunk;
 use super::generation::WorldGenerator;
 use super::lighting::Skylight;
 use super::meshing::ChunkMeshes;
+use super::meshing::ChunkNeighbors;
 use super::meshing::mesh_chunk_with_biomes;
 use super::textures::CutoutMaterial;
 use super::textures::FoliageColors;
@@ -36,7 +37,7 @@ pub const LOAD_RADIUS: i32 = 4;
 pub const GENERATE_MARGIN: i32 = 1;
 pub const UNLOAD_RADIUS: i32 = LOAD_RADIUS + GENERATE_MARGIN;
 const MAX_IN_FLIGHT: usize = 2;
-/// Player edits touch one to three chunks; settings remesh is the large case.
+/// Limit snapshot work on the main thread when many chunks need rebuilding.
 const MAX_REMESH_PER_FRAME: usize = 8;
 
 /// The result of a generation job. `loaded` distinguishes a chunk read from disk
@@ -90,7 +91,7 @@ impl TimingStats {
 }
 
 #[derive(Resource)]
-pub(crate) struct WorldStreaming {
+pub struct WorldStreaming {
     generator: Arc<WorldGenerator>,
     grass_colors: GrassColors,
     foliage_colors: FoliageColors,
@@ -154,7 +155,6 @@ impl WorldStreaming {
 
 pub(crate) fn setup_streaming(
     mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
     terrain_material: Res<TerrainMaterial>,
     grass_overlay_material: Res<GrassOverlayMaterial>,
     cutout_material: Res<CutoutMaterial>,
@@ -192,32 +192,10 @@ pub(crate) fn setup_streaming(
             chunk
         }
     };
-    let skylight = Skylight::from_chunk(&generated.chunk);
-    let layers = mesh_chunk_with_biomes(
-        &generated.chunk,
-        &skylight,
-        &generated.biomes,
-        &grass_colors,
-        &foliage_colors,
-        settings.old_lighting,
-        settings.smooth_lighting,
-        settings.graphics.fancy_leaves(),
-    );
     let material = terrain_material.0.clone();
     let cutout_material = cutout_material.0.clone();
     let water_material = water_material.0.clone();
     let grass_overlay_material = grass_overlay_material.0.clone();
-    let rendered = spawn_chunk(
-        &mut commands,
-        &mut meshes,
-        ChunkPos::ZERO,
-        layers,
-        &material,
-        &grass_overlay_material,
-        &cutout_material,
-        &water_material,
-    );
-
     chunks.insert(ChunkPos::ZERO, generated);
     commands.insert_resource(WorldStreaming {
         generator,
@@ -225,7 +203,9 @@ pub(crate) fn setup_streaming(
         foliage_colors: foliage_colors.clone(),
         generating: HashMap::new(),
         meshing: HashMap::new(),
-        rendered: HashMap::from([(ChunkPos::ZERO, rendered)]),
+        // The spawn chunk has block data for the player's heightmap, but its
+        // first mesh waits for all eight neighboring chunks below.
+        rendered: HashMap::new(),
         material,
         grass_overlay_material,
         cutout_material,
@@ -260,7 +240,7 @@ pub(crate) fn regenerate_loaded_chunks(
         let count = chunks.positions().count();
         streaming.generating.clear();
         streaming.meshing.clear();
-        streaming.remesh_queue.clear();
+        streaming.remesh_queue = streaming.rendered.keys().copied().collect();
         chunks.clear();
         // Saved chunks would otherwise be loaded straight back from disk.
         if let Some(persistence) = persistence.as_deref_mut() {
@@ -320,6 +300,9 @@ pub(crate) fn stream_chunks(
             despawn_rendered_chunk(&mut commands, &mut meshes, rendered);
         }
     }
+    streaming
+        .remesh_queue
+        .retain(|position| within_radius(*position, center, load_radius));
 
     // Stored chunks are kept for the whole generation radius, including the ring
     // that is generated ahead of the render distance.
@@ -332,105 +315,6 @@ pub(crate) fn stream_chunks(
             && let Some(persistence) = persistence.as_deref_mut()
         {
             persistence.queue_unload(position, chunk);
-        }
-    }
-
-    // Rebuild a few loaded meshes per frame. Player edits need the changed
-    // chunks to appear immediately; a lighting or leaf-graphics change still
-    // spreads across several frames.
-    for _ in 0..MAX_REMESH_PER_FRAME {
-        let Some(position) = streaming.remesh_queue.pop_front() else {
-            break;
-        };
-        let Some(generated) = chunks.get(position) else {
-            continue;
-        };
-        let start = Instant::now();
-        let west = chunks
-            .get(ChunkPos {
-                x: position.x - 1,
-                z: position.z,
-            })
-            .map(|chunk| &chunk.chunk);
-        let east = chunks
-            .get(ChunkPos {
-                x: position.x + 1,
-                z: position.z,
-            })
-            .map(|chunk| &chunk.chunk);
-        let north = chunks
-            .get(ChunkPos {
-                x: position.x,
-                z: position.z - 1,
-            })
-            .map(|chunk| &chunk.chunk);
-        let south = chunks
-            .get(ChunkPos {
-                x: position.x,
-                z: position.z + 1,
-            })
-            .map(|chunk| &chunk.chunk);
-        let northwest = chunks
-            .get(ChunkPos {
-                x: position.x - 1,
-                z: position.z - 1,
-            })
-            .map(|chunk| &chunk.chunk);
-        let northeast = chunks
-            .get(ChunkPos {
-                x: position.x + 1,
-                z: position.z - 1,
-            })
-            .map(|chunk| &chunk.chunk);
-        let southwest = chunks
-            .get(ChunkPos {
-                x: position.x - 1,
-                z: position.z + 1,
-            })
-            .map(|chunk| &chunk.chunk);
-        let southeast = chunks
-            .get(ChunkPos {
-                x: position.x + 1,
-                z: position.z + 1,
-            })
-            .map(|chunk| &chunk.chunk);
-        let skylight = Skylight::from_chunk_with_neighbors_and_corners(
-            &generated.chunk,
-            west,
-            east,
-            north,
-            south,
-            northwest,
-            northeast,
-            southwest,
-            southeast,
-        );
-        let layers = mesh_chunk_with_biomes(
-            &generated.chunk,
-            &skylight,
-            &generated.biomes,
-            &streaming.grass_colors,
-            &streaming.foliage_colors,
-            streaming.old_lighting,
-            streaming.smooth_lighting,
-            streaming.fancy_graphics,
-        );
-        perf.mesh.record(start.elapsed());
-        let material = streaming.material.clone();
-        let grass_overlay_material = streaming.grass_overlay_material.clone();
-        let cutout_material = streaming.cutout_material.clone();
-        let water_material = streaming.water_material.clone();
-        if let Some(rendered) = streaming.rendered.get_mut(&position) {
-            apply_chunk_meshes(
-                &mut commands,
-                &mut meshes,
-                rendered,
-                layers,
-                &material,
-                &grass_overlay_material,
-                &cutout_material,
-                &water_material,
-            );
         }
     }
 
@@ -499,6 +383,24 @@ pub(crate) fn stream_chunks(
                 &streaming.water_material,
             );
             streaming.rendered.insert(position, rendered);
+        }
+    }
+
+    // Edits take priority over first meshes. Only snapshot chunk data here;
+    // lighting and mesh construction run on the compute pool.
+    let remesh_attempts = streaming.remesh_queue.len().min(MAX_REMESH_PER_FRAME);
+    for _ in 0..remesh_attempts {
+        if streaming.meshing.len() >= MAX_IN_FLIGHT {
+            break;
+        }
+        let Some(position) = streaming.remesh_queue.pop_front() else {
+            break;
+        };
+        if !streaming.rendered.contains_key(&position) {
+            continue;
+        }
+        if !spawn_mesh_job(&mut streaming, &chunks, position) {
+            streaming.remesh_queue.push_back(position);
         }
     }
 
@@ -574,108 +476,20 @@ pub(crate) fn stream_chunks(
         persistence.finish_regeneration();
     }
 
-    // Mesh generated chunks inside the render distance. The chunk is cloned into
-    // the job so the stored copy stays available while the mesh is built.
-    let mut in_flight = streaming.meshing.len();
-    let mut to_mesh = Vec::new();
-    for position in &streaming.desired_meshing {
-        if in_flight >= MAX_IN_FLIGHT {
-            break;
-        }
-        if streaming.rendered.contains_key(position) || streaming.meshing.contains_key(position) {
-            continue;
-        }
-        if !chunks.contains(*position) {
-            continue;
-        }
-        to_mesh.push(*position);
-        in_flight += 1;
-    }
+    // Fill remaining mesh slots with new chunks after pending edit remeshes.
+    let to_mesh: Vec<_> = streaming
+        .desired_meshing
+        .iter()
+        .copied()
+        .filter(|position| {
+            !streaming.rendered.contains_key(position)
+                && !streaming.meshing.contains_key(position)
+                && mesh_neighborhood_ready(&chunks, *position)
+        })
+        .take(MAX_IN_FLIGHT.saturating_sub(streaming.meshing.len()))
+        .collect();
     for position in to_mesh {
-        let Some(generated) = chunks.get(position) else {
-            continue;
-        };
-        let chunk = generated.chunk.clone();
-        let biomes = generated.biomes.clone();
-        let grass_colors = streaming.grass_colors.clone();
-        let foliage_colors = streaming.foliage_colors.clone();
-        let old_lighting = streaming.old_lighting;
-        let smooth_lighting = streaming.smooth_lighting;
-        let fancy_graphics = streaming.fancy_graphics;
-        let west = chunks
-            .get(ChunkPos {
-                x: position.x - 1,
-                z: position.z,
-            })
-            .map(|chunk| chunk.chunk.clone());
-        let east = chunks
-            .get(ChunkPos {
-                x: position.x + 1,
-                z: position.z,
-            })
-            .map(|chunk| chunk.chunk.clone());
-        let north = chunks
-            .get(ChunkPos {
-                x: position.x,
-                z: position.z - 1,
-            })
-            .map(|chunk| chunk.chunk.clone());
-        let south = chunks
-            .get(ChunkPos {
-                x: position.x,
-                z: position.z + 1,
-            })
-            .map(|chunk| chunk.chunk.clone());
-        let northwest = chunks
-            .get(ChunkPos {
-                x: position.x - 1,
-                z: position.z - 1,
-            })
-            .map(|chunk| chunk.chunk.clone());
-        let northeast = chunks
-            .get(ChunkPos {
-                x: position.x + 1,
-                z: position.z - 1,
-            })
-            .map(|chunk| chunk.chunk.clone());
-        let southwest = chunks
-            .get(ChunkPos {
-                x: position.x - 1,
-                z: position.z + 1,
-            })
-            .map(|chunk| chunk.chunk.clone());
-        let southeast = chunks
-            .get(ChunkPos {
-                x: position.x + 1,
-                z: position.z + 1,
-            })
-            .map(|chunk| chunk.chunk.clone());
-        let task = AsyncComputeTaskPool::get().spawn(async move {
-            let start = Instant::now();
-            let skylight = Skylight::from_chunk_with_neighbors_and_corners(
-                &chunk,
-                west.as_ref(),
-                east.as_ref(),
-                north.as_ref(),
-                south.as_ref(),
-                northwest.as_ref(),
-                northeast.as_ref(),
-                southwest.as_ref(),
-                southeast.as_ref(),
-            );
-            let layers = mesh_chunk_with_biomes(
-                &chunk,
-                &skylight,
-                &biomes,
-                &grass_colors,
-                &foliage_colors,
-                old_lighting,
-                smooth_lighting,
-                fancy_graphics,
-            );
-            (layers, start.elapsed())
-        });
-        streaming.meshing.insert(position, task);
+        spawn_mesh_job(&mut streaming, &chunks, position);
     }
 }
 
@@ -685,6 +499,97 @@ fn sort_by_distance(positions: &mut [ChunkPos], center: ChunkPos) {
         let dz = i64::from(position.z) - i64::from(center.z);
         (dx * dx + dz * dz, position.x, position.z)
     });
+}
+
+/// Snapshot the nine loaded chunks on the main thread, then do all lighting and
+/// mesh construction in a background job. A cancelled job never publishes its mesh.
+fn spawn_mesh_job(
+    streaming: &mut WorldStreaming,
+    chunks: &WorldChunks,
+    position: ChunkPos,
+) -> bool {
+    if streaming.meshing.contains_key(&position) || !mesh_neighborhood_ready(chunks, position) {
+        return false;
+    }
+    let Some(generated) = chunks.get(position) else {
+        return false;
+    };
+    let chunk = generated.chunk.clone();
+    let biomes = generated.biomes.clone();
+    let grass_colors = streaming.grass_colors.clone();
+    let foliage_colors = streaming.foliage_colors.clone();
+    let old_lighting = streaming.old_lighting;
+    let smooth_lighting = streaming.smooth_lighting;
+    let fancy_graphics = streaming.fancy_graphics;
+    let neighbor = |dx: i32, dz: i32| {
+        position
+            .x
+            .checked_add(dx)
+            .zip(position.z.checked_add(dz))
+            .and_then(|(x, z)| chunks.get(ChunkPos { x, z }))
+            .map(|generated| generated.chunk.clone())
+    };
+    let west = neighbor(-1, 0);
+    let east = neighbor(1, 0);
+    let north = neighbor(0, -1);
+    let south = neighbor(0, 1);
+    let northwest = neighbor(-1, -1);
+    let northeast = neighbor(1, -1);
+    let southwest = neighbor(-1, 1);
+    let southeast = neighbor(1, 1);
+    let task = AsyncComputeTaskPool::get().spawn(async move {
+        let start = Instant::now();
+        let skylight = Skylight::from_chunk_with_neighbors_and_corners(
+            &chunk,
+            west.as_ref(),
+            east.as_ref(),
+            north.as_ref(),
+            south.as_ref(),
+            northwest.as_ref(),
+            northeast.as_ref(),
+            southwest.as_ref(),
+            southeast.as_ref(),
+        );
+        let neighbors = ChunkNeighbors {
+            west: west.as_ref(),
+            east: east.as_ref(),
+            north: north.as_ref(),
+            south: south.as_ref(),
+            northwest: northwest.as_ref(),
+            northeast: northeast.as_ref(),
+            southwest: southwest.as_ref(),
+            southeast: southeast.as_ref(),
+        };
+        let layers = mesh_chunk_with_biomes(
+            &chunk,
+            &neighbors,
+            &skylight,
+            &biomes,
+            &grass_colors,
+            &foliage_colors,
+            old_lighting,
+            smooth_lighting,
+            fancy_graphics,
+        );
+        (layers, start.elapsed())
+    });
+    streaming.meshing.insert(position, task);
+    true
+}
+
+/// Lighting and ambient occlusion sample across both faces and corners. Do
+/// not bake fallback edge light into a chunk's first mesh while any of its
+/// surrounding block data is still being generated or loaded.
+fn mesh_neighborhood_ready(chunks: &WorldChunks, position: ChunkPos) -> bool {
+    (-1..=1).all(|dx| {
+        (-1..=1).all(|dz| {
+            position
+                .x
+                .checked_add(dx)
+                .zip(position.z.checked_add(dz))
+                .is_some_and(|(x, z)| chunks.contains(ChunkPos { x, z }))
+        })
+    })
 }
 
 fn spawn_chunk(

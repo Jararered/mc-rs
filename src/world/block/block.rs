@@ -62,8 +62,8 @@ pub enum BlockId {
 }
 
 impl BlockId {
-    /// The Beta block id stored in a chunk. Persistence writes this value rather
-    /// than the enum's variant index so saves survive new variants being added.
+    /// Native chunk/save ID. Private variants overlap Beta IDs; use
+    /// `beta_state()` for the Beta identity and metadata instead.
     pub const fn as_u8(self) -> u8 {
         self as u8
     }

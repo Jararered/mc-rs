@@ -7,8 +7,7 @@ pub const HOTBAR_SLOTS: usize = 9;
 
 /// Player hotbar: nine slots and the currently selected index.
 ///
-/// Items are not implemented yet; slots stay empty until the item system fills
-/// them. Selection (scroll and number keys) already works.
+/// Slots start empty. Insertion uses registered stack limits and item data.
 #[derive(Component, Clone, Debug)]
 pub struct Hotbar {
     pub slots: [Option<ItemStack>; HOTBAR_SLOTS],
@@ -25,6 +24,21 @@ impl Default for Hotbar {
 }
 
 impl Hotbar {
+    /// Merge matching stacks before filling empty slots. Return the remainder
+    /// when full, without discarding any items.
+    pub fn insert(&mut self, mut stack: ItemStack) -> Option<ItemStack> {
+        for slot in self.slots.iter_mut().flatten() {
+            stack = slot.merge(stack)?;
+        }
+        for slot in &mut self.slots {
+            if slot.is_none() {
+                *slot = Some(stack);
+                return None;
+            }
+        }
+        Some(stack)
+    }
+
     pub fn select(&mut self, slot: usize) {
         if slot < HOTBAR_SLOTS {
             self.selected = slot;

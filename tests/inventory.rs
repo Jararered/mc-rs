@@ -40,11 +40,14 @@ fn select_clamps_to_valid_slots() {
 }
 
 #[test]
-fn selected_stack_reads_the_placeholder_item() {
+fn selected_stack_reads_the_registered_item() {
     let mut hotbar = Hotbar::default();
-    hotbar.slots[2] = Some(ItemStack::new(ItemId(1), 4));
+    hotbar.slots[2] = Some(ItemStack::new(ItemId(1), 4).unwrap());
     hotbar.select(2);
-    assert_eq!(hotbar.selected_stack(), Some(ItemStack::new(ItemId(1), 4)));
+    assert_eq!(
+        hotbar.selected_stack(),
+        Some(ItemStack::new(ItemId(1), 4).unwrap())
+    );
     hotbar.select(0);
     assert_eq!(hotbar.selected_stack(), None);
 }

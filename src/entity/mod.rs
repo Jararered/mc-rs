@@ -5,6 +5,8 @@
 
 use bevy::prelude::*;
 
+pub mod particles;
+
 /// Linear velocity in blocks per second.
 #[derive(Component, Default, Clone, Copy, Debug)]
 pub struct Velocity(pub Vec3);

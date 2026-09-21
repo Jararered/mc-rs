@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 
+use crate::entity::particles::BlockParticlePlugin;
 use crate::physics::PhysicsPlugin;
 use crate::player::PlayerPlugin;
 use crate::ui::HudPlugin;
@@ -22,6 +23,7 @@ impl Plugin for GamePlugin {
             WorldPlugin,
             PersistencePlugin::default(),
             PlayerPlugin,
+            BlockParticlePlugin,
             PhysicsPlugin,
             UiCameraPlugin,
             MenuPlugin,

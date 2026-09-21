@@ -10,6 +10,7 @@ use bevy::window::PrimaryWindow;
 
 use crate::entity::CollisionState;
 use crate::entity::EntitySize;
+use crate::entity::particles::BlockParticles;
 use crate::physics::Aabb;
 use crate::physics::BLOCK_REACH;
 use crate::physics::BlockHit;
@@ -53,6 +54,7 @@ pub(super) fn interact_blocks(
     mut chunks: ResMut<WorldChunks>,
     mut streaming: Option<ResMut<WorldStreaming>>,
     mut persistence: Option<ResMut<WorldPersistence>>,
+    mut particles: Option<ResMut<BlockParticles>>,
     mut focus: ResMut<BlockFocus>,
     mut state: Local<BlockInteractState>,
 ) {
@@ -109,7 +111,13 @@ pub(super) fn interact_blocks(
     if left_held {
         if left_click && let Some(hit) = hit {
             if let Some(broken) = state.mining.try_instant(hit, on_ground, in_water) {
-                apply_break(&mut chunks, &mut streaming, &mut persistence, broken);
+                apply_break(
+                    &mut chunks,
+                    &mut streaming,
+                    &mut persistence,
+                    &mut particles,
+                    broken,
+                );
             }
         }
         state.tick_accum += time.delta_secs();
@@ -117,8 +125,20 @@ pub(super) fn interact_blocks(
         while state.tick_accum >= TICK_SECS && ticks < MAX_TICKS_PER_FRAME {
             state.tick_accum -= TICK_SECS;
             ticks += 1;
+            let old_damage = state.mining.damage();
             if let Some(broken) = state.mining.tick(hit, on_ground, in_water) {
-                apply_break(&mut chunks, &mut streaming, &mut persistence, broken);
+                apply_break(
+                    &mut chunks,
+                    &mut streaming,
+                    &mut persistence,
+                    &mut particles,
+                    broken,
+                );
+            } else if state.mining.damage() > old_damage
+                && let Some(hit) = hit
+                && let Some(particles) = particles.as_deref_mut()
+            {
+                particles.emit_hit(hit);
             }
         }
     }
@@ -142,9 +162,13 @@ fn apply_break(
     chunks: &mut WorldChunks,
     streaming: &mut Option<ResMut<WorldStreaming>>,
     persistence: &mut Option<ResMut<WorldPersistence>>,
+    particles: &mut Option<ResMut<BlockParticles>>,
     hit: BlockHit,
 ) {
     if break_block(chunks, hit) {
+        if let Some(particles) = particles.as_deref_mut() {
+            particles.emit_break(hit);
+        }
         notify_edit(streaming, persistence, hit.x, hit.z);
     }
 }

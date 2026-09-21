@@ -2,6 +2,8 @@ use bevy::image::ImageLoaderSettings;
 use bevy::image::ImageSampler;
 use bevy::picking::prelude::Pickable;
 use bevy::prelude::*;
+use bevy::text::Justify;
+use bevy::text::TextLayout;
 use bevy::window::CursorGrabMode;
 use bevy::window::CursorOptions;
 use bevy::window::PrimaryWindow;
@@ -10,6 +12,7 @@ use super::block_icons::BlockIcons;
 use crate::app::state::AppScreen;
 use crate::crafting::CraftingGrid;
 use crate::crafting::beta_recipe_book;
+use crate::entity::DroppedItem;
 use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
 use crate::item::ItemData;
@@ -19,6 +22,9 @@ use crate::world::block::block::BlockId;
 use crate::world::chunk::WorldChunks;
 
 const SCALE: f32 = 2.0;
+const SLOT_SIZE: f32 = 16.0;
+const SLOT_STEP: f32 = 18.0;
+const SLOT_ICON_INSET: f32 = 2.0;
 
 pub struct InventoryGuiPlugin;
 
@@ -27,7 +33,7 @@ impl Plugin for InventoryGuiPlugin {
         app.init_resource::<InventoryScreen>()
             .init_resource::<WorkbenchUiSession>()
             .add_systems(PreStartup, (load_texture, super::block_icons::setup))
-            .add_systems(Update, super::block_icons::build)
+            .add_systems(Update, super::block_icons::build.before(refresh))
             .add_systems(
                 Update,
                 (validate_workbench, toggle, handle_slots, refresh)
@@ -43,7 +49,8 @@ fn validate_workbench(
     mut screen: ResMut<InventoryScreen>,
     mut session: ResMut<WorkbenchUiSession>,
     chunks: Res<WorldChunks>,
-    player: Query<&Transform, With<Player>>,
+    player_transform: Query<&Transform, With<Player>>,
+    mut player: Query<(&mut Hotbar, &mut Inventory), With<Player>>,
     roots: Query<Entity, With<InventoryRoot>>,
     mut windows: Query<&mut CursorOptions, With<PrimaryWindow>>,
 ) {
@@ -53,16 +60,26 @@ fn validate_workbench(
     let Some((x, y, z)) = session.position else {
         return;
     };
-    let Ok(transform) = player.single() else {
+    let Ok(transform) = player_transform.single() else {
         return;
     };
-    let dx = transform.translation.x - (x as f32 + 0.5);
-    let dy = transform.translation.y - (y as f32 + 0.5);
-    let dz = transform.translation.z - (z as f32 + 0.5);
+    let player_position = transform.translation;
+    let dx = player_position.x - (x as f32 + 0.5);
+    let dy = player_position.y - (y as f32 + 0.5);
+    let dz = player_position.z - (z as f32 + 0.5);
     if chunks.block_at(x, y, z) == Some(BlockId::CraftingTable)
         && dx * dx + dy * dy + dz * dz <= 64.0
     {
         return;
+    }
+    if let Ok((mut hotbar, mut inventory)) = player.single_mut() {
+        close_crafting_interface(
+            &mut commands,
+            player_position,
+            &mut hotbar,
+            &mut inventory,
+            &mut session,
+        );
     }
     screen.open = false;
     screen.workbench = false;
@@ -148,6 +165,7 @@ fn toggle(
     texture: Res<InventoryTexture>,
     icons: Res<BlockIcons>,
     roots: Query<Entity, With<InventoryRoot>>,
+    mut player: Query<(&Transform, &mut Hotbar, &mut Inventory), With<Player>>,
     mut windows: Query<(&Window, &mut CursorOptions), With<PrimaryWindow>>,
 ) {
     if screen.open && roots.is_empty() {
@@ -168,8 +186,16 @@ fn toggle(
     }
     screen.open = !screen.open;
     if !screen.open {
+        if let Ok((transform, mut hotbar, mut inventory)) = player.single_mut() {
+            close_crafting_interface(
+                &mut commands,
+                transform.translation,
+                &mut hotbar,
+                &mut inventory,
+                &mut workbench,
+            );
+        }
         screen.workbench = false;
-        workbench.position = None;
     }
     if let Ok((window, mut cursor)) = windows.single_mut() {
         cursor.visible = screen.open;
@@ -200,12 +226,61 @@ fn close(
     mut screen: ResMut<InventoryScreen>,
     mut workbench: ResMut<WorkbenchUiSession>,
     roots: Query<Entity, With<InventoryRoot>>,
+    mut player: Query<(&Transform, &mut Hotbar, &mut Inventory), With<Player>>,
 ) {
+    if let Ok((transform, mut hotbar, mut inventory)) = player.single_mut() {
+        close_crafting_interface(
+            &mut commands,
+            transform.translation,
+            &mut hotbar,
+            &mut inventory,
+            &mut workbench,
+        );
+    }
     screen.open = false;
     screen.workbench = false;
-    workbench.position = None;
     for root in &roots {
         commands.entity(root).despawn();
+    }
+}
+
+pub(crate) fn close_crafting_interface(
+    commands: &mut Commands,
+    player_position: Vec3,
+    hotbar: &mut Hotbar,
+    inventory: &mut Inventory,
+    workbench: &mut WorkbenchUiSession,
+) {
+    let mut stacks: Vec<ItemStack> = inventory
+        .crafting
+        .iter_mut()
+        .filter_map(Option::take)
+        .collect();
+    stacks.extend(workbench.grid.drain());
+    for stack in stacks {
+        return_or_drop(commands, player_position, hotbar, inventory, stack);
+    }
+    if let Some(stack) = inventory.carried.take() {
+        return_or_drop(commands, player_position, hotbar, inventory, stack);
+    }
+    // A closed interface must never leave a reusable session holding inputs;
+    // the next workbench always starts with a fresh 3×3 grid.
+    workbench.grid = CraftingGrid::workbench();
+    workbench.position = None;
+}
+
+fn return_or_drop(
+    commands: &mut Commands,
+    player_position: Vec3,
+    hotbar: &mut Hotbar,
+    inventory: &mut Inventory,
+    stack: ItemStack,
+) {
+    if let Some(remainder) = inventory.insert(hotbar, stack) {
+        commands.spawn((
+            DroppedItem(remainder),
+            Transform::from_translation(player_position + Vec3::Y * 0.35),
+        ));
     }
 }
 
@@ -239,8 +314,8 @@ fn spawn(commands: &mut Commands, texture: &Handle<Image>, icons: &Handle<Image>
                         panel,
                         icons,
                         Slot::Main(index),
-                        8.0 + (index % 9) as f32 * 18.0,
-                        84.0 + (index / 9) as f32 * 18.0,
+                        8.0 + (index % 9) as f32 * SLOT_STEP,
+                        84.0 + (index / 9) as f32 * SLOT_STEP,
                     );
                 }
                 for index in 0..9 {
@@ -248,7 +323,7 @@ fn spawn(commands: &mut Commands, texture: &Handle<Image>, icons: &Handle<Image>
                         panel,
                         icons,
                         Slot::Hotbar(index),
-                        8.0 + index as f32 * 18.0,
+                        8.0 + index as f32 * SLOT_STEP,
                         142.0,
                     );
                 }
@@ -257,8 +332,8 @@ fn spawn(commands: &mut Commands, texture: &Handle<Image>, icons: &Handle<Image>
                         panel,
                         icons,
                         Slot::Craft(index),
-                        88.0 + (index % 2) as f32 * 18.0,
-                        26.0 + (index / 2) as f32 * 18.0,
+                        88.0 + (index % 2) as f32 * SLOT_STEP,
+                        26.0 + (index / 2) as f32 * SLOT_STEP,
                     );
                 }
                 if workbench {
@@ -267,13 +342,13 @@ fn spawn(commands: &mut Commands, texture: &Handle<Image>, icons: &Handle<Image>
                             panel,
                             icons,
                             Slot::Workbench(index),
-                            30.0 + (index % 3) as f32 * 18.0,
-                            17.0 + (index / 3) as f32 * 18.0,
+                            30.0 + (index % 3) as f32 * SLOT_STEP,
+                            17.0 + (index / 3) as f32 * SLOT_STEP,
                         );
                     }
                     slot(panel, icons, Slot::CraftResult, 124.0, 35.0);
                 } else {
-                    slot(panel, icons, Slot::CraftResult, 134.0, 35.0);
+                    slot(panel, icons, Slot::CraftResult, 144.0, 36.0);
                 }
                 for index in 0..4 {
                     slot(
@@ -281,7 +356,7 @@ fn spawn(commands: &mut Commands, texture: &Handle<Image>, icons: &Handle<Image>
                         icons,
                         Slot::Armor(index),
                         8.0,
-                        8.0 + index as f32 * 18.0,
+                        8.0 + index as f32 * SLOT_STEP,
                     );
                 }
                 panel.spawn((
@@ -306,10 +381,15 @@ fn spawn(commands: &mut Commands, texture: &Handle<Image>, icons: &Handle<Image>
                         font_size: 15.0.into(),
                         ..default()
                     },
+                    TextLayout::justify(Justify::Right),
                     Node {
                         position_type: PositionType::Absolute,
                         left: px(0),
                         top: px(0),
+                        width: px(32.0),
+                        height: px(32.0),
+                        justify_content: JustifyContent::FlexEnd,
+                        align_items: AlignItems::FlexEnd,
                         ..default()
                     },
                 ));
@@ -332,8 +412,8 @@ fn slot(
                 position_type: PositionType::Absolute,
                 left: px(x * SCALE),
                 top: px(y * SCALE),
-                width: px(18.0 * SCALE),
-                height: px(18.0 * SCALE),
+                width: px(SLOT_SIZE * SCALE),
+                height: px(SLOT_SIZE * SCALE),
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
                 ..default()
@@ -347,8 +427,8 @@ fn slot(
                 ImageNode::new(icons.clone()),
                 Node {
                     position_type: PositionType::Absolute,
-                    left: px(2.0),
-                    top: px(2.0),
+                    left: px(SLOT_ICON_INSET),
+                    top: px(SLOT_ICON_INSET),
                     width: px(32.0),
                     height: px(32.0),
                     ..default()
@@ -362,12 +442,17 @@ fn slot(
                     font_size: 15.0.into(),
                     ..default()
                 },
+                TextLayout::justify(Justify::Right),
                 TextColor(Color::WHITE),
                 TextShadow::default(),
                 Node {
                     position_type: PositionType::Absolute,
-                    right: px(2.0),
-                    bottom: px(0.0),
+                    left: px(0.0),
+                    top: px(0.0),
+                    width: percent(100),
+                    height: percent(100),
+                    justify_content: JustifyContent::FlexEnd,
+                    align_items: AlignItems::FlexEnd,
                     ..default()
                 },
             ));
@@ -610,10 +695,10 @@ fn refresh(
         let has_icon = stack
             .and_then(|stack| block_icons.rect_for_stack(stack))
             .is_some();
-        node.right = if has_icon { px(2.0) } else { Val::Auto };
-        node.bottom = if has_icon { px(0.0) } else { Val::Auto };
-        node.left = if has_icon { Val::Auto } else { px(0.0) };
-        node.top = if has_icon { Val::Auto } else { px(0.0) };
+        node.left = px(0.0);
+        node.top = px(0.0);
+        node.right = Val::Auto;
+        node.bottom = Val::Auto;
         **text = if has_icon {
             stack
                 .map(|s| {

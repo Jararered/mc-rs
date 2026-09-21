@@ -1,6 +1,8 @@
 use game::ui::icon_appearance::Shape;
 use game::ui::icon_appearance::block_appearance;
 use game::ui::icon_appearance::item_tile;
+use game::world::block::block::BlockId;
+use game::world::textures::block_tile;
 
 #[test]
 fn beta_render_types_select_flat_and_3d_appearances() {
@@ -34,4 +36,21 @@ fn standalone_items_use_beta_items_atlas_tiles() {
     assert_eq!(item_tile(351, 15), Some(14 + 7 * 16 + 1));
     assert_eq!(item_tile(2256, 0), Some(240));
     assert_eq!(item_tile(2257, 0), Some(241));
+}
+
+#[test]
+fn crafting_table_uses_workbench_tiles_in_world_meshes() {
+    assert_eq!(block_tile(BlockId::CraftingTable, 0, true), (11, 2));
+    assert_eq!(block_tile(BlockId::CraftingTable, 1, true), (4, 0));
+    assert_eq!(block_tile(BlockId::CraftingTable, 2, true), (12, 3));
+    assert_eq!(block_tile(BlockId::CraftingTable, 3, true), (11, 3));
+    assert_eq!(block_tile(BlockId::CraftingTable, 4, true), (12, 3));
+    assert_eq!(block_tile(BlockId::CraftingTable, 5, true), (11, 3));
+    assert_ne!(block_tile(BlockId::CraftingTable, 0, true), (1, 0));
+}
+
+#[test]
+fn result_item_tiles_are_available_without_clicking_the_result_slot() {
+    assert_eq!(item_tile(270, 0), Some(96));
+    assert_eq!(item_tile(280, 0), Some(53));
 }

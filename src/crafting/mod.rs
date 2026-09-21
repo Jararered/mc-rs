@@ -115,6 +115,17 @@ impl CraftingGrid {
     pub fn occupied(&self) -> usize {
         self.slots().filter(Option::is_some).count()
     }
+
+    /// Remove every input stack from the grid for container-close handling.
+    pub fn drain(&mut self) -> Vec<ItemStack> {
+        let mut drained = Vec::new();
+        for slot in &mut self.slots[..self.width * self.height] {
+            if let Some(stack) = slot.take() {
+                drained.push(stack);
+            }
+        }
+        drained
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

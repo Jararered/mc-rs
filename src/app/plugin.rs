@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 
+use crate::entity::dropped_items::DroppedItemPlugin;
 use crate::entity::particle_registry::ParticleRegistryPlugin;
 use crate::entity::particles::BlockParticlePlugin;
 use crate::physics::PhysicsPlugin;
@@ -26,6 +27,7 @@ impl Plugin for GamePlugin {
             PersistencePlugin::default(),
             PlayerPlugin,
             BlockParticlePlugin,
+            DroppedItemPlugin,
             ParticleRegistryPlugin,
             PhysicsPlugin,
             UiCameraPlugin,

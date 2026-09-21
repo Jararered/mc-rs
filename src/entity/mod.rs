@@ -5,8 +5,15 @@
 
 use bevy::prelude::*;
 
+use crate::item::ItemStack;
+
+pub mod dropped_items;
 pub mod particle_registry;
 pub mod particles;
+
+/// An independently simulated inventory stack lying in the world.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct DroppedItem(pub ItemStack);
 
 /// Linear velocity in blocks per second.
 #[derive(Component, Default, Clone, Copy, Debug)]

@@ -273,7 +273,7 @@ fn apply_water_quality(material: &mut StandardMaterial, graphics: GraphicsQualit
 }
 
 // The original terrain.png is a 16 by 16 grid of 16-pixel tiles.
-pub(crate) fn block_tile(
+pub fn block_tile(
     block: super::block::block::BlockId,
     face: usize,
     fancy_graphics: bool,
@@ -288,6 +288,12 @@ pub(crate) fn block_tile(
         BlockId::Dirt => (2, 0),
         BlockId::Cobblestone => (0, 1),
         BlockId::WoodenPlanks => (4, 0),
+        // Beta BlockWorkbench: top 43, plank bottom 4, and two alternating
+        // side tiles (59/60) based on the block face orientation.
+        BlockId::CraftingTable if face == 0 => (11, 2),
+        BlockId::CraftingTable if face == 1 => (4, 0),
+        BlockId::CraftingTable if face == 2 || face == 4 => (12, 3),
+        BlockId::CraftingTable => (11, 3),
         BlockId::Bedrock => (1, 1),
         BlockId::Sand => (2, 1),
         BlockId::Gravel => (3, 1),

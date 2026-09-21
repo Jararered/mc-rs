@@ -20,6 +20,7 @@ use crate::physics::BlockHit;
 use crate::physics::raycast_blocks;
 use crate::ui::InventoryScreen;
 use crate::ui::WorkbenchUiSession;
+use crate::ui::close_crafting_interface;
 use crate::world::block::block::BlockId;
 use crate::world::block::properties::is_breakable;
 use crate::world::block::properties::is_opaque_cube;
@@ -53,6 +54,7 @@ pub(super) struct BlockInteractState {
 }
 
 pub(super) fn interact_blocks(
+    mut commands: Commands,
     time: Res<Time>,
     mouse: Res<ButtonInput<MouseButton>>,
     mut windows: Query<(&Window, &mut CursorOptions), With<PrimaryWindow>>,
@@ -124,6 +126,16 @@ pub(super) fn interact_blocks(
         && hit.is_some_and(|hit| hit.block == BlockId::CraftingTable)
     {
         let hit = hit.expect("checked above");
+        // Do not let stale player-grid contents leak into a new workbench
+        // session if an earlier interface was interrupted before its close
+        // system ran.
+        close_crafting_interface(
+            &mut commands,
+            transform.translation,
+            &mut hotbar,
+            &mut inventory,
+            &mut workbench,
+        );
         inventory_screen.open = true;
         inventory_screen.workbench = true;
         workbench.position = Some((hit.x, hit.y, hit.z));

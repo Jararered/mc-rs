@@ -9,8 +9,11 @@ use crate::app::settings::GameSettings;
 use crate::app::settings::GraphicsQuality;
 use crate::app::state::AppScreen;
 
+pub mod block_icons;
 mod hud;
+pub mod icon_appearance;
 mod inventory;
+mod item_icon_data;
 
 pub use hud::HudPlugin;
 pub use inventory::InventoryGuiPlugin;

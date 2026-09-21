@@ -312,6 +312,19 @@ pub(crate) fn block_tile(
                 (5, 8)
             }
         }
+        BlockId::Sponge => (0, 3),
+        BlockId::GoldBlock => (7, 1),
+        BlockId::IronBlock => (6, 1),
+        BlockId::DiamondBlock => (8, 1),
+        BlockId::Bookshelf if face == 0 || face == 1 => (4, 0),
+        BlockId::Bookshelf => (3, 2),
+        BlockId::Tnt if face == 0 => (9, 0),
+        BlockId::Tnt if face == 1 => (10, 0),
+        BlockId::Tnt => (8, 0),
+        BlockId::Sandstone => (0, 12),
+        BlockId::LapisOre => (0, 10),
+        BlockId::LapisBlock => (0, 9),
+        BlockId::RedstoneOre | BlockId::LitRedstoneOre => (3, 3),
         BlockId::GoldOre => (0, 2),
         BlockId::IronOre => (1, 2),
         BlockId::CoalOre => (2, 2),

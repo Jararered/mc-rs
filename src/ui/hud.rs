@@ -5,6 +5,8 @@ use bevy::math::Rect;
 use bevy::picking::prelude::Pickable;
 use bevy::prelude::*;
 
+use super::block_icons::BlockIcons;
+use super::inventory::durability_bar;
 use crate::app::state::AppScreen;
 use crate::inventory::HOTBAR_SLOTS;
 use crate::inventory::Hotbar;
@@ -33,7 +35,13 @@ impl Plugin for HudPlugin {
             .add_systems(OnExit(AppScreen::Playing), despawn_hud)
             .add_systems(
                 Update,
-                (update_hearts, update_hotbar_selector, update_hotbar_items)
+                (
+                    update_hearts,
+                    update_hotbar_selector,
+                    update_hotbar_items,
+                    update_hotbar_icons,
+                    update_hotbar_bars,
+                )
                     .run_if(in_state(AppScreen::Playing)),
             );
     }
@@ -55,6 +63,10 @@ struct HudHeart(usize);
 struct HotbarSelector;
 #[derive(Component)]
 struct HotbarItem(usize);
+#[derive(Component)]
+struct HotbarBlockIcon(usize);
+#[derive(Component)]
+struct HotbarDurability(usize, bool);
 
 fn load_hud_textures(mut commands: Commands, asset_server: Res<AssetServer>) {
     let load = |path| {
@@ -74,6 +86,7 @@ fn load_hud_textures(mut commands: Commands, asset_server: Res<AssetServer>) {
 fn spawn_hud(
     mut commands: Commands,
     textures: Res<HudTextures>,
+    icons: Res<BlockIcons>,
     player: Query<(&PlayerHealth, &Hotbar), With<Player>>,
 ) {
     let Ok((health, hotbar)) = player.single() else {
@@ -92,7 +105,7 @@ fn spawn_hud(
         ))
         .with_children(|root| {
             spawn_crosshair(root, &textures);
-            spawn_status(root, &textures, health, hotbar);
+            spawn_status(root, &textures, &icons, health, hotbar);
         });
 }
 
@@ -116,6 +129,7 @@ fn spawn_crosshair(parent: &mut ChildSpawnerCommands, textures: &HudTextures) {
 fn spawn_status(
     parent: &mut ChildSpawnerCommands,
     textures: &HudTextures,
+    icons: &BlockIcons,
     health: &PlayerHealth,
     hotbar: &Hotbar,
 ) {
@@ -134,7 +148,7 @@ fn spawn_status(
         ))
         .with_children(|bottom| {
             spawn_hearts(bottom, textures, health);
-            spawn_hotbar(bottom, textures, hotbar);
+            spawn_hotbar(bottom, textures, icons, hotbar);
         });
 }
 
@@ -183,7 +197,12 @@ fn spawn_hearts(parent: &mut ChildSpawnerCommands, textures: &HudTextures, healt
         });
 }
 
-fn spawn_hotbar(parent: &mut ChildSpawnerCommands, textures: &HudTextures, hotbar: &Hotbar) {
+fn spawn_hotbar(
+    parent: &mut ChildSpawnerCommands,
+    textures: &HudTextures,
+    icons: &BlockIcons,
+    hotbar: &Hotbar,
+) {
     parent
         .spawn((
             Pickable::IGNORE,
@@ -210,7 +229,7 @@ fn spawn_hotbar(parent: &mut ChildSpawnerCommands, textures: &HudTextures, hotba
                 },
             ));
             for (index, stack) in hotbar.slots.iter().copied().enumerate() {
-                spawn_hotbar_item(bar, textures, index, stack);
+                spawn_hotbar_item(bar, icons, index, stack);
             }
         });
 }
@@ -222,21 +241,16 @@ fn hotbar_item_rect(index: usize) -> (f32, f32) {
 
 fn spawn_hotbar_item(
     parent: &mut ChildSpawnerCommands,
-    _textures: &HudTextures,
+    icons: &BlockIcons,
     index: usize,
     stack: Option<ItemStack>,
 ) {
     let (left, top) = hotbar_item_rect(index);
     parent.spawn((
-        HotbarItem(index),
+        HotbarBlockIcon(index),
         Pickable::IGNORE,
-        Text::new(hotbar_label(stack)),
-        TextFont {
-            font_size: 10.0.into(),
-            ..default()
-        },
-        TextColor(Color::WHITE),
-        TextShadow::default(),
+        Visibility::Hidden,
+        ImageNode::new(icons.image.clone()),
         Node {
             position_type: PositionType::Absolute,
             left: px(left),
@@ -246,6 +260,67 @@ fn spawn_hotbar_item(
             ..default()
         },
     ));
+    for (foreground, height, top_offset) in [(false, 4.0, 26.0), (true, 2.0, 28.0)] {
+        parent.spawn((
+            HotbarDurability(index, foreground),
+            Pickable::IGNORE,
+            Visibility::Hidden,
+            BackgroundColor(Color::BLACK),
+            Node {
+                position_type: PositionType::Absolute,
+                left: px(left + 4.0),
+                top: px(top + top_offset),
+                width: px(26.0),
+                height: px(height),
+                ..default()
+            },
+        ));
+    }
+    let has_icon = stack
+        .and_then(|stack| icons.rect_for_stack(stack))
+        .is_some();
+    parent.spawn((
+        HotbarItem(index),
+        Pickable::IGNORE,
+        Text::new(visible_label(stack, icons)),
+        TextFont {
+            font_size: 10.0.into(),
+            ..default()
+        },
+        TextColor(Color::WHITE),
+        TextShadow::default(),
+        Node {
+            position_type: PositionType::Absolute,
+            left: px(if has_icon { left + 14.0 } else { left }),
+            top: px(if has_icon { top + 16.0 } else { top }),
+            width: px(if has_icon {
+                18.0
+            } else {
+                ITEM_SIZE * HUD_SCALE
+            }),
+            height: px(ITEM_SIZE * HUD_SCALE),
+            ..default()
+        },
+    ));
+}
+
+fn visible_label(stack: Option<ItemStack>, icons: &BlockIcons) -> String {
+    if stack
+        .and_then(|stack| icons.rect_for_stack(stack))
+        .is_some()
+    {
+        stack
+            .map(|stack| {
+                if stack.count() > 1 {
+                    stack.count().to_string()
+                } else {
+                    String::new()
+                }
+            })
+            .unwrap_or_default()
+    } else {
+        hotbar_label(stack)
+    }
 }
 
 fn hotbar_label(stack: Option<ItemStack>) -> String {
@@ -300,14 +375,76 @@ fn update_hotbar_selector(
 }
 
 fn update_hotbar_items(
-    hotbar: Query<&Hotbar, (With<Player>, Changed<Hotbar>)>,
-    mut labels: Query<(&HotbarItem, &mut Text)>,
+    hotbar: Query<Ref<Hotbar>, With<Player>>,
+    mut labels: Query<(&HotbarItem, &mut Text, &mut Node)>,
+    icons: Res<BlockIcons>,
 ) {
     let Ok(hotbar) = hotbar.single() else {
         return;
     };
-    for (item, mut text) in &mut labels {
-        **text = hotbar_label(hotbar.slots[item.0]);
+    if !hotbar.is_changed() && !icons.is_changed() {
+        return;
+    }
+    for (item, mut text, mut node) in &mut labels {
+        let stack = hotbar.slots[item.0];
+        let has_icon = stack
+            .and_then(|stack| icons.rect_for_stack(stack))
+            .is_some();
+        let (left, top) = hotbar_item_rect(item.0);
+        node.left = px(if has_icon { left + 14.0 } else { left });
+        node.top = px(if has_icon { top + 16.0 } else { top });
+        node.width = px(if has_icon {
+            18.0
+        } else {
+            ITEM_SIZE * HUD_SCALE
+        });
+        **text = visible_label(stack, &icons);
+    }
+}
+
+fn update_hotbar_icons(
+    hotbar: Query<&Hotbar, With<Player>>,
+    icons: Res<BlockIcons>,
+    mut images: Query<(&HotbarBlockIcon, &mut ImageNode, &mut Visibility)>,
+) {
+    let Ok(hotbar) = hotbar.single() else {
+        return;
+    };
+    for (slot, mut image, mut visibility) in &mut images {
+        if let Some(rect) = hotbar.slots[slot.0].and_then(|stack| icons.rect_for_stack(stack)) {
+            image.rect = Some(rect);
+            *visibility = Visibility::Inherited;
+        } else {
+            *visibility = Visibility::Hidden;
+        }
+    }
+}
+
+fn update_hotbar_bars(
+    hotbar: Query<&Hotbar, With<Player>>,
+    mut bars: Query<(
+        &HotbarDurability,
+        &mut Node,
+        &mut Visibility,
+        &mut BackgroundColor,
+    )>,
+) {
+    let Ok(hotbar) = hotbar.single() else {
+        return;
+    };
+    for (bar, mut node, mut visibility, mut color) in &mut bars {
+        if let Some((width, red, green)) = hotbar.slots[bar.0].and_then(durability_bar) {
+            *visibility = Visibility::Inherited;
+            if bar.1 {
+                node.width = px(width);
+                *color = BackgroundColor(Color::srgb_u8(red, green, 0));
+            } else {
+                node.width = px(26.0);
+                *color = BackgroundColor(Color::BLACK);
+            }
+        } else {
+            *visibility = Visibility::Hidden;
+        }
     }
 }
 

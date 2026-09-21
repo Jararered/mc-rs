@@ -73,7 +73,7 @@ impl Default for GameSettings {
             render_distance: MIN_RENDER_DISTANCE,
             brightness: 300.0,
             fov: DEFAULT_FOV,
-            old_lighting: false,
+            old_lighting: true,
             smooth_lighting: true,
             directional_lighting: true,
             wiggle_leaves: DEFAULT_WIGGLE_LEAVES,

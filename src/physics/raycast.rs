@@ -4,6 +4,8 @@ use bevy::prelude::Vec3;
 
 use crate::world::block::block::BlockId;
 use crate::world::block::properties::is_targetable;
+use crate::world::block::properties::is_torch;
+use crate::world::block::properties::selection_bounds;
 use crate::world::chunk::WorldChunks;
 
 /// Survival-style block reach. Creative in Beta used 5; this matches the default
@@ -74,7 +76,16 @@ pub fn raycast_blocks(
     let mut y = origin.y.floor() as i32;
     let mut z = origin.z.floor() as i32;
 
-    if let Some(hit) = hit_at(chunks, x, y, z, entry_face(direction)) {
+    if let Some(hit) = hit_at(
+        chunks,
+        x,
+        y,
+        z,
+        entry_face(direction),
+        origin,
+        direction,
+        max_distance,
+    ) {
         return Some(hit);
     }
 
@@ -132,22 +143,68 @@ pub fn raycast_blocks(
         if t > max_distance {
             return None;
         }
-        if let Some(hit) = hit_at(chunks, x, y, z, face) {
+        if let Some(hit) = hit_at(chunks, x, y, z, face, origin, direction, max_distance) {
             return Some(hit);
         }
     }
     None
 }
 
-fn hit_at(chunks: &WorldChunks, x: i32, y: i32, z: i32, face: BlockFace) -> Option<BlockHit> {
+fn hit_at(
+    chunks: &WorldChunks,
+    x: i32,
+    y: i32,
+    z: i32,
+    face: BlockFace,
+    origin: Vec3,
+    direction: Vec3,
+    max_distance: f32,
+) -> Option<BlockHit> {
     let block = chunks.block_at(x, y, z)?;
-    is_targetable(block).then_some(BlockHit {
+    if !is_targetable(block) {
+        return None;
+    }
+    if is_torch(block) {
+        let (min, max) = selection_bounds(block);
+        let block_origin = Vec3::new(x as f32, y as f32, z as f32);
+        if !ray_intersects_box(
+            origin,
+            direction,
+            block_origin + Vec3::from_array(min),
+            block_origin + Vec3::from_array(max),
+            max_distance,
+        ) {
+            return None;
+        }
+    }
+    Some(BlockHit {
         x,
         y,
         z,
         face,
         block,
     })
+}
+
+fn ray_intersects_box(origin: Vec3, direction: Vec3, min: Vec3, max: Vec3, reach: f32) -> bool {
+    let mut enter = 0.0_f32;
+    let mut exit = reach;
+    for axis in 0..3 {
+        if direction[axis].abs() < f32::EPSILON {
+            if origin[axis] < min[axis] || origin[axis] > max[axis] {
+                return false;
+            }
+        } else {
+            let a = (min[axis] - origin[axis]) / direction[axis];
+            let b = (max[axis] - origin[axis]) / direction[axis];
+            enter = enter.max(a.min(b));
+            exit = exit.min(a.max(b));
+            if enter > exit {
+                return false;
+            }
+        }
+    }
+    true
 }
 
 fn entry_face(direction: Vec3) -> BlockFace {

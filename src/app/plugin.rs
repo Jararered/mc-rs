@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 
+use crate::entity::particle_registry::ParticleRegistryPlugin;
 use crate::entity::particles::BlockParticlePlugin;
 use crate::physics::PhysicsPlugin;
 use crate::player::PlayerPlugin;
@@ -24,6 +25,7 @@ impl Plugin for GamePlugin {
             PersistencePlugin::default(),
             PlayerPlugin,
             BlockParticlePlugin,
+            ParticleRegistryPlugin,
             PhysicsPlugin,
             UiCameraPlugin,
             MenuPlugin,

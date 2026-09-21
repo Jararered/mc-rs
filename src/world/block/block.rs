@@ -31,6 +31,7 @@ pub enum BlockId {
     Bookshelf = 47,
     MossyCobblestone = 48,
     Obsidian = 49,
+    Torch = 50,
     DiamondOre = 56,
     DiamondBlock = 57,
     CraftingTable = 58,
@@ -52,6 +53,12 @@ pub enum BlockId {
     BirchLeaves = 93,
     SpruceWood = 94,
     BirchWood = 95,
+    // Wall attachment is encoded in the compact block value until chunk
+    // metadata is introduced. These values are private to our save format.
+    TorchWest = 96,
+    TorchEast = 97,
+    TorchNorth = 98,
+    TorchSouth = 99,
 }
 
 impl BlockId {
@@ -93,6 +100,7 @@ impl BlockId {
             47 => Self::Bookshelf,
             48 => Self::MossyCobblestone,
             49 => Self::Obsidian,
+            50 => Self::Torch,
             56 => Self::DiamondOre,
             57 => Self::DiamondBlock,
             58 => Self::CraftingTable,
@@ -112,6 +120,10 @@ impl BlockId {
             93 => Self::BirchLeaves,
             94 => Self::SpruceWood,
             95 => Self::BirchWood,
+            96 => Self::TorchWest,
+            97 => Self::TorchEast,
+            98 => Self::TorchNorth,
+            99 => Self::TorchSouth,
             _ => return None,
         })
     }

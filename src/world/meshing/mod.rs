@@ -6,6 +6,9 @@ use bevy::render::render_resource::PrimitiveTopology;
 
 use crate::world::block::block::BlockId;
 use crate::world::block::properties::is_opaque_cube;
+use crate::world::block::properties::is_torch;
+use crate::world::block::properties::torch_normal;
+use crate::world::block::properties::torch_point;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::Chunk;
@@ -269,6 +272,63 @@ struct MeshBuffers {
 }
 
 impl MeshBuffers {
+    fn push_torch(&mut self, x: usize, y: usize, z: usize, block: BlockId) {
+        // Build the same post for floor and wall attachments, then rotate its
+        // vertices and normals together so the cap follows the shaft.
+        for (face_index, face) in FACES.iter().enumerate() {
+            if face_index == FACE_BOTTOM {
+                continue;
+            }
+            let corners = face.corners.map(|corner| {
+                torch_point(
+                    block,
+                    [
+                        0.5 + (corner[0] - 0.5) * 0.125,
+                        corner[1] * 0.625,
+                        0.5 + (corner[2] - 0.5) * 0.125,
+                    ],
+                )
+            });
+            let rotated_face = Face {
+                neighbor: face.neighbor,
+                normal: torch_normal(block, face.normal),
+                corners: face.corners,
+                shade: face.shade,
+            };
+            let mut uvs = face_uvs_for_tile(0, 5, face_index);
+            let (u0, v0, u1, v1) = atlas_tile_uvs(0, 5);
+            let du = (u1 - u0) / 16.0;
+            let dv = (v1 - v0) / 16.0;
+            if face_index == FACE_TOP {
+                uvs = [
+                    [u0 + 7.0 * du, v0 + 6.0 * dv],
+                    [u0 + 7.0 * du, v0 + 8.0 * dv],
+                    [u0 + 9.0 * du, v0 + 8.0 * dv],
+                    [u0 + 9.0 * du, v0 + 6.0 * dv],
+                ];
+            } else {
+                // Only columns 7..8 and rows 6..15 contain the torch.
+                // Sampling the whole transparent tile shrinks the shaft to
+                // two pixels on a face that is already physically narrow.
+                for uv in &mut uvs {
+                    uv[0] = u0 + (7.0 + (uv[0] - u0) / (u1 - u0) * 2.0) * du;
+                    uv[1] = v0 + (6.0 + (uv[1] - v0) / (v1 - v0) * 10.0) * dv;
+                }
+            }
+            self.push_quad(
+                x,
+                y,
+                z,
+                &rotated_face,
+                corners,
+                uvs,
+                [1.0; 4],
+                [1.0; 4],
+                [1.0; 4],
+            );
+        }
+    }
+
     fn push_face(
         &mut self,
         x: usize,
@@ -381,6 +441,10 @@ fn mesh_chunk_inner(
             for x in 0..CHUNK_SIZE {
                 let block = chunk.get(x, y, z).unwrap();
                 if block == BlockId::Air {
+                    continue;
+                }
+                if is_torch(block) {
+                    grass_overlay.push_torch(x, y, z, block);
                     continue;
                 }
 
@@ -607,7 +671,7 @@ fn neighbor_hides_face(block: BlockId, neighbor: Option<BlockId>, fancy_graphics
     let Some(neighbor) = neighbor else {
         return false;
     };
-    if neighbor == BlockId::Air || neighbor == BlockId::Water {
+    if neighbor == BlockId::Air || neighbor == BlockId::Water || is_torch(neighbor) {
         return false;
     }
     if fancy_graphics && is_leaf(block) && is_leaf(neighbor) {

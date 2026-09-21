@@ -323,6 +323,11 @@ pub(crate) fn block_tile(
         BlockId::Clay => (8, 4),
         BlockId::Netherrack => (7, 6),
         BlockId::Glowstone => (9, 6),
+        BlockId::Torch
+        | BlockId::TorchWest
+        | BlockId::TorchEast
+        | BlockId::TorchNorth
+        | BlockId::TorchSouth => (0, 5),
         BlockId::Water => water::WATER_STILL_TILE,
         BlockId::Ice => (3, 4),
         _ => (1, 0),

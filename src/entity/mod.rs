@@ -5,6 +5,7 @@
 
 use bevy::prelude::*;
 
+pub mod particle_registry;
 pub mod particles;
 
 /// Linear velocity in blocks per second.

@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
 
 use crate::world::block::block::BlockId;
+use crate::world::block::properties::is_torch;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::Chunk;
@@ -207,6 +208,15 @@ impl Skylight {
                                 z,
                                 borders[0][Chunk::index(0, y, z)],
                             );
+                            seed_from_neighbor(
+                                chunk,
+                                &mut block,
+                                &mut block_queue,
+                                0,
+                                y,
+                                z,
+                                neighbor_light.block(CHUNK_SIZE - 1, y, z).unwrap_or(0),
+                            );
                         }
                     }
                 }
@@ -223,6 +233,15 @@ impl Skylight {
                                 y,
                                 z,
                                 borders[1][Chunk::index(CHUNK_SIZE - 1, y, z)],
+                            );
+                            seed_from_neighbor(
+                                chunk,
+                                &mut block,
+                                &mut block_queue,
+                                CHUNK_SIZE - 1,
+                                y,
+                                z,
+                                neighbor_light.block(0, y, z).unwrap_or(0),
                             );
                         }
                     }
@@ -241,6 +260,15 @@ impl Skylight {
                                 0,
                                 borders[2][Chunk::index(x, y, 0)],
                             );
+                            seed_from_neighbor(
+                                chunk,
+                                &mut block,
+                                &mut block_queue,
+                                x,
+                                y,
+                                0,
+                                neighbor_light.block(x, y, CHUNK_SIZE - 1).unwrap_or(0),
+                            );
                         }
                     }
                 }
@@ -257,6 +285,15 @@ impl Skylight {
                                 y,
                                 CHUNK_SIZE - 1,
                                 borders[3][Chunk::index(x, y, CHUNK_SIZE - 1)],
+                            );
+                            seed_from_neighbor(
+                                chunk,
+                                &mut block,
+                                &mut block_queue,
+                                x,
+                                y,
+                                CHUNK_SIZE - 1,
+                                neighbor_light.block(x, y, 0).unwrap_or(0),
                             );
                         }
                     }
@@ -287,6 +324,7 @@ impl Skylight {
             }
         }
         propagate(chunk, &mut sky, &mut sky_queue);
+        propagate(chunk, &mut block, &mut block_queue);
 
         Self {
             sky,
@@ -451,6 +489,7 @@ pub fn light_opacity(block: BlockId) -> u8 {
         BlockId::Water | BlockId::Ice => 3,
         BlockId::Leaves | BlockId::SpruceLeaves | BlockId::BirchLeaves => 1,
         BlockId::Snow => 0,
+        block if is_torch(block) => 0,
         _ => 15,
     }
 }
@@ -458,6 +497,7 @@ pub fn light_opacity(block: BlockId) -> u8 {
 pub fn light_emission(block: BlockId) -> u8 {
     match block {
         BlockId::Glowstone | BlockId::JackOLantern => 15,
+        block if is_torch(block) => 15,
         BlockId::LitFurnace => 13,
         BlockId::LitRedstoneOre => 9,
         _ => 0,

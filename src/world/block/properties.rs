@@ -15,6 +15,11 @@ pub fn is_opaque_cube(block: BlockId) -> bool {
             | BlockId::Leaves
             | BlockId::SpruceLeaves
             | BlockId::BirchLeaves
+            | BlockId::Torch
+            | BlockId::TorchWest
+            | BlockId::TorchEast
+            | BlockId::TorchNorth
+            | BlockId::TorchSouth
     )
 }
 
@@ -23,7 +28,91 @@ pub fn is_opaque_cube(block: BlockId) -> bool {
 /// Fluids have no collision box in Beta (`getCollisionBoundingBoxFromPool`
 /// returns null). Everything else currently in the registry is a full cube.
 pub fn blocks_movement(block: BlockId) -> bool {
-    !matches!(block, BlockId::Air | BlockId::Water)
+    !matches!(block, BlockId::Air | BlockId::Water) && !is_torch(block)
+}
+
+pub fn is_torch(block: BlockId) -> bool {
+    matches!(
+        block,
+        BlockId::Torch
+            | BlockId::TorchWest
+            | BlockId::TorchEast
+            | BlockId::TorchNorth
+            | BlockId::TorchSouth
+    )
+}
+
+/// Rotate the floor torch's local geometry into its wall pose. The base sits
+/// partly inside the supporting face and the whole post, including its cap,
+/// tilts toward the center of the cell.
+pub fn torch_point(block: BlockId, point: [f32; 3]) -> [f32; 3] {
+    if block == BlockId::Torch {
+        return point;
+    }
+    let [x, y, z] = point;
+    let sin = 0.55_f32;
+    let cos = (1.0 - sin * sin).sqrt();
+    match block {
+        BlockId::TorchWest => [
+            -0.04 + (x - 0.5) * cos + y * sin,
+            0.34 - (x - 0.5) * sin + y * cos,
+            z,
+        ],
+        BlockId::TorchEast => [
+            1.04 + (x - 0.5) * cos - y * sin,
+            0.34 + (x - 0.5) * sin + y * cos,
+            z,
+        ],
+        BlockId::TorchNorth => [
+            x,
+            0.34 - (z - 0.5) * sin + y * cos,
+            -0.04 + (z - 0.5) * cos + y * sin,
+        ],
+        BlockId::TorchSouth => [
+            x,
+            0.34 + (z - 0.5) * sin + y * cos,
+            1.04 + (z - 0.5) * cos - y * sin,
+        ],
+        _ => point,
+    }
+}
+
+pub fn torch_normal(block: BlockId, normal: [f32; 3]) -> [f32; 3] {
+    let [x, y, z] = normal;
+    let sin = 0.55_f32;
+    let cos = (1.0 - sin * sin).sqrt();
+    match block {
+        BlockId::TorchWest => [x * cos + y * sin, -x * sin + y * cos, z],
+        BlockId::TorchEast => [x * cos - y * sin, x * sin + y * cos, z],
+        BlockId::TorchNorth => [x, -z * sin + y * cos, z * cos + y * sin],
+        BlockId::TorchSouth => [x, z * sin + y * cos, z * cos - y * sin],
+        _ => normal,
+    }
+}
+
+/// Local bounds used for picking and the hover outline.
+pub fn selection_bounds(block: BlockId) -> ([f32; 3], [f32; 3]) {
+    if !is_torch(block) {
+        return ([0.0; 3], [1.0; 3]);
+    }
+    let mut min = [f32::INFINITY; 3];
+    let mut max = [f32::NEG_INFINITY; 3];
+    for x in [0.4, 0.6] {
+        for y in [0.0, 0.625] {
+            for z in [0.4, 0.6] {
+                let point = torch_point(block, [x, y, z]);
+                for axis in 0..3 {
+                    min[axis] = min[axis].min(point[axis]);
+                    max[axis] = max[axis].max(point[axis]);
+                }
+            }
+        }
+    }
+    for axis in 0..3 {
+        min[axis] = min[axis].max(0.0);
+        max[axis] = max[axis].min(1.0);
+    }
+    (min, max)
 }
 
 /// Whether a pick ray should stop on this block.
@@ -48,6 +137,11 @@ pub fn is_breakable(block: BlockId) -> bool {
 pub fn hardness(block: BlockId) -> f32 {
     match block {
         BlockId::Air => 0.0,
+        BlockId::Torch
+        | BlockId::TorchWest
+        | BlockId::TorchEast
+        | BlockId::TorchNorth
+        | BlockId::TorchSouth => 0.0,
         BlockId::Stone => 1.5,
         BlockId::Grass => 0.6,
         BlockId::Dirt => 0.5,

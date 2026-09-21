@@ -8,6 +8,7 @@ use bevy::render::render_resource::PrimitiveTopology;
 use crate::app::state::AppScreen;
 use crate::physics::BlockHit;
 use crate::physics::PhysicsSet;
+use crate::world::block::properties::selection_bounds;
 use crate::world::textures::TerrainMaterial;
 use crate::world::textures::atlas_tile_uvs;
 
@@ -194,12 +195,13 @@ fn update_block_overlays(
     };
 
     let block_transform = focus.hit.map(|hit| {
-        Transform::from_translation(Vec3::new(
-            hit.x as f32 + 0.5,
-            hit.y as f32 + 0.5,
-            hit.z as f32 + 0.5,
-        ))
-        .with_scale(Vec3::splat(1.0 + 2.0 * OVERLAY_EXPAND))
+        let (min, max) = selection_bounds(hit.block);
+        let min = Vec3::from_array(min);
+        let max = Vec3::from_array(max);
+        Transform::from_translation(
+            Vec3::new(hit.x as f32, hit.y as f32, hit.z as f32) + (min + max) * 0.5,
+        )
+        .with_scale(max - min + Vec3::splat(2.0 * OVERLAY_EXPAND))
     });
 
     if let Ok((mut transform, mut visibility)) = views.get_mut(overlays.outline.entity) {

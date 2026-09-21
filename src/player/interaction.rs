@@ -1,6 +1,6 @@
 //! Break and place blocks along the camera ray.
 //!
-//! Inventory is not implemented yet, so every placement is stone and mining
+//! Inventory is not implemented yet, so every placement is a torch and mining
 //! uses the empty-hand strength from Beta.
 
 use bevy::prelude::*;
@@ -13,11 +13,14 @@ use crate::entity::EntitySize;
 use crate::entity::particles::BlockParticles;
 use crate::physics::Aabb;
 use crate::physics::BLOCK_REACH;
+use crate::physics::BlockFace;
 use crate::physics::BlockHit;
 use crate::physics::raycast_blocks;
 use crate::world::block::block::BlockId;
 use crate::world::block::properties::is_breakable;
+use crate::world::block::properties::is_opaque_cube;
 use crate::world::block::properties::is_replaceable;
+use crate::world::block::properties::is_torch;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::ChunkPos;
 use crate::world::chunk::WorldChunks;
@@ -36,7 +39,7 @@ const TICK_SECS: f32 = 1.0 / 20.0;
 const MAX_TICKS_PER_FRAME: u32 = 4;
 
 /// The only block that can be placed until inventory exists.
-pub const PLACED_BLOCK: BlockId = BlockId::Stone;
+pub const PLACED_BLOCK: BlockId = BlockId::Torch;
 
 #[derive(Default)]
 pub(super) struct BlockInteractState {
@@ -150,7 +153,7 @@ pub(super) fn interact_blocks(
             && place_block(&mut chunks, hit, size.aabb(transform.translation))
         {
             let (x, _, z) = hit.face.neighbor(hit.x, hit.y, hit.z);
-            notify_edit(&mut streaming, &mut persistence, x, z);
+            notify_edit(&mut streaming, &mut persistence, x, z, true);
         }
     }
 
@@ -165,11 +168,23 @@ fn apply_break(
     particles: &mut Option<ResMut<BlockParticles>>,
     hit: BlockHit,
 ) {
+    let light_edit = is_torch(hit.block)
+        || [
+            (0, 1, 0, BlockId::Torch),
+            (1, 0, 0, BlockId::TorchWest),
+            (-1, 0, 0, BlockId::TorchEast),
+            (0, 0, 1, BlockId::TorchNorth),
+            (0, 0, -1, BlockId::TorchSouth),
+        ]
+        .into_iter()
+        .any(|(dx, dy, dz, torch)| {
+            chunks.block_at(hit.x + dx, hit.y + dy, hit.z + dz) == Some(torch)
+        });
     if break_block(chunks, hit) {
         if let Some(particles) = particles.as_deref_mut() {
             particles.emit_break(hit);
         }
-        notify_edit(streaming, persistence, hit.x, hit.z);
+        notify_edit(streaming, persistence, hit.x, hit.z, light_edit);
     }
 }
 
@@ -178,14 +193,28 @@ pub fn break_block(chunks: &mut WorldChunks, hit: BlockHit) -> bool {
     if !is_breakable(hit.block) {
         return false;
     }
-    chunks
+    let broken = chunks
         .set_block(hit.x, hit.y, hit.z, BlockId::Air)
-        .is_some_and(|previous| previous != BlockId::Air)
+        .is_some_and(|previous| previous != BlockId::Air);
+    if broken {
+        for (dx, dy, dz, attached) in [
+            (0, 1, 0, BlockId::Torch),
+            (1, 0, 0, BlockId::TorchWest),
+            (-1, 0, 0, BlockId::TorchEast),
+            (0, 0, 1, BlockId::TorchNorth),
+            (0, 0, -1, BlockId::TorchSouth),
+        ] {
+            let (x, y, z) = (hit.x + dx, hit.y + dy, hit.z + dz);
+            if chunks.block_at(x, y, z) == Some(attached) {
+                chunks.set_block(x, y, z, BlockId::Air);
+            }
+        }
+    }
+    broken
 }
 
-/// Place stone against the hit face. Fails when the cell is occupied, out of
-/// the world, or overlapping the player.
-pub fn place_block(chunks: &mut WorldChunks, hit: BlockHit, player: Aabb) -> bool {
+/// Attach a torch to the hit face. Fails without a solid support block.
+pub fn place_block(chunks: &mut WorldChunks, hit: BlockHit, _player: Aabb) -> bool {
     let (x, y, z) = hit.face.neighbor(hit.x, hit.y, hit.z);
     if y < 0 || y >= CHUNK_HEIGHT as i32 {
         return false;
@@ -196,12 +225,20 @@ pub fn place_block(chunks: &mut WorldChunks, hit: BlockHit, player: Aabb) -> boo
     if !is_replaceable(current) {
         return false;
     }
-    if player.intersects(Aabb::from_block(x, y, z)) {
+    if !is_opaque_cube(hit.block) {
         return false;
     }
+    let block = match hit.face {
+        BlockFace::Up => BlockId::Torch,
+        BlockFace::Down => return false,
+        BlockFace::West => BlockId::TorchEast,
+        BlockFace::East => BlockId::TorchWest,
+        BlockFace::North => BlockId::TorchSouth,
+        BlockFace::South => BlockId::TorchNorth,
+    };
     chunks
-        .set_block(x, y, z, PLACED_BLOCK)
-        .is_some_and(|previous| previous != PLACED_BLOCK)
+        .set_block(x, y, z, block)
+        .is_some_and(|previous| previous != block)
 }
 
 fn notify_edit(
@@ -209,13 +246,32 @@ fn notify_edit(
     persistence: &mut Option<ResMut<WorldPersistence>>,
     x: i32,
     z: i32,
+    light_edit: bool,
 ) {
     if let Some(persistence) = persistence.as_deref_mut() {
         persistence.mark_dirty(ChunkPos::from_block(x, z));
+        if light_edit {
+            // A detached wall torch may belong to the neighboring chunk.
+            for position in remesh_chunks_touching(x, z) {
+                persistence.mark_dirty(position);
+            }
+        }
     }
     if let Some(streaming) = streaming.as_deref_mut() {
-        for position in remesh_chunks_touching(x, z) {
-            streaming.request_remesh(position);
+        if light_edit {
+            let center = ChunkPos::from_block(x, z);
+            for dz in -1..=1 {
+                for dx in -1..=1 {
+                    streaming.request_remesh(ChunkPos {
+                        x: center.x + dx,
+                        z: center.z + dz,
+                    });
+                }
+            }
+        } else {
+            for position in remesh_chunks_touching(x, z) {
+                streaming.request_remesh(position);
+            }
         }
     }
 }

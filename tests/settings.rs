@@ -95,6 +95,7 @@ fn brightness_and_directional_toggle_update_bevy_lights() {
 
     {
         let mut settings = app.world_mut().resource_mut::<GameSettings>();
+        settings.old_lighting = false;
         settings.brightness = 500.0;
         settings.directional_lighting = false;
     }
@@ -338,7 +339,7 @@ fn settings_json_fills_in_missing_menu_fields() {
     assert_eq!(loaded.render_distance, 16);
     assert_eq!(loaded.brightness, GameSettings::default().brightness);
     assert_eq!(loaded.fov, DEFAULT_FOV);
-    assert_eq!(loaded.old_lighting, false);
+    assert_eq!(loaded.old_lighting, true);
     assert_eq!(loaded.directional_lighting, true);
     assert_eq!(loaded.graphics, GraphicsQuality::Fancy);
     let _ = fs::remove_file(path);

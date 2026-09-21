@@ -121,7 +121,7 @@ fn bedrock_cannot_be_broken() {
 }
 
 #[test]
-fn placing_puts_stone_against_the_hit_face() {
+fn placing_puts_torch_against_the_hit_face() {
     let mut chunk = Chunk::new();
     chunk.set(8, 64, 8, BlockId::Dirt);
     let mut chunks = world_with(chunk);
@@ -133,23 +133,23 @@ fn placing_puts_stone_against_the_hit_face() {
         player
     ));
     assert_eq!(chunks.block_at(8, 65, 8), Some(PLACED_BLOCK));
-    assert_eq!(PLACED_BLOCK, BlockId::Stone);
-    assert_eq!(chunks.get(ChunkPos::ZERO).unwrap().heightmap.get(8, 8), 66);
+    assert_eq!(PLACED_BLOCK, BlockId::Torch);
+    assert_eq!(chunks.get(ChunkPos::ZERO).unwrap().heightmap.get(8, 8), 65);
 }
 
 #[test]
-fn placing_cannot_overlap_the_player() {
+fn placing_torch_can_overlap_the_player() {
     let mut chunk = Chunk::new();
     chunk.set(8, 64, 8, BlockId::Stone);
     let mut chunks = world_with(chunk);
     let player = EntitySize::PLAYER.aabb(Vec3::new(8.5, 65.0 + EntitySize::PLAYER.y_offset, 8.5));
 
-    assert!(!place_block(
+    assert!(place_block(
         &mut chunks,
         hit(8, 64, 8, BlockFace::Up, BlockId::Stone),
         player
     ));
-    assert_eq!(chunks.block_at(8, 65, 8), Some(BlockId::Air));
+    assert_eq!(chunks.block_at(8, 65, 8), Some(BlockId::Torch));
 }
 
 #[test]
@@ -166,7 +166,7 @@ fn placing_replaces_water_and_not_solid_blocks() {
         hit(8, 64, 8, BlockFace::Up, BlockId::Stone),
         player
     ));
-    assert_eq!(chunks.block_at(8, 65, 8), Some(BlockId::Stone));
+    assert_eq!(chunks.block_at(8, 65, 8), Some(BlockId::Torch));
 
     assert!(!place_block(
         &mut chunks,
@@ -174,6 +174,40 @@ fn placing_replaces_water_and_not_solid_blocks() {
         player
     ));
     assert_eq!(chunks.block_at(9, 64, 8), Some(BlockId::Dirt));
+}
+
+#[test]
+fn torch_attaches_to_walls_and_drops_when_support_breaks() {
+    let mut chunk = Chunk::new();
+    chunk.set(8, 64, 8, BlockId::Stone);
+    let mut chunks = world_with(chunk);
+    let player = Aabb::new(Vec3::ZERO, Vec3::ZERO);
+
+    assert!(place_block(
+        &mut chunks,
+        hit(8, 64, 8, BlockFace::East, BlockId::Stone),
+        player,
+    ));
+    assert_eq!(chunks.block_at(9, 64, 8), Some(BlockId::TorchWest));
+    assert!(break_block(
+        &mut chunks,
+        hit(8, 64, 8, BlockFace::Up, BlockId::Stone),
+    ));
+    assert_eq!(chunks.block_at(9, 64, 8), Some(BlockId::Air));
+}
+
+#[test]
+fn torch_requires_a_support_face() {
+    let mut chunk = Chunk::new();
+    chunk.set(8, 64, 8, BlockId::Stone);
+    let mut chunks = world_with(chunk);
+    let player = Aabb::new(Vec3::ZERO, Vec3::ZERO);
+    assert!(!place_block(
+        &mut chunks,
+        hit(8, 64, 8, BlockFace::Down, BlockId::Stone),
+        player,
+    ));
+    assert_eq!(chunks.block_at(8, 63, 8), Some(BlockId::Air));
 }
 
 #[test]

@@ -1,4 +1,5 @@
 use crate::world::block::block::BlockId;
+use crate::world::block::properties::is_torch;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::Chunk;
@@ -15,7 +16,11 @@ impl Heightmap {
             for z in 0..CHUNK_SIZE {
                 let top = (0..CHUNK_HEIGHT)
                     .rev()
-                    .find(|&y| !matches!(chunk.get(x, y, z), Some(BlockId::Air | BlockId::Water)))
+                    .find(|&y| {
+                        chunk.get(x, y, z).is_some_and(|block| {
+                            !matches!(block, BlockId::Air | BlockId::Water) && !is_torch(block)
+                        })
+                    })
                     .map_or(0, |y| y + 1);
                 heights[x * CHUNK_SIZE + z] = top as u8;
             }
@@ -42,7 +47,11 @@ impl Heightmap {
     pub fn recompute_column(&mut self, chunk: &Chunk, x: usize, z: usize) {
         let top = (0..CHUNK_HEIGHT)
             .rev()
-            .find(|&y| !matches!(chunk.get(x, y, z), Some(BlockId::Air | BlockId::Water)))
+            .find(|&y| {
+                chunk.get(x, y, z).is_some_and(|block| {
+                    !matches!(block, BlockId::Air | BlockId::Water) && !is_torch(block)
+                })
+            })
             .map_or(0, |y| y + 1);
         self.heights[x * CHUNK_SIZE + z] = top as u8;
     }

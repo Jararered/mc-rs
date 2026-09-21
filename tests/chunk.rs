@@ -2,6 +2,7 @@ use bevy::mesh::Mesh;
 use bevy::mesh::VertexAttributeValues;
 
 use game::world::block::block::BlockId;
+use game::world::block::properties::selection_bounds;
 use game::world::chunk::CHUNK_HEIGHT;
 use game::world::chunk::CHUNK_SIZE;
 use game::world::chunk::Chunk;
@@ -17,11 +18,14 @@ use game::world::generation::WorldGenerator;
 use game::world::generation::generate_chunk;
 use game::world::lighting::Skylight;
 use game::world::lighting::beta_brightness;
+use game::world::lighting::light_emission;
+use game::world::lighting::light_opacity;
 use game::world::meshing::ChunkNeighbors;
 use game::world::meshing::mesh_chunk;
 use game::world::meshing::mesh_chunk_with_neighbors;
 use game::world::meshing::mesh_chunk_with_settings;
 use game::world::meshing::mesh_chunk_with_settings_and_smooth_lighting;
+use game::world::textures::atlas_tile_uvs;
 
 #[test]
 fn mesh_snapshot_keeps_old_blocks_after_world_edit() {
@@ -503,4 +507,104 @@ fn remesh_includes_the_neighbour_when_an_edge_block_changes() {
             ChunkPos { x: 1, z: -1 },
         ]
     );
+}
+
+#[test]
+fn torch_emits_level_fifteen_and_lights_neighboring_chunk() {
+    let mut west = Chunk::new();
+    west.set(CHUNK_SIZE - 1, 40, 8, BlockId::Torch);
+    let east = Chunk::new();
+    let west_light = Skylight::from_chunk(&west);
+    let east_light = Skylight::from_chunk_with_neighbors(&east, Some(&west), None, None, None);
+
+    assert_eq!(light_emission(BlockId::Torch), 15);
+    assert_eq!(light_opacity(BlockId::Torch), 0);
+    assert_eq!(west_light.block(CHUNK_SIZE - 1, 40, 8), Some(15));
+    assert_eq!(west_light.block(CHUNK_SIZE - 2, 40, 8), Some(14));
+    assert_eq!(east_light.block(0, 40, 8), Some(14));
+    assert_eq!(east_light.block(1, 40, 8), Some(13));
+}
+
+#[test]
+fn torch_mesh_uses_a_narrow_shape_instead_of_a_cube() {
+    let mut chunk = Chunk::new();
+    chunk.set(8, 40, 8, BlockId::Torch);
+    let light = Skylight::from_chunk(&chunk);
+    let meshes = mesh_chunk_with_settings(&chunk, &light, true, false);
+    let Some(VertexAttributeValues::Float32x3(positions)) =
+        meshes.grass_overlay.attribute(Mesh::ATTRIBUTE_POSITION)
+    else {
+        panic!("torch mesh should have vertices");
+    };
+    assert!(positions.iter().all(|p| p[0] > 8.4 && p[0] < 8.6));
+    assert!(positions.iter().all(|p| p[2] > 8.4 && p[2] < 8.6));
+    assert!(positions.iter().all(|p| p[1] >= 40.0 && p[1] <= 40.625));
+
+    let Some(VertexAttributeValues::Float32x2(uvs)) =
+        meshes.grass_overlay.attribute(Mesh::ATTRIBUTE_UV_0)
+    else {
+        panic!("torch mesh should have atlas UVs");
+    };
+    let (u0, v0, u1, v1) = atlas_tile_uvs(0, 5);
+    for side in uvs[4..].chunks_exact(4) {
+        let min_u = side.iter().map(|uv| uv[0]).fold(f32::INFINITY, f32::min);
+        let max_u = side
+            .iter()
+            .map(|uv| uv[0])
+            .fold(f32::NEG_INFINITY, f32::max);
+        let min_v = side.iter().map(|uv| uv[1]).fold(f32::INFINITY, f32::min);
+        let max_v = side
+            .iter()
+            .map(|uv| uv[1])
+            .fold(f32::NEG_INFINITY, f32::max);
+        assert!((min_u - (u0 + 7.0 * (u1 - u0) / 16.0)).abs() < 1e-6);
+        assert!((max_u - (u0 + 9.0 * (u1 - u0) / 16.0)).abs() < 1e-6);
+        assert!((min_v - (v0 + 6.0 * (v1 - v0) / 16.0)).abs() < 1e-6);
+        assert!((max_v - v1).abs() < 1e-6);
+    }
+}
+
+#[test]
+fn wall_torch_rotates_the_floor_post_without_tapering_or_flattening_its_cap() {
+    let distance = |a: [f32; 3], b: [f32; 3]| {
+        ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
+    };
+    for (block, tilted_axis, sign) in [
+        (BlockId::TorchWest, 0, 1.0),
+        (BlockId::TorchEast, 0, -1.0),
+        (BlockId::TorchNorth, 2, 1.0),
+        (BlockId::TorchSouth, 2, -1.0),
+    ] {
+        let mut chunk = Chunk::new();
+        chunk.set(8, 40, 8, block);
+        let light = Skylight::from_chunk(&chunk);
+        let meshes = mesh_chunk_with_settings(&chunk, &light, true, false);
+        let Some(VertexAttributeValues::Float32x3(positions)) =
+            meshes.grass_overlay.attribute(Mesh::ATTRIBUTE_POSITION)
+        else {
+            panic!("wall torch mesh should have vertices");
+        };
+        let Some(VertexAttributeValues::Float32x3(normals)) =
+            meshes.grass_overlay.attribute(Mesh::ATTRIBUTE_NORMAL)
+        else {
+            panic!("wall torch mesh should have normals");
+        };
+        assert!((distance(positions[0], positions[3]) - 0.125).abs() < 1e-5);
+        assert!((distance(positions[4], positions[5]) - 0.625).abs() < 1e-5);
+        assert!(normals[0][tilted_axis] * sign > 0.5);
+        assert!(normals[0][1] < 0.9);
+        assert!(
+            positions[0][1] != positions[3][1] || positions[0][1] != positions[1][1],
+            "cap must tilt with shaft"
+        );
+        assert!(positions.iter().all(|point| point[1] > 40.25));
+        let (bounds_min, bounds_max) = selection_bounds(block);
+        if sign > 0.0 {
+            assert!(positions.iter().any(|point| point[tilted_axis] < 8.0));
+            assert_eq!(bounds_min[tilted_axis], 0.0);
+        } else {
+            assert!(positions.iter().any(|point| point[tilted_axis] > 9.0));
+            assert_eq!(bounds_max[tilted_axis], 1.0);
+        }
+    }
 }

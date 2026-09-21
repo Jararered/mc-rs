@@ -18,6 +18,7 @@ use game::world::block::properties::blocks_movement;
 use game::world::block::properties::is_breakable;
 use game::world::block::properties::is_replaceable;
 use game::world::block::properties::is_targetable;
+use game::world::block::properties::selection_bounds;
 use game::world::chunk::CHUNK_SIZE;
 use game::world::chunk::Chunk;
 use game::world::chunk::ChunkPos;
@@ -80,6 +81,25 @@ fn fluids_are_replaceable_and_bedrock_is_unbreakable() {
     assert!(is_breakable(BlockId::Leaves));
     assert!(!is_breakable(BlockId::Bedrock));
     assert!(!is_breakable(BlockId::Water));
+}
+
+#[test]
+fn raycast_only_hits_the_torch_near_its_visible_shaft() {
+    let mut chunk = Chunk::new();
+    chunk.set(8, 64, 8, BlockId::Torch);
+    let mut chunks = WorldChunks::default();
+    chunks.insert(ChunkPos::ZERO, generated(chunk));
+
+    assert_eq!(
+        selection_bounds(BlockId::Torch),
+        ([0.4, 0.0, 0.4], [0.6, 0.625, 0.6])
+    );
+    assert!(
+        raycast_blocks(&chunks, Vec3::new(8.5, 64.4, 7.0), Vec3::Z, BLOCK_REACH)
+            .is_some_and(|hit| hit.block == BlockId::Torch)
+    );
+    assert!(raycast_blocks(&chunks, Vec3::new(8.8, 64.4, 7.0), Vec3::Z, BLOCK_REACH).is_none());
+    assert!(raycast_blocks(&chunks, Vec3::new(8.5, 64.9, 7.0), Vec3::Z, BLOCK_REACH).is_none());
 }
 
 #[test]

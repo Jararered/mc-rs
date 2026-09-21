@@ -7,6 +7,7 @@ use bevy::state::app::StatesPlugin;
 use bevy::time::TimeUpdateStrategy;
 
 use game::app::state::AppScreen;
+use game::entity::particle_registry::ParticleSprite;
 use game::entity::particles::BlockParticlePlugin;
 use game::entity::particles::BlockParticles;
 use game::physics::BlockFace;
@@ -14,6 +15,42 @@ use game::physics::BlockHit;
 use game::world::block::block::BlockId;
 use game::world::chunk::WorldChunks;
 use game::world::textures::atlas_tile_uvs;
+
+#[test]
+fn particle_registry_maps_named_sprites_to_their_atlas_tiles() {
+    assert_eq!(ParticleSprite::Explosion(7).tile(), Some((7, 0)));
+    assert_eq!(ParticleSprite::WaterSplash(2).tile(), Some((3, 1)));
+    assert_eq!(ParticleSprite::WaterSplash(5).tile(), Some((6, 1)));
+    assert_eq!(ParticleSprite::AirBubble.tile(), Some((0, 2)));
+    assert_eq!(ParticleSprite::FishingLure.tile(), Some((1, 2)));
+    assert_eq!(ParticleSprite::Flame.tile(), Some((0, 3)));
+    assert_eq!(ParticleSprite::Lava.tile(), Some((1, 3)));
+    assert_eq!(ParticleSprite::MusicNote.tile(), Some((0, 4)));
+    assert_eq!(ParticleSprite::HealthHeart.tile(), Some((0, 5)));
+    assert_eq!(ParticleSprite::SoulSandStep(1).tile(), Some((1, 6)));
+    assert_eq!(ParticleSprite::Explosion(8).tile(), None);
+    assert_eq!(ParticleSprite::WaterSplash(6).tile(), None);
+    assert_eq!(ParticleSprite::SoulSandStep(2).tile(), None);
+
+    let tiles: std::collections::HashSet<_> = ParticleSprite::ALL
+        .iter()
+        .map(|sprite| sprite.tile().expect("listed sprite must be valid"))
+        .collect();
+    assert_eq!(tiles.len(), ParticleSprite::ALL.len());
+}
+
+#[test]
+fn particle_registry_provides_pixel_and_uv_bounds() {
+    assert_eq!(
+        ParticleSprite::FishingLure.pixel_rect(),
+        Some(Rect::new(8.0, 16.0, 16.0, 24.0))
+    );
+    assert_eq!(
+        ParticleSprite::FishingLure.uvs(),
+        Some((1.0 / 16.0, 2.0 / 16.0, 2.0 / 16.0, 3.0 / 16.0))
+    );
+    assert_eq!(ParticleSprite::WaterSplash(6).pixel_rect(), None);
+}
 
 fn test_app() -> App {
     let mut app = App::new();

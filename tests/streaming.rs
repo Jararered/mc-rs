@@ -3,6 +3,9 @@ use std::time::Duration;
 use std::time::Instant;
 
 use bevy::asset::AssetPlugin;
+use bevy::camera::primitives::Aabb;
+use bevy::camera::visibility::NoAutoAabb;
+use bevy::camera::visibility::NoFrustumCulling;
 use bevy::mesh::MeshPlugin;
 use bevy::prelude::*;
 use game::player::Player;
@@ -154,6 +157,18 @@ fn spawn_chunk_waits_for_all_neighbor_block_data_before_its_first_mesh() {
     assert!(run_until(&mut app, Duration::from_secs(5), |app| {
         rendered_positions(app).contains(&ChunkPos::ZERO)
     }));
+    let mut layers = app.world_mut().query::<(Entity, &Mesh3d)>();
+    let layer_entities: Vec<_> = layers.iter(app.world()).map(|(entity, _)| entity).collect();
+    assert!(
+        !layer_entities.is_empty(),
+        "rendered chunks need mesh bounds"
+    );
+    for entity in layer_entities {
+        let layer = app.world().entity(entity);
+        assert!(layer.contains::<Aabb>());
+        assert!(layer.contains::<NoAutoAabb>());
+        assert!(!layer.contains::<NoFrustumCulling>());
+    }
     let chunks = app.world().resource::<WorldChunks>();
     for dx in -1..=1 {
         for dz in -1..=1 {

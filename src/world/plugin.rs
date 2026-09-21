@@ -85,6 +85,9 @@ fn apply_graphics_pipeline(
     cameras: Query<(Entity, Option<&ScreenSpaceReflections>), With<Camera3d>>,
     renderer_method: Option<ResMut<DefaultOpaqueRendererMethod>>,
 ) {
+    if !settings.is_changed() {
+        return;
+    }
     let ultra = settings.graphics.realistic_water();
     for (entity, ssr) in &cameras {
         if ultra && ssr.is_none() {

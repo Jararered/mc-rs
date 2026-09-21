@@ -349,7 +349,10 @@ impl MeshBuffers {
     fn into_mesh(self) -> Mesh {
         Mesh::new(
             PrimitiveTopology::TriangleList,
-            RenderAssetUsages::default(),
+            // Chunk block data remains in WorldChunks. After upload, Bevy can
+            // release this mesh's CPU vertex and index buffers; a remesh
+            // replaces the asset at the same handle with fresh geometry.
+            RenderAssetUsages::RENDER_WORLD,
         )
         .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, self.positions)
         .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, self.normals)

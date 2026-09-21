@@ -24,6 +24,18 @@ use game::world::meshing::mesh_chunk_with_settings;
 use game::world::meshing::mesh_chunk_with_settings_and_smooth_lighting;
 
 #[test]
+fn mesh_snapshot_keeps_old_blocks_after_world_edit() {
+    let mut world_chunk = Chunk::new();
+    world_chunk.set(1, 2, 3, BlockId::Stone);
+    let snapshot = world_chunk.clone();
+
+    world_chunk.set(1, 2, 3, BlockId::Dirt);
+
+    assert_eq!(snapshot.get(1, 2, 3), Some(BlockId::Stone));
+    assert_eq!(world_chunk.get(1, 2, 3), Some(BlockId::Dirt));
+}
+
+#[test]
 fn generated_chunk_has_solid_ground_and_sunlit_air() {
     let generated = WorldGenerator::new(0).generate(ChunkPos::ZERO);
     let chunk = &generated.chunk;

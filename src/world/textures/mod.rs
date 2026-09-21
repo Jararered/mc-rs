@@ -22,6 +22,7 @@ pub use biome_color::FoliageColors;
 pub use biome_color::GrassColors;
 pub use biome_color::PALETTE_SIZE;
 pub use biome_color::palette_index;
+pub(crate) use leaf_wiggle::LEAF_WIGGLE_AMPLITUDE;
 pub use leaf_wiggle::LeafCutoutMaterial;
 pub use leaf_wiggle::LeafWiggle;
 pub use leaf_wiggle::LeafWiggleSettings;

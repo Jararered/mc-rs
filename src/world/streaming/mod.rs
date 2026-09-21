@@ -4,6 +4,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 
+use bevy::camera::primitives::MeshAabb;
+use bevy::camera::visibility::NoAutoAabb;
 use bevy::prelude::*;
 use bevy::tasks::AsyncComputeTaskPool;
 use bevy::tasks::Task;
@@ -26,6 +28,7 @@ use super::textures::CutoutMaterial;
 use super::textures::FoliageColors;
 use super::textures::GrassColors;
 use super::textures::GrassOverlayMaterial;
+use super::textures::LEAF_WIGGLE_AMPLITUDE;
 use super::textures::LeafCutoutMaterial;
 use super::textures::TerrainMaterial;
 use super::textures::WaterMaterial;
@@ -649,6 +652,7 @@ fn apply_chunk_meshes(
         layers.opaque,
         material,
         "Opaque",
+        0.0,
     );
     apply_layer(
         commands,
@@ -658,6 +662,7 @@ fn apply_chunk_meshes(
         layers.grass_overlay,
         grass_overlay_material,
         "Grass overlay",
+        0.0,
     );
     apply_layer(
         commands,
@@ -667,6 +672,7 @@ fn apply_chunk_meshes(
         layers.cutout,
         cutout_material,
         "Cutout",
+        LEAF_WIGGLE_AMPLITUDE * 1.5,
     );
     apply_layer(
         commands,
@@ -676,6 +682,7 @@ fn apply_chunk_meshes(
         layers.water,
         water_material,
         "Water",
+        0.0,
     );
 }
 
@@ -689,13 +696,23 @@ fn apply_layer<M: Material>(
     mesh: Mesh,
     material: &Handle<M>,
     name: &'static str,
+    bounds_padding: f32,
 ) {
     let empty = mesh.count_vertices() == 0;
+    // Meshes are uploaded once and retain only metadata in the main world.
+    // Compute their local bounds while vertex positions are still available.
+    let bounds = (!empty).then(|| {
+        let mut bounds = mesh.compute_aabb().expect("chunk mesh has positions");
+        // Leaf vertices move in the shader; keep them inside the culling box.
+        bounds.half_extents += Vec3A::splat(bounds_padding);
+        bounds
+    });
     match (layer.take(), empty) {
         (Some(existing), false) => {
             if let Some(mut current) = meshes.get_mut(existing.mesh.id()) {
                 *current = mesh;
             }
+            commands.entity(existing.entity).insert(bounds.unwrap());
             *layer = Some(existing);
         }
         (Some(existing), true) => {
@@ -709,6 +726,8 @@ fn apply_layer<M: Material>(
                     Name::new(name),
                     Mesh3d(handle.clone()),
                     MeshMaterial3d(material.clone()),
+                    bounds.unwrap(),
+                    NoAutoAabb,
                     Transform::default(),
                     ChildOf(parent),
                 ))

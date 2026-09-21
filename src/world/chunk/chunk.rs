@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use bevy::prelude::Resource;
 
@@ -12,13 +13,16 @@ pub const CHUNK_HEIGHT: usize = 128;
 
 #[derive(Clone)]
 pub struct Chunk {
-    blocks: Box<[BlockId]>,
+    // Meshing snapshots the center chunk and eight neighbors. Sharing their
+    // immutable blocks avoids copying nine full arrays for every mesh job;
+    // edits detach only the modified chunk.
+    blocks: Arc<[BlockId]>,
 }
 
 impl Chunk {
     pub fn new() -> Self {
         Self {
-            blocks: vec![BlockId::Air; CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE].into_boxed_slice(),
+            blocks: vec![BlockId::Air; CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE].into(),
         }
     }
 
@@ -30,7 +34,7 @@ impl Chunk {
             "a chunk holds exactly one block per position"
         );
         Self {
-            blocks: blocks.into_boxed_slice(),
+            blocks: blocks.into(),
         }
     }
 
@@ -48,7 +52,7 @@ impl Chunk {
 
     pub fn set(&mut self, x: usize, y: usize, z: usize, block: BlockId) {
         assert!(x < CHUNK_SIZE && y < CHUNK_HEIGHT && z < CHUNK_SIZE);
-        self.blocks[Self::index(x, y, z)] = block;
+        Arc::make_mut(&mut self.blocks)[Self::index(x, y, z)] = block;
     }
 
     pub(crate) const fn index(x: usize, y: usize, z: usize) -> usize {

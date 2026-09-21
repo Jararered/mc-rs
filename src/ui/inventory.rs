@@ -8,11 +8,15 @@ use bevy::window::PrimaryWindow;
 
 use super::block_icons::BlockIcons;
 use crate::app::state::AppScreen;
+use crate::crafting::CraftingGrid;
+use crate::crafting::beta_recipe_book;
 use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
 use crate::item::ItemData;
 use crate::item::ItemStack;
 use crate::player::Player;
+use crate::world::block::block::BlockId;
+use crate::world::chunk::WorldChunks;
 
 const SCALE: f32 = 2.0;
 
@@ -21,11 +25,12 @@ pub struct InventoryGuiPlugin;
 impl Plugin for InventoryGuiPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<InventoryScreen>()
+            .init_resource::<WorkbenchUiSession>()
             .add_systems(PreStartup, (load_texture, super::block_icons::setup))
             .add_systems(Update, super::block_icons::build)
             .add_systems(
                 Update,
-                (toggle, handle_slots, refresh)
+                (validate_workbench, toggle, handle_slots, refresh)
                     .chain()
                     .run_if(in_state(AppScreen::Playing)),
             )
@@ -33,13 +38,67 @@ impl Plugin for InventoryGuiPlugin {
     }
 }
 
+fn validate_workbench(
+    mut commands: Commands,
+    mut screen: ResMut<InventoryScreen>,
+    mut session: ResMut<WorkbenchUiSession>,
+    chunks: Res<WorldChunks>,
+    player: Query<&Transform, With<Player>>,
+    roots: Query<Entity, With<InventoryRoot>>,
+    mut windows: Query<&mut CursorOptions, With<PrimaryWindow>>,
+) {
+    if !screen.open || !screen.workbench {
+        return;
+    }
+    let Some((x, y, z)) = session.position else {
+        return;
+    };
+    let Ok(transform) = player.single() else {
+        return;
+    };
+    let dx = transform.translation.x - (x as f32 + 0.5);
+    let dy = transform.translation.y - (y as f32 + 0.5);
+    let dz = transform.translation.z - (z as f32 + 0.5);
+    if chunks.block_at(x, y, z) == Some(BlockId::CraftingTable)
+        && dx * dx + dy * dy + dz * dz <= 64.0
+    {
+        return;
+    }
+    screen.open = false;
+    screen.workbench = false;
+    session.position = None;
+    for root in &roots {
+        commands.entity(root).despawn();
+    }
+    if let Ok(mut cursor) = windows.single_mut() {
+        cursor.visible = false;
+        cursor.grab_mode = CursorGrabMode::Locked;
+    }
+}
+
 #[derive(Resource, Default)]
 pub(crate) struct InventoryScreen {
     pub open: bool,
+    pub workbench: bool,
+}
+#[derive(Resource)]
+pub(crate) struct WorkbenchUiSession {
+    pub grid: CraftingGrid,
+    pub position: Option<(i32, i32, i32)>,
+}
+
+impl Default for WorkbenchUiSession {
+    fn default() -> Self {
+        Self {
+            grid: CraftingGrid::workbench(),
+            position: None,
+        }
+    }
 }
 #[derive(Resource)]
 struct InventoryTexture {
     background: Handle<Image>,
+    crafting: Handle<Image>,
 }
 #[derive(Component)]
 struct InventoryRoot;
@@ -48,6 +107,8 @@ enum Slot {
     Hotbar(usize),
     Main(usize),
     Craft(usize),
+    CraftResult,
+    Workbench(usize),
     Armor(usize),
 }
 #[derive(Component)]
@@ -70,6 +131,12 @@ fn load_texture(mut commands: Commands, assets: Res<AssetServer>) {
         .load("gui/inventory.png");
     commands.insert_resource(InventoryTexture {
         background: texture,
+        crafting: assets
+            .load_builder()
+            .with_settings(|settings: &mut ImageLoaderSettings| {
+                settings.sampler = ImageSampler::nearest()
+            })
+            .load("gui/crafting.png"),
     });
 }
 
@@ -77,15 +144,33 @@ fn toggle(
     mut commands: Commands,
     keys: Res<ButtonInput<KeyCode>>,
     mut screen: ResMut<InventoryScreen>,
+    mut workbench: ResMut<WorkbenchUiSession>,
     texture: Res<InventoryTexture>,
     icons: Res<BlockIcons>,
     roots: Query<Entity, With<InventoryRoot>>,
     mut windows: Query<(&Window, &mut CursorOptions), With<PrimaryWindow>>,
 ) {
+    if screen.open && roots.is_empty() {
+        let background = if screen.workbench {
+            &texture.crafting
+        } else {
+            &texture.background
+        };
+        spawn(&mut commands, background, &icons.image, screen.workbench);
+        if let Ok((_, mut cursor)) = windows.single_mut() {
+            cursor.visible = true;
+            cursor.grab_mode = CursorGrabMode::None;
+        }
+        return;
+    }
     if !keys.just_pressed(KeyCode::KeyE) && !(screen.open && keys.just_pressed(KeyCode::Escape)) {
         return;
     }
     screen.open = !screen.open;
+    if !screen.open {
+        screen.workbench = false;
+        workbench.position = None;
+    }
     if let Ok((window, mut cursor)) = windows.single_mut() {
         cursor.visible = screen.open;
         cursor.grab_mode = if screen.open {
@@ -97,7 +182,12 @@ fn toggle(
         };
     }
     if screen.open {
-        spawn(&mut commands, &texture.background, &icons.image);
+        let background = if screen.workbench {
+            &texture.crafting
+        } else {
+            &texture.background
+        };
+        spawn(&mut commands, background, &icons.image, screen.workbench);
     } else {
         for root in &roots {
             commands.entity(root).despawn();
@@ -108,15 +198,18 @@ fn toggle(
 fn close(
     mut commands: Commands,
     mut screen: ResMut<InventoryScreen>,
+    mut workbench: ResMut<WorkbenchUiSession>,
     roots: Query<Entity, With<InventoryRoot>>,
 ) {
     screen.open = false;
+    screen.workbench = false;
+    workbench.position = None;
     for root in &roots {
         commands.entity(root).despawn();
     }
 }
 
-fn spawn(commands: &mut Commands, texture: &Handle<Image>, icons: &Handle<Image>) {
+fn spawn(commands: &mut Commands, texture: &Handle<Image>, icons: &Handle<Image>, workbench: bool) {
     commands
         .spawn((
             InventoryRoot,
@@ -167,6 +260,20 @@ fn spawn(commands: &mut Commands, texture: &Handle<Image>, icons: &Handle<Image>
                         88.0 + (index % 2) as f32 * 18.0,
                         26.0 + (index / 2) as f32 * 18.0,
                     );
+                }
+                if workbench {
+                    for index in 0..9 {
+                        slot(
+                            panel,
+                            icons,
+                            Slot::Workbench(index),
+                            30.0 + (index % 3) as f32 * 18.0,
+                            17.0 + (index / 3) as f32 * 18.0,
+                        );
+                    }
+                    slot(panel, icons, Slot::CraftResult, 124.0, 35.0);
+                } else {
+                    slot(panel, icons, Slot::CraftResult, 134.0, 35.0);
                 }
                 for index in 0..4 {
                     slot(
@@ -319,11 +426,51 @@ fn click_slot(target: &mut Option<ItemStack>, carried: &mut Option<ItemStack>, r
     }
 }
 
+fn take_workbench_result(
+    session: &mut WorkbenchUiSession,
+    hotbar: &mut Hotbar,
+    inventory: &mut Inventory,
+) -> bool {
+    let grid = session.grid.clone();
+    let Some(output) = beta_recipe_book().find(&grid) else {
+        return false;
+    };
+    let mut simulated_grid = grid.clone();
+    let Some(remainders) = beta_recipe_book().consume_one(&mut simulated_grid) else {
+        return false;
+    };
+    let mut simulated_inventory = inventory.clone();
+    let mut simulated_hotbar = hotbar.clone();
+    for remainder in remainders {
+        if simulated_inventory
+            .insert(&mut simulated_hotbar, remainder)
+            .is_some()
+        {
+            return false;
+        }
+    }
+    match simulated_inventory.carried {
+        None => simulated_inventory.carried = Some(output),
+        Some(mut carried) if carried.item() == output.item() && carried.data() == output.data() => {
+            if carried.merge(output).is_some() {
+                return false;
+            }
+            simulated_inventory.carried = Some(carried);
+        }
+        Some(_) => return false,
+    }
+    session.grid = simulated_grid;
+    *inventory = simulated_inventory;
+    *hotbar = simulated_hotbar;
+    true
+}
+
 fn handle_slots(
     screen: Res<InventoryScreen>,
     mouse: Res<ButtonInput<MouseButton>>,
     buttons: Query<(&Interaction, &Slot), With<Button>>,
     mut player: Query<(&mut Hotbar, &mut Inventory), With<Player>>,
+    mut workbench: ResMut<WorkbenchUiSession>,
 ) {
     if !screen.open {
         return;
@@ -350,6 +497,30 @@ fn handle_slots(
                 } = &mut *inventory;
                 click_slot(&mut crafting[i], carried, right);
             }
+            Slot::CraftResult if !right => {
+                if screen.workbench {
+                    let _ = take_workbench_result(&mut workbench, &mut hotbar, &mut inventory);
+                } else if inventory.carried.is_none()
+                    || inventory.carried.is_some_and(|carried| {
+                        inventory.crafting_result().is_some_and(|result| {
+                            carried.item() == result.item()
+                                && carried.data() == result.data()
+                                && carried.count() + result.count()
+                                    <= carried.definition().max_stack_size
+                        })
+                    })
+                {
+                    let _ = inventory.take_crafting_result(&mut hotbar);
+                }
+            }
+            Slot::CraftResult => {}
+            Slot::Workbench(i) => {
+                let x = i % 3;
+                let y = i / 3;
+                let mut value = workbench.grid.get(x, y);
+                click_slot(&mut value, &mut inventory.carried, right);
+                workbench.grid.set(x, y, value);
+            }
             Slot::Armor(i) => {
                 let Inventory { armor, carried, .. } = &mut *inventory;
                 click_slot(&mut armor[i], carried, right);
@@ -374,6 +545,7 @@ fn stack_text(stack: Option<ItemStack>) -> String {
 fn refresh(
     screen: Res<InventoryScreen>,
     player: Query<(&Hotbar, &Inventory), With<Player>>,
+    workbench: Res<WorkbenchUiSession>,
     mut labels: Query<
         (&SlotLabel, &mut Text, &mut Node),
         (
@@ -431,6 +603,8 @@ fn refresh(
             Slot::Hotbar(i) => hotbar.slots[i],
             Slot::Main(i) => inventory.main[i],
             Slot::Craft(i) => inventory.crafting[i],
+            Slot::CraftResult => inventory.crafting_result(),
+            Slot::Workbench(i) => workbench.grid.get(i % 3, i / 3),
             Slot::Armor(i) => inventory.armor[i],
         };
         let has_icon = stack
@@ -459,6 +633,8 @@ fn refresh(
             Slot::Hotbar(i) => hotbar.slots[i],
             Slot::Main(i) => inventory.main[i],
             Slot::Craft(i) => inventory.crafting[i],
+            Slot::CraftResult => inventory.crafting_result(),
+            Slot::Workbench(i) => workbench.grid.get(i % 3, i / 3),
             Slot::Armor(i) => inventory.armor[i],
         };
         if let Some((width, red, green)) = stack.and_then(durability_bar) {
@@ -479,6 +655,8 @@ fn refresh(
             Slot::Hotbar(i) => hotbar.slots[i],
             Slot::Main(i) => inventory.main[i],
             Slot::Craft(i) => inventory.crafting[i],
+            Slot::CraftResult => inventory.crafting_result(),
+            Slot::Workbench(i) => workbench.grid.get(i % 3, i / 3),
             Slot::Armor(i) => inventory.armor[i],
         };
         if let Some(rect) = stack.and_then(|stack| block_icons.rect_for_stack(stack)) {

@@ -18,6 +18,7 @@ mod item_icon_data;
 pub use hud::HudPlugin;
 pub use inventory::InventoryGuiPlugin;
 pub(crate) use inventory::InventoryScreen;
+pub(crate) use inventory::WorkbenchUiSession;
 
 /// Composites all HUD and menu nodes after the world and first-person arm.
 pub struct UiCameraPlugin;

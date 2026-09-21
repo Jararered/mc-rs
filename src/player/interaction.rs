@@ -18,6 +18,8 @@ use crate::physics::BLOCK_REACH;
 use crate::physics::BlockFace;
 use crate::physics::BlockHit;
 use crate::physics::raycast_blocks;
+use crate::ui::InventoryScreen;
+use crate::ui::WorkbenchUiSession;
 use crate::world::block::block::BlockId;
 use crate::world::block::properties::is_breakable;
 use crate::world::block::properties::is_opaque_cube;
@@ -53,7 +55,7 @@ pub(super) struct BlockInteractState {
 pub(super) fn interact_blocks(
     time: Res<Time>,
     mouse: Res<ButtonInput<MouseButton>>,
-    windows: Query<(&Window, &CursorOptions), With<PrimaryWindow>>,
+    mut windows: Query<(&Window, &mut CursorOptions), With<PrimaryWindow>>,
     mut player: Query<
         (
             &Transform,
@@ -71,6 +73,8 @@ pub(super) fn interact_blocks(
     mut particles: Option<ResMut<BlockParticles>>,
     mut focus: ResMut<BlockFocus>,
     mut state: Local<BlockInteractState>,
+    mut inventory_screen: ResMut<InventoryScreen>,
+    mut workbench: ResMut<WorkbenchUiSession>,
 ) {
     state.place_cooldown = (state.place_cooldown - time.delta_secs()).max(0.0);
 
@@ -115,6 +119,22 @@ pub(super) fn interact_blocks(
         view_rotation * Vec3::NEG_Z,
         BLOCK_REACH,
     );
+    if right_click
+        && !inventory_screen.open
+        && hit.is_some_and(|hit| hit.block == BlockId::CraftingTable)
+    {
+        let hit = hit.expect("checked above");
+        inventory_screen.open = true;
+        inventory_screen.workbench = true;
+        workbench.position = Some((hit.x, hit.y, hit.z));
+        if let Ok((_, mut cursor)) = windows.single_mut() {
+            cursor.visible = true;
+            cursor.grab_mode = CursorGrabMode::None;
+        }
+        state.mining.reset();
+        *focus = BlockFocus::default();
+        return;
+    }
     let in_water = chunks.block_at(
         transform.translation.x.floor() as i32,
         transform.translation.y.floor() as i32,

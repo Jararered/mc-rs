@@ -34,6 +34,16 @@ pub struct ItemDefinition {
     pub block: Option<BetaBlockId>,
 }
 
+impl ItemDefinition {
+    /// Beta crafting remainder, for example an empty bucket left by milk.
+    pub const fn container_item(self) -> Option<ItemId> {
+        match self.id {
+            ItemId::MILK_BUCKET => Some(ItemId::BUCKET),
+            _ => None,
+        }
+    }
+}
+
 macro_rules! items {
     ($(($constant:ident, $id:literal, $name:literal, $limit:literal, $data:expr)),* $(,)?) => {
         impl ItemId { $(pub const $constant: Self = Self($id);)* }

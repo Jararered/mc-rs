@@ -1,5 +1,7 @@
 use bevy::prelude::Component;
 
+use crate::crafting::CraftingGrid;
+use crate::crafting::beta_recipe_book;
 use crate::item::ItemStack;
 
 /// Number of hotbar slots shown on the in-game HUD.
@@ -15,6 +17,51 @@ pub struct Inventory {
 }
 
 impl Inventory {
+    pub fn crafting_result(&self) -> Option<ItemStack> {
+        beta_recipe_book().find(&CraftingGrid::from_slots(2, 2, &self.crafting))
+    }
+
+    /// Atomically picks up one craft result. Inputs are changed only if the
+    /// output, container remainders, and carried-stack merge can all fit.
+    pub fn take_crafting_result(&mut self, hotbar: &mut Hotbar) -> bool {
+        let mut grid = CraftingGrid::from_slots(2, 2, &self.crafting);
+        let Some(output) = beta_recipe_book().find(&grid) else {
+            return false;
+        };
+        let mut simulated_inventory = self.clone();
+        let mut simulated_hotbar = hotbar.clone();
+        let Some(remainders) = beta_recipe_book().consume_one(&mut grid) else {
+            return false;
+        };
+        simulated_inventory.crafting = [None; 4];
+        for (slot, value) in simulated_inventory.crafting.iter_mut().zip(grid.slots()) {
+            *slot = value;
+        }
+        for remainder in remainders {
+            if simulated_inventory
+                .insert(&mut simulated_hotbar, remainder)
+                .is_some()
+            {
+                return false;
+            }
+        }
+        match simulated_inventory.carried {
+            None => simulated_inventory.carried = Some(output),
+            Some(mut carried)
+                if carried.item() == output.item() && carried.data() == output.data() =>
+            {
+                if carried.merge(output).is_some() {
+                    return false;
+                }
+                simulated_inventory.carried = Some(carried);
+            }
+            Some(_) => return false,
+        }
+        *self = simulated_inventory;
+        *hotbar = simulated_hotbar;
+        true
+    }
+
     pub fn insert(&mut self, hotbar: &mut Hotbar, stack: ItemStack) -> Option<ItemStack> {
         let mut remainder = hotbar.insert(stack)?;
         for slot in self.main.iter_mut().flatten() {

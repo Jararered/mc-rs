@@ -1,4 +1,5 @@
 pub mod app;
+pub mod crafting;
 pub mod entity;
 pub mod inventory;
 pub mod item;

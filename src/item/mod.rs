@@ -88,6 +88,12 @@ impl ItemStack {
     pub const fn data(self) -> u16 {
         self.data
     }
+    pub fn with_count(self, count: u8) -> Result<Self, StackError> {
+        Self::with_data(self.item, count, self.data)
+    }
+    pub fn container_item(self) -> Option<ItemId> {
+        self.definition().container_item()
+    }
     pub fn definition(self) -> &'static ItemDefinition {
         self.item.definition().expect("validated stack identity")
     }

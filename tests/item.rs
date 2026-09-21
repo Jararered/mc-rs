@@ -51,8 +51,8 @@ fn known_beta_identities_do_not_use_the_native_variant_ids() {
 
 #[test]
 fn native_save_values_and_supported_states_round_trip() {
-    assert_eq!(BlockId::from_u8(92), Some(BlockId::SpruceLeaves));
-    assert_eq!(BlockId::from_u8(96), Some(BlockId::TorchWest));
+    assert_eq!(BlockId::from_u8(200), Some(BlockId::SpruceLeaves));
+    assert_eq!(BlockId::from_u8(204), Some(BlockId::TorchWest));
     for raw in 0..=u8::MAX {
         if let Some(block) = BlockId::from_u8(raw) {
             assert_eq!(block.as_u8(), raw);

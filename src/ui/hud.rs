@@ -33,7 +33,8 @@ impl Plugin for HudPlugin {
             .add_systems(OnExit(AppScreen::Playing), despawn_hud)
             .add_systems(
                 Update,
-                (update_hearts, update_hotbar_selector).run_if(in_state(AppScreen::Playing)),
+                (update_hearts, update_hotbar_selector, update_hotbar_items)
+                    .run_if(in_state(AppScreen::Playing)),
             );
     }
 }
@@ -52,6 +53,8 @@ struct HudHeart(usize);
 
 #[derive(Component)]
 struct HotbarSelector;
+#[derive(Component)]
+struct HotbarItem(usize);
 
 fn load_hud_textures(mut commands: Commands, asset_server: Res<AssetServer>) {
     let load = |path| {
@@ -217,19 +220,23 @@ fn hotbar_item_rect(index: usize) -> (f32, f32) {
     ((3.0 + index as f32 * 20.0) * HUD_SCALE, 3.0 * HUD_SCALE)
 }
 
-/// Draws a hotbar item once an item atlas exists.
 fn spawn_hotbar_item(
     parent: &mut ChildSpawnerCommands,
     _textures: &HudTextures,
     index: usize,
     stack: Option<ItemStack>,
 ) {
-    let Some(_stack) = stack else {
-        return;
-    };
     let (left, top) = hotbar_item_rect(index);
     parent.spawn((
+        HotbarItem(index),
         Pickable::IGNORE,
+        Text::new(hotbar_label(stack)),
+        TextFont {
+            font_size: 10.0.into(),
+            ..default()
+        },
+        TextColor(Color::WHITE),
+        TextShadow::default(),
         Node {
             position_type: PositionType::Absolute,
             left: px(left),
@@ -239,6 +246,20 @@ fn spawn_hotbar_item(
             ..default()
         },
     ));
+}
+
+fn hotbar_label(stack: Option<ItemStack>) -> String {
+    stack
+        .map(|stack| {
+            let name = stack.definition().name;
+            let short = name.split('_').next().unwrap_or(name);
+            if stack.count() > 1 {
+                format!("{}\n{}", &short[..short.len().min(5)], stack.count())
+            } else {
+                short[..short.len().min(5)].to_string()
+            }
+        })
+        .unwrap_or_default()
 }
 
 fn despawn_hud(mut commands: Commands, roots: Query<Entity, With<HudRoot>>) {
@@ -276,6 +297,18 @@ fn update_hotbar_selector(
         return;
     };
     node.left = px(hotbar_selector_left(hotbar.selected));
+}
+
+fn update_hotbar_items(
+    hotbar: Query<&Hotbar, (With<Player>, Changed<Hotbar>)>,
+    mut labels: Query<(&HotbarItem, &mut Text)>,
+) {
+    let Ok(hotbar) = hotbar.single() else {
+        return;
+    };
+    for (item, mut text) in &mut labels {
+        **text = hotbar_label(hotbar.slots[item.0]);
+    }
 }
 
 fn hotbar_selector_left(selected: usize) -> f32 {

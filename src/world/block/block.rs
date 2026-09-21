@@ -49,16 +49,16 @@ pub enum BlockId {
     JackOLantern = 91,
     // Beta stores wood and leaf species in block metadata. The chunk stores a
     // single compact value per block, so each species gets its own variant.
-    SpruceLeaves = 92,
-    BirchLeaves = 93,
-    SpruceWood = 94,
-    BirchWood = 95,
+    SpruceLeaves = 200,
+    BirchLeaves = 201,
+    SpruceWood = 202,
+    BirchWood = 203,
     // Wall attachment is encoded in the compact block value until chunk
     // metadata is introduced. These values are private to our save format.
-    TorchWest = 96,
-    TorchEast = 97,
-    TorchNorth = 98,
-    TorchSouth = 99,
+    TorchWest = 204,
+    TorchEast = 205,
+    TorchNorth = 206,
+    TorchSouth = 207,
 }
 
 impl BlockId {
@@ -116,14 +116,14 @@ impl BlockId {
             87 => Self::Netherrack,
             89 => Self::Glowstone,
             91 => Self::JackOLantern,
-            92 => Self::SpruceLeaves,
-            93 => Self::BirchLeaves,
-            94 => Self::SpruceWood,
-            95 => Self::BirchWood,
-            96 => Self::TorchWest,
-            97 => Self::TorchEast,
-            98 => Self::TorchNorth,
-            99 => Self::TorchSouth,
+            200 => Self::SpruceLeaves,
+            201 => Self::BirchLeaves,
+            202 => Self::SpruceWood,
+            203 => Self::BirchWood,
+            204 => Self::TorchWest,
+            205 => Self::TorchEast,
+            206 => Self::TorchNorth,
+            207 => Self::TorchSouth,
             _ => return None,
         })
     }

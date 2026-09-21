@@ -5,6 +5,7 @@ use crate::entity::particles::BlockParticlePlugin;
 use crate::physics::PhysicsPlugin;
 use crate::player::PlayerPlugin;
 use crate::ui::HudPlugin;
+use crate::ui::InventoryGuiPlugin;
 use crate::ui::MenuPlugin;
 use crate::ui::UiCameraPlugin;
 use crate::world::persistence::PersistencePlugin;
@@ -30,6 +31,7 @@ impl Plugin for GamePlugin {
             UiCameraPlugin,
             MenuPlugin,
             HudPlugin,
+            InventoryGuiPlugin,
             ScreenshotPlugin,
             PerfPlugin,
         ));

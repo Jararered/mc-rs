@@ -4,6 +4,31 @@ use crate::item::ItemStack;
 
 /// Number of hotbar slots shown on the in-game HUD.
 pub const HOTBAR_SLOTS: usize = 9;
+pub const MAIN_SLOTS: usize = 27;
+
+#[derive(Component, Clone, Debug, Default)]
+pub struct Inventory {
+    pub main: [Option<ItemStack>; MAIN_SLOTS],
+    pub crafting: [Option<ItemStack>; 4],
+    pub armor: [Option<ItemStack>; 4],
+    pub carried: Option<ItemStack>,
+}
+
+impl Inventory {
+    pub fn insert(&mut self, hotbar: &mut Hotbar, stack: ItemStack) -> Option<ItemStack> {
+        let mut remainder = hotbar.insert(stack)?;
+        for slot in self.main.iter_mut().flatten() {
+            remainder = slot.merge(remainder)?;
+        }
+        for slot in &mut self.main {
+            if slot.is_none() {
+                *slot = Some(remainder);
+                return None;
+            }
+        }
+        Some(remainder)
+    }
+}
 
 /// Player hotbar: nine slots and the currently selected index.
 ///

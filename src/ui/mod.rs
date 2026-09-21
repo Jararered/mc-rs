@@ -10,8 +10,11 @@ use crate::app::settings::GraphicsQuality;
 use crate::app::state::AppScreen;
 
 mod hud;
+mod inventory;
 
 pub use hud::HudPlugin;
+pub use inventory::InventoryGuiPlugin;
+pub(crate) use inventory::InventoryScreen;
 
 /// Composites all HUD and menu nodes after the world and first-person arm.
 pub struct UiCameraPlugin;

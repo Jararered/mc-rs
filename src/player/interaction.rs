@@ -1,7 +1,6 @@
 //! Break and place blocks along the camera ray.
 //!
-//! Inventory is not implemented yet, so every placement is a torch and mining
-//! uses the empty-hand strength from Beta.
+//! Selected hotbar blocks can be placed; mining currently uses empty-hand strength.
 
 use bevy::prelude::*;
 use bevy::window::CursorGrabMode;
@@ -11,6 +10,9 @@ use bevy::window::PrimaryWindow;
 use crate::entity::CollisionState;
 use crate::entity::EntitySize;
 use crate::entity::particles::BlockParticles;
+use crate::inventory::Hotbar;
+use crate::inventory::Inventory;
+use crate::item::ItemStack;
 use crate::physics::Aabb;
 use crate::physics::BLOCK_REACH;
 use crate::physics::BlockFace;
@@ -38,7 +40,7 @@ const INTERACT_REPEAT_SECS: f32 = 0.25;
 const TICK_SECS: f32 = 1.0 / 20.0;
 const MAX_TICKS_PER_FRAME: u32 = 4;
 
-/// The only block that can be placed until inventory exists.
+/// Torch used by the standalone placement helper and legacy tests.
 pub const PLACED_BLOCK: BlockId = BlockId::Torch;
 
 #[derive(Default)]
@@ -52,7 +54,16 @@ pub(super) fn interact_blocks(
     time: Res<Time>,
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<(&Window, &CursorOptions), With<PrimaryWindow>>,
-    player: Query<(&Transform, &EntitySize, &CollisionState), With<Player>>,
+    mut player: Query<
+        (
+            &Transform,
+            &EntitySize,
+            &CollisionState,
+            &mut Hotbar,
+            &mut Inventory,
+        ),
+        With<Player>,
+    >,
     camera: Query<&Transform, With<PlayerCamera>>,
     mut chunks: ResMut<WorldChunks>,
     mut streaming: Option<ResMut<WorldStreaming>>,
@@ -73,7 +84,7 @@ pub(super) fn interact_blocks(
         return;
     }
 
-    let Ok((transform, size, collision)) = player.single() else {
+    let Ok((transform, size, collision, mut hotbar, mut inventory)) = player.single_mut() else {
         *focus = BlockFocus::default();
         return;
     };
@@ -120,6 +131,8 @@ pub(super) fn interact_blocks(
                     &mut persistence,
                     &mut particles,
                     broken,
+                    &mut hotbar,
+                    &mut inventory,
                 );
             }
         }
@@ -136,6 +149,8 @@ pub(super) fn interact_blocks(
                     &mut persistence,
                     &mut particles,
                     broken,
+                    &mut hotbar,
+                    &mut inventory,
                 );
             } else if state.mining.damage() > old_damage
                 && let Some(hit) = hit
@@ -150,8 +165,13 @@ pub(super) fn interact_blocks(
     if can_place {
         state.place_cooldown = INTERACT_REPEAT_SECS;
         if let Some(hit) = hit
-            && place_block(&mut chunks, hit, size.aabb(transform.translation))
+            && let Some(stack) = hotbar.selected_stack()
+            && let Some(block) = stack.runtime_block()
+            && place_selected_block(&mut chunks, hit, size.aabb(transform.translation), block)
         {
+            let selected = hotbar.selected;
+            hotbar.slots[selected] =
+                ItemStack::with_data(stack.item(), stack.count() - 1, stack.data()).ok();
             let (x, _, z) = hit.face.neighbor(hit.x, hit.y, hit.z);
             notify_edit(&mut streaming, &mut persistence, x, z, true);
         }
@@ -167,6 +187,8 @@ fn apply_break(
     persistence: &mut Option<ResMut<WorldPersistence>>,
     particles: &mut Option<ResMut<BlockParticles>>,
     hit: BlockHit,
+    hotbar: &mut Hotbar,
+    inventory: &mut Inventory,
 ) {
     let light_edit = is_torch(hit.block)
         || [
@@ -181,6 +203,14 @@ fn apply_break(
             chunks.block_at(hit.x + dx, hit.y + dy, hit.z + dz) == Some(torch)
         });
     if break_block(chunks, hit) {
+        let drop = if hit.block == BlockId::Stone {
+            BlockId::Cobblestone
+        } else {
+            hit.block
+        };
+        if let Ok(stack) = ItemStack::from_block(drop, 1) {
+            let _ = inventory.insert(hotbar, stack);
+        }
         if let Some(particles) = particles.as_deref_mut() {
             particles.emit_break(hit);
         }
@@ -214,7 +244,16 @@ pub fn break_block(chunks: &mut WorldChunks, hit: BlockHit) -> bool {
 }
 
 /// Attach a torch to the hit face. Fails without a solid support block.
-pub fn place_block(chunks: &mut WorldChunks, hit: BlockHit, _player: Aabb) -> bool {
+pub fn place_block(chunks: &mut WorldChunks, hit: BlockHit, player: Aabb) -> bool {
+    place_selected_block(chunks, hit, player, BlockId::Torch)
+}
+
+fn place_selected_block(
+    chunks: &mut WorldChunks,
+    hit: BlockHit,
+    player: Aabb,
+    selected: BlockId,
+) -> bool {
     let (x, y, z) = hit.face.neighbor(hit.x, hit.y, hit.z);
     if y < 0 || y >= CHUNK_HEIGHT as i32 {
         return false;
@@ -225,17 +264,29 @@ pub fn place_block(chunks: &mut WorldChunks, hit: BlockHit, _player: Aabb) -> bo
     if !is_replaceable(current) {
         return false;
     }
-    if !is_opaque_cube(hit.block) {
+    if !is_opaque_cube(hit.block) && selected == BlockId::Torch {
         return false;
     }
-    let block = match hit.face {
-        BlockFace::Up => BlockId::Torch,
-        BlockFace::Down => return false,
-        BlockFace::West => BlockId::TorchEast,
-        BlockFace::East => BlockId::TorchWest,
-        BlockFace::North => BlockId::TorchSouth,
-        BlockFace::South => BlockId::TorchNorth,
+    let block = if selected == BlockId::Torch {
+        match hit.face {
+            BlockFace::Up => BlockId::Torch,
+            BlockFace::Down => return false,
+            BlockFace::West => BlockId::TorchEast,
+            BlockFace::East => BlockId::TorchWest,
+            BlockFace::North => BlockId::TorchSouth,
+            BlockFace::South => BlockId::TorchNorth,
+        }
+    } else {
+        selected
     };
+    if is_opaque_cube(block)
+        && player.intersects(Aabb::new(
+            Vec3::new(x as f32, y as f32, z as f32),
+            Vec3::new(x as f32 + 1.0, y as f32 + 1.0, z as f32 + 1.0),
+        ))
+    {
+        return false;
+    }
     chunks
         .set_block(x, y, z, block)
         .is_some_and(|previous| previous != block)

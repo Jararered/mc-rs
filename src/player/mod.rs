@@ -157,18 +157,25 @@ fn spawn_player(
     settings: Res<GameSettings>,
     arm_assets: Res<arm::ArmAssets>,
 ) {
-    let transform = persistence
+    let saved = persistence
         .as_ref()
         .and_then(|persistence| persistence.storage())
-        .and_then(|storage| storage.load_player())
+        .and_then(|storage| storage.load_player());
+    let transform = saved
+        .as_ref()
         .map(|player| player.to_transform())
         .unwrap_or_else(|| default_spawn_transform(&chunks));
+    let (hotbar, inventory) = saved
+        .as_ref()
+        .map(|player| player.to_inventory())
+        .unwrap_or_default();
     commands
         .spawn((
             Name::new("Player"),
             Player,
             PlayerHealth::default(),
-            Hotbar::default(),
+            hotbar,
+            inventory,
             CameraBobbing::default(),
             transform,
         ))
@@ -281,12 +288,16 @@ fn update_mouse_capture(
     mouse_buttons: Res<ButtonInput<MouseButton>>,
     mut windows: Query<(&Window, &mut CursorOptions), With<PrimaryWindow>>,
     mut next_screen: ResMut<NextState<AppScreen>>,
+    inventory_screen: Res<crate::ui::InventoryScreen>,
 ) {
+    if inventory_screen.open {
+        return;
+    }
     let Ok((window, mut cursor)) = windows.single_mut() else {
         return;
     };
 
-    if keys.just_pressed(KeyCode::Escape) {
+    if keys.just_pressed(KeyCode::Escape) && cursor.grab_mode == CursorGrabMode::Locked {
         next_screen.set(AppScreen::Menu);
         cursor.grab_mode = CursorGrabMode::None;
         cursor.visible = true;

@@ -7,7 +7,7 @@
 //! saves/
 //!   world-20260920-153012-1a2b3c4d/
 //!     level.json          world manifest: name, seed, creation time
-//!     player.json         camera position and look direction
+//!     player.json         camera pose and inventory
 //!     regions0,0/         chunks 0..15 x 0..15
 //!       chunk0,0.bin
 //!       chunk1,0.bin
@@ -40,6 +40,10 @@ use bevy::prelude::*;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::inventory::Hotbar;
+use crate::inventory::Inventory;
+use crate::item::ItemId;
+use crate::item::ItemStack;
 use crate::player::Player;
 use crate::world::block::block::BlockId;
 use crate::world::chunk::CHUNK_HEIGHT;
@@ -67,7 +71,7 @@ const AUTOSAVE_SECONDS: f32 = 30.0;
 const BLOCKS_PER_CHUNK: usize = CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE;
 const COLUMNS_PER_CHUNK: usize = CHUNK_SIZE * CHUNK_SIZE;
 
-/// Camera pose stored as `player.json` in a world folder.
+/// Player pose and inventory stored as `player.json` in a world folder.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StoredPlayer {
     pub format_version: u32,
@@ -76,6 +80,38 @@ pub struct StoredPlayer {
     pub z: f32,
     pub yaw: f32,
     pub pitch: f32,
+    #[serde(default)]
+    pub hotbar: Vec<Option<StoredStack>>,
+    #[serde(default)]
+    pub selected: usize,
+    #[serde(default)]
+    pub main: Vec<Option<StoredStack>>,
+    #[serde(default)]
+    pub crafting: Vec<Option<StoredStack>>,
+    #[serde(default)]
+    pub armor: Vec<Option<StoredStack>>,
+    #[serde(default)]
+    pub carried: Option<StoredStack>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StoredStack {
+    pub id: u16,
+    pub count: u8,
+    pub data: u16,
+}
+
+impl StoredStack {
+    fn from_stack(stack: ItemStack) -> Self {
+        Self {
+            id: stack.item().0,
+            count: stack.count(),
+            data: stack.data(),
+        }
+    }
+    fn into_stack(self) -> Option<ItemStack> {
+        ItemStack::with_data(ItemId(self.id), self.count, self.data).ok()
+    }
 }
 
 impl StoredPlayer {
@@ -88,7 +124,59 @@ impl StoredPlayer {
             z: transform.translation.z,
             yaw,
             pitch,
+            hotbar: Vec::new(),
+            selected: 0,
+            main: Vec::new(),
+            crafting: Vec::new(),
+            armor: Vec::new(),
+            carried: None,
         }
+    }
+
+    pub fn with_inventory(mut self, hotbar: &Hotbar, inventory: &Inventory) -> Self {
+        self.hotbar = hotbar
+            .slots
+            .iter()
+            .map(|slot| slot.map(StoredStack::from_stack))
+            .collect();
+        self.selected = hotbar.selected;
+        self.main = inventory
+            .main
+            .iter()
+            .map(|slot| slot.map(StoredStack::from_stack))
+            .collect();
+        self.crafting = inventory
+            .crafting
+            .iter()
+            .map(|slot| slot.map(StoredStack::from_stack))
+            .collect();
+        self.armor = inventory
+            .armor
+            .iter()
+            .map(|slot| slot.map(StoredStack::from_stack))
+            .collect();
+        self.carried = inventory.carried.map(StoredStack::from_stack);
+        self
+    }
+
+    pub fn to_inventory(&self) -> (Hotbar, Inventory) {
+        let mut hotbar = Hotbar::default();
+        let mut inventory = Inventory::default();
+        for (target, saved) in hotbar.slots.iter_mut().zip(&self.hotbar) {
+            *target = saved.and_then(StoredStack::into_stack);
+        }
+        hotbar.select(self.selected);
+        for (target, saved) in inventory.main.iter_mut().zip(&self.main) {
+            *target = saved.and_then(StoredStack::into_stack);
+        }
+        for (target, saved) in inventory.crafting.iter_mut().zip(&self.crafting) {
+            *target = saved.and_then(StoredStack::into_stack);
+        }
+        for (target, saved) in inventory.armor.iter_mut().zip(&self.armor) {
+            *target = saved.and_then(StoredStack::into_stack);
+        }
+        inventory.carried = self.carried.and_then(StoredStack::into_stack);
+        (hotbar, inventory)
     }
 
     pub fn to_transform(&self) -> Transform {
@@ -192,7 +280,7 @@ impl WorldStorage {
         self.manifest.lock().unwrap().seed
     }
 
-    /// Load the stored player pose, or `None` if it was never saved.
+    /// Load the stored player state, or `None` if it was never saved.
     pub fn load_player(&self) -> Option<StoredPlayer> {
         let path = self.root.join(PLAYER_FILE);
         match fs::read(&path) {
@@ -215,7 +303,7 @@ impl WorldStorage {
         }
     }
 
-    /// Write the player pose as pretty-printed JSON.
+    /// Write player state as pretty-printed JSON.
     pub fn save_player(&self, player: &StoredPlayer) -> io::Result<()> {
         let bytes = serde_json::to_vec_pretty(player).map_err(io::Error::other)?;
         let path = self.root.join(PLAYER_FILE);
@@ -395,7 +483,17 @@ fn decode_blocks(runs: &[(u8, u16)]) -> Option<Vec<BlockId>> {
     }
     let mut blocks = Vec::with_capacity(total);
     for (value, length) in runs {
-        let block = BlockId::from_u8(*value)?;
+        let block = match *value {
+            92 => BlockId::SpruceLeaves,
+            93 => BlockId::BirchLeaves,
+            94 => BlockId::SpruceWood,
+            95 => BlockId::BirchWood,
+            96 => BlockId::TorchWest,
+            97 => BlockId::TorchEast,
+            98 => BlockId::TorchNorth,
+            99 => BlockId::TorchSouth,
+            value => BlockId::from_u8(value)?,
+        };
         blocks.resize(blocks.len() + *length as usize, block);
     }
     Some(blocks)
@@ -614,8 +712,12 @@ impl WorldPersistence {
         self.regenerating = false;
     }
 
-    /// Write dirty chunks and the current player pose.
-    pub fn flush(&mut self, chunks: &WorldChunks, player: Option<&Transform>) {
+    /// Write dirty chunks and current player state.
+    pub fn flush(
+        &mut self,
+        chunks: &WorldChunks,
+        player: Option<(&Transform, Option<&Hotbar>, Option<&Inventory>)>,
+    ) {
         let Some(storage) = self.storage.clone() else {
             return;
         };
@@ -637,8 +739,12 @@ impl WorldPersistence {
                 Err(error) => warn!("Failed to save world: {error}"),
             }
         }
-        if let Some(transform) = player
-            && let Err(error) = storage.save_player(&StoredPlayer::from_transform(transform))
+        if let Some((transform, hotbar, inventory)) = player
+            && let Err(error) =
+                storage.save_player(&StoredPlayer::from_transform(transform).with_inventory(
+                    hotbar.unwrap_or(&Hotbar::default()),
+                    inventory.unwrap_or(&Inventory::default()),
+                ))
         {
             warn!("Failed to save player: {error}");
         }
@@ -665,7 +771,7 @@ fn setup_persistence(mut commands: Commands, config: Res<PersistenceConfig>) {
 fn flush_persistence(
     mut persistence: ResMut<WorldPersistence>,
     chunks: Res<WorldChunks>,
-    player: Query<&Transform, With<Player>>,
+    player: Query<(&Transform, Option<&Hotbar>, Option<&Inventory>), With<Player>>,
     time: Res<Time>,
     mut exit: MessageReader<AppExit>,
 ) {

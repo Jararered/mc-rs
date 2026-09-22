@@ -737,7 +737,10 @@ pub fn beta_recipe_book() -> &'static RecipeBook {
                 out(b(B::WoodenPlanks), 4, species),
             );
         }
-        r.add_shapeless(&[i(I::SugarCane)], out(I::Paper, 3, 0));
+        r.add_shapeless(
+            &[i(I::SugarCane), i(I::SugarCane), i(I::SugarCane)],
+            out(I::Paper, 3, 0),
+        );
         r.add_shapeless(&[i(I::SugarCane)], out(I::Sugar, 1, 0));
         r.add_shapeless(&[i(I::Bone)], out(I::Dye, 3, 15));
         r.add_shapeless(&[d(I::Dye, 1), d(I::Dye, 15)], out(I::Dye, 2, 9));

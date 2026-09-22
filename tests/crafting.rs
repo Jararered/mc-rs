@@ -82,6 +82,20 @@ fn beta_book_crafts_common_items_in_two_by_two_and_three_by_three() {
 }
 
 #[test]
+fn paper_recipe_uses_three_sugar_cane_in_any_arrangement() {
+    let book = beta_recipe_book();
+    let mut grid = CraftingGrid::workbench();
+    grid.set(0, 0, Some(stack(ItemId::SugarCane, 1)));
+    grid.set(1, 1, Some(stack(ItemId::SugarCane, 1)));
+    grid.set(2, 2, Some(stack(ItemId::SugarCane, 1)));
+
+    assert_eq!(book.find(&grid), Some(stack(ItemId::Paper, 3)));
+
+    grid.set(2, 2, None);
+    assert_eq!(book.find(&grid), None);
+}
+
+#[test]
 fn logs_craft_into_matching_species_of_planks() {
     let book = beta_recipe_book();
     for (log, species, planks) in [

@@ -9,6 +9,7 @@ use crate::app::settings::GameSettings;
 use crate::physics::PhysicsSet;
 
 use super::chunk::WorldChunks;
+use super::sky::CelestialCamera;
 use super::sky::SkyCamera;
 use super::streaming::StreamingPerf;
 use super::streaming::regenerate_loaded_chunks;
@@ -89,8 +90,11 @@ pub(super) fn apply_lighting_settings(
 fn apply_graphics_pipeline(
     mut commands: Commands,
     settings: Res<GameSettings>,
-    cameras: Query<(Entity, Option<&ScreenSpaceReflections>), (With<Camera3d>, Without<SkyCamera>)>,
-    sky_cameras: Query<Entity, With<SkyCamera>>,
+    cameras: Query<
+        (Entity, Option<&ScreenSpaceReflections>),
+        (With<Camera3d>, Without<SkyCamera>, Without<CelestialCamera>),
+    >,
+    sky_cameras: Query<Entity, Or<(With<SkyCamera>, With<CelestialCamera>)>>,
     renderer_method: Option<ResMut<DefaultOpaqueRendererMethod>>,
 ) {
     if !settings.is_changed() {

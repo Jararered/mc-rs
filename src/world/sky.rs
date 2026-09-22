@@ -1,9 +1,12 @@
 //! Beta sky and distance fog.
 //!
-//! The sky is the geometry from `RenderGlobal.renderSky`: a flat ceiling, a
-//! void floor, a sunrise fan, the sun, the moon, and a star field. Bevy's
-//! cubemap skybox cannot rotate those bodies or fog the ceiling on a shorter
-//! range than the world, so this uses `DistanceFog` on two cameras instead.
+//! The sky is the geometry from `RenderGlobal.renderSky`: a flat ceiling 16
+//! blocks above the camera, a void floor 16 blocks below, a sunrise fan, the
+//! sun, the moon, and a star field. Bevy's cubemap skybox cannot rotate those
+//! bodies or fog the ceiling on a shorter range than the world, so this uses
+//! `DistanceFog` on a backdrop camera. The horizon is the world's fog line.
+//! A dome centered on the camera would pin that line to eye level, so looking
+//! down would drag it up the screen.
 //!
 //! Color math follows `World.getSkyColor`, `WorldProvider.func_4096_a`, and
 //! `EntityRenderer.updateFogColor`. Channels are the same 0..=1 values Beta
@@ -43,15 +46,22 @@ const MC_PI: f32 = 3.141_592_7;
 const SUN_DISTANCE: f32 = 100.0;
 const SUN_SIZE: f32 = 30.0;
 const MOON_SIZE: f32 = 20.0;
-/// Height of Beta's sky plane. The dome bakes that plane's fog gradient.
+/// Height of Beta's sky plane (`glSkyList` uses `16`, `glSkyList2` uses `-16`).
 const SKY_PLANE_HEIGHT: f32 = 16.0;
-/// Dome radius. Celestial bodies sit at 100, inside this shell.
-const DOME_RADIUS: f32 = 400.0;
+/// Half-width of the ceiling and floor. Larger than `sky_fog_end` at the
+/// maximum render distance, so fog hides the edge instead of a hard seam.
+const SKY_PLANE_EXTENT: f32 = 512.0;
+const CELESTIAL_LAYER: usize = 3;
 
 /// Marker so the world camera keeps its own fog range and the Ultra water pass
 /// does not put screen-space reflections on the sky.
 #[derive(Component)]
 pub(crate) struct SkyCamera;
+
+/// Sun, moon, stars, and the sunrise fan. Drawn after the ceiling so the
+/// ceiling's depth does not cover them.
+#[derive(Component)]
+pub(crate) struct CelestialCamera;
 
 #[derive(Component)]
 struct SkyAttached;
@@ -88,8 +98,8 @@ impl Default for EyeFog {
 
 #[derive(Clone, Resource)]
 struct SkyAssets {
-    dome: Handle<StandardMaterial>,
-    dome_mesh: Handle<Mesh>,
+    ceiling: Handle<StandardMaterial>,
+    floor: Handle<StandardMaterial>,
     sun: Handle<StandardMaterial>,
     moon: Handle<StandardMaterial>,
     stars: Handle<StandardMaterial>,
@@ -105,13 +115,35 @@ struct SkyViews<'w, 's> {
         'w,
         's,
         (&'static mut DistanceFog, &'static mut Projection),
-        (With<PlayerCamera>, Without<SkyCamera>),
+        (
+            With<PlayerCamera>,
+            Without<SkyCamera>,
+            Without<CelestialCamera>,
+        ),
     >,
     sky_cameras: Query<
         'w,
         's,
-        (&'static mut DistanceFog, &'static mut Camera),
-        (With<SkyCamera>, Without<PlayerCamera>),
+        (
+            &'static mut DistanceFog,
+            &'static mut Camera,
+            &'static mut Projection,
+        ),
+        (
+            With<SkyCamera>,
+            Without<PlayerCamera>,
+            Without<CelestialCamera>,
+        ),
+    >,
+    celestial_cameras: Query<
+        'w,
+        's,
+        &'static mut Projection,
+        (
+            With<CelestialCamera>,
+            Without<PlayerCamera>,
+            Without<SkyCamera>,
+        ),
     >,
     anchors: Query<
         'w,
@@ -413,8 +445,8 @@ fn ensure_sky(
         existing.clone()
     } else {
         let created = SkyAssets {
-            dome: materials.add(unlit_color(Color::WHITE, false)),
-            dome_mesh: meshes.add(horizon_dome([0.5, 0.7, 1.0], [0.7, 0.8, 0.9], 200.0)),
+            ceiling: materials.add(plane_material(Color::WHITE)),
+            floor: materials.add(plane_material(Color::WHITE)),
             sun: materials.add(body_material(&asset_server, "terrain/sun.png")),
             moon: materials.add(body_material(&asset_server, "terrain/moon.png")),
             stars: materials.add(unlit_color(Color::WHITE, false)),
@@ -438,16 +470,35 @@ fn ensure_sky(
             SkyCamera,
             Camera3d::default(),
             Camera {
-                order: -1,
+                order: -2,
                 clear_color: ClearColorConfig::Custom(initial.color),
                 ..default()
             },
             Projection::from(PerspectiveProjection {
+                fov: settings.fov_radians(),
                 far: 1024.0,
                 ..default()
             }),
             initial,
             RenderLayers::layer(SKY_LAYER),
+        ));
+        parent.spawn((
+            Name::new("Celestial camera"),
+            CelestialCamera,
+            Camera3d::default(),
+            Camera {
+                order: -1,
+                clear_color: ClearColorConfig::None,
+                ..default()
+            },
+            Projection::from(PerspectiveProjection {
+                // Same view as the world camera. A narrower default fov makes
+                // the stars slide against the terrain when the player looks.
+                fov: settings.fov_radians(),
+                far: 1024.0,
+                ..default()
+            }),
+            RenderLayers::layer(CELESTIAL_LAYER),
         ));
     });
 
@@ -464,10 +515,19 @@ fn ensure_sky(
         .with_children(|sky| {
             spawn_layer(
                 sky,
-                "Sky dome",
-                sky_assets.dome_mesh.clone(),
-                sky_assets.dome.clone(),
+                "Sky ceiling",
+                meshes.add(sky_plane_mesh(SKY_PLANE_HEIGHT)),
+                sky_assets.ceiling.clone(),
                 Transform::default(),
+                SKY_LAYER,
+            );
+            spawn_layer(
+                sky,
+                "Sky floor",
+                meshes.add(sky_plane_mesh(-SKY_PLANE_HEIGHT)),
+                sky_assets.floor.clone(),
+                Transform::default(),
+                SKY_LAYER,
             );
             sky.spawn((
                 Name::new("Sunrise"),
@@ -476,7 +536,7 @@ fn ensure_sky(
                 MeshMaterial3d(sky_assets.sunrise.clone()),
                 Transform::default(),
                 Visibility::Hidden,
-                RenderLayers::layer(SKY_LAYER),
+                RenderLayers::layer(CELESTIAL_LAYER),
                 NotShadowCaster,
                 NoFrustumCulling,
             ));
@@ -493,6 +553,7 @@ fn ensure_sky(
                     sun_mesh,
                     sky_assets.sun.clone(),
                     Transform::default(),
+                    CELESTIAL_LAYER,
                 );
                 spawn_layer(
                     rig,
@@ -500,6 +561,7 @@ fn ensure_sky(
                     moon_mesh,
                     sky_assets.moon.clone(),
                     Transform::default(),
+                    CELESTIAL_LAYER,
                 );
                 rig.spawn((
                     Name::new("Stars"),
@@ -508,7 +570,7 @@ fn ensure_sky(
                     MeshMaterial3d(sky_assets.stars.clone()),
                     Transform::default(),
                     Visibility::default(),
-                    RenderLayers::layer(SKY_LAYER),
+                    RenderLayers::layer(CELESTIAL_LAYER),
                     NotShadowCaster,
                     NoFrustumCulling,
                 ));
@@ -522,6 +584,7 @@ fn spawn_layer(
     mesh: Handle<Mesh>,
     material: Handle<StandardMaterial>,
     transform: Transform,
+    layer: usize,
 ) {
     parent.spawn((
         Name::new(name.to_string()),
@@ -529,7 +592,7 @@ fn spawn_layer(
         MeshMaterial3d(material),
         transform,
         Visibility::default(),
-        RenderLayers::layer(SKY_LAYER),
+        RenderLayers::layer(layer),
         NotShadowCaster,
         NoFrustumCulling,
     ));
@@ -598,15 +661,17 @@ fn update_atmosphere(
         Medium::Lava => FogFalloff::Exponential { density: 2.0 },
         Medium::Air => FogFalloff::Linear { start, end },
     };
+    let mut view_fov = None;
     for (mut distance, mut projection) in &mut views.player_cameras {
         distance.color = fog_color;
         distance.falloff = world_falloff.clone();
         distance.directional_light_color = Color::NONE;
         if let Projection::Perspective(perspective) = projection.as_mut() {
             perspective.far = far * 2.0;
+            view_fov = Some(perspective.fov);
         }
     }
-    for (mut distance, mut camera) in &mut views.sky_cameras {
+    for (mut distance, mut camera, mut projection) in &mut views.sky_cameras {
         distance.color = fog_color;
         distance.falloff = FogFalloff::Linear {
             start: 0.0,
@@ -614,6 +679,10 @@ fn update_atmosphere(
         };
         distance.directional_light_color = Color::NONE;
         camera.clear_color = ClearColorConfig::Custom(fog_color);
+        copy_fov(view_fov, &mut projection);
+    }
+    for mut projection in &mut views.celestial_cameras {
+        copy_fov(view_fov, &mut projection);
     }
 
     if let Ok(camera) = views.player.single() {
@@ -626,8 +695,11 @@ fn update_atmosphere(
     for mut rig in &mut views.rigs {
         rig.rotation = spin;
     }
-    if let Some(mut mesh) = meshes.get_mut(&assets.dome_mesh) {
-        *mesh = horizon_dome(sky, fog, sky_fog_end(far));
+    if let Some(mut material) = materials.get_mut(&assets.ceiling) {
+        material.base_color = srgb(sky);
+    }
+    if let Some(mut material) = materials.get_mut(&assets.floor) {
+        material.base_color = srgb(void_rgb(sky));
     }
     let stars_on = star_brightness(angle);
     if let Some(mut material) = materials.get_mut(&assets.stars) {
@@ -680,6 +752,17 @@ fn update_atmosphere(
     }
 }
 
+fn copy_fov(fov: Option<f32>, projection: &mut Projection) {
+    let (Some(fov), Projection::Perspective(perspective)) = (fov, projection) else {
+        return;
+    };
+    perspective.fov = fov;
+}
+
+fn plane_material(color: Color) -> StandardMaterial {
+    unlit_color(color, true)
+}
+
 fn unlit_color(color: Color, fog: bool) -> StandardMaterial {
     StandardMaterial {
         base_color: color,
@@ -702,75 +785,16 @@ fn body_material(server: &AssetServer, path: &str) -> StandardMaterial {
     material
 }
 
-/// Sphere around the camera. Upper latitudes use Beta's sky-plane fog curve.
-/// Lower latitudes fade to the void color only when looking steeply down.
-fn horizon_dome(sky: [f32; 3], fog: [f32; 3], fog_end: f32) -> Mesh {
-    let sectors = 64u32;
-    let upper_stacks = 24u32;
-    let lower_stacks = 8u32;
-    let mut positions = Vec::new();
-    let mut colors = Vec::new();
-    let mut indices = Vec::new();
-
-    let mut add_ring = |elevation: f32, rgb: [f32; 3]| -> u32 {
-        let start = positions.len() as u32;
-        let y = DOME_RADIUS * elevation.sin();
-        let radius = DOME_RADIUS * elevation.cos();
-        let linear = linear_rgb(rgb);
-        for sector in 0..=sectors {
-            let azimuth = sector as f32 / sectors as f32 * std::f32::consts::TAU;
-            positions.push([radius * azimuth.cos(), y, radius * azimuth.sin()]);
-            colors.push([linear[0], linear[1], linear[2], 1.0]);
-        }
-        start
-    };
-    let mut connect = |lower: u32, upper: u32| {
-        for sector in 0..sectors {
-            let a = lower + sector;
-            let b = upper + sector;
-            indices.extend([a, b, a + 1, a + 1, b, b + 1]);
-        }
-    };
-
-    let horizon = add_ring(0.0, fog);
-    let mut previous = horizon;
-    for stack in 1..=upper_stacks {
-        let t = stack as f32 / upper_stacks as f32;
-        // Square the parameter so rings cluster near the horizon, where the
-        // gradient is steepest.
-        let elevation = (t * t) * std::f32::consts::FRAC_PI_2;
-        let current = add_ring(elevation, sky_disc_color(elevation, sky, fog, fog_end));
-        connect(previous, current);
-        previous = current;
-    }
-    previous = horizon;
-    for stack in 1..=lower_stacks {
-        let t = stack as f32 / lower_stacks as f32;
-        let elevation = -t * std::f32::consts::FRAC_PI_2;
-        let rgb = if t > 0.65 { void_rgb(sky) } else { fog };
-        let current = add_ring(elevation, rgb);
-        connect(previous, current);
-        previous = current;
-    }
-
-    let count = positions.len();
+/// Horizontal quad at `y`, wide enough that sky fog covers its edge.
+fn sky_plane_mesh(y: f32) -> Mesh {
+    let h = SKY_PLANE_EXTENT;
     mesh_from(
-        positions,
-        vec![[0.0, 1.0, 0.0]; count],
-        vec![[0.0, 0.0]; count],
-        colors,
-        indices,
+        vec![[-h, y, -h], [h, y, -h], [h, y, h], [-h, y, h]],
+        vec![[0.0, 1.0, 0.0]; 4],
+        vec![[0.0, 0.0]; 4],
+        vec![[1.0, 1.0, 1.0, 1.0]; 4],
+        vec![0, 2, 1, 0, 3, 2],
     )
-}
-
-fn linear_rgb(rgb: [f32; 3]) -> [f32; 3] {
-    let linear = Color::srgb(
-        rgb[0].clamp(0.0, 1.0),
-        rgb[1].clamp(0.0, 1.0),
-        rgb[2].clamp(0.0, 1.0),
-    )
-    .to_linear();
-    [linear.red, linear.green, linear.blue]
 }
 
 /// Sun disk. UVs flip V so the PNG's top stays the top under Bevy's texture space.

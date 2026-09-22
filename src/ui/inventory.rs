@@ -12,7 +12,7 @@ use super::block_icons::BlockIcons;
 use crate::app::state::AppScreen;
 use crate::crafting::CraftingGrid;
 use crate::crafting::beta_recipe_book;
-use crate::entity::DroppedItem;
+use crate::entity::dropped_items::spawn_dropped_item;
 use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
 use crate::item::ItemData;
@@ -277,10 +277,12 @@ fn return_or_drop(
     stack: ItemStack,
 ) {
     if let Some(remainder) = inventory.insert(hotbar, stack) {
-        commands.spawn((
-            DroppedItem(remainder),
-            Transform::from_translation(player_position + Vec3::Y * 0.35),
-        ));
+        spawn_dropped_item(
+            commands,
+            player_position + Vec3::Y * 0.35,
+            remainder,
+            Vec3::new(0.0, 1.5, 0.0),
+        );
     }
 }
 

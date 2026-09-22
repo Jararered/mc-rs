@@ -36,6 +36,13 @@ impl EntitySize {
         height: 1.8,
         y_offset: 1.62,
     };
+
+    /// Compact Beta item entity collision box.
+    pub const DROPPED_ITEM: Self = Self {
+        width: 0.25,
+        height: 0.25,
+        y_offset: 0.0,
+    };
 }
 
 impl Default for EntitySize {

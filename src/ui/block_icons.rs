@@ -48,6 +48,17 @@ impl BlockIcons {
     pub fn ready(&self) -> bool {
         self.ready
     }
+
+    /// UV rectangle for a world item quad, in normalized atlas coordinates.
+    pub fn uv_for_stack(&self, stack: ItemStack) -> Option<(f32, f32, f32, f32)> {
+        let rect = self.rect_for_stack(stack)?;
+        Some((
+            rect.min.x / ATLAS_SIZE as f32,
+            rect.min.y / ATLAS_SIZE as f32,
+            rect.max.x / ATLAS_SIZE as f32,
+            rect.max.y / ATLAS_SIZE as f32,
+        ))
+    }
 }
 
 pub fn setup(mut commands: Commands, server: Res<AssetServer>, mut images: ResMut<Assets<Image>>) {

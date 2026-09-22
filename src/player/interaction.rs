@@ -9,6 +9,8 @@ use bevy::window::PrimaryWindow;
 
 use crate::entity::CollisionState;
 use crate::entity::EntitySize;
+use crate::entity::dropped_items::block_drop;
+use crate::entity::dropped_items::spawn_dropped_item;
 use crate::entity::particles::BlockParticles;
 use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
@@ -158,13 +160,12 @@ pub(super) fn interact_blocks(
         if left_click && let Some(hit) = hit {
             if let Some(broken) = state.mining.try_instant(hit, on_ground, in_water) {
                 apply_break(
+                    &mut commands,
                     &mut chunks,
                     &mut streaming,
                     &mut persistence,
                     &mut particles,
                     broken,
-                    &mut hotbar,
-                    &mut inventory,
                 );
             }
         }
@@ -176,13 +177,12 @@ pub(super) fn interact_blocks(
             let old_damage = state.mining.damage();
             if let Some(broken) = state.mining.tick(hit, on_ground, in_water) {
                 apply_break(
+                    &mut commands,
                     &mut chunks,
                     &mut streaming,
                     &mut persistence,
                     &mut particles,
                     broken,
-                    &mut hotbar,
-                    &mut inventory,
                 );
             } else if state.mining.damage() > old_damage
                 && let Some(hit) = hit
@@ -214,34 +214,62 @@ pub(super) fn interact_blocks(
 }
 
 fn apply_break(
+    commands: &mut Commands,
     chunks: &mut WorldChunks,
     streaming: &mut Option<ResMut<WorldStreaming>>,
     persistence: &mut Option<ResMut<WorldPersistence>>,
     particles: &mut Option<ResMut<BlockParticles>>,
     hit: BlockHit,
-    hotbar: &mut Hotbar,
-    inventory: &mut Inventory,
 ) {
+    let attached = [
+        (0, 1, 0, BlockId::Torch),
+        (1, 0, 0, BlockId::TorchWest),
+        (-1, 0, 0, BlockId::TorchEast),
+        (0, 0, 1, BlockId::TorchNorth),
+        (0, 0, -1, BlockId::TorchSouth),
+    ]
+    .into_iter()
+    .filter_map(|(dx, dy, dz, torch)| {
+        (chunks.block_at(hit.x + dx, hit.y + dy, hit.z + dz) == Some(torch)).then_some((
+            hit.x + dx,
+            hit.y + dy,
+            hit.z + dz,
+            torch,
+        ))
+    })
+    .collect::<Vec<_>>();
     let light_edit = is_torch(hit.block)
-        || [
-            (0, 1, 0, BlockId::Torch),
-            (1, 0, 0, BlockId::TorchWest),
-            (-1, 0, 0, BlockId::TorchEast),
-            (0, 0, 1, BlockId::TorchNorth),
-            (0, 0, -1, BlockId::TorchSouth),
-        ]
-        .into_iter()
-        .any(|(dx, dy, dz, torch)| {
-            chunks.block_at(hit.x + dx, hit.y + dy, hit.z + dz) == Some(torch)
-        });
+        || attached
+            .iter()
+            .copied()
+            .into_iter()
+            .any(|(_, _, _, torch)| is_torch(torch));
     if break_block(chunks, hit) {
-        let drop = if hit.block == BlockId::Stone {
-            BlockId::Cobblestone
-        } else {
-            hit.block
-        };
-        if let Ok(stack) = ItemStack::from_block(drop, 1) {
-            let _ = inventory.insert(hotbar, stack);
+        if let Some(stack) = block_drop(hit.block) {
+            spawn_dropped_item(
+                commands,
+                Vec3::new(hit.x as f32 + 0.5, hit.y as f32 + 0.5, hit.z as f32 + 0.5),
+                stack,
+                Vec3::new(
+                    (hit.x as f32 * 12.989).sin() * 0.15,
+                    3.0,
+                    (hit.z as f32 * 78.233).sin() * 0.15,
+                ),
+            );
+        }
+        for (x, y, z, torch) in attached {
+            if let Some(stack) = block_drop(torch) {
+                spawn_dropped_item(
+                    commands,
+                    Vec3::new(x as f32 + 0.5, y as f32 + 0.5, z as f32 + 0.5),
+                    stack,
+                    Vec3::new(
+                        (x as f32 * 12.989).sin() * 0.15,
+                        2.5,
+                        (z as f32 * 78.233).sin() * 0.15,
+                    ),
+                );
+            }
         }
         if let Some(particles) = particles.as_deref_mut() {
             particles.emit_break(hit);

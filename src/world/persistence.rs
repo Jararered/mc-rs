@@ -51,6 +51,8 @@ use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::Chunk;
 use crate::world::chunk::ChunkPos;
 use crate::world::chunk::WorldChunks;
+use crate::world::furnace::FURNACE_SLOTS;
+use crate::world::furnace::Furnace;
 use crate::world::generation::Biome;
 use crate::world::generation::BiomeMap;
 use crate::world::generation::ChunkDroppedItem;
@@ -410,6 +412,18 @@ struct StoredChunk {
     /// Absent on chunks saved before dropped items were stored.
     #[serde(default)]
     items: Vec<StoredDroppedItem>,
+    /// Absent on chunks saved before furnace inventories were added.
+    #[serde(default)]
+    furnaces: Vec<StoredFurnace>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct StoredFurnace {
+    index: u16,
+    slots: [Option<StoredStack>; FURNACE_SLOTS],
+    burn_ticks: u16,
+    fuel_ticks: u16,
+    cook_ticks: u16,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -469,6 +483,19 @@ impl StoredChunk {
                     rng_state: item.rng_state,
                 })
                 .collect(),
+            furnaces: generated
+                .chunk
+                .furnaces()
+                .map(|(index, furnace)| StoredFurnace {
+                    index: index as u16,
+                    slots: furnace
+                        .slots
+                        .map(|stack| stack.map(StoredStack::from_stack)),
+                    burn_ticks: furnace.burn_ticks,
+                    fuel_ticks: furnace.fuel_ticks,
+                    cook_ticks: furnace.cook_ticks,
+                })
+                .collect(),
         }
     }
 
@@ -493,8 +520,39 @@ impl StoredChunk {
             }
         });
 
+        let mut chunk = Chunk::from_blocks(blocks);
+        for furnace in self.furnaces {
+            let index = usize::from(furnace.index);
+            if index >= BLOCKS_PER_CHUNK {
+                continue;
+            }
+            let y = index / (CHUNK_SIZE * CHUNK_SIZE);
+            let z = index / CHUNK_SIZE % CHUNK_SIZE;
+            let x = index % CHUNK_SIZE;
+            if !matches!(
+                chunk.get(x, y, z),
+                Some(BlockId::Furnace | BlockId::LitFurnace)
+            ) {
+                continue;
+            }
+            let slots = furnace
+                .slots
+                .map(|stack| stack.and_then(StoredStack::into_stack));
+            chunk.insert_furnace(
+                index,
+                Furnace {
+                    slots,
+                    burn_ticks: furnace.burn_ticks,
+                    fuel_ticks: furnace.fuel_ticks,
+                    cook_ticks: furnace
+                        .cook_ticks
+                        .min(crate::world::furnace::SMELT_TICKS - 1),
+                },
+            );
+        }
+
         Some(GeneratedChunk {
-            chunk: Chunk::from_blocks(blocks),
+            chunk,
             heightmap: Heightmap::from_heights(heights),
             biomes: BiomeMap::from_cells(cells),
             items: self

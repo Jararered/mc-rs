@@ -39,6 +39,7 @@ impl Plugin for WorldPlugin {
                 (
                     apply_lighting_settings,
                     apply_graphics_pipeline,
+                    super::furnace::tick_furnaces,
                     (regenerate_loaded_chunks, stream_chunks)
                         .chain()
                         .after(PhysicsSet::ApplyInput),

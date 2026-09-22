@@ -36,7 +36,9 @@ use crate::item::ItemStack;
 use crate::player::Player;
 use crate::random::ItemRng;
 use crate::world::block::block::BlockId;
+use crate::world::chunk::ChunkPos;
 use crate::world::chunk::WorldChunks;
+use crate::world::persistence::WorldPersistence;
 
 const SCALE: f32 = GUI_SCALE;
 const SLOT_SIZE: f32 = 16.0;
@@ -55,6 +57,7 @@ impl Plugin for InventoryGuiPlugin {
                 Update,
                 (
                     validate_workbench,
+                    validate_furnace,
                     toggle,
                     handle_slots,
                     highlight_slots,
@@ -118,10 +121,61 @@ fn validate_workbench(
     }
 }
 
+fn validate_furnace(
+    mut commands: Commands,
+    mut screen: ResMut<InventoryScreen>,
+    chunks: Res<WorldChunks>,
+    player_transform: Query<&Transform, With<Player>>,
+    mut player: Query<(&mut Hotbar, &mut Inventory), With<Player>>,
+    mut workbench: ResMut<WorkbenchUiSession>,
+    roots: Query<Entity, With<InventoryRoot>>,
+    mut windows: Query<&mut CursorOptions, With<PrimaryWindow>>,
+    mut item_rng: Local<ItemRng>,
+) {
+    if !screen.open || !screen.furnace {
+        return;
+    }
+    let Some((x, y, z)) = screen.furnace_position else {
+        return;
+    };
+    let Ok(transform) = player_transform.single() else {
+        return;
+    };
+    let delta = transform.translation - Vec3::new(x as f32 + 0.5, y as f32 + 0.5, z as f32 + 0.5);
+    let block = chunks.block_at(x, y, z);
+    if matches!(block, Some(BlockId::Furnace | BlockId::LitFurnace))
+        && delta.length_squared() <= 64.0
+    {
+        return;
+    }
+    screen.open = false;
+    screen.furnace = false;
+    screen.furnace_position = None;
+    if let Ok((mut hotbar, mut inventory)) = player.single_mut() {
+        close_crafting_interface(
+            &mut commands,
+            transform,
+            &mut item_rng,
+            &mut hotbar,
+            &mut inventory,
+            &mut workbench,
+        );
+    }
+    for root in &roots {
+        commands.entity(root).despawn();
+    }
+    if let Ok(mut cursor) = windows.single_mut() {
+        cursor.visible = false;
+        cursor.grab_mode = CursorGrabMode::Locked;
+    }
+}
+
 #[derive(Resource, Default)]
 pub(crate) struct InventoryScreen {
     pub open: bool,
     pub workbench: bool,
+    pub furnace: bool,
+    pub furnace_position: Option<(i32, i32, i32)>,
 }
 #[derive(Resource)]
 pub(crate) struct WorkbenchUiSession {
@@ -141,6 +195,7 @@ impl Default for WorkbenchUiSession {
 struct InventoryTexture {
     background: Handle<Image>,
     crafting: Handle<Image>,
+    furnace: Handle<Image>,
 }
 #[derive(Component)]
 struct InventoryRoot;
@@ -151,6 +206,7 @@ enum Slot {
     Craft(usize),
     CraftResult,
     Workbench(usize),
+    Furnace(usize),
     Armor(usize),
 }
 #[derive(Component)]
@@ -166,6 +222,8 @@ struct SlotDurability(Slot, bool);
 struct CarriedLabel;
 #[derive(Component)]
 struct CarriedIcon;
+#[derive(Component)]
+struct FurnaceProgress(bool);
 
 const HOTBAR_KEYS: [KeyCode; 9] = [
     KeyCode::Digit1,
@@ -190,6 +248,7 @@ fn load_texture(mut commands: Commands, assets: Res<AssetServer>) {
     commands.insert_resource(InventoryTexture {
         background: assets.load("gui/inventory.png"),
         crafting: assets.load("gui/crafting.png"),
+        furnace: assets.load("gui/furnace.png"),
     });
 }
 
@@ -207,7 +266,9 @@ fn toggle(
     mut item_rng: Local<ItemRng>,
 ) {
     if screen.open && roots.is_empty() {
-        let background = if screen.workbench {
+        let background = if screen.furnace {
+            &texture.furnace
+        } else if screen.workbench {
             &texture.crafting
         } else {
             &texture.background
@@ -218,6 +279,7 @@ fn toggle(
             &icons.image,
             &font.minecraft,
             screen.workbench,
+            screen.furnace,
         );
         if let Ok((_, mut cursor)) = windows.single_mut() {
             cursor.visible = true;
@@ -241,6 +303,8 @@ fn toggle(
             );
         }
         screen.workbench = false;
+        screen.furnace = false;
+        screen.furnace_position = None;
     }
     if let Ok((window, mut cursor)) = windows.single_mut() {
         cursor.visible = screen.open;
@@ -253,7 +317,9 @@ fn toggle(
         };
     }
     if screen.open {
-        let background = if screen.workbench {
+        let background = if screen.furnace {
+            &texture.furnace
+        } else if screen.workbench {
             &texture.crafting
         } else {
             &texture.background
@@ -264,6 +330,7 @@ fn toggle(
             &icons.image,
             &font.minecraft,
             screen.workbench,
+            screen.furnace,
         );
     } else {
         for root in &roots {
@@ -292,6 +359,8 @@ fn close(
     }
     screen.open = false;
     screen.workbench = false;
+    screen.furnace = false;
+    screen.furnace_position = None;
     for root in &roots {
         commands.entity(root).despawn();
     }
@@ -342,6 +411,7 @@ fn spawn(
     icons: &Handle<Image>,
     font: &Handle<Font>,
     workbench: bool,
+    furnace: bool,
 ) {
     commands
         .spawn((
@@ -387,17 +457,52 @@ fn spawn(
                         142.0,
                     );
                 }
-                for index in 0..4 {
-                    slot(
-                        panel,
-                        icons,
-                        font,
-                        Slot::Craft(index),
-                        88.0 + (index % 2) as f32 * SLOT_STEP,
-                        26.0 + (index / 2) as f32 * SLOT_STEP,
-                    );
+                if furnace {
+                    slot(panel, icons, font, Slot::Furnace(0), 56.0, 17.0);
+                    slot(panel, icons, font, Slot::Furnace(1), 56.0, 53.0);
+                    slot(panel, icons, font, Slot::Furnace(2), 116.0, 35.0);
+                } else {
+                    for index in 0..4 {
+                        slot(
+                            panel,
+                            icons,
+                            font,
+                            Slot::Craft(index),
+                            88.0 + (index % 2) as f32 * SLOT_STEP,
+                            26.0 + (index / 2) as f32 * SLOT_STEP,
+                        );
+                    }
                 }
-                if workbench {
+                if furnace {
+                    panel.spawn((
+                        FurnaceProgress(false),
+                        Pickable::IGNORE,
+                        Visibility::Hidden,
+                        BackgroundColor(Color::srgb_u8(255, 170, 35)),
+                        Node {
+                            position_type: PositionType::Absolute,
+                            left: px(56.0 * SCALE),
+                            top: px(36.0 * SCALE),
+                            width: px(14.0 * SCALE),
+                            height: px(14.0 * SCALE),
+                            ..default()
+                        },
+                    ));
+                    panel.spawn((
+                        FurnaceProgress(true),
+                        Pickable::IGNORE,
+                        Visibility::Hidden,
+                        BackgroundColor(Color::srgb_u8(255, 170, 35)),
+                        Node {
+                            position_type: PositionType::Absolute,
+                            left: px(79.0 * SCALE),
+                            top: px(34.0 * SCALE),
+                            width: px(24.0 * SCALE),
+                            height: px(16.0 * SCALE),
+                            ..default()
+                        },
+                    ));
+                } else if workbench {
                     for index in 0..9 {
                         slot(
                             panel,
@@ -634,6 +739,8 @@ fn handle_slots(
     slots: Query<(&RelativeCursorPosition, &Slot)>,
     mut player: Query<(&mut Hotbar, &mut Inventory), With<Player>>,
     mut workbench: ResMut<WorkbenchUiSession>,
+    mut chunks: ResMut<WorldChunks>,
+    mut persistence: Option<ResMut<WorldPersistence>>,
     mut drag: ResMut<SlotDrag>,
 ) {
     if !screen.open {
@@ -647,6 +754,62 @@ fn handle_slots(
         .iter()
         .find_map(|(cursor, slot)| cursor.cursor_over().then_some(*slot));
     let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
+    if screen.furnace {
+        let Some(position) = screen.furnace_position else {
+            return;
+        };
+        if let Some(Slot::Furnace(index @ 0..=1)) = hovered {
+            for (hotbar_index, key) in HOTBAR_KEYS.iter().enumerate() {
+                if !keys.just_pressed(*key) {
+                    continue;
+                }
+                if let Some(furnace) = chunks.furnace_at_mut(position.0, position.1, position.2) {
+                    std::mem::swap(&mut furnace.slots[index], &mut hotbar.slots[hotbar_index]);
+                }
+            }
+        } else if let Some(slot) = hovered.filter(|slot| !matches!(slot, Slot::Furnace(_))) {
+            for (index, key) in HOTBAR_KEYS.iter().enumerate() {
+                if keys.just_pressed(*key) {
+                    let _ = hotbar_key_swap(
+                        &mut inventory,
+                        &mut hotbar,
+                        Some(&mut workbench.grid),
+                        false,
+                        to_slot_id(slot),
+                        index,
+                    );
+                }
+            }
+        }
+        if let Some(slot) = hovered
+            && (mouse.just_pressed(MouseButton::Left) || mouse.just_pressed(MouseButton::Right))
+        {
+            let right =
+                mouse.just_pressed(MouseButton::Right) && !mouse.just_pressed(MouseButton::Left);
+            if shift {
+                shift_click_furnace(slot, position, &mut chunks, &mut hotbar, &mut inventory);
+            } else {
+                apply_furnace_click(
+                    slot,
+                    right,
+                    position,
+                    &mut chunks,
+                    &mut hotbar,
+                    &mut inventory,
+                    &mut workbench,
+                );
+            }
+            if let Some(persistence) = persistence.as_deref_mut() {
+                persistence.mark_dirty(ChunkPos::from_block(position.0, position.2));
+            }
+        } else if hovered.is_some() && HOTBAR_KEYS.iter().any(|key| keys.just_pressed(*key)) {
+            if let Some(persistence) = persistence.as_deref_mut() {
+                persistence.mark_dirty(ChunkPos::from_block(position.0, position.2));
+            }
+        }
+        *drag = SlotDrag::default();
+        return;
+    }
     if let Some(slot) = hovered {
         for (index, key) in HOTBAR_KEYS.iter().enumerate() {
             if keys.just_pressed(*key) {
@@ -777,7 +940,135 @@ fn to_slot_id(slot: Slot) -> SlotId {
         Slot::Craft(index) => SlotId::Craft(index),
         Slot::CraftResult => SlotId::CraftResult,
         Slot::Workbench(index) => SlotId::Workbench(index),
+        Slot::Furnace(index) => SlotId::Craft(index),
         Slot::Armor(index) => SlotId::Armor(index),
+    }
+}
+
+fn apply_furnace_click(
+    slot: Slot,
+    right: bool,
+    position: (i32, i32, i32),
+    chunks: &mut WorldChunks,
+    hotbar: &mut Hotbar,
+    inventory: &mut Inventory,
+    workbench: &mut WorkbenchUiSession,
+) {
+    let Some(furnace) = chunks.furnace_at_mut(position.0, position.1, position.2) else {
+        return;
+    };
+    match slot {
+        Slot::Furnace(index) if index < 2 => {
+            click_slot(&mut furnace.slots[index], &mut inventory.carried, right);
+        }
+        Slot::Furnace(2) => {
+            if inventory.carried.is_some() {
+                return;
+            }
+            let Some(stack) = furnace.slots[2] else {
+                return;
+            };
+            let count = if right {
+                stack.count().div_ceil(2)
+            } else {
+                stack.count()
+            };
+            inventory.carried = ItemStack::with_data(stack.item(), count, stack.data()).ok();
+            furnace.slots[2] =
+                ItemStack::with_data(stack.item(), stack.count() - count, stack.data()).ok();
+        }
+        Slot::Furnace(_) => {}
+        _ => apply_click(slot, right, false, hotbar, inventory, workbench),
+    }
+}
+
+fn shift_click_furnace(
+    slot: Slot,
+    position: (i32, i32, i32),
+    chunks: &mut WorldChunks,
+    hotbar: &mut Hotbar,
+    inventory: &mut Inventory,
+) {
+    match slot {
+        Slot::Furnace(index) if index < 3 => {
+            let Some(stack) = chunks
+                .furnace_at(position.0, position.1, position.2)
+                .and_then(|furnace| furnace.slots[index])
+            else {
+                return;
+            };
+            let mut simulated_hotbar = hotbar.clone();
+            let mut simulated_inventory = inventory.clone();
+            let remainder = simulated_inventory.insert(&mut simulated_hotbar, stack);
+            let moved = stack.count() - remainder.map_or(0, ItemStack::count);
+            if moved == 0 {
+                return;
+            }
+            *hotbar = simulated_hotbar;
+            *inventory = simulated_inventory;
+            if let Some(furnace) = chunks.furnace_at_mut(position.0, position.1, position.2) {
+                furnace.slots[index] = remainder;
+            }
+        }
+        Slot::Main(index) => shift_player_stack_into_furnace(
+            PlayerSlot::Main(index),
+            position,
+            chunks,
+            hotbar,
+            inventory,
+        ),
+        Slot::Hotbar(index) => shift_player_stack_into_furnace(
+            PlayerSlot::Hotbar(index),
+            position,
+            chunks,
+            hotbar,
+            inventory,
+        ),
+        _ => {}
+    }
+}
+
+#[derive(Clone, Copy)]
+enum PlayerSlot {
+    Main(usize),
+    Hotbar(usize),
+}
+
+fn shift_player_stack_into_furnace(
+    source: PlayerSlot,
+    position: (i32, i32, i32),
+    chunks: &mut WorldChunks,
+    hotbar: &mut Hotbar,
+    inventory: &mut Inventory,
+) {
+    let stack = match source {
+        PlayerSlot::Main(index) => inventory.main.get(index).copied().flatten(),
+        PlayerSlot::Hotbar(index) => hotbar.slots.get(index).copied().flatten(),
+    };
+    let Some(stack) = stack else { return };
+    let Some(furnace) = chunks.furnace_at_mut(position.0, position.1, position.2) else {
+        return;
+    };
+    let target = if crate::world::furnace::smelting_result(stack).is_some() {
+        0
+    } else if crate::world::furnace::fuel_ticks(stack).is_some() {
+        1
+    } else {
+        return;
+    };
+    let remainder = if let Some(existing) = furnace.slots[target].as_mut() {
+        existing.merge(stack)
+    } else {
+        furnace.slots[target] = Some(stack);
+        None
+    };
+    let moved = stack.count() - remainder.map_or(0, ItemStack::count);
+    if moved == 0 {
+        return;
+    }
+    match source {
+        PlayerSlot::Main(index) => inventory.main[index] = remainder,
+        PlayerSlot::Hotbar(index) => hotbar.slots[index] = remainder,
     }
 }
 
@@ -829,6 +1120,7 @@ fn apply_click(
             let Inventory { armor, carried, .. } = &mut *inventory;
             click_slot(&mut armor[i], carried, right);
         }
+        Slot::Furnace(_) => {}
     }
 }
 
@@ -873,6 +1165,7 @@ fn refresh(
     screen: Res<InventoryScreen>,
     player: Query<(&Hotbar, &Inventory), With<Player>>,
     workbench: Res<WorkbenchUiSession>,
+    chunks: Res<WorldChunks>,
     mut labels: Query<
         (
             &SlotLabel,
@@ -887,6 +1180,7 @@ fn refresh(
             Without<SlotDurability>,
             Without<CarriedLabel>,
             Without<CarriedIcon>,
+            Without<FurnaceProgress>,
         ),
     >,
     mut bars: Query<
@@ -900,11 +1194,25 @@ fn refresh(
             Without<SlotLabel>,
             Without<CarriedLabel>,
             Without<CarriedIcon>,
+            Without<FurnaceProgress>,
+        ),
+    >,
+    mut furnace_progress: Query<
+        (&FurnaceProgress, &mut Node, &mut Visibility),
+        (
+            Without<SlotLabel>,
+            Without<SlotDurability>,
+            Without<CarriedLabel>,
+            Without<CarriedIcon>,
         ),
     >,
     mut icons: Query<
         (&SlotIcon, &mut ImageNode, &mut Visibility),
-        (Without<CarriedIcon>, Without<SlotDurability>),
+        (
+            Without<CarriedIcon>,
+            Without<SlotDurability>,
+            Without<FurnaceProgress>,
+        ),
     >,
     mut carried: Query<
         (
@@ -944,7 +1252,15 @@ fn refresh(
     for (label, mut text, mut node, mut layout, mut text_font, mut line_height, mut shadow) in
         &mut labels
     {
-        let stack = slot_stack(label.0, hotbar, inventory, &workbench, screen.workbench);
+        let stack = slot_stack(
+            label.0,
+            hotbar,
+            inventory,
+            &workbench,
+            screen.workbench,
+            screen.furnace_position,
+            &chunks,
+        );
         let has_icon = stack
             .and_then(|stack| block_icons.rect_for_stack(stack))
             .is_some();
@@ -968,7 +1284,15 @@ fn refresh(
         );
     }
     for (bar, mut node, mut visibility, mut color) in &mut bars {
-        let stack = slot_stack(bar.0, hotbar, inventory, &workbench, screen.workbench);
+        let stack = slot_stack(
+            bar.0,
+            hotbar,
+            inventory,
+            &workbench,
+            screen.workbench,
+            screen.furnace_position,
+            &chunks,
+        );
         if let Some((width, red, green)) = stack.and_then(durability_bar) {
             *visibility = Visibility::Inherited;
             let (_, _, track_width, _) = durability_track(0.0, 0.0, bar.1);
@@ -984,12 +1308,46 @@ fn refresh(
         }
     }
     for (icon, mut image, mut visibility) in &mut icons {
-        let stack = slot_stack(icon.0, hotbar, inventory, &workbench, screen.workbench);
+        let stack = slot_stack(
+            icon.0,
+            hotbar,
+            inventory,
+            &workbench,
+            screen.workbench,
+            screen.furnace_position,
+            &chunks,
+        );
         if let Some(rect) = stack.and_then(|stack| block_icons.rect_for_stack(stack)) {
             image.rect = Some(rect);
             *visibility = Visibility::Inherited;
         } else {
             *visibility = Visibility::Hidden;
+        }
+    }
+    let furnace = screen
+        .furnace_position
+        .and_then(|(x, y, z)| chunks.furnace_at(x, y, z));
+    for (indicator, mut node, mut visibility) in &mut furnace_progress {
+        let progress = furnace.map_or(0.0, |furnace| {
+            if indicator.0 {
+                f32::from(furnace.cook_ticks) / f32::from(crate::world::furnace::SMELT_TICKS)
+            } else if furnace.fuel_ticks > 0 {
+                f32::from(furnace.burn_ticks) / f32::from(furnace.fuel_ticks)
+            } else {
+                0.0
+            }
+        });
+        if progress <= 0.0 {
+            *visibility = Visibility::Hidden;
+        } else {
+            *visibility = Visibility::Inherited;
+            if indicator.0 {
+                node.width = px((24.0 * SCALE * progress).round());
+            } else {
+                let height = (14.0 * SCALE * progress).round();
+                node.height = px(height);
+                node.top = px(50.0 * SCALE - height);
+            }
         }
     }
     let cursor_icon = windows.single().ok().and_then(|window| {
@@ -1055,6 +1413,8 @@ fn slot_stack(
     inventory: &Inventory,
     workbench: &WorkbenchUiSession,
     workbench_open: bool,
+    furnace_position: Option<(i32, i32, i32)>,
+    chunks: &WorldChunks,
 ) -> Option<ItemStack> {
     match slot {
         Slot::Hotbar(i) => hotbar.slots[i],
@@ -1063,6 +1423,9 @@ fn slot_stack(
         Slot::CraftResult if workbench_open => beta_recipe_book().find(&workbench.grid),
         Slot::CraftResult => inventory.crafting_result(),
         Slot::Workbench(i) => workbench.grid.get(i % 3, i / 3),
+        Slot::Furnace(i) => furnace_position
+            .and_then(|(x, y, z)| chunks.furnace_at(x, y, z))
+            .and_then(|furnace| furnace.slots.get(i).copied().flatten()),
         Slot::Armor(i) => inventory.armor[i],
     }
 }

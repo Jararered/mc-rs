@@ -4,6 +4,7 @@ use std::sync::Arc;
 use bevy::prelude::Resource;
 
 use crate::world::block::block::BlockId;
+use crate::world::furnace::Furnace;
 use crate::world::generation::Climate;
 use crate::world::generation::GeneratedChunk;
 
@@ -18,12 +19,15 @@ pub struct Chunk {
     // immutable blocks avoids copying nine full arrays for every mesh job;
     // edits detach only the modified chunk.
     blocks: Arc<[BlockId]>,
+    /// Block-local inventories and simulation state. Keyed by flat block index.
+    furnaces: HashMap<usize, Furnace>,
 }
 
 impl Chunk {
     pub fn new() -> Self {
         Self {
             blocks: vec![BlockId::Air; CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE].into(),
+            furnaces: HashMap::new(),
         }
     }
 
@@ -34,8 +38,15 @@ impl Chunk {
             CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE,
             "a chunk holds exactly one block per position"
         );
+        let furnaces = blocks
+            .iter()
+            .enumerate()
+            .filter(|(_, block)| is_furnace(**block))
+            .map(|(index, _)| (index, Furnace::default()))
+            .collect();
         Self {
             blocks: blocks.into(),
+            furnaces,
         }
     }
 
@@ -53,12 +64,41 @@ impl Chunk {
 
     pub fn set(&mut self, x: usize, y: usize, z: usize, block: BlockId) {
         assert!(x < CHUNK_SIZE && y < CHUNK_HEIGHT && z < CHUNK_SIZE);
-        Arc::make_mut(&mut self.blocks)[Self::index(x, y, z)] = block;
+        let index = Self::index(x, y, z);
+        let previous = self.blocks[index];
+        if is_furnace(previous) && !is_furnace(block) {
+            self.furnaces.remove(&index);
+        } else if !is_furnace(previous) && is_furnace(block) {
+            self.furnaces.entry(index).or_default();
+        }
+        Arc::make_mut(&mut self.blocks)[index] = block;
+    }
+
+    pub fn furnaces(&self) -> impl Iterator<Item = (usize, &Furnace)> {
+        self.furnaces
+            .iter()
+            .map(|(index, furnace)| (*index, furnace))
+    }
+
+    pub fn furnace(&self, index: usize) -> Option<&Furnace> {
+        self.furnaces.get(&index)
+    }
+
+    pub fn furnace_mut(&mut self, index: usize) -> Option<&mut Furnace> {
+        self.furnaces.get_mut(&index)
+    }
+
+    pub fn insert_furnace(&mut self, index: usize, furnace: Furnace) {
+        self.furnaces.insert(index, furnace);
     }
 
     pub(crate) const fn index(x: usize, y: usize, z: usize) -> usize {
         (y * CHUNK_SIZE + z) * CHUNK_SIZE + x
     }
+}
+
+fn is_furnace(block: BlockId) -> bool {
+    matches!(block, BlockId::Furnace | BlockId::LitFurnace)
 }
 
 impl Default for Chunk {
@@ -129,6 +169,35 @@ impl WorldChunks {
         chunk.chunk.get(local_x, y as usize, local_z)
     }
 
+    pub fn furnace_at(&self, x: i32, y: i32, z: i32) -> Option<&Furnace> {
+        let chunk = self.get(ChunkPos::from_block(x, z))?;
+        let index = local_index(x, y, z)?;
+        chunk.chunk.furnace(index)
+    }
+
+    pub fn furnace_at_mut(&mut self, x: i32, y: i32, z: i32) -> Option<&mut Furnace> {
+        let chunk = self.get_mut(ChunkPos::from_block(x, z))?;
+        let index = local_index(x, y, z)?;
+        chunk.chunk.furnace_mut(index)
+    }
+
+    pub fn furnace_positions(&self) -> Vec<(i32, i32, i32)> {
+        let mut positions = Vec::new();
+        for (chunk_pos, generated) in &self.chunks {
+            for (index, _) in generated.chunk.furnaces() {
+                let x = index % CHUNK_SIZE;
+                let z = index / CHUNK_SIZE % CHUNK_SIZE;
+                let y = index / (CHUNK_SIZE * CHUNK_SIZE);
+                positions.push((
+                    chunk_pos.x * CHUNK_SIZE as i32 + x as i32,
+                    y as i32,
+                    chunk_pos.z * CHUNK_SIZE as i32 + z as i32,
+                ));
+            }
+        }
+        positions
+    }
+
     /// Replace a loaded block and refresh that column's heightmap.
     ///
     /// Returns the previous block, or `None` when the cell is outside the world
@@ -149,6 +218,15 @@ impl WorldChunks {
         }
         Some(previous)
     }
+}
+
+pub(crate) const fn local_index(x: i32, y: i32, z: i32) -> Option<usize> {
+    if y < 0 || y >= CHUNK_HEIGHT as i32 {
+        return None;
+    }
+    let local_x = x.rem_euclid(CHUNK_SIZE as i32) as usize;
+    let local_z = z.rem_euclid(CHUNK_SIZE as i32) as usize;
+    Some(Chunk::index(local_x, y as usize, local_z))
 }
 
 /// Chunks whose meshes can change when the block at `(x, z)` is edited.

@@ -155,6 +155,31 @@ pub(super) fn interact_blocks(
     );
     if right_click
         && !inventory_screen.open
+        && hit.is_some_and(|hit| matches!(hit.block, BlockId::Furnace | BlockId::LitFurnace))
+    {
+        let hit = hit.expect("checked above");
+        close_crafting_interface(
+            &mut commands,
+            transform,
+            &mut item_rng,
+            &mut hotbar,
+            &mut inventory,
+            &mut workbench,
+        );
+        inventory_screen.open = true;
+        inventory_screen.workbench = false;
+        inventory_screen.furnace = true;
+        inventory_screen.furnace_position = Some((hit.x, hit.y, hit.z));
+        if let Ok((_, mut cursor)) = windows.single_mut() {
+            cursor.visible = true;
+            cursor.grab_mode = CursorGrabMode::None;
+        }
+        state.mining.reset();
+        *focus = BlockFocus::default();
+        return;
+    }
+    if right_click
+        && !inventory_screen.open
         && hit.is_some_and(|hit| hit.block == BlockId::CraftingTable)
     {
         let hit = hit.expect("checked above");
@@ -171,6 +196,8 @@ pub(super) fn interact_blocks(
         );
         inventory_screen.open = true;
         inventory_screen.workbench = true;
+        inventory_screen.furnace = false;
+        inventory_screen.furnace_position = None;
         workbench.position = Some((hit.x, hit.y, hit.z));
         if let Ok((_, mut cursor)) = windows.single_mut() {
             cursor.visible = true;
@@ -279,7 +306,12 @@ fn apply_break(
     {
         attached.push((hit.x, hit.y + 1, hit.z, plant));
     }
+    let furnace_drops = chunks
+        .furnace_at(hit.x, hit.y, hit.z)
+        .map(|furnace| furnace.slots.into_iter().flatten().collect::<Vec<_>>())
+        .unwrap_or_default();
     let light_edit = is_torch(hit.block)
+        || hit.block == BlockId::LitFurnace
         || attached
             .iter()
             .copied()
@@ -290,6 +322,9 @@ fn apply_break(
     // when the block comes out, including a block the tool cannot harvest.
     // TNT's player-destroy drop is not part of that gate.
     if break_block(chunks, hit) {
+        for stack in furnace_drops {
+            spawn_block_drop(commands, rng, IVec3::new(hit.x, hit.y, hit.z), stack);
+        }
         for stack in player_break_drops(hit.block, tool, rng) {
             spawn_block_drop(commands, rng, IVec3::new(hit.x, hit.y, hit.z), stack);
         }

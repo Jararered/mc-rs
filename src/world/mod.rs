@@ -1,6 +1,7 @@
 pub mod block;
 pub mod chunk;
 pub mod clouds;
+pub mod furnace;
 pub mod generation;
 pub mod lighting;
 pub mod meshing;

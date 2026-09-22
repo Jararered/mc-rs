@@ -20,7 +20,7 @@ fn wood_icon_has_top_and_differently_lit_sides() {
     }
     let icon = rasterize_icon(&terrain, 256, BlockId::Wood);
     assert_eq!(pixel(&icon, 0, 0), [0, 0, 0, 0]);
-    assert_eq!(pixel(&icon, 16, 8), [220, 30, 20, 255]);
+    assert_eq!(pixel(&icon, 16, 5), [220, 30, 20, 255]);
     let left = pixel(&icon, 8, 18);
     let right = pixel(&icon, 23, 18);
     assert_eq!(left[3], 255);

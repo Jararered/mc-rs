@@ -412,6 +412,8 @@ pub fn block_tile(
         BlockId::Tnt if face == 0 => (9, 0),
         BlockId::Tnt if face == 1 => (10, 0),
         BlockId::Tnt => (8, 0),
+        BlockId::Sandstone if face == 0 => (0, 11),
+        BlockId::Sandstone if face == 1 => (0, 13),
         BlockId::Sandstone => (0, 12),
         BlockId::LapisOre => (0, 10),
         BlockId::LapisBlock => (0, 9),

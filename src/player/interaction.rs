@@ -420,11 +420,6 @@ pub fn place_selected_block_facing(
         let Some(below) = chunks.block_at(x, y - 1, z) else {
             return false;
         };
-        // Player placement is restricted to sand. Natural cactus growth can
-        // stack on an existing cactus through `cactus_can_stay`.
-        if below != BlockId::Sand {
-            return false;
-        }
         let [Some(west), Some(east), Some(north), Some(south)] = [
             chunks.block_at(x - 1, y, z),
             chunks.block_at(x + 1, y, z),

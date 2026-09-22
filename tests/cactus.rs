@@ -1,6 +1,7 @@
 use bevy::mesh::Mesh;
 use bevy::mesh::VertexAttributeValues;
 use bevy::prelude::Vec3;
+use game::item::ItemStack;
 use game::physics::Aabb;
 use game::physics::BlockFace;
 use game::physics::BlockHit;
@@ -199,6 +200,8 @@ fn cactus_placement_requires_sand_support_and_clear_sides() {
         block: BlockId::Sand,
     };
     let player = Aabb::new(Vec3::new(0.0, 70.0, 0.0), Vec3::new(0.6, 71.8, 0.6));
+    let cactus_stack = ItemStack::from_block(BlockId::Cactus, 1).unwrap();
+    assert_eq!(cactus_stack.runtime_block(), Some(BlockId::Cactus));
 
     let mut supported = Chunk::new();
     supported.set(8, 64, 8, BlockId::Sand);
@@ -207,7 +210,7 @@ fn cactus_placement_requires_sand_support_and_clear_sides() {
         &mut chunks,
         hit,
         player,
-        BlockId::Cactus,
+        cactus_stack.runtime_block().unwrap(),
     ));
     assert_eq!(chunks.block_at(8, 65, 8), Some(BlockId::Cactus));
 
@@ -230,13 +233,13 @@ fn cactus_placement_requires_sand_support_and_clear_sides() {
         block: BlockId::Cactus,
         ..hit
     };
-    assert!(!place_selected_block(
+    assert!(place_selected_block(
         &mut chunks,
         cactus_hit,
         player,
         BlockId::Cactus,
     ));
-    assert_eq!(chunks.block_at(8, 65, 8), Some(BlockId::Air));
+    assert_eq!(chunks.block_at(8, 65, 8), Some(BlockId::Cactus));
 }
 
 #[test]

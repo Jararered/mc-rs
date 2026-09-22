@@ -1,8 +1,17 @@
+mod transfer;
+
 use bevy::prelude::Component;
 
 use crate::crafting::CraftingGrid;
 use crate::crafting::beta_recipe_book;
 use crate::item::ItemStack;
+
+pub use transfer::DragPlace;
+pub use transfer::SlotId;
+pub use transfer::drag_place;
+pub use transfer::hotbar_key_swap;
+pub use transfer::shift_click_slot;
+pub use transfer::slot_accepts_drag;
 
 /// Number of hotbar slots shown on the in-game HUD.
 pub const HOTBAR_SLOTS: usize = 9;

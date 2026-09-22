@@ -5,6 +5,7 @@ use bevy::prelude::*;
 use bevy::text::Justify;
 use bevy::text::LineHeight;
 use bevy::text::TextLayout;
+use bevy::ui::RelativeCursorPosition;
 use bevy::window::CursorGrabMode;
 use bevy::window::CursorOptions;
 use bevy::window::PrimaryWindow;
@@ -25,8 +26,14 @@ use crate::crafting::CraftingGrid;
 use crate::crafting::beta_recipe_book;
 use crate::entity::dropped_items::ItemRng;
 use crate::entity::dropped_items::spawn_thrown_item;
+use crate::inventory::DragPlace;
 use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
+use crate::inventory::SlotId;
+use crate::inventory::drag_place;
+use crate::inventory::hotbar_key_swap;
+use crate::inventory::shift_click_slot;
+use crate::inventory::slot_accepts_drag;
 use crate::item::ItemData;
 use crate::item::ItemStack;
 use crate::player::Player;
@@ -43,11 +50,18 @@ impl Plugin for InventoryGuiPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<InventoryScreen>()
             .init_resource::<WorkbenchUiSession>()
+            .init_resource::<SlotDrag>()
             .add_systems(PreStartup, (load_texture, super::block_icons::setup))
             .add_systems(Update, super::block_icons::build.before(refresh))
             .add_systems(
                 Update,
-                (validate_workbench, toggle, handle_slots, refresh)
+                (
+                    validate_workbench,
+                    toggle,
+                    handle_slots,
+                    highlight_slots,
+                    refresh,
+                )
                     .chain()
                     .run_if(in_state(AppScreen::Playing)),
             )
@@ -132,7 +146,7 @@ struct InventoryTexture {
 }
 #[derive(Component)]
 struct InventoryRoot;
-#[derive(Component, Clone, Copy)]
+#[derive(Component, Clone, Copy, PartialEq, Eq)]
 enum Slot {
     Hotbar(usize),
     Main(usize),
@@ -143,6 +157,9 @@ enum Slot {
 }
 #[derive(Component)]
 struct SlotLabel(Slot);
+/// GuiContainer draws ARGB `0x80FFFFFF` over the hovered 16×16 slot.
+#[derive(Component)]
+struct SlotHighlight;
 #[derive(Component)]
 struct SlotIcon(Slot);
 #[derive(Component)]
@@ -151,6 +168,25 @@ struct SlotDurability(Slot, bool);
 struct CarriedLabel;
 #[derive(Component)]
 struct CarriedIcon;
+
+const HOTBAR_KEYS: [KeyCode; 9] = [
+    KeyCode::Digit1,
+    KeyCode::Digit2,
+    KeyCode::Digit3,
+    KeyCode::Digit4,
+    KeyCode::Digit5,
+    KeyCode::Digit6,
+    KeyCode::Digit7,
+    KeyCode::Digit8,
+    KeyCode::Digit9,
+];
+
+#[derive(Resource, Default)]
+struct SlotDrag {
+    button: Option<MouseButton>,
+    origin: Option<Slot>,
+    slots: Vec<Slot>,
+}
 
 fn load_texture(mut commands: Commands, assets: Res<AssetServer>) {
     let texture = assets
@@ -448,6 +484,7 @@ fn slot(
         .spawn((
             Button,
             id,
+            RelativeCursorPosition::default(),
             Node {
                 position_type: PositionType::Absolute,
                 left: px(x * SCALE),
@@ -508,6 +545,20 @@ fn slot(
                     top: px(frame.top),
                     width: px(frame.width),
                     height: px(frame.height),
+                    ..default()
+                },
+            ));
+            button.spawn((
+                SlotHighlight,
+                Pickable::IGNORE,
+                Visibility::Hidden,
+                BackgroundColor(Color::srgba_u8(255, 255, 255, 128)),
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: px(0.0),
+                    top: px(0.0),
+                    width: percent(100.0),
+                    height: percent(100.0),
                     ..default()
                 },
             ));
@@ -592,62 +643,227 @@ fn take_workbench_result(
 fn handle_slots(
     screen: Res<InventoryScreen>,
     mouse: Res<ButtonInput<MouseButton>>,
-    buttons: Query<(&Interaction, &Slot), With<Button>>,
+    keys: Res<ButtonInput<KeyCode>>,
+    slots: Query<(&RelativeCursorPosition, &Slot)>,
     mut player: Query<(&mut Hotbar, &mut Inventory), With<Player>>,
     mut workbench: ResMut<WorkbenchUiSession>,
+    mut drag: ResMut<SlotDrag>,
 ) {
     if !screen.open {
+        *drag = SlotDrag::default();
         return;
     }
     let Ok((mut hotbar, mut inventory)) = player.single_mut() else {
         return;
     };
-    for (interaction, slot) in &buttons {
-        if *interaction == Interaction::None
-            || !(mouse.just_pressed(MouseButton::Left) || mouse.just_pressed(MouseButton::Right))
-        {
-            continue;
+    let hovered = slots
+        .iter()
+        .find_map(|(cursor, slot)| cursor.cursor_over().then_some(*slot));
+    let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
+    if let Some(slot) = hovered {
+        for (index, key) in HOTBAR_KEYS.iter().enumerate() {
+            if keys.just_pressed(*key) {
+                *drag = SlotDrag::default();
+                let _ = hotbar_key_swap(
+                    &mut inventory,
+                    &mut hotbar,
+                    Some(&mut workbench.grid),
+                    screen.workbench,
+                    to_slot_id(slot),
+                    index,
+                );
+            }
         }
+    }
+    if drag.button.is_none() {
+        let left = mouse.just_pressed(MouseButton::Left);
         let right = mouse.just_pressed(MouseButton::Right);
-        match *slot {
-            Slot::Hotbar(i) => click_slot(&mut hotbar.slots[i], &mut inventory.carried, right),
-            Slot::Main(i) => {
-                let Inventory { main, carried, .. } = &mut *inventory;
-                click_slot(&mut main[i], carried, right);
-            }
-            Slot::Craft(i) => {
-                let Inventory {
-                    crafting, carried, ..
-                } = &mut *inventory;
-                click_slot(&mut crafting[i], carried, right);
-            }
-            Slot::CraftResult if !right => {
-                if screen.workbench {
-                    let _ = take_workbench_result(&mut workbench, &mut hotbar, &mut inventory);
-                } else if inventory.carried.is_none()
-                    || inventory.carried.is_some_and(|carried| {
-                        inventory.crafting_result().is_some_and(|result| {
-                            carried.item() == result.item()
-                                && carried.data() == result.data()
-                                && carried.count() + result.count()
-                                    <= carried.definition().max_stack_size
-                        })
+        if !(left || right) {
+            return;
+        }
+        let Some(slot) = hovered else {
+            return;
+        };
+        let right = right && !left;
+        if shift {
+            let _ = shift_click_slot(
+                &mut inventory,
+                &mut hotbar,
+                Some(&mut workbench.grid),
+                screen.workbench,
+                to_slot_id(slot),
+            );
+            return;
+        }
+        if inventory.carried.is_none() {
+            apply_click(
+                slot,
+                right,
+                screen.workbench,
+                &mut hotbar,
+                &mut inventory,
+                &mut workbench,
+            );
+            return;
+        }
+        drag.button = Some(if right {
+            MouseButton::Right
+        } else {
+            MouseButton::Left
+        });
+        drag.origin = Some(slot);
+        drag.slots.clear();
+    }
+    let Some(button) = drag.button else {
+        return;
+    };
+    if let Some(slot) = hovered {
+        remember_drag_slot(&mut drag, slot, &inventory, &hotbar, &workbench.grid);
+    }
+    if mouse.pressed(button) {
+        return;
+    }
+    let mode = if button == MouseButton::Right {
+        DragPlace::OneEach
+    } else {
+        DragPlace::Split
+    };
+    let painted = drag.slots.clone();
+    let origin = drag.origin;
+    *drag = SlotDrag::default();
+    if painted.len() >= 2 {
+        let ids: Vec<SlotId> = painted.into_iter().map(to_slot_id).collect();
+        let _ = drag_place(
+            &mut inventory,
+            &mut hotbar,
+            Some(&mut workbench.grid),
+            &ids,
+            mode,
+        );
+        return;
+    }
+    let click = hovered.or(if painted.len() == 1 {
+        painted.first().copied()
+    } else {
+        origin
+    });
+    if let Some(slot) = click {
+        apply_click(
+            slot,
+            mode == DragPlace::OneEach,
+            screen.workbench,
+            &mut hotbar,
+            &mut inventory,
+            &mut workbench,
+        );
+    }
+}
+
+fn remember_drag_slot(
+    drag: &mut SlotDrag,
+    slot: Slot,
+    inventory: &Inventory,
+    hotbar: &Hotbar,
+    workbench: &CraftingGrid,
+) {
+    let Some(carried) = inventory.carried else {
+        return;
+    };
+    if drag.slots.contains(&slot) || (carried.count() as usize) <= drag.slots.len() {
+        return;
+    }
+    if slot_accepts_drag(
+        inventory,
+        hotbar,
+        Some(workbench),
+        to_slot_id(slot),
+        carried,
+    ) {
+        drag.slots.push(slot);
+    }
+}
+
+fn to_slot_id(slot: Slot) -> SlotId {
+    match slot {
+        Slot::Hotbar(index) => SlotId::Hotbar(index),
+        Slot::Main(index) => SlotId::Main(index),
+        Slot::Craft(index) => SlotId::Craft(index),
+        Slot::CraftResult => SlotId::CraftResult,
+        Slot::Workbench(index) => SlotId::Workbench(index),
+        Slot::Armor(index) => SlotId::Armor(index),
+    }
+}
+
+fn apply_click(
+    slot: Slot,
+    right: bool,
+    workbench_open: bool,
+    hotbar: &mut Hotbar,
+    inventory: &mut Inventory,
+    workbench: &mut WorkbenchUiSession,
+) {
+    match slot {
+        Slot::Hotbar(i) => click_slot(&mut hotbar.slots[i], &mut inventory.carried, right),
+        Slot::Main(i) => {
+            let Inventory { main, carried, .. } = &mut *inventory;
+            click_slot(&mut main[i], carried, right);
+        }
+        Slot::Craft(i) => {
+            let Inventory {
+                crafting, carried, ..
+            } = &mut *inventory;
+            click_slot(&mut crafting[i], carried, right);
+        }
+        Slot::CraftResult if !right => {
+            if workbench_open {
+                let _ = take_workbench_result(workbench, hotbar, inventory);
+            } else if inventory.carried.is_none()
+                || inventory.carried.is_some_and(|carried| {
+                    inventory.crafting_result().is_some_and(|result| {
+                        carried.item() == result.item()
+                            && carried.data() == result.data()
+                            && carried.count() + result.count()
+                                <= carried.definition().max_stack_size
                     })
-                {
-                    let _ = inventory.take_crafting_result(&mut hotbar);
-                }
+                })
+            {
+                let _ = inventory.take_crafting_result(hotbar);
             }
-            Slot::CraftResult => {}
-            Slot::Workbench(i) => {
-                let x = i % 3;
-                let y = i / 3;
-                let mut value = workbench.grid.get(x, y);
-                click_slot(&mut value, &mut inventory.carried, right);
-                workbench.grid.set(x, y, value);
-            }
-            Slot::Armor(i) => {
-                let Inventory { armor, carried, .. } = &mut *inventory;
-                click_slot(&mut armor[i], carried, right);
+        }
+        Slot::CraftResult => {}
+        Slot::Workbench(i) => {
+            let x = i % 3;
+            let y = i / 3;
+            let mut value = workbench.grid.get(x, y);
+            click_slot(&mut value, &mut inventory.carried, right);
+            workbench.grid.set(x, y, value);
+        }
+        Slot::Armor(i) => {
+            let Inventory { armor, carried, .. } = &mut *inventory;
+            click_slot(&mut armor[i], carried, right);
+        }
+    }
+}
+
+fn highlight_slots(
+    screen: Res<InventoryScreen>,
+    drag: Res<SlotDrag>,
+    slots: Query<(&RelativeCursorPosition, &Slot, &Children)>,
+    mut highlights: Query<&mut Visibility, With<SlotHighlight>>,
+) {
+    if !screen.open {
+        return;
+    }
+    for (cursor, slot, children) in &slots {
+        let show = cursor.cursor_over() || drag.slots.contains(slot);
+        let visibility = if show {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        for child in children {
+            if let Ok(mut highlight) = highlights.get_mut(*child) {
+                highlight.set_if_neq(visibility);
             }
         }
     }
@@ -741,7 +957,7 @@ fn refresh(
     for (label, mut text, mut node, mut layout, mut text_font, mut line_height, mut shadow) in
         &mut labels
     {
-        let stack = slot_stack(label.0, hotbar, inventory, &workbench);
+        let stack = slot_stack(label.0, hotbar, inventory, &workbench, screen.workbench);
         let has_icon = stack
             .and_then(|stack| block_icons.rect_for_stack(stack))
             .is_some();
@@ -765,7 +981,7 @@ fn refresh(
         );
     }
     for (bar, mut node, mut visibility, mut color) in &mut bars {
-        let stack = slot_stack(bar.0, hotbar, inventory, &workbench);
+        let stack = slot_stack(bar.0, hotbar, inventory, &workbench, screen.workbench);
         if let Some((width, red, green)) = stack.and_then(durability_bar) {
             *visibility = Visibility::Inherited;
             let (_, _, track_width, _) = durability_track(0.0, 0.0, bar.1);
@@ -781,7 +997,7 @@ fn refresh(
         }
     }
     for (icon, mut image, mut visibility) in &mut icons {
-        let stack = slot_stack(icon.0, hotbar, inventory, &workbench);
+        let stack = slot_stack(icon.0, hotbar, inventory, &workbench, screen.workbench);
         if let Some(rect) = stack.and_then(|stack| block_icons.rect_for_stack(stack)) {
             image.rect = Some(rect);
             *visibility = Visibility::Inherited;
@@ -851,11 +1067,13 @@ fn slot_stack(
     hotbar: &Hotbar,
     inventory: &Inventory,
     workbench: &WorkbenchUiSession,
+    workbench_open: bool,
 ) -> Option<ItemStack> {
     match slot {
         Slot::Hotbar(i) => hotbar.slots[i],
         Slot::Main(i) => inventory.main[i],
         Slot::Craft(i) => inventory.crafting[i],
+        Slot::CraftResult if workbench_open => beta_recipe_book().find(&workbench.grid),
         Slot::CraftResult => inventory.crafting_result(),
         Slot::Workbench(i) => workbench.grid.get(i % 3, i / 3),
         Slot::Armor(i) => inventory.armor[i],

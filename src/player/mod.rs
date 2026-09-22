@@ -407,6 +407,7 @@ fn sneak_pressed(keys: &ButtonInput<KeyCode>) -> bool {
 fn select_hotbar(
     keys: Res<ButtonInput<KeyCode>>,
     scroll: Res<AccumulatedMouseScroll>,
+    inventory_screen: Option<Res<crate::ui::InventoryScreen>>,
     mut hotbar: Query<&mut Hotbar, With<Player>>,
 ) {
     let Ok(mut hotbar) = hotbar.single_mut() else {
@@ -415,6 +416,11 @@ fn select_hotbar(
 
     if scroll.delta.y != 0.0 {
         hotbar.scroll(if scroll.delta.y > 0.0 { 1 } else { -1 });
+    }
+    // While the inventory is open, 1–9 move the hovered stack instead of
+    // changing the selected slot.
+    if inventory_screen.is_some_and(|screen| screen.open) {
+        return;
     }
     for (slot, key) in HOTBAR_KEYS.iter().enumerate() {
         if keys.just_pressed(*key) {

@@ -95,3 +95,342 @@ fn stored_player_round_trips_inventory_and_rejects_invalid_stacks() {
     });
     assert_eq!(invalid.to_inventory().1.main[5], None);
 }
+
+fn stack(item: ItemId, count: u8) -> ItemStack {
+    ItemStack::new(item, count).unwrap()
+}
+
+fn block(block: game::world::block::registry::BetaBlockId) -> ItemId {
+    ItemId::from_block(block)
+}
+
+fn fill_storage(inventory: &mut game::inventory::Inventory, hotbar: &mut Hotbar, item: ItemStack) {
+    for slot in &mut inventory.main {
+        *slot = Some(item);
+    }
+    for slot in &mut hotbar.slots {
+        *slot = Some(item);
+    }
+}
+
+#[test]
+fn shift_click_moves_hotbar_into_main_and_main_into_hotbar() {
+    use game::inventory::SlotId;
+    use game::inventory::shift_click_slot;
+    let mut inventory = game::inventory::Inventory::default();
+    let mut hotbar = Hotbar::default();
+    hotbar.slots[0] = Some(stack(ItemId::DIAMOND, 5));
+    assert!(shift_click_slot(
+        &mut inventory,
+        &mut hotbar,
+        None,
+        false,
+        SlotId::Hotbar(0)
+    ));
+    assert!(hotbar.slots[0].is_none());
+    assert_eq!(inventory.main[0], Some(stack(ItemId::DIAMOND, 5)));
+
+    assert!(shift_click_slot(
+        &mut inventory,
+        &mut hotbar,
+        None,
+        false,
+        SlotId::Main(0)
+    ));
+    assert!(inventory.main[0].is_none());
+    assert_eq!(hotbar.slots[0], Some(stack(ItemId::DIAMOND, 5)));
+}
+
+#[test]
+fn shift_click_merges_before_using_an_empty_slot() {
+    use game::inventory::SlotId;
+    use game::inventory::shift_click_slot;
+    let mut inventory = game::inventory::Inventory::default();
+    let mut hotbar = Hotbar::default();
+    inventory.main[3] = Some(stack(ItemId::DIAMOND, 60));
+    hotbar.slots[4] = Some(stack(ItemId::DIAMOND, 10));
+    assert!(shift_click_slot(
+        &mut inventory,
+        &mut hotbar,
+        None,
+        false,
+        SlotId::Hotbar(4)
+    ));
+    assert!(hotbar.slots[4].is_none());
+    assert_eq!(inventory.main[3], Some(stack(ItemId::DIAMOND, 64)));
+    assert_eq!(inventory.main[0], Some(stack(ItemId::DIAMOND, 6)));
+}
+
+#[test]
+fn shift_click_from_hotbar_does_not_spill_into_other_hotbar_slots() {
+    use game::inventory::SlotId;
+    use game::inventory::shift_click_slot;
+    let mut inventory = game::inventory::Inventory::default();
+    let mut hotbar = Hotbar::default();
+    fill_storage(&mut inventory, &mut hotbar, stack(ItemId::COAL, 64));
+    hotbar.slots[0] = Some(stack(ItemId::DIAMOND, 4));
+    hotbar.slots[1] = None;
+    assert!(!shift_click_slot(
+        &mut inventory,
+        &mut hotbar,
+        None,
+        false,
+        SlotId::Hotbar(0)
+    ));
+    assert_eq!(hotbar.slots[0], Some(stack(ItemId::DIAMOND, 4)));
+    assert!(hotbar.slots[1].is_none());
+}
+
+#[test]
+fn shift_click_returns_crafting_inputs_to_main_storage_first() {
+    use game::crafting::CraftingGrid;
+    use game::inventory::SlotId;
+    use game::inventory::shift_click_slot;
+    let mut inventory = game::inventory::Inventory::default();
+    let mut hotbar = Hotbar::default();
+    inventory.crafting[2] = Some(stack(ItemId::DIAMOND, 3));
+    inventory.armor[0] = Some(stack(ItemId::DIAMOND_SWORD, 1));
+    assert!(shift_click_slot(
+        &mut inventory,
+        &mut hotbar,
+        None,
+        false,
+        SlotId::Craft(2)
+    ));
+    assert!(inventory.crafting[2].is_none());
+    assert_eq!(inventory.main[0], Some(stack(ItemId::DIAMOND, 3)));
+    assert!(shift_click_slot(
+        &mut inventory,
+        &mut hotbar,
+        None,
+        false,
+        SlotId::Armor(0)
+    ));
+    assert!(inventory.armor[0].is_none());
+    assert_eq!(inventory.main[1], Some(stack(ItemId::DIAMOND_SWORD, 1)));
+
+    let mut grid = CraftingGrid::workbench();
+    grid.set(2, 1, Some(stack(ItemId::STICK, 6)));
+    assert!(shift_click_slot(
+        &mut inventory,
+        &mut hotbar,
+        Some(&mut grid),
+        true,
+        SlotId::Workbench(5)
+    ));
+    assert!(grid.get(2, 1).is_none());
+    assert_eq!(inventory.main[2], Some(stack(ItemId::STICK, 6)));
+}
+
+#[test]
+fn shift_click_crafting_result_repeats_and_fills_the_hotbar_from_the_right() {
+    use game::inventory::SlotId;
+    use game::inventory::shift_click_slot;
+    use game::world::block::registry::BetaBlockId;
+    let mut inventory = game::inventory::Inventory::default();
+    let mut hotbar = Hotbar::default();
+    inventory.crafting[0] = Some(stack(block(BetaBlockId::WOOD), 2));
+    assert!(shift_click_slot(
+        &mut inventory,
+        &mut hotbar,
+        None,
+        false,
+        SlotId::CraftResult
+    ));
+    assert!(inventory.crafting.iter().all(Option::is_none));
+    assert_eq!(
+        hotbar.slots[8],
+        Some(stack(block(BetaBlockId::WOODEN_PLANKS), 8))
+    );
+    assert!(hotbar.slots[..8].iter().all(Option::is_none));
+}
+
+#[test]
+fn shift_click_crafting_stops_when_the_next_output_does_not_fit() {
+    use game::inventory::SlotId;
+    use game::inventory::shift_click_slot;
+    use game::world::block::registry::BetaBlockId;
+    let mut inventory = game::inventory::Inventory::default();
+    let mut hotbar = Hotbar::default();
+    fill_storage(&mut inventory, &mut hotbar, stack(ItemId::DIAMOND, 64));
+    hotbar.slots[8] = Some(stack(block(BetaBlockId::WOODEN_PLANKS), 60));
+    inventory.crafting[0] = Some(stack(block(BetaBlockId::WOOD), 2));
+    assert!(shift_click_slot(
+        &mut inventory,
+        &mut hotbar,
+        None,
+        false,
+        SlotId::CraftResult
+    ));
+    assert_eq!(
+        inventory.crafting[0],
+        Some(stack(block(BetaBlockId::WOOD), 1))
+    );
+    assert_eq!(
+        hotbar.slots[8],
+        Some(stack(block(BetaBlockId::WOODEN_PLANKS), 64))
+    );
+    assert_eq!(hotbar.slots[7], Some(stack(ItemId::DIAMOND, 64)));
+}
+
+#[test]
+fn shift_click_workbench_result_uses_the_three_by_three_grid() {
+    use game::crafting::CraftingGrid;
+    use game::inventory::SlotId;
+    use game::inventory::shift_click_slot;
+    use game::world::block::registry::BetaBlockId;
+    let mut inventory = game::inventory::Inventory::default();
+    let mut hotbar = Hotbar::default();
+    let mut grid = CraftingGrid::workbench();
+    grid.set(0, 0, Some(stack(block(BetaBlockId::WOOD), 1)));
+    assert!(shift_click_slot(
+        &mut inventory,
+        &mut hotbar,
+        Some(&mut grid),
+        true,
+        SlotId::CraftResult
+    ));
+    assert!(grid.get(0, 0).is_none());
+    assert_eq!(
+        hotbar.slots[8],
+        Some(stack(block(BetaBlockId::WOODEN_PLANKS), 4))
+    );
+}
+
+#[test]
+fn left_drag_splits_a_stack_and_keeps_the_remainder() {
+    use game::inventory::DragPlace;
+    use game::inventory::SlotId;
+    use game::inventory::drag_place;
+    let mut inventory = game::inventory::Inventory::default();
+    let mut hotbar = Hotbar::default();
+    inventory.carried = Some(stack(ItemId::DIAMOND, 64));
+    inventory.main[1] = Some(stack(ItemId::DIAMOND, 10));
+    let slots = [SlotId::Main(0), SlotId::Main(1), SlotId::Main(2)];
+    assert!(drag_place(
+        &mut inventory,
+        &mut hotbar,
+        None,
+        &slots,
+        DragPlace::Split
+    ));
+    assert_eq!(inventory.main[0], Some(stack(ItemId::DIAMOND, 21)));
+    assert_eq!(inventory.main[1], Some(stack(ItemId::DIAMOND, 31)));
+    assert_eq!(inventory.main[2], Some(stack(ItemId::DIAMOND, 21)));
+    assert_eq!(inventory.carried, Some(stack(ItemId::DIAMOND, 1)));
+}
+
+#[test]
+fn right_drag_places_one_item_in_each_slot() {
+    use game::inventory::DragPlace;
+    use game::inventory::SlotId;
+    use game::inventory::drag_place;
+    let mut inventory = game::inventory::Inventory::default();
+    let mut hotbar = Hotbar::default();
+    inventory.carried = Some(stack(ItemId::DIAMOND, 5));
+    inventory.main[2] = Some(stack(ItemId::DIAMOND, 63));
+    inventory.main[1] = Some(stack(ItemId::COAL, 1));
+    let slots = [
+        SlotId::Main(0),
+        SlotId::Main(1),
+        SlotId::Main(2),
+        SlotId::Main(3),
+    ];
+    assert!(drag_place(
+        &mut inventory,
+        &mut hotbar,
+        None,
+        &slots,
+        DragPlace::OneEach
+    ));
+    assert_eq!(inventory.main[0], Some(stack(ItemId::DIAMOND, 1)));
+    assert_eq!(inventory.main[1], Some(stack(ItemId::COAL, 1)));
+    assert_eq!(inventory.main[2], Some(stack(ItemId::DIAMOND, 64)));
+    assert_eq!(inventory.main[3], Some(stack(ItemId::DIAMOND, 1)));
+    assert_eq!(inventory.carried, Some(stack(ItemId::DIAMOND, 2)));
+}
+
+#[test]
+fn drag_over_one_slot_is_left_for_a_normal_click() {
+    use game::inventory::DragPlace;
+    use game::inventory::SlotId;
+    use game::inventory::drag_place;
+    let mut inventory = game::inventory::Inventory::default();
+    let mut hotbar = Hotbar::default();
+    inventory.carried = Some(stack(ItemId::DIAMOND, 8));
+    assert!(!drag_place(
+        &mut inventory,
+        &mut hotbar,
+        None,
+        &[SlotId::Main(0), SlotId::CraftResult],
+        DragPlace::Split
+    ));
+    assert_eq!(inventory.carried, Some(stack(ItemId::DIAMOND, 8)));
+    assert!(inventory.main[0].is_none());
+}
+
+#[test]
+fn hotbar_number_key_swaps_the_hovered_stack_into_that_slot() {
+    use game::inventory::SlotId;
+    use game::inventory::hotbar_key_swap;
+    let mut inventory = game::inventory::Inventory::default();
+    let mut hotbar = Hotbar::default();
+    inventory.main[4] = Some(stack(ItemId::DIAMOND, 3));
+    hotbar.slots[1] = Some(stack(ItemId::COAL, 9));
+    assert!(hotbar_key_swap(
+        &mut inventory,
+        &mut hotbar,
+        None,
+        false,
+        SlotId::Main(4),
+        1
+    ));
+    assert_eq!(inventory.main[4], Some(stack(ItemId::COAL, 9)));
+    assert_eq!(hotbar.slots[1], Some(stack(ItemId::DIAMOND, 3)));
+    hotbar.slots[2] = Some(stack(ItemId::STICK, 4));
+    assert!(!hotbar_key_swap(
+        &mut inventory,
+        &mut hotbar,
+        None,
+        false,
+        SlotId::Hotbar(2),
+        2
+    ));
+    assert_eq!(hotbar.slots[2], Some(stack(ItemId::STICK, 4)));
+}
+
+#[test]
+fn hotbar_number_key_crafts_into_an_empty_slot_only() {
+    use game::inventory::SlotId;
+    use game::inventory::hotbar_key_swap;
+    use game::world::block::registry::BetaBlockId;
+    let mut inventory = game::inventory::Inventory::default();
+    let mut hotbar = Hotbar::default();
+    inventory.crafting[0] = Some(stack(block(BetaBlockId::WOOD), 1));
+    hotbar.slots[0] = Some(stack(ItemId::STONE_SWORD, 1));
+    assert!(!hotbar_key_swap(
+        &mut inventory,
+        &mut hotbar,
+        None,
+        false,
+        SlotId::CraftResult,
+        0
+    ));
+    assert_eq!(
+        inventory.crafting[0],
+        Some(stack(block(BetaBlockId::WOOD), 1))
+    );
+    assert!(hotbar_key_swap(
+        &mut inventory,
+        &mut hotbar,
+        None,
+        false,
+        SlotId::CraftResult,
+        4
+    ));
+    assert!(inventory.crafting[0].is_none());
+    assert_eq!(
+        hotbar.slots[4],
+        Some(stack(block(BetaBlockId::WOODEN_PLANKS), 4))
+    );
+}

@@ -1,4 +1,4 @@
-use super::java_random::JavaRandom;
+use crate::random::JavaRandom;
 
 /// Improved Perlin noise with Java-seeded permutation tables.
 pub(super) struct PerlinNoise {

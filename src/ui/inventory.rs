@@ -22,7 +22,6 @@ use super::stack_overlay::place_stack_label;
 use crate::app::state::AppScreen;
 use crate::crafting::CraftingGrid;
 use crate::crafting::beta_recipe_book;
-use crate::entity::dropped_items::ItemRng;
 use crate::entity::dropped_items::spawn_thrown_item;
 use crate::inventory::DragPlace;
 use crate::inventory::Hotbar;
@@ -35,6 +34,7 @@ use crate::inventory::slot_accepts_drag;
 use crate::item::ItemData;
 use crate::item::ItemStack;
 use crate::player::Player;
+use crate::random::ItemRng;
 use crate::world::block::block::BlockId;
 use crate::world::chunk::WorldChunks;
 

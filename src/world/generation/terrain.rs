@@ -6,9 +6,9 @@ use crate::world::chunk::ChunkPos;
 
 use super::biome::BiomeMap;
 use super::biome::Climate;
-use super::java_random::JavaRandom;
 use super::noise::PerlinOctaves;
 use super::noise::lerp;
+use crate::random::JavaRandom;
 
 const GRID: usize = 5;
 const VERTICAL_GRID: usize = CHUNK_HEIGHT / 8 + 1;

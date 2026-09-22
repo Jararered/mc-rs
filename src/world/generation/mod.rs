@@ -1,7 +1,6 @@
 mod biome;
 mod generator;
 mod heightmap;
-mod java_random;
 mod noise;
 mod plants;
 mod surface;

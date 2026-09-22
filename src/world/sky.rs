@@ -28,6 +28,7 @@ use crate::app::settings::GameSettings;
 use crate::app::state::AppScreen;
 use crate::player::Player;
 use crate::player::PlayerCamera;
+use crate::random::JavaRandom;
 use crate::world::block::block::BlockId;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::WorldChunks;
@@ -936,32 +937,4 @@ fn mesh_from(
     .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
     .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, colors)
     .with_inserted_indices(Indices::U32(indices))
-}
-
-/// `java.util.Random`, only the methods the star field uses.
-struct JavaRandom {
-    seed: u64,
-}
-
-impl JavaRandom {
-    fn new(seed: u64) -> Self {
-        Self {
-            seed: (seed ^ 0x5DEECE66D) & ((1u64 << 48) - 1),
-        }
-    }
-
-    fn next(&mut self, bits: u32) -> i32 {
-        self.seed = self.seed.wrapping_mul(0x5DEECE66D).wrapping_add(0xB) & ((1u64 << 48) - 1);
-        (self.seed >> (48 - bits)) as i32
-    }
-
-    fn next_float(&mut self) -> f32 {
-        self.next(24) as f32 / (1i32 << 24) as f32
-    }
-
-    fn next_double(&mut self) -> f64 {
-        let high = i64::from(self.next(26));
-        let low = i64::from(self.next(27));
-        ((high << 27) + low) as f64 / (1u64 << 53) as f64
-    }
 }

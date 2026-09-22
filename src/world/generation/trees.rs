@@ -29,10 +29,10 @@ use crate::world::chunk::ChunkPos;
 
 use super::biome::Biome;
 use super::biome::Climate;
-use super::java_random::JavaRandom;
 use super::plants::place_plants;
 use super::surface::ground_column;
 use super::terrain::TerrainGenerator;
+use crate::random::JavaRandom;
 
 /// The reference's `WorldGenBigTree.field_882_a`: for each axis, the two other
 /// axes in a fixed order, used to walk a line along its longest axis.

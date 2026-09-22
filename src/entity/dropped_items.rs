@@ -22,6 +22,8 @@ use crate::item::ItemStack;
 use crate::physics::PhysicsSet;
 use crate::physics::move_entity;
 use crate::player::Player;
+use crate::random::ItemRng;
+use crate::random::JavaRandom;
 use crate::ui::block_icons::BlockIcons;
 use crate::world::block::block::BlockId;
 use crate::world::block::properties::is_crossed_plant;
@@ -70,68 +72,6 @@ impl Plugin for DroppedItemPlugin {
                 .after(PhysicsSet::Integrate)
                 .run_if(in_state(AppScreen::Playing)),
         );
-    }
-}
-
-/// `java.util.Random`, used for the stable pile offsets and for push-out kicks.
-#[derive(Clone, Debug)]
-pub struct JavaRandom {
-    seed: u64,
-}
-
-impl JavaRandom {
-    pub fn new(seed: u64) -> Self {
-        Self {
-            seed: (seed ^ 0x5DEECE66D) & ((1u64 << 48) - 1),
-        }
-    }
-
-    fn next(&mut self, bits: u32) -> i32 {
-        self.seed = self.seed.wrapping_mul(0x5DEECE66D).wrapping_add(0xB) & ((1u64 << 48) - 1);
-        (self.seed >> (48 - bits)) as i32
-    }
-
-    pub fn next_float(&mut self) -> f32 {
-        self.next(24) as f32 / (1i32 << 24) as f32
-    }
-
-    pub fn state(&self) -> u64 {
-        self.seed
-    }
-
-    /// Restore a generator without mixing the seed again.
-    pub fn from_state(seed: u64) -> Self {
-        Self { seed }
-    }
-}
-
-/// Spawn-time randomness. Each caller keeps its own so tests do not need the resource.
-#[derive(Clone, Debug)]
-pub struct ItemRng {
-    state: u64,
-}
-
-impl Default for ItemRng {
-    fn default() -> Self {
-        Self {
-            state: 0x1234_5678_9ABC_DEF0,
-        }
-    }
-}
-
-impl ItemRng {
-    pub fn unit(&mut self) -> f32 {
-        self.state = self
-            .state
-            .wrapping_mul(6364136223846793005)
-            .wrapping_add(1442695040888963407);
-        (self.state >> 33) as f32 / (1u32 << 31) as f32
-    }
-
-    fn next_u64(&mut self) -> u64 {
-        let hi = self.unit().to_bits() as u64;
-        let lo = self.unit().to_bits() as u64;
-        hi << 32 | lo
     }
 }
 

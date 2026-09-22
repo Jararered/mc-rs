@@ -13,7 +13,7 @@ use crate::world::chunk::Chunk;
 use crate::world::chunk::ChunkPos;
 
 use super::biome::Biome;
-use super::java_random::JavaRandom;
+use crate::random::JavaRandom;
 
 pub(super) fn place_plants(
     chunk: &mut Chunk,

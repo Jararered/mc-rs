@@ -10,8 +10,9 @@ use bevy::window::PrimaryWindow;
 
 use crate::entity::CollisionState;
 use crate::entity::EntitySize;
+use crate::entity::block_drops::natural_drops;
+use crate::entity::block_drops::player_break_drops;
 use crate::entity::dropped_items::ItemRng;
-use crate::entity::dropped_items::block_drop;
 use crate::entity::dropped_items::spawn_block_drop;
 use crate::entity::dropped_items::spawn_thrown_item;
 use crate::entity::particles::BlockParticles;
@@ -19,7 +20,6 @@ use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
 use crate::item::ItemStack;
 use crate::item::tools::break_durability;
-use crate::item::tools::can_harvest;
 use crate::physics::Aabb;
 use crate::physics::BLOCK_REACH;
 use crate::physics::BlockFace;
@@ -278,15 +278,15 @@ fn apply_break(
             .into_iter()
             .any(|(_, _, _, torch)| is_torch(torch));
     let tool = hotbar.selected_stack();
-    // `canHarvestBlock` gates the drop. The tool still takes durability when
-    // the block comes out, including a block the tool cannot harvest.
-    let harvested = can_harvest(tool, hit.block);
+    // `canHarvestBlock` gates the harvest drop. The tool still takes durability
+    // when the block comes out, including a block the tool cannot harvest.
+    // TNT's player-destroy drop is not part of that gate.
     if break_block(chunks, hit) {
-        if harvested && let Some(stack) = block_drop(hit.block) {
+        for stack in player_break_drops(hit.block, tool, rng) {
             spawn_block_drop(commands, rng, IVec3::new(hit.x, hit.y, hit.z), stack);
         }
         for (x, y, z, torch) in attached {
-            if let Some(stack) = block_drop(torch) {
+            for stack in natural_drops(torch, rng) {
                 spawn_block_drop(commands, rng, IVec3::new(x, y, z), stack);
             }
         }

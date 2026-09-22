@@ -128,8 +128,8 @@ fn axe_effective(block: BlockId) -> bool {
     is_log(block) || matches!(block, BlockId::WoodenPlanks | BlockId::Bookshelf)
 }
 
-/// `ItemSpade.blocksEffectiveAgainst`. Snow layers and farmland are not blocks
-/// in this game; the snow block is.
+/// `ItemSpade.blocksEffectiveAgainst`. The snow block is the layered entry
+/// that has a real hardness here. Farmland and the snow layer are catalog blocks.
 fn shovel_effective(block: BlockId) -> bool {
     matches!(
         block,
@@ -151,8 +151,10 @@ pub fn str_vs_block(tool: Option<ItemStack>, block: BlockId) -> f32 {
         Some(Kind::Pick(tier)) if pick_effective(block) => tier.efficiency(),
         Some(Kind::Axe(tier)) if axe_effective(block) => tier.efficiency(),
         Some(Kind::Shovel(tier)) if shovel_effective(block) => tier.efficiency(),
+        // `ItemSword.getStrVsBlock` is 15 on web and 1.5 on everything else.
+        Some(Kind::Sword(_)) if block == BlockId::Cobweb => 15.0,
         Some(Kind::Sword(_)) => 1.5,
-        Some(Kind::Shears) if is_leaves(block) => 15.0,
+        Some(Kind::Shears) if is_leaves(block) || block == BlockId::Cobweb => 15.0,
         Some(Kind::Shears) if block == BlockId::Wool => 5.0,
         _ => 1.0,
     }
@@ -171,15 +173,17 @@ pub fn can_harvest(tool: Option<ItemStack>, block: BlockId) -> bool {
 fn tool_can_harvest(id: ItemId, block: BlockId) -> bool {
     match kind(id) {
         Some(Kind::Pick(tier)) => pick_can_harvest(tier, block),
-        // `ItemSpade` harvests the snow layer and the snow block. Only the
-        // snow block exists here.
-        Some(Kind::Shovel(_)) => block == BlockId::Snow,
+        // `ItemSpade.canHarvestBlock`: the snow layer and the snow block.
+        Some(Kind::Shovel(_)) => matches!(block, BlockId::Snow | BlockId::SnowLayer),
+        // `ItemSword` and `ItemShears` harvest web only. Leaves are already
+        // hand-harvestable; shears change the drop, not this gate.
+        Some(Kind::Sword(_) | Kind::Shears) => block == BlockId::Cobweb,
         _ => false,
     }
 }
 
-/// `ItemPickaxe.canHarvestBlock`. Rock falls through to any pick. Iron blocks
-/// and the tiered ores are handled before that fallthrough.
+/// `ItemPickaxe.canHarvestBlock`. Rock and iron fall through to any pick.
+/// Iron blocks and the tiered ores are handled before that fallthrough.
 fn pick_can_harvest(tier: Tier, block: BlockId) -> bool {
     let level = tier.level();
     if block == BlockId::Obsidian {
@@ -209,22 +213,26 @@ fn pick_can_harvest(tier: Tier, block: BlockId) -> bool {
             | BlockId::Dispenser
             | BlockId::Sandstone
             | BlockId::DoubleStoneSlab
+            | BlockId::StoneSlab
             | BlockId::Bricks
             | BlockId::MossyCobblestone
             | BlockId::Furnace
             | BlockId::LitFurnace
+            | BlockId::CobblestoneStairs
+            | BlockId::StonePressurePlate
+            | BlockId::IronDoor
             | BlockId::Netherrack
             | BlockId::Glowstone
     )
 }
 
 /// Damage from `onBlockDestroyed`. Picks, axes, and shovels always lose one
-/// use. Swords lose two. Shears lose one only on leaves. Hoes lose none.
+/// use. Swords lose two. Shears lose one on leaves and web. Hoes lose none.
 pub fn break_durability(tool: ItemStack, block: BlockId) -> u16 {
     match kind(tool.item()) {
         Some(Kind::Pick(_) | Kind::Axe(_) | Kind::Shovel(_)) => 1,
         Some(Kind::Sword(_)) => 2,
-        Some(Kind::Shears) if is_leaves(block) => 1,
+        Some(Kind::Shears) if is_leaves(block) || block == BlockId::Cobweb => 1,
         _ => 0,
     }
 }

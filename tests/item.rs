@@ -6,6 +6,7 @@ use game::item::ItemStack;
 use game::item::StackError;
 use game::item::tools::break_durability;
 use game::item::tools::can_harvest;
+use game::item::tools::str_vs_block;
 use game::item::tools::ticks_to_break;
 use game::world::block::block::BlockId;
 
@@ -261,6 +262,9 @@ fn tool_break_times_match_beta_173() {
     assert_eq!(t(Some(ItemId::Shears), BlockId::SpruceLeaves), Some(1));
     assert_eq!(t(Some(ItemId::Shears), BlockId::BirchLeaves), Some(1));
     assert_eq!(t(Some(ItemId::Shears), BlockId::Wool), Some(5));
+    assert_eq!(str_vs_block(held(ItemId::Shears), BlockId::Cobweb), 15.0);
+    assert_eq!(str_vs_block(held(ItemId::IronSword), BlockId::Cobweb), 15.0);
+    assert_eq!(str_vs_block(held(ItemId::IronSword), BlockId::Dirt), 1.5);
 
     assert_eq!(t(Some(ItemId::IronSword), BlockId::Dirt), Some(10));
     assert_eq!(t(Some(ItemId::IronSword), BlockId::Stone), Some(150));
@@ -366,6 +370,19 @@ fn pickaxe_harvest_levels_match_beta() {
     assert!(!can_harvest(held(ItemId::DiamondSword), BlockId::Stone));
     assert!(can_harvest(None, BlockId::Leaves));
     assert!(can_harvest(held(ItemId::Shears), BlockId::Leaves));
+
+    assert!(!can_harvest(None, BlockId::Cobweb));
+    assert!(can_harvest(held(ItemId::WoodenSword), BlockId::Cobweb));
+    assert!(can_harvest(held(ItemId::Shears), BlockId::Cobweb));
+    assert!(!can_harvest(wood, BlockId::Cobweb));
+    assert!(!can_harvest(None, BlockId::SnowLayer));
+    assert!(can_harvest(held(ItemId::WoodenShovel), BlockId::SnowLayer));
+    assert!(!can_harvest(None, BlockId::IronDoor));
+    assert!(can_harvest(wood, BlockId::IronDoor));
+    assert!(can_harvest(wood, BlockId::StoneSlab));
+    assert!(can_harvest(wood, BlockId::CobblestoneStairs));
+    assert!(can_harvest(wood, BlockId::StonePressurePlate));
+    assert!(!can_harvest(None, BlockId::StoneSlab));
 }
 
 #[test]
@@ -383,6 +400,7 @@ fn block_breaks_spend_beta_durability() {
     assert_eq!(break_durability(shears, BlockId::Leaves), 1);
     assert_eq!(break_durability(shears, BlockId::BirchLeaves), 1);
     assert_eq!(break_durability(shears, BlockId::Wool), 0);
+    assert_eq!(break_durability(shears, BlockId::Cobweb), 1);
     assert_eq!(break_durability(shears, BlockId::Stone), 0);
 
     let hoe = ItemStack::new(ItemId::WoodenHoe, 1).unwrap();

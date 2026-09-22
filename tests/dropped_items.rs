@@ -2,7 +2,9 @@ use bevy::mesh::Mesh;
 use bevy::mesh::VertexAttributeValues;
 use bevy::prelude::Vec3;
 use game::entity::EntitySize;
-use game::entity::dropped_items::block_drop;
+use game::entity::block_drops::DropRoll;
+use game::entity::block_drops::natural_drops;
+use game::entity::block_drops::player_break_drops;
 use game::entity::dropped_items::block_drop_position;
 use game::entity::dropped_items::hotbar_icon_scale;
 use game::entity::dropped_items::interpolated_item_position;
@@ -21,29 +23,229 @@ use game::entity::dropped_items::thrown_item_motion;
 use game::inventory::Hotbar;
 use game::inventory::Inventory;
 use game::inventory::MAIN_SLOTS;
+use game::item::ItemId;
 use game::item::ItemStack;
 use game::world::block::block::BlockId;
 use game::world::meshing::dropped_block_meshes;
 
-#[test]
-fn block_drop_uses_beta_stone_rule() {
-    assert_eq!(
-        block_drop(BlockId::Stone),
-        Some(ItemStack::from_block(BlockId::Cobblestone, 1).unwrap())
-    );
-    assert_eq!(
-        block_drop(BlockId::Dirt),
-        Some(ItemStack::from_block(BlockId::Dirt, 1).unwrap())
-    );
+struct Rolls<'a> {
+    values: &'a [u32],
+    index: usize,
+}
+
+impl DropRoll for Rolls<'_> {
+    fn next_int(&mut self, bound: u32) -> u32 {
+        let value = self.values[self.index];
+        self.index += 1;
+        assert!(value < bound);
+        value
+    }
+}
+
+fn held(item: ItemId) -> Option<ItemStack> {
+    Some(ItemStack::new(item, 1).unwrap())
+}
+
+fn break_drops(block: BlockId, tool: Option<ItemStack>, rolls: &[u32]) -> Vec<ItemStack> {
+    player_break_drops(
+        block,
+        tool,
+        &mut Rolls {
+            values: rolls,
+            index: 0,
+        },
+    )
+}
+
+fn one(item: ItemId, data: u16) -> ItemStack {
+    ItemStack::with_data(item, 1, data).unwrap()
+}
+
+fn block_item(block: BlockId) -> ItemStack {
+    ItemStack::from_block(block, 1).unwrap()
 }
 
 #[test]
-fn block_drop_preserves_wood_and_leaf_metadata() {
-    assert_eq!(block_drop(BlockId::SpruceWood).unwrap().data(), 1);
-    assert_eq!(block_drop(BlockId::BirchWood).unwrap().data(), 2);
-    assert_eq!(block_drop(BlockId::SpruceLeaves).unwrap().data(), 1);
-    assert_eq!(block_drop(BlockId::BirchLeaves).unwrap().data(), 2);
-    assert_eq!(block_drop(BlockId::TorchWest).unwrap().data(), 0);
+fn break_drops_follow_beta_tool_and_item_rules() {
+    let pick = held(ItemId::WoodenPickaxe);
+    let stone_pick = held(ItemId::StonePickaxe);
+    let shovel = held(ItemId::WoodenShovel);
+    let sword = held(ItemId::WoodenSword);
+    let shears = held(ItemId::Shears);
+
+    assert!(break_drops(BlockId::Stone, None, &[]).is_empty());
+    assert_eq!(
+        break_drops(BlockId::Stone, pick, &[]),
+        vec![block_item(BlockId::Cobblestone)]
+    );
+    assert_eq!(
+        break_drops(BlockId::Dirt, None, &[]),
+        vec![block_item(BlockId::Dirt)]
+    );
+    assert_eq!(
+        break_drops(BlockId::Grass, None, &[]),
+        vec![block_item(BlockId::Dirt)]
+    );
+    assert_eq!(
+        break_drops(BlockId::CoalOre, pick, &[]),
+        vec![one(ItemId::Coal, 0)]
+    );
+    assert_eq!(
+        break_drops(BlockId::DiamondOre, held(ItemId::IronPickaxe), &[]),
+        vec![one(ItemId::Diamond, 0)]
+    );
+    assert_eq!(
+        break_drops(BlockId::IronOre, stone_pick, &[]),
+        vec![block_item(BlockId::IronOre)]
+    );
+    assert_eq!(
+        break_drops(BlockId::GoldOre, held(ItemId::IronPickaxe), &[]),
+        vec![block_item(BlockId::GoldOre)]
+    );
+    assert!(break_drops(BlockId::IronOre, None, &[]).is_empty());
+    assert_eq!(
+        break_drops(BlockId::LapisOre, stone_pick, &[0]),
+        vec![one(ItemId::Dye, 4); 4]
+    );
+    assert_eq!(
+        break_drops(BlockId::LapisOre, stone_pick, &[4]),
+        vec![one(ItemId::Dye, 4); 8]
+    );
+    assert_eq!(
+        break_drops(BlockId::RedstoneOre, held(ItemId::IronPickaxe), &[0]),
+        vec![one(ItemId::Redstone, 0); 4]
+    );
+    assert_eq!(
+        break_drops(BlockId::LitRedstoneOre, held(ItemId::IronPickaxe), &[1]),
+        vec![one(ItemId::Redstone, 0); 5]
+    );
+    assert_eq!(
+        break_drops(BlockId::Glowstone, pick, &[0]),
+        vec![one(ItemId::GlowstoneDust, 0); 2]
+    );
+    assert_eq!(
+        break_drops(BlockId::Glowstone, pick, &[2]),
+        vec![one(ItemId::GlowstoneDust, 0); 4]
+    );
+    assert!(break_drops(BlockId::Glowstone, None, &[]).is_empty());
+    assert_eq!(
+        break_drops(BlockId::Clay, None, &[]),
+        vec![one(ItemId::ClayBall, 0); 4]
+    );
+    assert_eq!(
+        break_drops(BlockId::Gravel, None, &[0]),
+        vec![one(ItemId::Flint, 0)]
+    );
+    assert_eq!(
+        break_drops(BlockId::Gravel, None, &[1]),
+        vec![block_item(BlockId::Gravel)]
+    );
+    assert!(break_drops(BlockId::Glass, None, &[]).is_empty());
+    assert!(break_drops(BlockId::Ice, None, &[]).is_empty());
+    assert!(break_drops(BlockId::Bookshelf, None, &[]).is_empty());
+
+    assert!(break_drops(BlockId::Snow, None, &[]).is_empty());
+    assert_eq!(
+        break_drops(BlockId::Snow, shovel, &[]),
+        vec![one(ItemId::Snowball, 0); 4]
+    );
+    assert!(break_drops(BlockId::SnowLayer, None, &[]).is_empty());
+    assert_eq!(
+        break_drops(BlockId::SnowLayer, shovel, &[]),
+        vec![one(ItemId::Snowball, 0)]
+    );
+    assert!(
+        natural_drops(
+            BlockId::SnowLayer,
+            &mut Rolls {
+                values: &[],
+                index: 0
+            }
+        )
+        .is_empty()
+    );
+
+    assert!(break_drops(BlockId::Cobweb, None, &[]).is_empty());
+    assert_eq!(
+        break_drops(BlockId::Cobweb, sword, &[]),
+        vec![one(ItemId::String, 0)]
+    );
+    assert_eq!(
+        break_drops(BlockId::Cobweb, shears, &[]),
+        vec![one(ItemId::String, 0)]
+    );
+
+    assert!(break_drops(BlockId::Leaves, None, &[1]).is_empty());
+    assert_eq!(
+        break_drops(BlockId::Leaves, None, &[0]),
+        vec![one(ItemId::Block(BlockId::Sapling), 0)]
+    );
+    assert_eq!(
+        break_drops(BlockId::SpruceLeaves, None, &[0]),
+        vec![one(ItemId::Block(BlockId::Sapling), 1)]
+    );
+    assert_eq!(
+        break_drops(BlockId::Leaves, shears, &[]),
+        vec![block_item(BlockId::Leaves)]
+    );
+    assert_eq!(
+        break_drops(BlockId::SpruceLeaves, shears, &[]),
+        vec![one(ItemId::Block(BlockId::Leaves), 1)]
+    );
+    assert_eq!(
+        break_drops(BlockId::BirchLeaves, shears, &[]),
+        vec![one(ItemId::Block(BlockId::Leaves), 2)]
+    );
+
+    assert_eq!(
+        break_drops(BlockId::DoubleStoneSlab, pick, &[]),
+        vec![block_item(BlockId::StoneSlab); 2]
+    );
+    assert_eq!(
+        break_drops(BlockId::WoodenStairs, None, &[]),
+        vec![block_item(BlockId::WoodenPlanks)]
+    );
+    assert_eq!(
+        break_drops(BlockId::CobblestoneStairs, pick, &[]),
+        vec![block_item(BlockId::Cobblestone)]
+    );
+    assert!(break_drops(BlockId::CobblestoneStairs, None, &[]).is_empty());
+    assert_eq!(
+        break_drops(BlockId::Tnt, None, &[]),
+        vec![block_item(BlockId::Tnt)]
+    );
+    assert_eq!(
+        break_drops(BlockId::TallGrass, None, &[0]),
+        vec![one(ItemId::Seeds, 0)]
+    );
+    assert!(break_drops(BlockId::TallGrass, None, &[1]).is_empty());
+    assert_eq!(
+        break_drops(BlockId::Crops, None, &[0, 0, 0]),
+        vec![one(ItemId::Seeds, 0); 3]
+    );
+    assert!(break_drops(BlockId::Crops, None, &[1, 1, 1]).is_empty());
+}
+
+#[test]
+fn break_drops_preserve_wood_species_and_clear_torch_facing() {
+    assert_eq!(
+        break_drops(BlockId::SpruceWood, None, &[]),
+        vec![one(ItemId::Block(BlockId::Wood), 1)]
+    );
+    assert_eq!(
+        break_drops(BlockId::BirchWood, None, &[]),
+        vec![one(ItemId::Block(BlockId::Wood), 2)]
+    );
+    assert_eq!(
+        natural_drops(
+            BlockId::TorchWest,
+            &mut Rolls {
+                values: &[],
+                index: 0
+            }
+        ),
+        vec![block_item(BlockId::Torch)]
+    );
 }
 
 #[test]

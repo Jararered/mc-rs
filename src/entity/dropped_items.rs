@@ -15,6 +15,7 @@ use crate::app::state::AppScreen;
 use crate::entity::CollisionState;
 use crate::entity::DroppedItem;
 use crate::entity::EntitySize;
+use crate::entity::block_drops::DropRoll;
 use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
 use crate::item::ItemStack;
@@ -312,12 +313,11 @@ fn spawn_item(
     ));
 }
 
-/// Return the currently implemented inventory drop for a broken block.
-pub fn block_drop(block: BlockId) -> Option<ItemStack> {
-    let block = (block == BlockId::Stone)
-        .then_some(BlockId::Cobblestone)
-        .unwrap_or(block);
-    ItemStack::from_block(block, 1).ok()
+impl DropRoll for ItemRng {
+    fn next_int(&mut self, bound: u32) -> u32 {
+        let value = (self.unit() * bound as f32) as u32;
+        if value >= bound { bound - 1 } else { value }
+    }
 }
 
 /// `dropBlockAsItem_do`: each axis is `block + rand * 0.7 + 0.15`.

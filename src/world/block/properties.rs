@@ -239,7 +239,7 @@ pub fn hardness(block: BlockId) -> f32 {
 }
 
 /// Empty-hand `InventoryPlayer.canHarvestBlock`: true unless the material used
-/// `setNoHarvest` (rock, iron, snow block).
+/// `setNoHarvest` (rock, iron, snow, web).
 pub fn harvestable_by_hand(block: BlockId) -> bool {
     !matches!(
         block,
@@ -266,6 +266,12 @@ pub fn harvestable_by_hand(block: BlockId) -> bool {
             | BlockId::RedstoneOre
             | BlockId::LitRedstoneOre
             | BlockId::Snow
+            | BlockId::SnowLayer
+            | BlockId::Cobweb
+            | BlockId::StoneSlab
+            | BlockId::StonePressurePlate
+            | BlockId::CobblestoneStairs
+            | BlockId::IronDoor
             | BlockId::Netherrack
             | BlockId::Glowstone
     )

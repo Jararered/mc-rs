@@ -7,6 +7,7 @@ use bevy::prelude::*;
 
 use crate::item::ItemStack;
 
+pub mod block_drops;
 pub mod dropped_items;
 pub mod particle_registry;
 pub mod particles;

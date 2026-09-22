@@ -1,4 +1,6 @@
-//! Beta's empty-hand first-person arm, rendered in its own depth pass.
+//! Beta's first-person arm and held stack, rendered in their own depth pass.
+
+use std::collections::HashMap;
 
 use bevy::asset::RenderAssetUsages;
 use bevy::camera::visibility::RenderLayers;
@@ -14,10 +16,17 @@ use bevy::window::PrimaryWindow;
 
 use crate::app::settings::GameSettings;
 use crate::app::state::AppScreen;
+use crate::inventory::Hotbar;
+use crate::item::ItemData;
+use crate::item::ItemStack;
+use crate::ui::icon_appearance::Shape;
+use crate::ui::icon_appearance::block_appearance;
+use crate::ui::icon_appearance::item_tile;
 
 use super::CameraBobbing;
 use super::Player;
 use super::camera_bob_pose;
+use super::held_mesh;
 use super::update_camera_bobbing;
 
 const ARM_LAYER: usize = 1;
@@ -27,14 +36,51 @@ const SWING_SECONDS: f32 = 8.0 / 20.0;
 pub(super) struct ArmAssets {
     mesh: Handle<Mesh>,
     material: Handle<StandardMaterial>,
+    terrain: Handle<StandardMaterial>,
+    items: Handle<StandardMaterial>,
+    held_meshes: HashMap<VisualKey, Handle<Mesh>>,
 }
 
 #[derive(Component)]
 struct ArmCamera;
 
-#[derive(Component, Default)]
+#[derive(Component)]
 struct FirstPersonArm {
     swing_time: Option<f32>,
+    displayed: Option<VisualKey>,
+    equip: f32,
+}
+
+#[derive(Component)]
+struct HeldModel;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+struct VisualKey {
+    id: u16,
+    data: u16,
+}
+
+impl VisualKey {
+    fn from_stack(stack: ItemStack) -> Self {
+        Self {
+            id: stack.item().0,
+            data: if matches!(stack.definition().data, ItemData::Subtype(_)) {
+                stack.data()
+            } else {
+                0
+            },
+        }
+    }
+}
+
+impl Default for FirstPersonArm {
+    fn default() -> Self {
+        Self {
+            swing_time: None,
+            displayed: None,
+            equip: 1.0,
+        }
+    }
 }
 
 pub(super) fn plugin(app: &mut App) {
@@ -93,7 +139,32 @@ fn prepare_arm(
             cull_mode: None,
             ..default()
         }),
+        terrain: held_material(&mut materials, &asset_server, "terrain.png"),
+        items: held_material(&mut materials, &asset_server, "gui/items.png"),
+        held_meshes: HashMap::new(),
     });
+}
+
+fn held_material(
+    materials: &mut Assets<StandardMaterial>,
+    server: &AssetServer,
+    path: &'static str,
+) -> Handle<StandardMaterial> {
+    let texture = std::path::Path::new("assets").join(path).exists().then(|| {
+        server
+            .load_builder()
+            .with_settings(|settings: &mut ImageLoaderSettings| {
+                settings.sampler = ImageSampler::nearest();
+            })
+            .load(path)
+    });
+    materials.add(StandardMaterial {
+        base_color_texture: texture,
+        unlit: true,
+        alpha_mode: AlphaMode::Mask(0.5),
+        cull_mode: None,
+        ..default()
+    })
 }
 
 pub(super) fn spawn(parent: &mut ChildSpawnerCommands, assets: &ArmAssets, fov: f32) {
@@ -122,8 +193,18 @@ pub(super) fn spawn(parent: &mut ChildSpawnerCommands, assets: &ArmAssets, fov: 
                 FirstPersonArm::default(),
                 Mesh3d(assets.mesh.clone()),
                 MeshMaterial3d(assets.material.clone()),
+                Visibility::Visible,
                 RenderLayers::layer(ARM_LAYER),
                 Transform::from_matrix(arm_pose(0.0)),
+            ));
+            camera.spawn((
+                Name::new("Held stack"),
+                HeldModel,
+                Mesh3d(assets.mesh.clone()),
+                MeshMaterial3d(assets.terrain.clone()),
+                Visibility::Hidden,
+                RenderLayers::layer(ARM_LAYER),
+                Transform::default(),
             ));
         });
 }
@@ -133,8 +214,19 @@ fn animate_arm(
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<(&Window, &CursorOptions), With<PrimaryWindow>>,
     settings: Res<GameSettings>,
-    players: Query<&CameraBobbing, With<Player>>,
-    mut arms: Query<(&mut FirstPersonArm, &mut Transform)>,
+    players: Query<(&CameraBobbing, &Hotbar), With<Player>>,
+    mut arms: Query<(&mut FirstPersonArm, &mut Transform, &mut Visibility)>,
+    mut held: Query<
+        (
+            &mut Mesh3d,
+            &mut MeshMaterial3d<StandardMaterial>,
+            &mut Transform,
+            &mut Visibility,
+        ),
+        (With<HeldModel>, Without<FirstPersonArm>),
+    >,
+    mut assets: ResMut<ArmAssets>,
+    mut meshes: ResMut<Assets<Mesh>>,
     mut cameras: Query<&mut Projection, With<ArmCamera>>,
 ) {
     if settings.is_changed() {
@@ -148,11 +240,17 @@ fn animate_arm(
     let locked = windows
         .single()
         .is_ok_and(|(window, cursor)| window.focused && cursor.grab_mode == CursorGrabMode::Locked);
-    let walk_pose = players
-        .single()
-        .map(camera_bob_pose)
-        .unwrap_or(Mat4::IDENTITY);
-    for (mut arm, mut transform) in &mut arms {
+    let Ok((bobbing, hotbar)) = players.single() else {
+        return;
+    };
+    let walk_pose = camera_bob_pose(bobbing);
+    let desired = hotbar.selected_stack().map(VisualKey::from_stack);
+    let Ok((mut held_mesh, mut held_material, mut held_transform, mut held_visibility)) =
+        held.single_mut()
+    else {
+        return;
+    };
+    for (mut arm, mut transform, mut arm_visibility) in &mut arms {
         if !locked {
             arm.swing_time = None;
         } else if mouse.just_pressed(MouseButton::Left)
@@ -165,7 +263,47 @@ fn animate_arm(
         let progress = arm
             .swing_time
             .map_or(0.0, |elapsed| elapsed / SWING_SECONDS);
+        let step = time.delta_secs() * 20.0 * 0.4;
+        let target = if arm.displayed == desired { 1.0 } else { 0.0 };
+        arm.equip += (target - arm.equip).clamp(-step, step);
+        if arm.equip < 0.1 && arm.displayed != desired {
+            arm.displayed = desired;
+            if let Some(key) = desired {
+                let mesh = assets
+                    .held_meshes
+                    .entry(key)
+                    .or_insert_with(|| meshes.add(mesh_for(key)));
+                held_mesh.0 = mesh.clone();
+                held_material.0 = if key.id < 256 {
+                    assets.terrain.clone()
+                } else {
+                    assets.items.clone()
+                };
+            }
+        }
+        *arm_visibility = if arm.displayed.is_none() {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        };
+        *held_visibility = if arm.displayed.is_some() {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        };
         *transform = Transform::from_matrix(walk_pose * arm_pose(progress));
+        *held_transform = Transform::from_matrix(
+            walk_pose
+                * held_pose(
+                    progress,
+                    arm.equip,
+                    arm.displayed == Some(VisualKey { id: 346, data: 0 }),
+                    arm.displayed.is_some_and(|key| {
+                        key.id < 256
+                            && block_appearance(key.id as u8, key.data).shape != Shape::Flat
+                    }),
+                ),
+        );
         if let Some(elapsed) = &mut arm.swing_time {
             *elapsed += time.delta_secs();
             if *elapsed >= SWING_SECONDS {
@@ -173,6 +311,46 @@ fn animate_arm(
             }
         }
     }
+}
+
+fn mesh_for(key: VisualKey) -> Mesh {
+    if key.id < 256 {
+        let look = block_appearance(key.id as u8, key.data);
+        if look.shape != Shape::Flat {
+            return held_mesh::block_mesh(key.id as u8, look);
+        }
+        held_mesh::sprite_mesh(look.top, look.tint, true)
+    } else {
+        held_mesh::sprite_mesh(item_tile(key.id, key.data).unwrap_or(0), [255; 3], false)
+    }
+}
+
+fn held_pose(progress: f32, equip: f32, rod: bool, modeled: bool) -> Mat4 {
+    let p = progress.clamp(0.0, 1.0);
+    let root = p.sqrt() * std::f32::consts::PI;
+    let swing = (p * std::f32::consts::PI).sin();
+    let curve = (p * p * std::f32::consts::PI).sin();
+    let mut pose = Mat4::from_translation(Vec3::new(
+        -root.sin() * 0.4,
+        (root * 2.).sin() * 0.2,
+        -swing * 0.2,
+    )) * Mat4::from_translation(Vec3::new(0.56, -0.52 - (1. - equip) * 0.6, -0.72))
+        * Mat4::from_rotation_y(45_f32.to_radians())
+        * Mat4::from_rotation_y((-curve * 20.).to_radians())
+        * Mat4::from_rotation_z((-root.sin() * 20.).to_radians())
+        * Mat4::from_rotation_x((-root.sin() * 80.).to_radians())
+        * Mat4::from_scale(Vec3::splat(0.4));
+    if rod {
+        pose *= Mat4::from_rotation_y(std::f32::consts::PI);
+    }
+    if !modeled {
+        pose *= Mat4::from_translation(Vec3::new(0., -0.3, 0.))
+            * Mat4::from_scale(Vec3::splat(1.5))
+            * Mat4::from_rotation_y(50_f32.to_radians())
+            * Mat4::from_rotation_z(335_f32.to_radians())
+            * Mat4::from_translation(Vec3::new(-0.9375, -0.0625, 0.));
+    }
+    pose
 }
 
 /// ModelRenderer(40, 16).addBox(-3, -2, -2, 4, 12, 4), with

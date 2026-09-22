@@ -14,6 +14,7 @@ use crate::entity::StepHeight;
 use crate::entity::Velocity;
 use crate::inventory::Hotbar;
 mod arm;
+mod held_mesh;
 mod interaction;
 mod mining;
 mod overlay;

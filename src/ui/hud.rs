@@ -2,6 +2,8 @@ use bevy::ecs::hierarchy::ChildSpawnerCommands;
 use bevy::math::Rect;
 use bevy::picking::prelude::Pickable;
 use bevy::prelude::*;
+use bevy::text::FontSize;
+use bevy::text::FontSource;
 use bevy::text::LineHeight;
 
 use super::block_icons::BlockIcons;
@@ -13,13 +15,20 @@ use super::stack_overlay::durability_track;
 use super::stack_overlay::icon_size;
 use super::stack_overlay::place_stack_label;
 use crate::app::state::AppScreen;
+use crate::entity::CollisionState;
+use crate::entity::EntitySize;
 use crate::entity::dropped_items::hotbar_icon_scale;
 use crate::inventory::HOTBAR_SLOTS;
 use crate::inventory::Hotbar;
 use crate::item::ItemStack;
+use crate::physics::BLOCK_REACH;
+use crate::physics::raycast_blocks;
 use crate::player::HeartFill;
 use crate::player::Player;
+use crate::player::PlayerCamera;
 use crate::player::PlayerHealth;
+use crate::world::chunk::ChunkPos;
+use crate::world::chunk::WorldChunks;
 use crate::world::tick::WorldTick;
 
 const HUD_SCALE: f32 = GUI_SCALE;
@@ -38,7 +47,8 @@ pub struct HudPlugin;
 
 impl Plugin for HudPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(PreStartup, load_hud_textures)
+        app.init_resource::<DebugVisible>()
+            .add_systems(PreStartup, load_hud_textures)
             .add_systems(OnEnter(AppScreen::Playing), spawn_hud)
             .add_systems(OnExit(AppScreen::Playing), despawn_hud)
             .add_systems(
@@ -49,6 +59,7 @@ impl Plugin for HudPlugin {
                     update_hotbar_items,
                     update_hotbar_icons,
                     update_hotbar_bars,
+                    update_debug_overlay,
                 )
                     .run_if(in_state(AppScreen::Playing)),
             );
@@ -63,6 +74,12 @@ struct HudTextures {
 
 #[derive(Component)]
 struct HudRoot;
+
+#[derive(Resource, Default)]
+struct DebugVisible(bool);
+
+#[derive(Component)]
+struct DebugOverlay;
 
 #[derive(Component)]
 struct HudHeart(usize);
@@ -90,6 +107,7 @@ fn spawn_hud(
     textures: Res<HudTextures>,
     icons: Res<BlockIcons>,
     font: Res<UiFont>,
+    debug_visible: Res<DebugVisible>,
     player: Query<(&PlayerHealth, &Hotbar), With<Player>>,
 ) {
     let Ok((health, hotbar)) = player.single() else {
@@ -109,7 +127,88 @@ fn spawn_hud(
         .with_children(|root| {
             spawn_crosshair(root, &textures);
             spawn_status(root, &textures, &icons, &font.minecraft, health, hotbar);
+            root.spawn((
+                DebugOverlay,
+                Pickable::IGNORE,
+                Text::new(""),
+                TextFont {
+                    font: FontSource::Handle(font.minecraft.clone()),
+                    font_size: FontSize::Px(16.0),
+                    ..default()
+                },
+                TextColor(Color::WHITE),
+                BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.65)),
+                if debug_visible.0 {
+                    Visibility::Visible
+                } else {
+                    Visibility::Hidden
+                },
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: px(8),
+                    top: px(8),
+                    padding: UiRect::all(px(6)),
+                    ..default()
+                },
+            ));
         });
+}
+
+fn update_debug_overlay(
+    keys: Option<Res<ButtonInput<KeyCode>>>,
+    mut visible: ResMut<DebugVisible>,
+    player: Query<(&Transform, &CollisionState), With<Player>>,
+    camera: Query<&GlobalTransform, With<PlayerCamera>>,
+    chunks: Res<WorldChunks>,
+    mut overlay: Query<(&mut Text, &mut Visibility), With<DebugOverlay>>,
+) {
+    if keys.is_some_and(|keys| keys.just_pressed(KeyCode::F3)) {
+        visible.0 = !visible.0;
+    }
+    let Ok((mut text, mut visibility)) = overlay.single_mut() else {
+        return;
+    };
+    *visibility = if visible.0 {
+        Visibility::Visible
+    } else {
+        Visibility::Hidden
+    };
+    if !visible.0 {
+        return;
+    }
+    let Ok((transform, collision)) = player.single() else {
+        return;
+    };
+    let p = transform.translation;
+    let feet_y = p.y - EntitySize::PLAYER.y_offset;
+    let (bx, by, bz) = (
+        p.x.floor() as i32,
+        feet_y.floor() as i32,
+        p.z.floor() as i32,
+    );
+    let below = chunks
+        .block_at(bx, (feet_y - 0.01).floor() as i32, bz)
+        .map_or("unloaded", |block| block.name());
+    let chunk = ChunkPos::from_block(bx, bz);
+    let target = camera
+        .single()
+        .ok()
+        .and_then(|camera| {
+            raycast_blocks(
+                &chunks,
+                camera.translation(),
+                *camera.forward(),
+                BLOCK_REACH,
+            )
+        })
+        .map_or_else(
+            || "none".to_string(),
+            |hit| format!("{} at {} / {} / {}", hit.block.name(), hit.x, hit.y, hit.z),
+        );
+    text.0 = format!(
+        "XYZ: {:.2} / {:.2} / {:.2}\nBlock: {} / {} / {}  Chunk: {} / {}\nFeet Y: {:.2}  Grounded: {}  Below: {}\nTarget: {}",
+        p.x, p.y, p.z, bx, by, bz, chunk.x, chunk.z, feet_y, collision.on_ground, below, target
+    );
 }
 
 fn spawn_crosshair(parent: &mut ChildSpawnerCommands, textures: &HudTextures) {

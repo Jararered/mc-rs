@@ -407,6 +407,54 @@ fn chunk_corner_light_uses_loaded_diagonal_neighbor_values() {
 }
 
 #[test]
+fn complete_neighborhood_does_not_invent_light_at_cave_edges() {
+    let stone = || Chunk::from_blocks(vec![BlockId::Stone; CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE]);
+    let northwest = stone();
+    let mut north = stone();
+    let northeast = stone();
+    let west = stone();
+    let mut center = stone();
+    let mut east = stone();
+    let southwest = stone();
+    let south = stone();
+    let southeast = stone();
+    for x in 0..CHUNK_SIZE {
+        north.set(x, 64, CHUNK_SIZE - 1, BlockId::Air);
+        center.set(x, 64, 8, BlockId::Air);
+        east.set(x, 64, 8, BlockId::Air);
+    }
+    let light = Skylight::from_chunk_with_neighbors_and_corners(
+        &center,
+        Some(&west),
+        Some(&east),
+        Some(&north),
+        Some(&south),
+        Some(&northwest),
+        Some(&northeast),
+        Some(&southwest),
+        Some(&southeast),
+    );
+    assert_eq!(light.sky(CHUNK_SIZE - 1, 64, 8), Some(0));
+    assert_eq!(light.light_at(CHUNK_SIZE as i32, 64, 8, 0), 0);
+    for y in 65..CHUNK_HEIGHT {
+        center.set(CHUNK_SIZE - 1, y, 8, BlockId::Air);
+    }
+    let lit = Skylight::from_chunk_with_neighbors_and_corners(
+        &center,
+        Some(&west),
+        Some(&east),
+        Some(&north),
+        Some(&south),
+        Some(&northwest),
+        Some(&northeast),
+        Some(&southwest),
+        Some(&southeast),
+    );
+    assert_eq!(lit.sky(CHUNK_SIZE - 1, 64, 8), Some(15));
+    assert_eq!(lit.light_at(CHUNK_SIZE as i32, 64, 8, 0), 14);
+}
+
+#[test]
 fn beta_brightness_curve_keeps_caves_dark() {
     assert!((beta_brightness(15) - 1.0).abs() < f32::EPSILON);
     assert!((beta_brightness(0) - 0.05).abs() < f32::EPSILON);

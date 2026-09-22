@@ -14,6 +14,11 @@ pub fn is_opaque_cube(block: BlockId) -> bool {
         block,
         BlockId::Air
             | BlockId::Water
+            | BlockId::FlowingWater
+            | BlockId::Lava
+            | BlockId::FlowingLava
+            | BlockId::MobSpawner
+            | BlockId::Chest
             | BlockId::Ice
             | BlockId::Leaves
             | BlockId::SpruceLeaves
@@ -31,7 +36,15 @@ pub fn is_opaque_cube(block: BlockId) -> bool {
 /// Fluids have no collision box in Beta (`getCollisionBoundingBoxFromPool`
 /// returns null). Everything else currently in the registry is a full cube.
 pub fn blocks_movement(block: BlockId) -> bool {
-    !matches!(block, BlockId::Air | BlockId::Water) && !is_torch(block) && !is_crossed_plant(block)
+    !matches!(
+        block,
+        BlockId::Air
+            | BlockId::Water
+            | BlockId::FlowingWater
+            | BlockId::Lava
+            | BlockId::FlowingLava
+    ) && !is_torch(block)
+        && !is_crossed_plant(block)
 }
 
 /// Dandelion, rose, tall grass, and fern. Two crossed sprites, no collision.

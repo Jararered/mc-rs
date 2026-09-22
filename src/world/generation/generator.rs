@@ -1,10 +1,16 @@
 use crate::item::ItemStack;
+use crate::random::JavaRandom;
 use crate::world::chunk::Chunk;
 use crate::world::chunk::ChunkPos;
+use std::collections::HashMap;
+use std::collections::VecDeque;
+use std::sync::Mutex;
 
 use super::biome::BiomeGenerator;
 use super::biome::BiomeMap;
+use super::caves;
 use super::heightmap::Heightmap;
+use super::population;
 use super::surface::apply_surface;
 use super::terrain::TerrainGenerator;
 use super::trees::decorate;
@@ -40,6 +46,7 @@ pub struct WorldGenerator {
     seed: u64,
     biomes: BiomeGenerator,
     terrain: TerrainGenerator,
+    cache: Mutex<VecDeque<(ChunkPos, Chunk, BiomeMap, HashMap<ChunkPos, JavaRandom>)>>,
 }
 
 impl WorldGenerator {
@@ -48,19 +55,22 @@ impl WorldGenerator {
             seed,
             biomes: BiomeGenerator::new(seed),
             terrain: TerrainGenerator::new(seed),
+            cache: Mutex::new(VecDeque::new()),
         }
     }
 
     pub fn generate(&self, position: ChunkPos) -> GeneratedChunk {
-        let biomes = self.biomes.generate(position);
-        let mut chunk = self.terrain.generate_base(position, &biomes);
-        apply_surface(&mut chunk, position, &biomes, &self.terrain);
-        // The heightmap stays terrain-only: it describes the ground surface and
-        // is used for spawn placement and terrain-continuity checks.
+        let (mut chunk, biomes, population_rng) = self.generate_undecorated(position);
+        // Capture the ground after caves and population, before vegetation.
         let heightmap = Heightmap::from_chunk(&chunk);
-        decorate(&mut chunk, position, &self.terrain, self.seed, |wx, wz| {
-            self.biomes.climate_at(wx, wz)
-        });
+        decorate(
+            &mut chunk,
+            position,
+            &self.terrain,
+            &population_rng,
+            |wx, wz| self.biomes.climate_at(wx, wz),
+            |remote| self.generate_undecorated(remote).0,
+        );
         GeneratedChunk {
             chunk,
             heightmap,
@@ -69,8 +79,34 @@ impl WorldGenerator {
         }
     }
 
-    /// Topmost solid block in a world column, matching the terrain that
-    /// [`Self::generate`] produces for the chunk containing that column.
+    fn generate_undecorated(
+        &self,
+        position: ChunkPos,
+    ) -> (Chunk, BiomeMap, HashMap<ChunkPos, JavaRandom>) {
+        if let Some((_, chunk, biomes, random)) = self
+            .cache
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|entry| entry.0 == position)
+        {
+            return (chunk.clone(), biomes.clone(), random.clone());
+        }
+        let biomes = self.biomes.generate(position);
+        let mut chunk = self.terrain.generate_base(position, &biomes);
+        apply_surface(&mut chunk, position, &biomes, &self.terrain);
+        caves::carve(&mut chunk, position, self.seed);
+        let random =
+            population::populate(&mut chunk, position, self.seed, &self.terrain, &self.biomes);
+        let mut cache = self.cache.lock().unwrap();
+        if cache.len() == 64 {
+            cache.pop_front();
+        }
+        cache.push_back((position, chunk.clone(), biomes.clone(), random.clone()));
+        (chunk, biomes, random)
+    }
+
+    /// Topmost solid block in the base density terrain at a world column.
     ///
     /// Decoration uses this to place trees whose trunks start outside the chunk
     /// being generated, so canopies stay seamless across chunk borders.

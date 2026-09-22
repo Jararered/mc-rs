@@ -29,6 +29,8 @@ const TERMINAL_VELOCITY: f32 = 78.4;
 /// Clamp a lagged frame so a body cannot tunnel through more than this many
 /// seconds of motion at once.
 const MAX_STEP_SECS: f32 = 0.05;
+/// Covers the f32 error from converting a player's feet to eye height and back.
+const CONTACT_EPSILON: f32 = 1e-4;
 
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum PhysicsSet {
@@ -166,7 +168,7 @@ impl Aabb {
                 delta = gap;
             }
         }
-        if delta < 0.0 && other.min.y >= self.max.y {
+        if delta < 0.0 && other.min.y >= self.max.y - CONTACT_EPSILON {
             let gap = self.max.y - other.min.y;
             if gap > delta {
                 delta = gap;

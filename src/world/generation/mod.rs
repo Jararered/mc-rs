@@ -1,8 +1,10 @@
 mod biome;
+mod caves;
 mod generator;
 mod heightmap;
 mod noise;
 mod plants;
+mod population;
 mod surface;
 mod terrain;
 mod trees;

@@ -361,6 +361,10 @@ pub fn block_tile(
         BlockId::DiamondOre => (2, 3),
         BlockId::Snow => (2, 4),
         BlockId::Clay => (8, 4),
+        BlockId::MobSpawner => (1, 4),
+        BlockId::Chest if face == 0 || face == 1 => (9, 1),
+        BlockId::Chest => (10, 1),
+        BlockId::Lava | BlockId::FlowingLava => (13, 14),
         BlockId::Netherrack => (7, 6),
         BlockId::Glowstone => (9, 6),
         BlockId::Torch

@@ -237,7 +237,7 @@ fn edited_chunk_remesh_is_dispatched_without_main_thread_meshing() {
 }
 
 #[test]
-fn pressing_f3_regenerates_loaded_chunks_from_scratch() {
+fn pressing_f4_regenerates_loaded_chunks_from_scratch() {
     let mut app = test_app();
     app.world_mut()
         .spawn((Player, Transform::from_xyz(8.0, 80.0, 8.0)));
@@ -260,7 +260,7 @@ fn pressing_f3_regenerates_loaded_chunks_from_scratch() {
 
     app.world_mut()
         .resource_mut::<ButtonInput<KeyCode>>()
-        .press(KeyCode::F3);
+        .press(KeyCode::F4);
     app.update();
     app.world_mut()
         .resource_mut::<ButtonInput<KeyCode>>()

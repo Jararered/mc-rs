@@ -247,7 +247,7 @@ pub(crate) fn setup_streaming(
     });
 }
 
-/// Regenerate every loaded chunk from the world generator when F3 is pressed.
+/// Regenerate every loaded chunk from the world generator when F4 is pressed.
 ///
 /// Stored chunk data is dropped so [`stream_chunks`] re-runs terrain and
 /// decoration, then rebuilds each mesh. Rendered entities are kept so the world
@@ -262,7 +262,7 @@ pub(crate) fn regenerate_loaded_chunks(
     if screen.is_some_and(|state| *state.get() != AppScreen::Playing) {
         return;
     }
-    if keys.is_some_and(|keys| keys.just_pressed(KeyCode::F3)) {
+    if keys.is_some_and(|keys| keys.just_pressed(KeyCode::F4)) {
         let count = chunks.positions().count();
         streaming.generating.clear();
         streaming.meshing.clear();
@@ -492,7 +492,7 @@ pub(crate) fn stream_chunks(
     }
 
     // Generate terrain and decoration for the render distance plus one ring.
-    // Chunks already on disk are loaded instead of regenerated, unless F3 asked
+    // Chunks already on disk are loaded instead of regenerated, unless F4 asked
     // for a from-scratch pass.
     let bypass_load = persistence
         .as_deref()

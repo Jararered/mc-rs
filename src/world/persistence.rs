@@ -719,7 +719,7 @@ pub struct WorldPersistence {
     dirty: HashSet<ChunkPos>,
     /// Dirty chunks that were unloaded before a save could reach them.
     pending: Vec<(ChunkPos, GeneratedChunk)>,
-    /// Set by the F3 regeneration key so the next generation pass ignores disk.
+    /// Set by the F4 regeneration key so the next generation pass ignores disk.
     regenerating: bool,
     timer: Timer,
 }

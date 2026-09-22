@@ -148,6 +148,31 @@ fn falling_lands_on_a_stone_floor() {
 }
 
 #[test]
+fn player_remains_grounded_at_float_rounding_heights() {
+    let size = EntitySize::PLAYER;
+    for floor_top in [31.0_f32, 32.0] {
+        let chunks = floor_world(floor_top as usize - 1);
+        let mut eye = Vec3::new(8.5, floor_top + size.y_offset, 8.5);
+        for _ in 0..4 {
+            let movement = move_entity(
+                size.aabb(eye),
+                Vec3::new(0.0, -0.04, 0.0),
+                0.5,
+                true,
+                &chunks,
+            );
+            eye = size.position_from_aabb(movement.aabb);
+            assert!(
+                movement.collision.on_ground,
+                "lost ground at floor Y={floor_top}, eye Y={}",
+                eye.y
+            );
+            assert!((movement.aabb.min.y - floor_top).abs() < 1e-4);
+        }
+    }
+}
+
+#[test]
 fn walking_stops_at_a_wall() {
     let mut chunk = Chunk::new();
     for z in 0..CHUNK_SIZE {

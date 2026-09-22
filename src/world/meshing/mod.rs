@@ -796,6 +796,11 @@ fn neighbor_hides_face(block: BlockId, neighbor: Option<BlockId>, fancy_graphics
     };
     if neighbor == BlockId::Air
         || neighbor == BlockId::Water
+        || neighbor == BlockId::FlowingWater
+        || neighbor == BlockId::Lava
+        || neighbor == BlockId::FlowingLava
+        || neighbor == BlockId::MobSpawner
+        || neighbor == BlockId::Chest
         || is_torch(neighbor)
         || is_crossed_plant(neighbor)
     {

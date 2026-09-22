@@ -363,6 +363,8 @@ impl BlockId {
                 | Self::WoodenPlanks
                 | Self::Bedrock
                 | Self::Water
+                | Self::FlowingLava
+                | Self::Lava
                 | Self::Sand
                 | Self::Gravel
                 | Self::GoldOre
@@ -384,6 +386,8 @@ impl BlockId {
                 | Self::Tnt
                 | Self::Bookshelf
                 | Self::MossyCobblestone
+                | Self::MobSpawner
+                | Self::Chest
                 | Self::Obsidian
                 | Self::Torch
                 | Self::TallGrass

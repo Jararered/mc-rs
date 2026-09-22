@@ -30,7 +30,6 @@ use crate::world::chunk::ChunkPos;
 use super::biome::Biome;
 use super::biome::Climate;
 use super::plants::place_plants;
-use super::surface::ground_column;
 use super::terrain::TerrainGenerator;
 use crate::random::JavaRandom;
 
@@ -78,6 +77,31 @@ impl TreeWorld<'_> {
 
     fn set(&mut self, x: i32, y: i32, z: i32, block: BlockId) {
         if Self::in_bounds(x, y, z) {
+            if matches!(
+                block,
+                BlockId::Wood | BlockId::BirchWood | BlockId::SpruceWood
+            ) {
+                let below = (0..y as usize).rev().find_map(|by| {
+                    let found = self.chunk.get(x as usize, by, z as usize)?;
+                    if matches!(
+                        found,
+                        BlockId::Wood
+                            | BlockId::BirchWood
+                            | BlockId::SpruceWood
+                            | BlockId::Leaves
+                            | BlockId::BirchLeaves
+                            | BlockId::SpruceLeaves
+                            | BlockId::Air
+                    ) {
+                        None
+                    } else {
+                        Some(found)
+                    }
+                });
+                if below == Some(BlockId::Sand) {
+                    return;
+                }
+            }
             self.chunk.set(x as usize, y as usize, z as usize, block);
         }
     }
@@ -93,8 +117,9 @@ pub(super) fn decorate(
     chunk: &mut Chunk,
     position: ChunkPos,
     terrain: &TerrainGenerator,
-    seed: u64,
+    population_rng: &HashMap<ChunkPos, JavaRandom>,
     climate_at: impl Fn(f64, f64) -> Climate,
+    remote_chunk: impl Fn(ChunkPos) -> Chunk,
 ) {
     // Ground heights and surface blocks are captured before any tree is placed
     // so placement sees the terrain rather than earlier trees.
@@ -111,6 +136,7 @@ pub(super) fn decorate(
     }
 
     let mut remote_ground = HashMap::new();
+    let mut remote_chunks = HashMap::new();
     for source_z in -1..=1 {
         for source_x in -1..=1 {
             let source = ChunkPos {
@@ -124,9 +150,11 @@ pub(super) fn decorate(
                 &heights,
                 &grounds,
                 &mut remote_ground,
+                &mut remote_chunks,
                 terrain,
-                seed,
+                population_rng,
                 &climate_at,
+                &remote_chunk,
             );
         }
     }
@@ -142,23 +170,13 @@ fn populate(
     heights: &[[u8; CHUNK_SIZE]; CHUNK_SIZE],
     grounds: &[[BlockId; CHUNK_SIZE]; CHUNK_SIZE],
     remote_ground: &mut HashMap<(i32, i32), (i32, BlockId)>,
+    remote_chunks: &mut HashMap<ChunkPos, Chunk>,
     terrain: &TerrainGenerator,
-    seed: u64,
+    population_rng: &HashMap<ChunkPos, JavaRandom>,
     climate_at: &impl Fn(f64, f64) -> Climate,
+    remote_chunk: &impl Fn(ChunkPos) -> Chunk,
 ) {
-    // The reference seeds a shared RNG from the world seed and the chunk
-    // coordinates. It then consumes RNG for lakes, dungeons, clay, and ores
-    // before reaching trees; those features are not implemented yet, so the tree
-    // loop starts from the chunk seed instead. Positions are therefore
-    // deterministic but do not match the reference exactly.
-    let mut rand = JavaRandom::new(seed);
-    let salt_x = rand.next_long() / 2 * 2 + 1;
-    let salt_z = rand.next_long() / 2 * 2 + 1;
-    let chunk_seed = ((source.x as i64)
-        .wrapping_mul(salt_x)
-        .wrapping_add((source.z as i64).wrapping_mul(salt_z))
-        ^ seed as i64) as u64;
-    let mut rand = JavaRandom::new(chunk_seed);
+    let mut rand = population_rng[&source].clone();
 
     let biome = climate_at(
         (source.x * CHUNK_SIZE as i32 + CHUNK_SIZE as i32) as f64,
@@ -201,8 +219,8 @@ fn populate(
             heights,
             grounds,
             remote_ground,
-            terrain,
-            climate_at,
+            remote_chunks,
+            remote_chunk,
             world_x,
             world_z,
         );
@@ -230,8 +248,8 @@ fn populate(
                 heights,
                 grounds,
                 remote_ground,
-                terrain,
-                climate_at,
+                remote_chunks,
+                remote_chunk,
                 world_x,
                 world_z,
             )
@@ -308,15 +326,14 @@ fn generate(kind: TreeKind, world: &mut TreeWorld, rand: &mut JavaRandom, origin
 /// Ground height and surface block at a world column.
 ///
 /// Columns inside the target chunk use the pre-decoration heightmap; columns
-/// outside use the same surface pass the neighbour chunk would apply, including
-/// beaches. Guessing grass there planted canopies over sand with no trunk.
+/// outside use the same undecorated generation as the neighbour chunk.
 fn ground_at(
     target: ChunkPos,
     heights: &[[u8; CHUNK_SIZE]; CHUNK_SIZE],
     grounds: &[[BlockId; CHUNK_SIZE]; CHUNK_SIZE],
     remote_ground: &mut HashMap<(i32, i32), (i32, BlockId)>,
-    terrain: &TerrainGenerator,
-    climate_at: &impl Fn(f64, f64) -> Climate,
+    remote_chunks: &mut HashMap<ChunkPos, Chunk>,
+    remote_chunk: &impl Fn(ChunkPos) -> Chunk,
     world_x: i32,
     world_z: i32,
 ) -> (i32, BlockId) {
@@ -330,7 +347,22 @@ fn ground_at(
     } else if let Some(&column) = remote_ground.get(&(world_x, world_z)) {
         column
     } else {
-        let column = ground_column(terrain, world_x, world_z, climate_at);
+        let pos = ChunkPos {
+            x: world_x.div_euclid(CHUNK_SIZE as i32),
+            z: world_z.div_euclid(CHUNK_SIZE as i32),
+        };
+        let chunk = remote_chunks
+            .entry(pos)
+            .or_insert_with(|| remote_chunk(pos));
+        let x = world_x.rem_euclid(CHUNK_SIZE as i32) as usize;
+        let z = world_z.rem_euclid(CHUNK_SIZE as i32) as usize;
+        let height = top_non_air(chunk, x, z);
+        let column = (
+            height as i32,
+            chunk
+                .get(x, height.saturating_sub(1), z)
+                .unwrap_or(BlockId::Air),
+        );
         remote_ground.insert((world_x, world_z), column);
         column
     }

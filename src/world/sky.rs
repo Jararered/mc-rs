@@ -49,9 +49,6 @@ const SUN_SIZE: f32 = 30.0;
 const MOON_SIZE: f32 = 20.0;
 /// Height of Beta's sky plane (`glSkyList` uses `16`, `glSkyList2` uses `-16`).
 const SKY_PLANE_HEIGHT: f32 = 16.0;
-/// Half-width of the ceiling and floor. Larger than `sky_fog_end` at the
-/// maximum render distance, so fog hides the edge instead of a hard seam.
-const SKY_PLANE_EXTENT: f32 = 512.0;
 const CELESTIAL_LAYER: usize = 3;
 
 /// Marker so the world camera keeps its own fog range and the Ultra water pass
@@ -99,8 +96,6 @@ impl Default for EyeFog {
 
 #[derive(Clone, Resource)]
 struct SkyAssets {
-    ceiling: Handle<StandardMaterial>,
-    floor: Handle<StandardMaterial>,
     sun: Handle<StandardMaterial>,
     moon: Handle<StandardMaterial>,
     stars: Handle<StandardMaterial>,
@@ -440,16 +435,12 @@ fn ensure_sky(
         directional_light_color: Color::NONE,
         ..default()
     };
-    commands
-        .entity(camera)
-        .insert((SkyAttached, initial.clone()));
+    commands.entity(camera).insert((SkyAttached, initial.clone()));
 
     let sky_assets = if let Some(existing) = assets.as_deref() {
         existing.clone()
     } else {
         let created = SkyAssets {
-            ceiling: materials.add(plane_material(Color::WHITE)),
-            floor: materials.add(plane_material(Color::WHITE)),
             sun: materials.add(body_material(&asset_server, "terrain/sun.png")),
             moon: materials.add(body_material(&asset_server, "terrain/moon.png")),
             stars: materials.add(StandardMaterial {
@@ -524,22 +515,6 @@ fn ensure_sky(
             Visibility::default(),
         ))
         .with_children(|sky| {
-            spawn_layer(
-                sky,
-                "Sky ceiling",
-                meshes.add(sky_plane_mesh(SKY_PLANE_HEIGHT)),
-                sky_assets.ceiling.clone(),
-                Transform::default(),
-                SKY_LAYER,
-            );
-            spawn_layer(
-                sky,
-                "Sky floor",
-                meshes.add(sky_plane_mesh(-SKY_PLANE_HEIGHT)),
-                sky_assets.floor.clone(),
-                Transform::default(),
-                SKY_LAYER,
-            );
             sky.spawn((
                 Name::new("Sunrise"),
                 SunriseFan,
@@ -709,12 +684,6 @@ fn update_atmosphere(
     for mut rig in &mut views.rigs {
         rig.rotation = spin;
     }
-    if let Some(mut material) = materials.get_mut(&assets.ceiling) {
-        material.base_color = srgb(sky);
-    }
-    if let Some(mut material) = materials.get_mut(&assets.floor) {
-        material.base_color = srgb(void_rgb(sky));
-    }
     let stars_on = star_brightness(angle);
     if let Some(mut material) = materials.get_mut(&assets.stars) {
         material.base_color = Color::WHITE.with_alpha(stars_on);
@@ -773,13 +742,6 @@ fn copy_fov(fov: Option<f32>, projection: &mut Projection) {
     perspective.fov = fov;
 }
 
-fn plane_material(color: Color) -> StandardMaterial {
-    // The sky is the atmosphere/background pass. Fog belongs to world
-    // geometry and clouds; applying it here creates a hard band where the
-    // flat sky planes meet the world horizon.
-    unlit_color(color, false)
-}
-
 fn unlit_color(color: Color, fog: bool) -> StandardMaterial {
     StandardMaterial {
         base_color: color,
@@ -800,18 +762,6 @@ fn body_material(server: &AssetServer, path: &str) -> StandardMaterial {
     material.base_color_texture = texture;
     material.alpha_mode = AlphaMode::Add;
     material
-}
-
-/// Horizontal quad at `y`, wide enough that sky fog covers its edge.
-fn sky_plane_mesh(y: f32) -> Mesh {
-    let h = SKY_PLANE_EXTENT;
-    mesh_from(
-        vec![[-h, y, -h], [h, y, -h], [h, y, h], [-h, y, h]],
-        vec![[0.0, 1.0, 0.0]; 4],
-        vec![[0.0, 0.0]; 4],
-        vec![[1.0, 1.0, 1.0, 1.0]; 4],
-        vec![0, 2, 1, 0, 3, 2],
-    )
 }
 
 /// Sun disk. UVs flip V so the PNG's top stays the top under Bevy's texture space.

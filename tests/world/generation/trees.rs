@@ -118,6 +118,36 @@ fn tree_generation_is_deterministic() {
 }
 
 #[test]
+fn desert_chunks_generate_dead_bushes_on_sand() {
+    for seed in 0..128 {
+        let generated = WorldGenerator::new(seed).generate(ChunkPos::ZERO);
+        if !generated
+            .biomes
+            .cells()
+            .iter()
+            .any(|climate| climate.biome == Biome::Desert)
+        {
+            continue;
+        }
+
+        let bushes = count(&generated.chunk, BlockId::DeadBush);
+        for z in 0..CHUNK_SIZE {
+            for x in 0..CHUNK_SIZE {
+                for y in 1..CHUNK_HEIGHT {
+                    if generated.chunk.get(x, y, z) == Some(BlockId::DeadBush) {
+                        assert_eq!(generated.chunk.get(x, y - 1, z), Some(BlockId::Sand));
+                    }
+                }
+            }
+        }
+        if bushes > 0 {
+            return;
+        }
+    }
+    panic!("seeded desert chunks should eventually generate dead bushes");
+}
+
+#[test]
 fn dry_biomes_have_no_trees() {
     // Seed 1 puts the tree biome at the chunk's far corner in the desert, which
     // subtracts more trees than the density noise can add.

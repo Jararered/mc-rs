@@ -31,6 +31,8 @@ use crate::world::chunk::ChunkPos;
 use super::biome::Biome;
 use super::biome::Climate;
 use super::cactus::place_cacti;
+use super::plants::place_dead_bushes;
+use super::plants::place_plant_extras;
 use super::plants::place_plants;
 use super::reeds::place_reeds;
 use super::terrain::TerrainGenerator;
@@ -279,6 +281,16 @@ fn populate(
             .0
         },
     );
+    place_dead_bushes(
+        world.chunk,
+        target,
+        source,
+        &mut rand,
+        biome,
+        remote_chunks,
+        remote_chunk,
+    );
+    place_plant_extras(world.chunk, target, source, &mut rand);
     place_reeds(
         world.chunk,
         target,

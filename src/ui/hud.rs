@@ -25,6 +25,8 @@ const CROSSHAIR_SIZE: f32 = 16.0;
 const HEART_SIZE: f32 = 9.0;
 const HEART_STRIDE: f32 = 8.0;
 const ITEM_SIZE: f32 = 16.0;
+const HOTBAR_SLOT_STEP: f32 = 20.0;
+const HOTBAR_ICON_INSET: f32 = 2.0;
 
 pub struct HudPlugin;
 
@@ -236,7 +238,10 @@ fn spawn_hotbar(
 
 /// Slot position for a 16×16 item icon inside the hotbar texture.
 fn hotbar_item_rect(index: usize) -> (f32, f32) {
-    ((3.0 + index as f32 * 20.0) * HUD_SCALE, 3.0 * HUD_SCALE)
+    (
+        (HOTBAR_ICON_INSET + index as f32 * HOTBAR_SLOT_STEP) * HUD_SCALE,
+        HOTBAR_ICON_INSET * HUD_SCALE,
+    )
 }
 
 fn spawn_hotbar_item(
@@ -449,7 +454,7 @@ fn update_hotbar_bars(
 }
 
 fn hotbar_selector_left(selected: usize) -> f32 {
-    (selected.min(HOTBAR_SLOTS - 1) as f32 * 20.0 - 1.0) * HUD_SCALE
+    (selected.min(HOTBAR_SLOTS - 1) as f32 * HOTBAR_SLOT_STEP - 1.0) * HUD_SCALE
 }
 
 fn heart_container_rect() -> Rect {

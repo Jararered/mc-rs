@@ -24,7 +24,7 @@ use crate::world::chunk::WorldChunks;
 const SCALE: f32 = 2.0;
 const SLOT_SIZE: f32 = 16.0;
 const SLOT_STEP: f32 = 18.0;
-const SLOT_ICON_INSET: f32 = 2.0;
+const SLOT_ICON_SIZE: f32 = SLOT_SIZE * SCALE;
 
 pub struct InventoryGuiPlugin;
 
@@ -429,10 +429,10 @@ fn slot(
                 ImageNode::new(icons.clone()),
                 Node {
                     position_type: PositionType::Absolute,
-                    left: px(SLOT_ICON_INSET),
-                    top: px(SLOT_ICON_INSET),
-                    width: px(32.0),
-                    height: px(32.0),
+                    left: px(0.0),
+                    top: px(0.0),
+                    width: px(SLOT_ICON_SIZE),
+                    height: px(SLOT_ICON_SIZE),
                     ..default()
                 },
             ));

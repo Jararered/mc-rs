@@ -62,8 +62,8 @@ pub enum BlockId {
 }
 
 impl BlockId {
-    /// Native chunk/save ID. Private variants overlap Beta IDs; use
-    /// `beta_state()` for the Beta identity and metadata instead.
+    /// Native chunk/save ID. Private variants do not correspond to Beta block
+    /// IDs; use `beta_state()` for the Beta identity and metadata instead.
     pub const fn as_u8(self) -> u8 {
         self as u8
     }

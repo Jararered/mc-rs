@@ -20,6 +20,7 @@ use crate::item::ItemData;
 use crate::item::ItemRegistry;
 use crate::item::ItemStack;
 use crate::world::block::block::BlockId;
+use crate::world::block::registry::BetaBlockId;
 
 pub const ICON_SIZE: u32 = 32;
 const COLUMNS: u32 = 16;
@@ -231,7 +232,7 @@ fn render_block_icon(source: &Source, id: u8, data: u16) -> Vec<u8> {
     let mut out = vec![0; (ICON_SIZE * ICON_SIZE * 4) as usize];
     match appearance.shape {
         Shape::Cube => {
-            let bounds = if id == 60 {
+            let bounds = if id == BetaBlockId::FARMLAND.as_u8() {
                 [0.0, 0.0, 0.0, 1.0, 0.9375, 1.0] // Farmland
             } else {
                 [0.0, 0.0, 0.0, 1.0, 1.0, 1.0]
@@ -239,7 +240,7 @@ fn render_block_icon(source: &Source, id: u8, data: u16) -> Vec<u8> {
             draw_box(&mut out, source, appearance, bounds);
         }
         Shape::Slab => {
-            let bounds = if id == 92 {
+            let bounds = if id == BetaBlockId::CAKE.as_u8() {
                 [0.0625, 0.0, 0.0625, 0.9375, 0.5, 0.9375] // Cake
             } else {
                 [0.0, 0.0, 0.0, 1.0, 0.5, 1.0]
@@ -248,10 +249,16 @@ fn render_block_icon(source: &Source, id: u8, data: u16) -> Vec<u8> {
         }
         Shape::Thin => {
             let bounds = match id {
-                70 | 72 => [0.0, 0.375, 0.0, 1.0, 0.625, 1.0], // Pressure plates
-                77 => [0.3125, 0.375, 0.375, 0.6875, 0.625, 0.625], // Button
-                78 => [0.0, 0.0, 0.0, 1.0, 0.125, 1.0],        // Snow layer
-                96 => [0.0, 0.40625, 0.0, 1.0, 0.59375, 1.0],  // Trapdoor
+                id if id == BetaBlockId::STONE_PRESSURE_PLATE.as_u8()
+                    || id == BetaBlockId::WOODEN_PRESSURE_PLATE.as_u8() =>
+                {
+                    [0.0, 0.375, 0.0, 1.0, 0.625, 1.0]
+                } // Pressure plates
+                id if id == BetaBlockId::STONE_BUTTON.as_u8() => {
+                    [0.3125, 0.375, 0.375, 0.6875, 0.625, 0.625]
+                } // Button
+                id if id == BetaBlockId::SNOW_LAYER.as_u8() => [0.0, 0.0, 0.0, 1.0, 0.125, 1.0], // Snow layer
+                id if id == BetaBlockId::TRAPDOOR.as_u8() => [0.0, 0.40625, 0.0, 1.0, 0.59375, 1.0], // Trapdoor
                 _ => [0.0, 0.0, 0.0, 1.0, 0.125, 1.0],
             };
             draw_box(&mut out, source, appearance, bounds);

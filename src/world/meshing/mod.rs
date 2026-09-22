@@ -343,7 +343,12 @@ impl MeshBuffers {
         }
         let center_x = 0.5 + dx;
         let center_z = 0.5 + dz;
-        let half = 0.5 / std::f32::consts::SQRT_2;
+        // RenderBlocks.renderCrossedSquares uses endpoints at +/-0.45 block.
+        let half = if block == BlockId::SugarCane {
+            0.45
+        } else {
+            0.5 / std::f32::consts::SQRT_2
+        };
         let tint = if matches!(block, BlockId::TallGrass | BlockId::Fern) {
             grass_tint
         } else {

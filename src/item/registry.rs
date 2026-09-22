@@ -672,7 +672,10 @@ impl ItemId {
             Self::MilkBucket => Some(standalone(self, "milk_bucket", 1, ItemData::None)),
             Self::Brick => Some(standalone(self, "brick", 64, ItemData::None)),
             Self::ClayBall => Some(standalone(self, "clay_ball", 64, ItemData::None)),
-            Self::SugarCane => Some(standalone(self, "sugar_cane", 64, ItemData::None)),
+            Self::SugarCane => Some(ItemDefinition {
+                block: Some(BlockId::SugarCane),
+                ..standalone(self, "sugar_cane", 64, ItemData::None)
+            }),
             Self::Paper => Some(standalone(self, "paper", 64, ItemData::None)),
             Self::Book => Some(standalone(self, "book", 64, ItemData::None)),
             Self::Slimeball => Some(standalone(self, "slimeball", 64, ItemData::None)),

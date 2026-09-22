@@ -37,6 +37,7 @@ use crate::world::block::properties::is_opaque_cube;
 use crate::world::block::properties::is_replaceable;
 use crate::world::block::properties::is_torch;
 use crate::world::block::properties::plant_grows_on;
+use crate::world::block::properties::sugar_cane_can_stay;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::ChunkPos;
 use crate::world::chunk::WorldChunks;
@@ -413,8 +414,26 @@ pub fn place_selected_block_facing(
     if !is_replaceable(current) {
         return false;
     }
-    if is_crossed_plant(selected) && !chunks.block_at(x, y - 1, z).is_some_and(plant_grows_on) {
+    if is_crossed_plant(selected)
+        && selected != BlockId::SugarCane
+        && !chunks.block_at(x, y - 1, z).is_some_and(plant_grows_on)
+    {
         return false;
+    }
+    if selected == BlockId::SugarCane {
+        let Some(below) = chunks.block_at(x, y - 1, z) else {
+            return false;
+        };
+        let adjacent_water = [
+            chunks.block_at(x - 1, y - 1, z),
+            chunks.block_at(x + 1, y - 1, z),
+            chunks.block_at(x, y - 1, z - 1),
+            chunks.block_at(x, y - 1, z + 1),
+        ]
+        .map(|block| matches!(block, Some(BlockId::Water | BlockId::FlowingWater)));
+        if !sugar_cane_can_stay(below, adjacent_water) {
+            return false;
+        }
     }
     if selected == BlockId::Cactus {
         let Some(below) = chunks.block_at(x, y - 1, z) else {

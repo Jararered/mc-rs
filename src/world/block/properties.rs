@@ -63,7 +63,7 @@ pub fn collision_bounds(block: BlockId) -> Option<([f32; 3], [f32; 3])> {
     }
 }
 
-/// Crossed sprites with no collision: flowers, mushrooms, and tall grass.
+/// Crossed sprites with no collision: flowers, mushrooms, tall grass, and reeds.
 pub fn is_crossed_plant(block: BlockId) -> bool {
     matches!(
         block,
@@ -73,6 +73,7 @@ pub fn is_crossed_plant(block: BlockId) -> bool {
             | BlockId::RedMushroom
             | BlockId::TallGrass
             | BlockId::Fern
+            | BlockId::SugarCane
     )
 }
 
@@ -88,6 +89,14 @@ pub fn cactus_can_stay(below: BlockId, neighbors: [BlockId; 4]) -> bool {
         && neighbors
             .into_iter()
             .all(|block| !has_solid_material(block))
+}
+
+/// Beta reed placement/growth rule. A cane segment stacks on another segment;
+/// the bottom segment needs soil beside water on the same supporting level.
+pub fn sugar_cane_can_stay(below: BlockId, adjacent_water: [bool; 4]) -> bool {
+    below == BlockId::SugarCane
+        || (matches!(below, BlockId::Grass | BlockId::Dirt | BlockId::Sand)
+            && adjacent_water.into_iter().any(|is_water| is_water))
 }
 
 /// Beta's `Material.isSolid`, used for cactus clearance. Transparent glass and
@@ -200,6 +209,9 @@ pub fn selection_bounds(block: BlockId) -> ([f32; 3], [f32; 3]) {
     }
     if block == BlockId::Cactus {
         return ([0.0625, 0.0, 0.0625], [0.9375, 1.0, 0.9375]);
+    }
+    if block == BlockId::SugarCane {
+        return ([0.125, 0.0, 0.125], [0.875, 1.0, 0.875]);
     }
     if is_crossed_plant(block) {
         // `BlockFlower` uses a 0.2 inset; tall grass overrides that with 0.4

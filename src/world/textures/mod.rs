@@ -401,6 +401,7 @@ pub fn block_tile(
         BlockId::Cactus if face == 0 => (5, 4),
         BlockId::Cactus if face == 1 => (7, 4),
         BlockId::Cactus => (6, 4),
+        BlockId::SugarCane => (9, 4),
         BlockId::Clay => (8, 4),
         BlockId::MobSpawner => (1, 4),
         BlockId::Chest if face == 0 || face == 1 => (9, 1),

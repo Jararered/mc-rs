@@ -6,6 +6,7 @@ mod heightmap;
 mod noise;
 mod plants;
 mod population;
+mod reeds;
 mod snow;
 mod surface;
 mod terrain;

@@ -32,6 +32,7 @@ use super::biome::Biome;
 use super::biome::Climate;
 use super::cactus::place_cacti;
 use super::plants::place_plants;
+use super::reeds::place_reeds;
 use super::terrain::TerrainGenerator;
 use crate::random::JavaRandom;
 
@@ -142,6 +143,7 @@ pub(super) fn decorate(
     let mut remote_ground = HashMap::new();
     let mut remote_chunks = HashMap::new();
     let mut cactus_positions = HashSet::new();
+    let mut reed_positions = HashSet::new();
     for source_z in -1..=1 {
         for source_x in -1..=1 {
             let source = ChunkPos {
@@ -157,6 +159,7 @@ pub(super) fn decorate(
                 &mut remote_ground,
                 &mut remote_chunks,
                 &mut cactus_positions,
+                &mut reed_positions,
                 terrain,
                 population_rng,
                 &climate_at,
@@ -178,6 +181,7 @@ fn populate(
     remote_ground: &mut HashMap<(i32, i32), (i32, BlockId)>,
     remote_chunks: &mut HashMap<ChunkPos, Chunk>,
     cactus_positions: &mut HashSet<(i32, i32, i32)>,
+    reed_positions: &mut HashSet<(i32, i32, i32)>,
     terrain: &TerrainGenerator,
     population_rng: &HashMap<ChunkPos, JavaRandom>,
     climate_at: &impl Fn(f64, f64) -> Climate,
@@ -274,6 +278,15 @@ fn populate(
             )
             .0
         },
+    );
+    place_reeds(
+        world.chunk,
+        target,
+        source,
+        &mut rand,
+        reed_positions,
+        remote_chunks,
+        remote_chunk,
     );
     place_cacti(
         world.chunk,

@@ -447,6 +447,7 @@ impl BlockId {
                 | Self::Rose
                 | Self::Fern
                 | Self::Cactus
+                | Self::SugarCane
                 | Self::FurnaceNorth
                 | Self::FurnaceEast
                 | Self::FurnaceSouth

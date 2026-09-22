@@ -32,7 +32,7 @@ const CROSSHAIR_SIZE: f32 = 16.0;
 const HEART_SIZE: f32 = 9.0;
 const HEART_STRIDE: f32 = 8.0;
 const HOTBAR_SLOT_STEP: f32 = 20.0;
-const HOTBAR_ICON_INSET: f32 = 2.0;
+const HOTBAR_ICON_INSET: f32 = 3.0;
 
 pub struct HudPlugin;
 

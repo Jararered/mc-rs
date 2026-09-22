@@ -115,6 +115,17 @@ fn aabb_clips_motion_against_a_touching_box() {
 }
 
 #[test]
+fn an_item_sunk_into_the_floor_keeps_falling() {
+    let chunks = floor_world(64);
+    let size = EntitySize::DROPPED_ITEM;
+    let resting = size.aabb(Vec3::new(8.0, 65.0, 8.0));
+    let sunk = resting.offset(Vec3::new(0.0, -0.04, 0.0));
+    let movement = move_entity(sunk, Vec3::new(0.0, -0.2, 0.0), 0.0, true, &chunks);
+    assert!(movement.aabb.min.y < 65.0 - 1e-4);
+    assert!(!movement.collision.on_ground);
+}
+
+#[test]
 fn falling_lands_on_a_stone_floor() {
     let chunks = floor_world(64);
     let size = EntitySize::PLAYER;

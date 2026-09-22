@@ -93,20 +93,23 @@ pub fn block_drop(block: BlockId) -> Option<ItemStack> {
     ItemStack::from_block(block, 1).ok()
 }
 
+/// Vertical offset of the item quad. Applied on a child so the physics
+/// transform stays on the collision feet. Sinking those feet into a block
+/// makes [`crate::physics::Aabb::calculate_y_offset`] skip the floor.
+pub fn item_bob_offset(phase: f32, age: f32) -> f32 {
+    (phase + age * ITEM_BOB_SPEED).sin() * ITEM_BOB_HEIGHT
+}
+
 fn update_item_state(
     time: Res<Time>,
     mut commands: Commands,
-    mut items: Query<(Entity, &mut DroppedItemState, &mut Transform)>,
+    mut items: Query<(Entity, &mut DroppedItemState)>,
 ) {
     let dt = time.delta_secs();
-    for (entity, mut state, mut transform) in &mut items {
+    for (entity, mut state) in &mut items {
         state.age += dt;
         state.pickup_delay = (state.pickup_delay - dt).max(0.0);
         state.spin = (state.spin + dt * 2.5) % std::f32::consts::TAU;
-        let previous_bob =
-            (state.bob_phase + (state.age - dt) * ITEM_BOB_SPEED).sin() * ITEM_BOB_HEIGHT;
-        let current_bob = (state.bob_phase + state.age * ITEM_BOB_SPEED).sin() * ITEM_BOB_HEIGHT;
-        transform.translation.y += current_bob - previous_bob;
         if state.age >= ITEM_LIFETIME {
             commands.entity(entity).despawn();
         }
@@ -145,13 +148,8 @@ fn sync_item_rendering(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     material: Option<Res<ItemDropMaterial>>,
-    mut items: Query<(
-        Entity,
-        &DroppedItem,
-        &DroppedItemState,
-        &mut Transform,
-        Option<&ItemDropVisual>,
-    )>,
+    items: Query<(Entity, &DroppedItem, &DroppedItemState, Option<&Children>)>,
+    mut visuals: Query<(&mut ItemDropVisual, &mut Transform)>,
 ) {
     let Some(icons) = icons.filter(|icons| icons.ready()) else {
         return;
@@ -174,32 +172,65 @@ fn sync_item_rendering(
     let camera_rotation = camera
         .single()
         .map_or(Quat::IDENTITY, GlobalTransform::rotation);
-    for (entity, dropped, state, mut transform, visual) in &mut items {
-        transform.rotation = camera_rotation * Quat::from_rotation_z(state.spin);
-        let count_scale = match dropped.0.count() {
-            1 => 1.0,
-            2..=16 => 1.05,
-            17..=32 => 1.1,
-            _ => 1.15,
+    for (entity, dropped, state, children) in &items {
+        let pose = item_visual_transform(state, dropped.0.count(), camera_rotation);
+        let mut visual_entity =
+            children.and_then(|children| children.iter().find(|child| visuals.contains(*child)));
+        if visual_entity.is_none() {
+            let Some((u0, v0, u1, v1)) = icons.uv_for_stack(dropped.0) else {
+                continue;
+            };
+            let child = commands
+                .spawn((
+                    item_quad(u0, v0, u1, v1, &mut meshes),
+                    MeshMaterial3d(material.clone()),
+                    ItemDropVisual { stack: dropped.0 },
+                    pose,
+                    NoFrustumCulling,
+                ))
+                .id();
+            commands.entity(entity).add_child(child);
+            continue;
+        }
+        let child = visual_entity.take().unwrap();
+        let Ok((mut visual, mut transform)) = visuals.get_mut(child) else {
+            continue;
         };
-        transform.scale = Vec3::splat(0.9 * count_scale);
-        if visual.is_some_and(|visual| visual.stack == dropped.0) {
+        *transform = pose;
+        if visual.stack == dropped.0 {
             continue;
         }
         let Some((u0, v0, u1, v1)) = icons.uv_for_stack(dropped.0) else {
             continue;
         };
-        let mut mesh = Mesh::from(Rectangle::new(0.32, 0.32));
-        mesh.insert_attribute(
-            Mesh::ATTRIBUTE_UV_0,
-            vec![[u0, v1], [u1, v1], [u1, v0], [u0, v0]],
-        );
-        let mesh = meshes.add(mesh);
-        commands.entity(entity).insert((
-            Mesh3d(mesh),
-            MeshMaterial3d(material.clone()),
-            ItemDropVisual { stack: dropped.0 },
-            NoFrustumCulling,
-        ));
+        visual.stack = dropped.0;
+        commands
+            .entity(child)
+            .insert(item_quad(u0, v0, u1, v1, &mut meshes));
     }
+}
+
+fn item_visual_transform(state: &DroppedItemState, count: u8, camera_rotation: Quat) -> Transform {
+    let count_scale = match count {
+        1 => 1.0,
+        2..=16 => 1.05,
+        17..=32 => 1.1,
+        _ => 1.15,
+    };
+    Transform::from_translation(Vec3::new(
+        0.0,
+        item_bob_offset(state.bob_phase, state.age),
+        0.0,
+    ))
+    .with_rotation(camera_rotation * Quat::from_rotation_z(state.spin))
+    .with_scale(Vec3::splat(0.9 * count_scale))
+}
+
+fn item_quad(u0: f32, v0: f32, u1: f32, v1: f32, meshes: &mut Assets<Mesh>) -> Mesh3d {
+    let mut mesh = Mesh::from(Rectangle::new(0.32, 0.32));
+    mesh.insert_attribute(
+        Mesh::ATTRIBUTE_UV_0,
+        vec![[u0, v1], [u1, v1], [u1, v0], [u0, v0]],
+    );
+    Mesh3d(meshes.add(mesh))
 }

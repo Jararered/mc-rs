@@ -116,7 +116,7 @@ fn push_natural(drops: &mut Vec<ItemStack>, block: BlockId, rolls: &mut impl Dro
         BlockId::SugarCane => push_item(drops, ItemId::SugarCane, 0, 1),
         BlockId::Bed => push_item(drops, ItemId::Bed, 0, 1),
         BlockId::Repeater | BlockId::PoweredRepeater => push_item(drops, ItemId::Repeater, 0, 1),
-        BlockId::TallGrass => {
+        BlockId::TallGrass | BlockId::Fern => {
             if rolls.next_int(8) == 0 {
                 push_item(drops, ItemId::Seeds, 0, 1);
             }

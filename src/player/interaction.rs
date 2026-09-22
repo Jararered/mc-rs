@@ -30,9 +30,11 @@ use crate::ui::WorkbenchUiSession;
 use crate::ui::close_crafting_interface;
 use crate::world::block::block::BlockId;
 use crate::world::block::properties::is_breakable;
+use crate::world::block::properties::is_crossed_plant;
 use crate::world::block::properties::is_opaque_cube;
 use crate::world::block::properties::is_replaceable;
 use crate::world::block::properties::is_torch;
+use crate::world::block::properties::plant_grows_on;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::ChunkPos;
 use crate::world::chunk::WorldChunks;
@@ -254,7 +256,7 @@ fn apply_break(
     hotbar: &mut Hotbar,
     hit: BlockHit,
 ) {
-    let attached = [
+    let mut attached = [
         (0, 1, 0, BlockId::Torch),
         (1, 0, 0, BlockId::TorchWest),
         (-1, 0, 0, BlockId::TorchEast),
@@ -271,6 +273,12 @@ fn apply_break(
         ))
     })
     .collect::<Vec<_>>();
+    if let Some(plant) = chunks
+        .block_at(hit.x, hit.y + 1, hit.z)
+        .filter(|block| is_crossed_plant(*block))
+    {
+        attached.push((hit.x, hit.y + 1, hit.z, plant));
+    }
     let light_edit = is_torch(hit.block)
         || attached
             .iter()
@@ -324,6 +332,12 @@ pub fn break_block(chunks: &mut WorldChunks, hit: BlockHit) -> bool {
                 chunks.set_block(x, y, z, BlockId::Air);
             }
         }
+        if chunks
+            .block_at(hit.x, hit.y + 1, hit.z)
+            .is_some_and(is_crossed_plant)
+        {
+            chunks.set_block(hit.x, hit.y + 1, hit.z, BlockId::Air);
+        }
     }
     broken
 }
@@ -333,7 +347,7 @@ pub fn place_block(chunks: &mut WorldChunks, hit: BlockHit, player: Aabb) -> boo
     place_selected_block(chunks, hit, player, BlockId::Torch)
 }
 
-fn place_selected_block(
+pub fn place_selected_block(
     chunks: &mut WorldChunks,
     hit: BlockHit,
     player: Aabb,
@@ -347,6 +361,9 @@ fn place_selected_block(
         return false;
     };
     if !is_replaceable(current) {
+        return false;
+    }
+    if is_crossed_plant(selected) && !chunks.block_at(x, y - 1, z).is_some_and(plant_grows_on) {
         return false;
     }
     if !is_opaque_cube(hit.block) && selected == BlockId::Torch {

@@ -5,6 +5,7 @@ use bevy::prelude::Mesh;
 use bevy::render::render_resource::PrimitiveTopology;
 
 use crate::world::block::block::BlockId;
+use crate::world::block::properties::is_crossed_plant;
 use crate::world::block::properties::is_opaque_cube;
 use crate::world::block::properties::is_torch;
 use crate::world::block::properties::torch_normal;
@@ -12,6 +13,7 @@ use crate::world::block::properties::torch_point;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::Chunk;
+use crate::world::chunk::ChunkPos;
 use crate::world::generation::BiomeMap;
 use crate::world::lighting::Skylight;
 use crate::world::lighting::beta_brightness;
@@ -102,6 +104,9 @@ pub struct ChunkMeshes {
     pub grass_overlay: Mesh,
     pub cutout: Mesh,
     pub water: Mesh,
+    /// Crossed flower and tall-grass quads. A separate layer so the material
+    /// can disable back-face culling without affecting grass sides or torches.
+    pub plants: Mesh,
 }
 
 /// Block data surrounding a chunk, used for face culling and ambient
@@ -170,6 +175,8 @@ pub fn mesh_chunk(chunk: &Chunk, skylight: &Skylight) -> Mesh {
         true,
         false,
         0,
+        0,
+        0,
     )
     .opaque
 }
@@ -180,7 +187,7 @@ pub fn mesh_chunk_with_neighbors(
     neighbors: &ChunkNeighbors<'_>,
     skylight: &Skylight,
 ) -> Mesh {
-    mesh_chunk_inner(chunk, neighbors, skylight, None, true, true, false, 0).opaque
+    mesh_chunk_inner(chunk, neighbors, skylight, None, true, true, false, 0, 0, 0).opaque
 }
 
 /// Like [`mesh_chunk`], with lighting and leaf graphics matching the settings menu.
@@ -198,6 +205,8 @@ pub fn mesh_chunk_with_settings(
         old_lighting,
         true,
         fancy_graphics,
+        0,
+        0,
         0,
     )
 }
@@ -219,6 +228,8 @@ pub fn mesh_chunk_with_settings_and_smooth_lighting(
         smooth_lighting,
         fancy_graphics,
         skylight_subtracted,
+        0,
+        0,
     )
 }
 
@@ -239,6 +250,7 @@ pub(crate) fn mesh_chunk_with_biomes(
     smooth_lighting: bool,
     fancy_graphics: bool,
     skylight_subtracted: u8,
+    position: ChunkPos,
 ) -> ChunkMeshes {
     let tints = ColumnTints {
         grass: std::array::from_fn(|index| {
@@ -257,6 +269,8 @@ pub(crate) fn mesh_chunk_with_biomes(
         smooth_lighting,
         fancy_graphics,
         skylight_subtracted,
+        position.x * CHUNK_SIZE as i32,
+        position.z * CHUNK_SIZE as i32,
     )
 }
 
@@ -332,6 +346,69 @@ impl MeshBuffers {
                 [1.0; 4],
                 [1.0; 4],
             );
+        }
+    }
+
+    /// Two 1×1 squares rotated 45° around Y. One winding each; the plant
+    /// material draws both sides.
+    fn push_crossed_plant(
+        &mut self,
+        x: usize,
+        y: usize,
+        z: usize,
+        block: BlockId,
+        origin_x: i32,
+        origin_z: i32,
+        grass_tint: [f32; 3],
+        brightness: f32,
+    ) {
+        let [dx, dy, dz] = crossed_plant_offset(origin_x + x as i32, y as i32, origin_z + z as i32);
+        let center_x = 0.5 + dx;
+        let center_z = 0.5 + dz;
+        let half = 0.5 / std::f32::consts::SQRT_2;
+        let tint = if matches!(block, BlockId::TallGrass | BlockId::Fern) {
+            grass_tint
+        } else {
+            [1.0, 1.0, 1.0]
+        };
+        let color = [
+            tint[0] * brightness,
+            tint[1] * brightness,
+            tint[2] * brightness,
+            1.0,
+        ];
+        let (tile_x, tile_y) = block_tile(block, 0, false);
+        let (u0, v0, u1, v1) = atlas_tile_uvs(tile_x, tile_y);
+        let uvs = [[u0, v0], [u0, v1], [u1, v1], [u1, v0]];
+        let inv_sqrt2 = std::f32::consts::FRAC_1_SQRT_2;
+        let quads = [
+            (
+                [-inv_sqrt2, 0.0, inv_sqrt2],
+                [
+                    [center_x - half, 1.0 + dy, center_z - half],
+                    [center_x - half, dy, center_z - half],
+                    [center_x + half, dy, center_z + half],
+                    [center_x + half, 1.0 + dy, center_z + half],
+                ],
+            ),
+            (
+                [inv_sqrt2, 0.0, inv_sqrt2],
+                [
+                    [center_x - half, 1.0 + dy, center_z + half],
+                    [center_x - half, dy, center_z + half],
+                    [center_x + half, dy, center_z - half],
+                    [center_x + half, 1.0 + dy, center_z - half],
+                ],
+            ),
+        ];
+        for (normal, corners) in quads {
+            let face = Face {
+                neighbor: [0, 0, 0],
+                normal,
+                corners: [[0.0; 3]; 4],
+                shade: 1.0,
+            };
+            self.push_quad(x, y, z, &face, corners, uvs, color, [1.0; 4], [1.0; 4]);
         }
     }
 
@@ -437,11 +514,14 @@ fn mesh_chunk_inner(
     smooth_lighting: bool,
     fancy_graphics: bool,
     skylight_subtracted: u8,
+    origin_x: i32,
+    origin_z: i32,
 ) -> ChunkMeshes {
     let mut opaque = MeshBuffers::default();
     let mut grass_overlay = MeshBuffers::default();
     let mut cutout = MeshBuffers::default();
     let mut water = MeshBuffers::default();
+    let mut plants = MeshBuffers::default();
 
     for y in 0..CHUNK_HEIGHT {
         for z in 0..CHUNK_SIZE {
@@ -452,6 +532,22 @@ fn mesh_chunk_inner(
                 }
                 if is_torch(block) {
                     grass_overlay.push_torch(x, y, z, block);
+                    continue;
+                }
+                if is_crossed_plant(block) {
+                    let grass_tint = tints
+                        .map(|tints| tints.grass[z * CHUNK_SIZE + x])
+                        .unwrap_or([0.55, 0.8, 0.4]);
+                    let level =
+                        skylight.light_at(x as i32, y as i32, z as i32, skylight_subtracted);
+                    let brightness = if old_lighting {
+                        beta_brightness(level)
+                    } else {
+                        1.0
+                    };
+                    plants.push_crossed_plant(
+                        x, y, z, block, origin_x, origin_z, grass_tint, brightness,
+                    );
                     continue;
                 }
 
@@ -559,7 +655,25 @@ fn mesh_chunk_inner(
         grass_overlay: grass_overlay.into_mesh(),
         cutout: cutout.into_mesh(),
         water: water.into_mesh(),
+        plants: plants.into_mesh(),
     }
+}
+
+/// Horizontal jitter from Beta `RenderBlocks.renderBlockReed`.
+///
+/// `x * 3129871` is a Java `int` multiply. The rest is signed 64-bit wrapping
+/// arithmetic. The result is added to the block origin before the crossed quads
+/// are built, so a plant sits slightly off center and sinks up to 0.2 blocks.
+pub fn crossed_plant_offset(x: i32, y: i32, z: i32) -> [f32; 3] {
+    let mut hash =
+        (x.wrapping_mul(3_129_871) as i64) ^ (z as i64).wrapping_mul(116_129_781) ^ y as i64;
+    hash = hash.wrapping_mul(hash).wrapping_mul(42_317_861) + hash.wrapping_mul(11);
+    let nibble = |shift| ((hash >> shift) & 15_i64) as f32 / 15.0;
+    [
+        (nibble(16) - 0.5) * 0.5,
+        (nibble(20) - 1.0) * 0.2,
+        (nibble(24) - 0.5) * 0.5,
+    ]
 }
 
 /// Per-corner ambient occlusion matching the original voxel renderer. A
@@ -680,7 +794,11 @@ fn neighbor_hides_face(block: BlockId, neighbor: Option<BlockId>, fancy_graphics
     let Some(neighbor) = neighbor else {
         return false;
     };
-    if neighbor == BlockId::Air || neighbor == BlockId::Water || is_torch(neighbor) {
+    if neighbor == BlockId::Air
+        || neighbor == BlockId::Water
+        || is_torch(neighbor)
+        || is_crossed_plant(neighbor)
+    {
         return false;
     }
     if fancy_graphics && is_leaf(block) && is_leaf(neighbor) {

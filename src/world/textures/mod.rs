@@ -62,6 +62,10 @@ pub(crate) struct CutoutMaterial(pub Handle<LeafCutoutMaterial>);
 #[derive(Resource)]
 pub(crate) struct WaterMaterial(pub Handle<StandardMaterial>);
 
+/// Crossed flower and tall-grass quads. Cutout, drawn from both sides.
+#[derive(Resource)]
+pub(crate) struct PlantMaterial(pub Handle<StandardMaterial>);
+
 #[derive(Resource)]
 struct PendingTerrainAtlas(Handle<Image>);
 
@@ -125,10 +129,19 @@ fn load_terrain_atlas(
     };
     apply_water_quality(&mut water, settings.graphics);
     let water = materials.add(water);
+    let plants = materials.add(StandardMaterial {
+        perceptual_roughness: 1.0,
+        alpha_mode: AlphaMode::Mask(0.5),
+        cull_mode: None,
+        double_sided: true,
+        unlit: settings.old_lighting,
+        ..default()
+    });
     commands.insert_resource(TerrainMaterial(material));
     commands.insert_resource(GrassOverlayMaterial(grass_overlay));
     commands.insert_resource(CutoutMaterial(cutout));
     commands.insert_resource(WaterMaterial(water));
+    commands.insert_resource(PlantMaterial(plants));
     commands.insert_resource(PendingTerrainAtlas(image));
     commands.insert_resource(GrassColors::load());
     commands.insert_resource(FoliageColors::load());
@@ -142,6 +155,7 @@ fn apply_terrain_atlas(
     grass_overlay_material: Res<GrassOverlayMaterial>,
     cutout_material: Res<CutoutMaterial>,
     water_material: Res<WaterMaterial>,
+    plant_material: Res<PlantMaterial>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut cutout_materials: ResMut<Assets<LeafCutoutMaterial>>,
 ) {
@@ -166,6 +180,9 @@ fn apply_terrain_atlas(
     if let Some(mut material) = materials.get_mut(&water_material.0) {
         material.base_color_texture = Some(handle.clone());
     }
+    if let Some(mut material) = materials.get_mut(&plant_material.0) {
+        material.base_color_texture = Some(handle.clone());
+    }
     water::start_water_animation(&mut commands, handle, &mut image);
     commands.remove_resource::<PendingTerrainAtlas>();
 }
@@ -176,6 +193,7 @@ fn apply_graphics_materials(
     grass_overlay_material: Res<GrassOverlayMaterial>,
     cutout_material: Res<CutoutMaterial>,
     water_material: Res<WaterMaterial>,
+    plant_material: Res<PlantMaterial>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut cutout_materials: ResMut<Assets<LeafCutoutMaterial>>,
 ) {
@@ -194,6 +212,9 @@ fn apply_graphics_materials(
     if let Some(mut material) = materials.get_mut(&water_material.0) {
         material.unlit = settings.old_lighting;
         apply_water_quality(&mut material, settings.graphics);
+    }
+    if let Some(mut material) = materials.get_mut(&plant_material.0) {
+        material.unlit = settings.old_lighting;
     }
 }
 
@@ -347,6 +368,10 @@ pub fn block_tile(
         | BlockId::TorchEast
         | BlockId::TorchNorth
         | BlockId::TorchSouth => (0, 5),
+        BlockId::Dandelion => (13, 0),
+        BlockId::Rose => (12, 0),
+        BlockId::TallGrass => (7, 2),
+        BlockId::Fern => (8, 3),
         BlockId::Water => water::WATER_STILL_TILE,
         BlockId::Ice => (3, 4),
         _ => (1, 0),

@@ -117,6 +117,9 @@ pub enum BlockId {
     TorchEast = 205,
     TorchNorth = 206,
     TorchSouth = 207,
+    /// Tall grass metadata 2. Beta stores this on the tall-grass block; chunks
+    /// have no metadata, so fern is its own value, like birch wood.
+    Fern = 208,
 }
 
 impl BlockId {
@@ -231,6 +234,7 @@ impl BlockId {
             205 => Self::TorchEast,
             206 => Self::TorchNorth,
             207 => Self::TorchSouth,
+            208 => Self::Fern,
             _ => return None,
         })
     }
@@ -342,6 +346,7 @@ impl BlockId {
             Self::TorchEast => "torch_east",
             Self::TorchNorth => "torch_north",
             Self::TorchSouth => "torch_south",
+            Self::Fern => "fern",
         }
     }
 
@@ -381,6 +386,10 @@ impl BlockId {
                 | Self::MossyCobblestone
                 | Self::Obsidian
                 | Self::Torch
+                | Self::TallGrass
+                | Self::Dandelion
+                | Self::Rose
+                | Self::Fern
                 | Self::DiamondOre
                 | Self::DiamondBlock
                 | Self::CraftingTable
@@ -420,6 +429,7 @@ impl BlockId {
             | Self::TorchEast
             | Self::TorchNorth
             | Self::TorchSouth => (Self::Torch, 0),
+            Self::Fern => (Self::TallGrass, 2),
             block => (block, 0),
         }
     }
@@ -437,6 +447,8 @@ impl BlockId {
             (Self::Torch, 2) => Some(Self::TorchEast),
             (Self::Torch, 3) => Some(Self::TorchNorth),
             (Self::Torch, 4) => Some(Self::TorchSouth),
+            (Self::TallGrass, 0 | 1) => Some(Self::TallGrass),
+            (Self::TallGrass, 2) => Some(Self::Fern),
             (block, 0) if block.in_world() => Some(block),
             _ => None,
         }

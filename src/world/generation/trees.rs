@@ -30,6 +30,7 @@ use crate::world::chunk::ChunkPos;
 use super::biome::Biome;
 use super::biome::Climate;
 use super::java_random::JavaRandom;
+use super::plants::place_plants;
 use super::surface::ground_column;
 use super::terrain::TerrainGenerator;
 
@@ -214,6 +215,29 @@ fn populate(
         let mut tree_rand = JavaRandom::new(rand.next_long() as u64);
         generate(kind, &mut world, &mut tree_rand, origin);
     }
+
+    // Flowers and tall grass follow trees on this same random sequence.
+    // Drawing them earlier would move every tree.
+    place_plants(
+        world.chunk,
+        target,
+        source,
+        &mut rand,
+        biome,
+        |world_x, world_z| {
+            ground_at(
+                target,
+                heights,
+                grounds,
+                remote_ground,
+                terrain,
+                climate_at,
+                world_x,
+                world_z,
+            )
+            .0
+        },
+    );
 }
 
 fn select_tree(biome: Biome, rand: &mut JavaRandom) -> TreeKind {

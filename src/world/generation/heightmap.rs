@@ -1,4 +1,5 @@
 use crate::world::block::block::BlockId;
+use crate::world::block::properties::is_crossed_plant;
 use crate::world::block::properties::is_torch;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;
@@ -16,11 +17,7 @@ impl Heightmap {
             for z in 0..CHUNK_SIZE {
                 let top = (0..CHUNK_HEIGHT)
                     .rev()
-                    .find(|&y| {
-                        chunk.get(x, y, z).is_some_and(|block| {
-                            !matches!(block, BlockId::Air | BlockId::Water) && !is_torch(block)
-                        })
-                    })
+                    .find(|&y| chunk.get(x, y, z).is_some_and(occupies_column))
                     .map_or(0, |y| y + 1);
                 heights[x * CHUNK_SIZE + z] = top as u8;
             }
@@ -47,11 +44,7 @@ impl Heightmap {
     pub fn recompute_column(&mut self, chunk: &Chunk, x: usize, z: usize) {
         let top = (0..CHUNK_HEIGHT)
             .rev()
-            .find(|&y| {
-                chunk.get(x, y, z).is_some_and(|block| {
-                    !matches!(block, BlockId::Air | BlockId::Water) && !is_torch(block)
-                })
-            })
+            .find(|&y| chunk.get(x, y, z).is_some_and(occupies_column))
             .map_or(0, |y| y + 1);
         self.heights[x * CHUNK_SIZE + z] = top as u8;
     }
@@ -59,4 +52,10 @@ impl Heightmap {
     pub fn max(&self) -> u8 {
         self.heights.iter().copied().max().unwrap_or(0)
     }
+}
+
+/// Blocks that raise the ground surface. Plants and torches stand in the air
+/// cell above that surface.
+fn occupies_column(block: BlockId) -> bool {
+    !matches!(block, BlockId::Air | BlockId::Water) && !is_torch(block) && !is_crossed_plant(block)
 }

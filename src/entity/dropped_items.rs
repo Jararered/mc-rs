@@ -24,6 +24,7 @@ use crate::physics::move_entity;
 use crate::player::Player;
 use crate::ui::block_icons::BlockIcons;
 use crate::world::block::block::BlockId;
+use crate::world::block::properties::is_crossed_plant;
 use crate::world::block::properties::is_opaque_cube;
 use crate::world::block::properties::is_torch;
 use crate::world::chunk::CHUNK_SIZE;
@@ -494,7 +495,11 @@ pub fn item_piece_transform(
 /// Full cubes we already mesh in the world. Torches stay sprites (`renderType` 2).
 pub fn dropped_block_model(stack: ItemStack) -> Option<BlockId> {
     let block = stack.runtime_block()?;
-    if is_torch(block) { None } else { Some(block) }
+    if is_torch(block) || is_crossed_plant(block) {
+        None
+    } else {
+        Some(block)
+    }
 }
 
 fn tick_dropped_items(

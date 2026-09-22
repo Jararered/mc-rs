@@ -88,7 +88,12 @@ fn distant_chunks_release_world_data_entities_and_meshes() {
             .get(ChunkPos::ZERO)
             .is_none()
     );
-    assert!(app.world().resource::<Assets<Mesh>>().is_empty());
+    assert_eq!(
+        app.world()
+            .resource::<WorldStreaming>()
+            .rendered_mesh_count(),
+        0
+    );
     assert_eq!(rendered_positions(&mut app).len(), 0);
 
     let destination = ChunkPos { x: 8, z: 0 };
@@ -157,8 +162,17 @@ fn spawn_chunk_waits_for_all_neighbor_block_data_before_its_first_mesh() {
     assert!(run_until(&mut app, Duration::from_secs(5), |app| {
         rendered_positions(app).contains(&ChunkPos::ZERO)
     }));
-    let mut layers = app.world_mut().query::<(Entity, &Mesh3d)>();
-    let layer_entities: Vec<_> = layers.iter(app.world()).map(|(entity, _)| entity).collect();
+    let mut layers = app.world_mut().query::<(Entity, &Mesh3d, &Name)>();
+    let layer_entities: Vec<_> = layers
+        .iter(app.world())
+        .filter(|(_, _, name)| {
+            matches!(
+                name.as_str(),
+                "Opaque" | "Grass overlay" | "Cutout" | "Water" | "Plants"
+            )
+        })
+        .map(|(entity, _, _)| entity)
+        .collect();
     assert!(
         !layer_entities.is_empty(),
         "rendered chunks need mesh bounds"

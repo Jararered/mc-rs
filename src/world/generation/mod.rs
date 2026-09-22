@@ -3,6 +3,7 @@ mod generator;
 mod heightmap;
 mod java_random;
 mod noise;
+mod plants;
 mod surface;
 mod terrain;
 mod trees;

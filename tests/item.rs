@@ -16,7 +16,7 @@ fn registries_cover_beta_ranges_without_registering_holes_or_air_items() {
         (0..=u8::MAX)
             .filter(|raw| BlockId::from_u8(*raw).is_some())
             .count(),
-        105
+        106
     );
     assert_eq!(ItemRegistry::iter().count(), 202);
     for raw in 0..=u16::MAX {
@@ -37,7 +37,7 @@ fn registries_cover_beta_ranges_without_registering_holes_or_air_items() {
                 assert_eq!(block.as_u8(), raw);
                 assert!(!block.name().is_empty());
             }
-            None => assert!(raw > 96 && !(200..=207).contains(&raw)),
+            None => assert!(raw > 96 && !(200..=208).contains(&raw)),
         }
     }
 }

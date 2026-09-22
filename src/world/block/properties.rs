@@ -7,6 +7,9 @@ use super::block::BlockId;
 /// Leaves are treated as non-opaque (the reference's fancy-graphics behaviour),
 /// so canopies stay dense where they overlap.
 pub fn is_opaque_cube(block: BlockId) -> bool {
+    if is_crossed_plant(block) {
+        return false;
+    }
     !matches!(
         block,
         BlockId::Air
@@ -28,7 +31,20 @@ pub fn is_opaque_cube(block: BlockId) -> bool {
 /// Fluids have no collision box in Beta (`getCollisionBoundingBoxFromPool`
 /// returns null). Everything else currently in the registry is a full cube.
 pub fn blocks_movement(block: BlockId) -> bool {
-    !matches!(block, BlockId::Air | BlockId::Water) && !is_torch(block)
+    !matches!(block, BlockId::Air | BlockId::Water) && !is_torch(block) && !is_crossed_plant(block)
+}
+
+/// Dandelion, rose, tall grass, and fern. Two crossed sprites, no collision.
+pub fn is_crossed_plant(block: BlockId) -> bool {
+    matches!(
+        block,
+        BlockId::Dandelion | BlockId::Rose | BlockId::TallGrass | BlockId::Fern
+    )
+}
+
+/// `BlockFlower.canThisPlantGrowOnThisBlockID`.
+pub fn plant_grows_on(block: BlockId) -> bool {
+    matches!(block, BlockId::Grass | BlockId::Dirt | BlockId::Farmland)
 }
 
 pub fn is_torch(block: BlockId) -> bool {
@@ -92,6 +108,15 @@ pub fn torch_normal(block: BlockId, normal: [f32; 3]) -> [f32; 3] {
 
 /// Local bounds used for picking and the hover outline.
 pub fn selection_bounds(block: BlockId) -> ([f32; 3], [f32; 3]) {
+    if is_crossed_plant(block) {
+        // `BlockFlower` uses a 0.2 inset; tall grass overrides that with 0.4
+        // across and a top at 0.8. The render offset does not move this box.
+        return if matches!(block, BlockId::Dandelion | BlockId::Rose) {
+            ([0.3, 0.0, 0.3], [0.7, 0.6, 0.7])
+        } else {
+            ([0.1, 0.0, 0.1], [0.9, 0.8, 0.9])
+        };
+    }
     if !is_torch(block) {
         return ([0.0; 3], [1.0; 3]);
     }
@@ -201,6 +226,7 @@ pub fn hardness(block: BlockId) -> f32 {
         | BlockId::MovingPiston
         | BlockId::Dandelion
         | BlockId::Rose
+        | BlockId::Fern
         | BlockId::BrownMushroom
         | BlockId::RedMushroom
         | BlockId::StoneSlab

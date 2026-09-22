@@ -65,7 +65,11 @@ pub fn block_appearance(id: u8, data: u16) -> Appearance {
         2 => Appearance::faces(Shape::Cube, 0, 3, 3),
         3 => Appearance::cube(2),
         4 => Appearance::cube(16),
-        5 => Appearance::cube(4),
+        5 => Appearance::cube(4).tint(match data {
+            1 => 0xD6B183,
+            2 => 0xFFF6DA,
+            _ => 0xFFFFFF,
+        }),
         6 => Appearance::flat(match data {
             1 => 63,
             2 => 79,

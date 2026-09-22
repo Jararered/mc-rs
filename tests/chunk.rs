@@ -102,6 +102,28 @@ fn ambient_occlusion_darkens_enclosed_face_corners() {
 }
 
 #[test]
+fn species_plank_meshes_apply_distinct_vertex_tints() {
+    let first_vertex_color = |block| {
+        let mut chunk = Chunk::new();
+        chunk.set(1, 1, 1, block);
+        let mesh = mesh_chunk(&chunk, &Skylight::from_chunk(&chunk));
+        let Some(VertexAttributeValues::Float32x4(colors)) = mesh.attribute(Mesh::ATTRIBUTE_COLOR)
+        else {
+            panic!("terrain mesh should have vertex colors");
+        };
+        colors[0]
+    };
+
+    let oak = first_vertex_color(BlockId::WoodenPlanks);
+    let spruce = first_vertex_color(BlockId::SprucePlanks);
+    let birch = first_vertex_color(BlockId::BirchPlanks);
+
+    assert_ne!(oak, spruce);
+    assert_ne!(oak, birch);
+    assert_ne!(spruce, birch);
+}
+
+#[test]
 fn neighboring_block_data_culls_shared_faces_and_darkens_border_corners() {
     let mut center = Chunk::new();
     center.set(CHUNK_SIZE - 1, 1, 1, BlockId::Stone);

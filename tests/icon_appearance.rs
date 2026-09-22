@@ -30,6 +30,19 @@ fn beta_subtypes_select_distinct_textures() {
 }
 
 #[test]
+fn wood_plank_species_share_the_beta_tile_but_use_species_tints() {
+    let oak = block_appearance(5, 0);
+    let spruce = block_appearance(5, 1);
+    let birch = block_appearance(5, 2);
+
+    assert_eq!((oak.top, spruce.top, birch.top), (4, 4, 4));
+    assert_eq!(oak.tint, [255; 3]);
+    assert_ne!(spruce.tint, oak.tint);
+    assert_ne!(birch.tint, oak.tint);
+    assert_ne!(spruce.tint, birch.tint);
+}
+
+#[test]
 fn standalone_items_use_beta_items_atlas_tiles() {
     assert_eq!(item_tile(256, 0), Some(2 + 5 * 16));
     assert_eq!(item_tile(264, 0), Some(7 + 3 * 16));

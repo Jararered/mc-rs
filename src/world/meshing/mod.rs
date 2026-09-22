@@ -864,6 +864,10 @@ fn block_tint(block: BlockId, foliage: Option<[f32; 3]>) -> [f32; 3] {
         BlockId::Leaves => foliage.unwrap_or([0.28, 0.71, 0.09]),
         BlockId::BirchLeaves => linear_rgb(128, 167, 85),
         BlockId::SpruceLeaves => linear_rgb(97, 153, 97),
+        // Beta 1.7.3 only has the oak plank tile. These species variants use
+        // that tile with a color multiplier, matching the game's tint path.
+        BlockId::SprucePlanks => linear_rgb(214, 177, 131),
+        BlockId::BirchPlanks => linear_rgb(255, 246, 218),
         _ => [1.0, 1.0, 1.0],
     }
 }

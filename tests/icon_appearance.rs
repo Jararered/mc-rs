@@ -51,6 +51,12 @@ fn crafting_table_uses_workbench_tiles_in_world_meshes() {
 }
 
 #[test]
+fn snow_layer_and_snow_block_use_beta_snow_tile() {
+    assert_eq!(block_tile(BlockId::SnowLayer, 0, false), (2, 4));
+    assert_eq!(block_tile(BlockId::Snow, 0, false), (2, 4));
+}
+
+#[test]
 fn furnace_faces_follow_orientation_and_lit_state() {
     let furnace = BlockId::Furnace.with_furnace_state(FurnaceFacing::East, false);
     let lit = BlockId::Furnace.with_furnace_state(FurnaceFacing::East, true);

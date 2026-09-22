@@ -11,6 +11,7 @@ use super::biome::BiomeMap;
 use super::caves;
 use super::heightmap::Heightmap;
 use super::population;
+use super::snow::place_snow;
 use super::surface::apply_surface;
 use super::terrain::TerrainGenerator;
 use super::trees::decorate;
@@ -78,6 +79,7 @@ impl WorldGenerator {
             |wx, wz| self.biomes.climate_at(wx, wz),
             |remote| self.generate_undecorated(remote).0,
         );
+        place_snow(&mut chunk, &biomes);
         GeneratedChunk {
             chunk,
             heightmap,

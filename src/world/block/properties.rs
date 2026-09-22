@@ -20,6 +20,7 @@ pub fn is_opaque_cube(block: BlockId) -> bool {
             | BlockId::MobSpawner
             | BlockId::Chest
             | BlockId::Ice
+            | BlockId::SnowLayer
             | BlockId::Leaves
             | BlockId::SpruceLeaves
             | BlockId::BirchLeaves
@@ -33,8 +34,8 @@ pub fn is_opaque_cube(block: BlockId) -> bool {
 
 /// Whether an entity AABB should collide with this block.
 ///
-/// Fluids have no collision box in Beta (`getCollisionBoundingBoxFromPool`
-/// returns null). Everything else currently in the registry is a full cube.
+/// Fluids and plants have no collision box; snow layers collide at their
+/// metadata-free default height of one eighth of a block.
 pub fn blocks_movement(block: BlockId) -> bool {
     !matches!(
         block,
@@ -45,6 +46,18 @@ pub fn blocks_movement(block: BlockId) -> bool {
             | BlockId::FlowingLava
     ) && !is_torch(block)
         && !is_crossed_plant(block)
+}
+
+/// Local collision bounds for a block, if it collides with entities.
+pub fn collision_bounds(block: BlockId) -> Option<([f32; 3], [f32; 3])> {
+    if !blocks_movement(block) {
+        return None;
+    }
+    if block == BlockId::SnowLayer {
+        Some(([0.0; 3], [1.0, 0.125, 1.0]))
+    } else {
+        Some(([0.0; 3], [1.0; 3]))
+    }
 }
 
 /// Dandelion, rose, tall grass, and fern. Two crossed sprites, no collision.
@@ -121,6 +134,9 @@ pub fn torch_normal(block: BlockId, normal: [f32; 3]) -> [f32; 3] {
 
 /// Local bounds used for picking and the hover outline.
 pub fn selection_bounds(block: BlockId) -> ([f32; 3], [f32; 3]) {
+    if block == BlockId::SnowLayer {
+        return ([0.0; 3], [1.0, 0.125, 1.0]);
+    }
     if is_crossed_plant(block) {
         // `BlockFlower` uses a 0.2 inset; tall grass overrides that with 0.4
         // across and a top at 0.8. The render offset does not move this box.
@@ -232,6 +248,7 @@ pub fn hardness(block: BlockId) -> f32 {
         BlockId::CraftingTable => 2.5,
         BlockId::RedstoneOre | BlockId::LitRedstoneOre => 3.0,
         BlockId::Ice => 0.5,
+        BlockId::SnowLayer => 0.1,
         BlockId::Snow => 0.2,
         BlockId::Clay => 0.6,
         BlockId::Jukebox => 2.0,
@@ -290,7 +307,6 @@ pub fn hardness(block: BlockId) -> f32 {
         | BlockId::UnlitRedstoneTorch
         | BlockId::RedstoneTorch
         | BlockId::StoneButton
-        | BlockId::SnowLayer
         | BlockId::Cactus
         | BlockId::SugarCane
         | BlockId::Fence

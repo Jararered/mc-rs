@@ -77,6 +77,33 @@ fn forest_chunk_contains_grounded_trees_with_canopies() {
 }
 
 #[test]
+fn taiga_chunks_generate_spruce_trees() {
+    for seed in 0..8 {
+        let generator = WorldGenerator::new(seed);
+        for z in (-8..=8).step_by(2) {
+            for x in (-8..=8).step_by(2) {
+                let generated = generator.generate(ChunkPos { x, z });
+                let contains_taiga = generated
+                    .biomes
+                    .cells()
+                    .iter()
+                    .any(|climate| climate.biome == Biome::Taiga);
+                if !contains_taiga {
+                    continue;
+                }
+                let spruce_trunks = count(&generated.chunk, BlockId::SpruceWood);
+                let spruce_leaves = count(&generated.chunk, BlockId::SpruceLeaves);
+                if spruce_trunks > 0 {
+                    assert!(spruce_leaves > 0, "spruce trunks need spruce canopies");
+                    return;
+                }
+            }
+        }
+    }
+    panic!("expected a sampled taiga region to generate spruce trees");
+}
+
+#[test]
 fn tree_generation_is_deterministic() {
     let position = ChunkPos { x: -2, z: 3 };
     let first = WorldGenerator::new(7).generate(position);

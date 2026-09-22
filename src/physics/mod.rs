@@ -20,7 +20,7 @@ use crate::entity::Flying;
 use crate::entity::Gravity;
 use crate::entity::StepHeight;
 use crate::entity::Velocity;
-use crate::world::block::properties::blocks_movement;
+use crate::world::block::properties::collision_bounds;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::ChunkPos;
 use crate::world::chunk::WorldChunks;
@@ -331,15 +331,18 @@ pub fn colliding_aabbs(chunks: &WorldChunks, area: Aabb) -> Vec<Aabb> {
                 if y >= CHUNK_HEIGHT as i32 {
                     continue;
                 }
-                let solid = if y < 0 {
-                    true
+                let block = if y < 0 {
+                    Aabb::from_block(x, y, z)
+                } else if let Some((min, max)) = chunks.block_at(x, y, z).and_then(collision_bounds)
+                {
+                    let origin = Vec3::new(x as f32, y as f32, z as f32);
+                    Aabb::new(
+                        origin + Vec3::from_array(min),
+                        origin + Vec3::from_array(max),
+                    )
                 } else {
-                    chunks.block_at(x, y, z).is_some_and(blocks_movement)
-                };
-                if !solid {
                     continue;
-                }
-                let block = Aabb::from_block(x, y, z);
+                };
                 if area.intersects(block) {
                     boxes.push(block);
                 }

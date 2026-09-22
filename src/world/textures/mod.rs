@@ -397,7 +397,7 @@ pub fn block_tile(
         BlockId::MossyCobblestone => (4, 2),
         BlockId::Obsidian => (5, 2),
         BlockId::DiamondOre => (2, 3),
-        BlockId::Snow => (2, 4),
+        BlockId::SnowLayer | BlockId::Snow => (2, 4),
         BlockId::Clay => (8, 4),
         BlockId::MobSpawner => (1, 4),
         BlockId::Chest if face == 0 || face == 1 => (9, 1),

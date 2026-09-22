@@ -164,7 +164,7 @@ fn hit_at(
     if !is_targetable(block) {
         return None;
     }
-    if is_torch(block) {
+    if is_torch(block) || block == BlockId::SnowLayer {
         let (min, max) = selection_bounds(block);
         let block_origin = Vec3::new(x as f32, y as f32, z as f32);
         if !ray_intersects_box(

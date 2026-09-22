@@ -429,9 +429,14 @@ impl MeshBuffers {
         y_drop: f32,
     ) {
         let uvs = face_uvs(block, face_index, fancy_graphics);
+        let shape_height = if block == BlockId::SnowLayer {
+            0.125
+        } else {
+            1.0
+        };
         let corners = face
             .corners
-            .map(|corner| [corner[0], corner[1] - y_drop, corner[2]]);
+            .map(|corner| [corner[0], corner[1] * shape_height - y_drop, corner[2]]);
         self.push_quad(x, y, z, face, corners, uvs, color, corner_ao, corner_light);
     }
 
@@ -812,6 +817,7 @@ fn neighbor_hides_face(block: BlockId, neighbor: Option<BlockId>, fancy_graphics
         return false;
     };
     if neighbor == BlockId::Air
+        || neighbor == BlockId::SnowLayer
         || neighbor == BlockId::Water
         || neighbor == BlockId::FlowingWater
         || neighbor == BlockId::Lava

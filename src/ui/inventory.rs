@@ -143,9 +143,7 @@ fn validate_furnace(
     };
     let delta = transform.translation - Vec3::new(x as f32 + 0.5, y as f32 + 0.5, z as f32 + 0.5);
     let block = chunks.block_at(x, y, z);
-    if matches!(block, Some(BlockId::Furnace | BlockId::LitFurnace))
-        && delta.length_squared() <= 64.0
-    {
+    if block.is_some_and(BlockId::is_furnace) && delta.length_squared() <= 64.0 {
         return;
     }
     screen.open = false;

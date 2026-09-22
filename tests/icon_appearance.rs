@@ -2,6 +2,7 @@ use game::ui::icon_appearance::Shape;
 use game::ui::icon_appearance::block_appearance;
 use game::ui::icon_appearance::item_tile;
 use game::world::block::block::BlockId;
+use game::world::block::block::FurnaceFacing;
 use game::world::textures::block_tile;
 
 #[test]
@@ -47,6 +48,22 @@ fn crafting_table_uses_workbench_tiles_in_world_meshes() {
     assert_eq!(block_tile(BlockId::CraftingTable, 4, true), (12, 3));
     assert_eq!(block_tile(BlockId::CraftingTable, 5, true), (11, 3));
     assert_ne!(block_tile(BlockId::CraftingTable, 0, true), (1, 0));
+}
+
+#[test]
+fn furnace_faces_follow_orientation_and_lit_state() {
+    let furnace = BlockId::Furnace.with_furnace_state(FurnaceFacing::East, false);
+    let lit = BlockId::Furnace.with_furnace_state(FurnaceFacing::East, true);
+
+    assert_eq!(block_tile(furnace, 0, false), (14, 3));
+    assert_eq!(block_tile(furnace, 2, false), (12, 2));
+    assert_eq!(block_tile(furnace, 3, false), (13, 2));
+    assert_eq!(block_tile(lit, 0, false), (14, 3));
+    assert_eq!(block_tile(lit, 2, false), (13, 3));
+    assert_eq!(block_tile(lit, 3, false), (13, 2));
+    assert_eq!(lit.furnace_facing(), Some(FurnaceFacing::East));
+    assert_eq!(lit.item_form(), (BlockId::Furnace, 0));
+    assert_eq!(lit.as_u8(), BlockId::from_u8(lit.as_u8()).unwrap().as_u8());
 }
 
 #[test]

@@ -24,6 +24,7 @@ pub use interaction::PLACED_BLOCK;
 pub use interaction::break_block;
 pub use interaction::place_block;
 pub use interaction::place_selected_block;
+pub use interaction::place_selected_block_facing;
 pub use mining::MiningState;
 pub use mining::destroy_stage;
 pub use mining::hand_ticks_to_break;

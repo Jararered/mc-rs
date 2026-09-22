@@ -1,7 +1,29 @@
 //! Chunk block identity. Discriminants `0..=96` are the Beta 1.7.3 block ids,
 //! including blocks the world does not place yet. `200..` are private chunk
-//! values for wood species and torch facing.
+//! values for wood species, torch facing, and furnace facing.
 use crate::item::registry::ItemData;
+
+/// Horizontal face presented as the front of a furnace.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum FurnaceFacing {
+    #[default]
+    North,
+    East,
+    South,
+    West,
+}
+
+impl FurnaceFacing {
+    /// Mesh face index that points outwards from the furnace front.
+    pub const fn face_index(self) -> usize {
+        match self {
+            Self::East => 2,
+            Self::West => 3,
+            Self::South => 4,
+            Self::North => 5,
+        }
+    }
+}
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -120,6 +142,14 @@ pub enum BlockId {
     /// Tall grass metadata 2. Beta stores this on the tall-grass block; chunks
     /// have no metadata, so fern is its own value, like birch wood.
     Fern = 208,
+    FurnaceNorth = 209,
+    FurnaceEast = 210,
+    FurnaceSouth = 211,
+    FurnaceWest = 212,
+    LitFurnaceNorth = 213,
+    LitFurnaceEast = 214,
+    LitFurnaceSouth = 215,
+    LitFurnaceWest = 216,
 }
 
 impl BlockId {
@@ -218,6 +248,14 @@ impl BlockId {
             86 => Self::Pumpkin,
             87 => Self::Netherrack,
             88 => Self::SoulSand,
+            209 => Self::FurnaceNorth,
+            210 => Self::FurnaceEast,
+            211 => Self::FurnaceSouth,
+            212 => Self::FurnaceWest,
+            213 => Self::LitFurnaceNorth,
+            214 => Self::LitFurnaceEast,
+            215 => Self::LitFurnaceSouth,
+            216 => Self::LitFurnaceWest,
             89 => Self::Glowstone,
             90 => Self::NetherPortal,
             91 => Self::JackOLantern,
@@ -347,6 +385,14 @@ impl BlockId {
             Self::TorchNorth => "torch_north",
             Self::TorchSouth => "torch_south",
             Self::Fern => "fern",
+            Self::FurnaceNorth => "furnace_north",
+            Self::FurnaceEast => "furnace_east",
+            Self::FurnaceSouth => "furnace_south",
+            Self::FurnaceWest => "furnace_west",
+            Self::LitFurnaceNorth => "lit_furnace_north",
+            Self::LitFurnaceEast => "lit_furnace_east",
+            Self::LitFurnaceSouth => "lit_furnace_south",
+            Self::LitFurnaceWest => "lit_furnace_west",
         }
     }
 
@@ -394,6 +440,14 @@ impl BlockId {
                 | Self::Dandelion
                 | Self::Rose
                 | Self::Fern
+                | Self::FurnaceNorth
+                | Self::FurnaceEast
+                | Self::FurnaceSouth
+                | Self::FurnaceWest
+                | Self::LitFurnaceNorth
+                | Self::LitFurnaceEast
+                | Self::LitFurnaceSouth
+                | Self::LitFurnaceWest
                 | Self::DiamondOre
                 | Self::DiamondBlock
                 | Self::CraftingTable
@@ -420,6 +474,78 @@ impl BlockId {
         )
     }
 
+    pub const fn is_furnace(self) -> bool {
+        matches!(
+            self,
+            Self::Furnace
+                | Self::LitFurnace
+                | Self::FurnaceNorth
+                | Self::FurnaceEast
+                | Self::FurnaceSouth
+                | Self::FurnaceWest
+                | Self::LitFurnaceNorth
+                | Self::LitFurnaceEast
+                | Self::LitFurnaceSouth
+                | Self::LitFurnaceWest
+        )
+    }
+
+    pub const fn is_lit_furnace(self) -> bool {
+        matches!(
+            self,
+            Self::LitFurnace
+                | Self::LitFurnaceNorth
+                | Self::LitFurnaceEast
+                | Self::LitFurnaceSouth
+                | Self::LitFurnaceWest
+        )
+    }
+
+    pub const fn furnace_facing(self) -> Option<FurnaceFacing> {
+        match self {
+            Self::FurnaceEast | Self::LitFurnaceEast => Some(FurnaceFacing::East),
+            Self::FurnaceSouth | Self::LitFurnaceSouth => Some(FurnaceFacing::South),
+            Self::FurnaceWest | Self::LitFurnaceWest => Some(FurnaceFacing::West),
+            Self::Furnace | Self::LitFurnace | Self::FurnaceNorth | Self::LitFurnaceNorth => {
+                Some(FurnaceFacing::North)
+            }
+            _ => None,
+        }
+    }
+
+    pub const fn with_furnace_state(self, facing: FurnaceFacing, lit: bool) -> Self {
+        match (facing, lit) {
+            (FurnaceFacing::North, false) => Self::FurnaceNorth,
+            (FurnaceFacing::East, false) => Self::FurnaceEast,
+            (FurnaceFacing::South, false) => Self::FurnaceSouth,
+            (FurnaceFacing::West, false) => Self::FurnaceWest,
+            (FurnaceFacing::North, true) => Self::LitFurnaceNorth,
+            (FurnaceFacing::East, true) => Self::LitFurnaceEast,
+            (FurnaceFacing::South, true) => Self::LitFurnaceSouth,
+            (FurnaceFacing::West, true) => Self::LitFurnaceWest,
+        }
+    }
+
+    pub fn with_furnace_lit(self, lit: bool) -> Self {
+        match self {
+            Self::Furnace if lit => Self::LitFurnace,
+            Self::LitFurnace if !lit => Self::Furnace,
+            Self::FurnaceNorth | Self::LitFurnaceNorth => {
+                Self::Furnace.with_furnace_state(FurnaceFacing::North, lit)
+            }
+            Self::FurnaceEast | Self::LitFurnaceEast => {
+                Self::Furnace.with_furnace_state(FurnaceFacing::East, lit)
+            }
+            Self::FurnaceSouth | Self::LitFurnaceSouth => {
+                Self::Furnace.with_furnace_state(FurnaceFacing::South, lit)
+            }
+            Self::FurnaceWest | Self::LitFurnaceWest => {
+                Self::Furnace.with_furnace_state(FurnaceFacing::West, lit)
+            }
+            block => block,
+        }
+    }
+
     /// Stack identity for this chunk block. Species stays in the metadata.
     /// Torch facing is dropped.
     pub const fn item_form(self) -> (Self, u8) {
@@ -434,6 +560,15 @@ impl BlockId {
             | Self::TorchNorth
             | Self::TorchSouth => (Self::Torch, 0),
             Self::Fern => (Self::TallGrass, 2),
+            Self::FurnaceNorth
+            | Self::FurnaceEast
+            | Self::FurnaceSouth
+            | Self::FurnaceWest
+            | Self::LitFurnaceNorth
+            | Self::LitFurnaceEast
+            | Self::LitFurnaceSouth
+            | Self::LitFurnaceWest
+            | Self::LitFurnace => (Self::Furnace, 0),
             block => (block, 0),
         }
     }

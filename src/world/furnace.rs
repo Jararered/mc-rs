@@ -8,7 +8,6 @@ use crate::item::ItemStack;
 use crate::world::block::block::BlockId;
 use crate::world::chunk::ChunkPos;
 use crate::world::chunk::WorldChunks;
-use crate::world::chunk::remesh_chunks_touching;
 use crate::world::persistence::WorldPersistence;
 use crate::world::streaming::WorldStreaming;
 use crate::world::tick::WorldTick;
@@ -186,18 +185,21 @@ pub fn tick_furnaces(
             changed = *furnace != before;
         }
         let block = chunks.block_at(x, y, z);
-        if matches!(block, Some(BlockId::Furnace | BlockId::LitFurnace))
-            && (block == Some(BlockId::LitFurnace)) != burning
+        if let Some(block) = block
+            && block.is_furnace()
+            && block.is_lit_furnace() != burning
         {
-            let next = if block == Some(BlockId::Furnace) {
-                BlockId::LitFurnace
-            } else {
-                BlockId::Furnace
-            };
+            let next = block.with_furnace_lit(burning);
             chunks.set_block(x, y, z, next);
             if let Some(streaming) = streaming.as_deref_mut() {
-                for position in remesh_chunks_touching(x, z) {
-                    streaming.request_remesh(position);
+                let center = ChunkPos::from_block(x, z);
+                for dz in -1..=1 {
+                    for dx in -1..=1 {
+                        streaming.request_remesh(ChunkPos {
+                            x: center.x + dx,
+                            z: center.z + dz,
+                        });
+                    }
                 }
             }
         }

@@ -98,7 +98,7 @@ impl Chunk {
 }
 
 fn is_furnace(block: BlockId) -> bool {
-    matches!(block, BlockId::Furnace | BlockId::LitFurnace)
+    block.is_furnace()
 }
 
 impl Default for Chunk {

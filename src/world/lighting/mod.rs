@@ -700,7 +700,7 @@ pub fn light_emission(block: BlockId) -> u8 {
         BlockId::Glowstone | BlockId::JackOLantern => 15,
         BlockId::Lava | BlockId::FlowingLava => 15,
         block if is_torch(block) => 15,
-        BlockId::LitFurnace => 13,
+        block if block.is_lit_furnace() => 13,
         BlockId::LitRedstoneOre => 9,
         _ => 0,
     }

@@ -531,7 +531,7 @@ impl StoredChunk {
             let x = index % CHUNK_SIZE;
             if !matches!(
                 chunk.get(x, y, z),
-                Some(BlockId::Furnace | BlockId::LitFurnace)
+                Some(block) if block.is_furnace()
             ) {
                 continue;
             }

@@ -230,7 +230,6 @@ pub fn hardness(block: BlockId) -> f32 {
         BlockId::DiamondOre => 3.0,
         BlockId::DiamondBlock => 5.0,
         BlockId::CraftingTable => 2.5,
-        BlockId::Furnace | BlockId::LitFurnace => 3.5,
         BlockId::RedstoneOre | BlockId::LitRedstoneOre => 3.0,
         BlockId::Ice => 0.5,
         BlockId::Snow => 0.2,
@@ -239,6 +238,16 @@ pub fn hardness(block: BlockId) -> f32 {
         BlockId::Pumpkin | BlockId::JackOLantern => 1.0,
         BlockId::Netherrack => 0.4,
         BlockId::Glowstone => 0.3,
+        BlockId::Furnace
+        | BlockId::LitFurnace
+        | BlockId::FurnaceNorth
+        | BlockId::FurnaceEast
+        | BlockId::FurnaceSouth
+        | BlockId::FurnaceWest
+        | BlockId::LitFurnaceNorth
+        | BlockId::LitFurnaceEast
+        | BlockId::LitFurnaceSouth
+        | BlockId::LitFurnaceWest => 3.5,
         // Catalog blocks are not placed, so this value is never sampled.
         BlockId::Sapling
         | BlockId::FlowingWater
@@ -298,6 +307,9 @@ pub fn hardness(block: BlockId) -> f32 {
 /// Empty-hand `InventoryPlayer.canHarvestBlock`: true unless the material used
 /// `setNoHarvest` (rock, iron, snow, web).
 pub fn harvestable_by_hand(block: BlockId) -> bool {
+    if block.is_furnace() {
+        return false;
+    }
     !matches!(
         block,
         BlockId::Stone

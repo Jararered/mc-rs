@@ -305,6 +305,41 @@ pub fn block_tile(
     use super::block::block::BlockId;
 
     match block {
+        BlockId::Furnace
+        | BlockId::FurnaceNorth
+        | BlockId::FurnaceEast
+        | BlockId::FurnaceSouth
+        | BlockId::FurnaceWest
+        | BlockId::LitFurnace
+        | BlockId::LitFurnaceNorth
+        | BlockId::LitFurnaceEast
+        | BlockId::LitFurnaceSouth
+        | BlockId::LitFurnaceWest
+            if face == 0 || face == 1 =>
+        {
+            (14, 3)
+        }
+        BlockId::Furnace
+        | BlockId::FurnaceNorth
+        | BlockId::FurnaceEast
+        | BlockId::FurnaceSouth
+        | BlockId::FurnaceWest
+        | BlockId::LitFurnace
+        | BlockId::LitFurnaceNorth
+        | BlockId::LitFurnaceEast
+        | BlockId::LitFurnaceSouth
+        | BlockId::LitFurnaceWest => {
+            let facing = block.furnace_facing().expect("matched furnace");
+            if face == facing.face_index() {
+                if block.is_lit_furnace() {
+                    (13, 3)
+                } else {
+                    (12, 2)
+                }
+            } else {
+                (13, 2)
+            }
+        }
         BlockId::Grass if face == 0 => (0, 0),
         BlockId::Grass if face == 1 => (2, 0),
         BlockId::Grass => (3, 0),

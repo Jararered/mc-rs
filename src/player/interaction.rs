@@ -29,6 +29,7 @@ use crate::ui::InventoryScreen;
 use crate::ui::WorkbenchUiSession;
 use crate::ui::close_crafting_interface;
 use crate::world::block::block::BlockId;
+use crate::world::block::block::FurnaceFacing;
 use crate::world::block::properties::is_breakable;
 use crate::world::block::properties::is_crossed_plant;
 use crate::world::block::properties::is_opaque_cube;
@@ -153,10 +154,7 @@ pub(super) fn interact_blocks(
         view_rotation * Vec3::NEG_Z,
         BLOCK_REACH,
     );
-    if right_click
-        && !inventory_screen.open
-        && hit.is_some_and(|hit| matches!(hit.block, BlockId::Furnace | BlockId::LitFurnace))
-    {
+    if right_click && !inventory_screen.open && hit.is_some_and(|hit| hit.block.is_furnace()) {
         let hit = hit.expect("checked above");
         close_crafting_interface(
             &mut commands,
@@ -259,7 +257,13 @@ pub(super) fn interact_blocks(
         if let Some(hit) = hit
             && let Some(stack) = hotbar.selected_stack()
             && let Some(block) = stack.runtime_block()
-            && place_selected_block(&mut chunks, hit, size.aabb(transform.translation), block)
+            && place_selected_block_facing(
+                &mut chunks,
+                hit,
+                size.aabb(transform.translation),
+                block,
+                furnace_facing_toward_player(transform.rotation * Vec3::NEG_Z),
+            )
         {
             let selected = hotbar.selected;
             hotbar.slots[selected] =
@@ -311,7 +315,7 @@ fn apply_break(
         .map(|furnace| furnace.slots.into_iter().flatten().collect::<Vec<_>>())
         .unwrap_or_default();
     let light_edit = is_torch(hit.block)
-        || hit.block == BlockId::LitFurnace
+        || hit.block.is_lit_furnace()
         || attached
             .iter()
             .copied()
@@ -388,6 +392,16 @@ pub fn place_selected_block(
     player: Aabb,
     selected: BlockId,
 ) -> bool {
+    place_selected_block_facing(chunks, hit, player, selected, FurnaceFacing::South)
+}
+
+pub fn place_selected_block_facing(
+    chunks: &mut WorldChunks,
+    hit: BlockHit,
+    player: Aabb,
+    selected: BlockId,
+    furnace_facing: FurnaceFacing,
+) -> bool {
     let (x, y, z) = hit.face.neighbor(hit.x, hit.y, hit.z);
     if y < 0 || y >= CHUNK_HEIGHT as i32 {
         return false;
@@ -413,6 +427,8 @@ pub fn place_selected_block(
             BlockFace::North => BlockId::TorchSouth,
             BlockFace::South => BlockId::TorchNorth,
         }
+    } else if selected == BlockId::Furnace {
+        selected.with_furnace_state(furnace_facing, false)
     } else {
         selected
     };
@@ -427,6 +443,21 @@ pub fn place_selected_block(
     chunks
         .set_block(x, y, z, block)
         .is_some_and(|previous| previous != block)
+}
+
+fn furnace_facing_toward_player(player_forward: Vec3) -> FurnaceFacing {
+    let toward_player = Vec2::new(-player_forward.x, -player_forward.z);
+    if toward_player.x.abs() > toward_player.y.abs() {
+        if toward_player.x >= 0.0 {
+            FurnaceFacing::East
+        } else {
+            FurnaceFacing::West
+        }
+    } else if toward_player.y >= 0.0 {
+        FurnaceFacing::South
+    } else {
+        FurnaceFacing::North
+    }
 }
 
 fn notify_edit(

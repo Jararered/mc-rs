@@ -848,6 +848,11 @@ fn face_uvs_for_tile(tile_x: u8, tile_y: u8, face: usize) -> [[f32; 2]; 4] {
 }
 
 fn block_tint(block: BlockId, foliage: Option<[f32; 3]>) -> [f32; 3] {
+    if block.is_lit_furnace() {
+        // The active face is a small flame, but Beta's lit furnace body also
+        // appears subtly brighter than the idle block.
+        return [1.12, 1.12, 1.12];
+    }
     match block {
         BlockId::Water => [0.4, 0.6, 0.95],
         BlockId::Leaves => foliage.unwrap_or([0.28, 0.71, 0.09]),

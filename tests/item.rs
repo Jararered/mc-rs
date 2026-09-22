@@ -16,7 +16,7 @@ fn registries_cover_beta_ranges_without_registering_holes_or_air_items() {
         (0..=u8::MAX)
             .filter(|raw| BlockId::from_u8(*raw).is_some())
             .count(),
-        106
+        114
     );
     assert_eq!(ItemRegistry::iter().count(), 202);
     for raw in 0..=u16::MAX {
@@ -37,7 +37,7 @@ fn registries_cover_beta_ranges_without_registering_holes_or_air_items() {
                 assert_eq!(block.as_u8(), raw);
                 assert!(!block.name().is_empty());
             }
-            None => assert!(raw > 96 && !(200..=208).contains(&raw)),
+            None => assert!(raw > 96 && !(200..=208).contains(&raw) && !(209..=216).contains(&raw)),
         }
     }
 }
@@ -76,6 +76,8 @@ fn native_save_values_and_supported_states_round_trip() {
                 BlockId::TorchWest | BlockId::TorchEast | BlockId::TorchNorth | BlockId::TorchSouth
             ) {
                 assert_eq!(placed, Some(BlockId::Torch));
+            } else if block.is_furnace() {
+                assert_eq!(placed, Some(BlockId::Furnace));
             } else if block.in_world() {
                 assert_eq!(placed, Some(block));
             }

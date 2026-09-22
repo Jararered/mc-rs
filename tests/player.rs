@@ -19,9 +19,11 @@ use game::player::destroy_overlay_mesh;
 use game::player::destroy_stage;
 use game::player::hand_ticks_to_break;
 use game::player::place_block;
+use game::player::place_selected_block_facing;
 use game::player::punch_nearly_transparent_texels;
 use game::player::selection_outline_mesh;
 use game::world::block::block::BlockId;
+use game::world::block::block::FurnaceFacing;
 use game::world::block::properties::hand_mine_progress_per_tick;
 use game::world::block::properties::hardness;
 use game::world::block::properties::harvestable_by_hand;
@@ -138,6 +140,29 @@ fn placing_puts_torch_against_the_hit_face() {
     assert_eq!(chunks.block_at(8, 65, 8), Some(PLACED_BLOCK));
     assert_eq!(PLACED_BLOCK, BlockId::Torch);
     assert_eq!(chunks.get(ChunkPos::ZERO).unwrap().heightmap.get(8, 8), 65);
+}
+
+#[test]
+fn placed_furnace_front_faces_the_player_and_survives_lit_transitions() {
+    let mut chunk = Chunk::new();
+    chunk.set(8, 64, 8, BlockId::Dirt);
+    let mut chunks = world_with(chunk);
+    let player = Aabb::new(Vec3::new(0.0, 70.0, 0.0), Vec3::new(0.6, 71.8, 0.6));
+
+    assert!(place_selected_block_facing(
+        &mut chunks,
+        hit(8, 64, 8, BlockFace::Up, BlockId::Dirt),
+        player,
+        BlockId::Furnace,
+        FurnaceFacing::East,
+    ));
+    let furnace = chunks.block_at(8, 65, 8).unwrap();
+    assert_eq!(furnace, BlockId::FurnaceEast);
+    assert_eq!(furnace.with_furnace_lit(true), BlockId::LitFurnaceEast);
+    assert_eq!(
+        furnace.with_furnace_lit(true).with_furnace_lit(false),
+        furnace
+    );
 }
 
 #[test]

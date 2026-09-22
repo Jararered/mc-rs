@@ -46,8 +46,14 @@ pub struct WorldGenerator {
     seed: u64,
     biomes: BiomeGenerator,
     terrain: TerrainGenerator,
+    /// Population reads unmodified terrain around each target. Keep those
+    /// immutable chunks across jobs instead of rebuilding the same neighbors.
+    base_cache: Mutex<VecDeque<(ChunkPos, Chunk, BiomeMap)>>,
     cache: Mutex<VecDeque<(ChunkPos, Chunk, BiomeMap, HashMap<ChunkPos, JavaRandom>)>>,
 }
+
+const BASE_CACHE_CAPACITY: usize = 256;
+const POPULATED_CACHE_CAPACITY: usize = 256;
 
 impl WorldGenerator {
     pub fn new(seed: u64) -> Self {
@@ -55,6 +61,7 @@ impl WorldGenerator {
             seed,
             biomes: BiomeGenerator::new(seed),
             terrain: TerrainGenerator::new(seed),
+            base_cache: Mutex::new(VecDeque::new()),
             cache: Mutex::new(VecDeque::new()),
         }
     }
@@ -92,18 +99,44 @@ impl WorldGenerator {
         {
             return (chunk.clone(), biomes.clone(), random.clone());
         }
-        let biomes = self.biomes.generate(position);
-        let mut chunk = self.terrain.generate_base(position, &biomes);
-        apply_surface(&mut chunk, position, &biomes, &self.terrain);
-        caves::carve(&mut chunk, position, self.seed);
-        let random =
-            population::populate(&mut chunk, position, self.seed, &self.terrain, &self.biomes);
+        let (mut chunk, biomes) = self.base_chunk(position);
+        let random = population::populate(&mut chunk, position, self.seed, &|remote| {
+            self.base_chunk(remote).0
+        });
         let mut cache = self.cache.lock().unwrap();
-        if cache.len() == 64 {
+        if cache.len() == POPULATED_CACHE_CAPACITY {
             cache.pop_front();
         }
         cache.push_back((position, chunk.clone(), biomes.clone(), random.clone()));
         (chunk, biomes, random)
+    }
+
+    fn base_chunk(&self, position: ChunkPos) -> (Chunk, BiomeMap) {
+        if let Some((_, chunk, biomes)) = self
+            .base_cache
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|entry| entry.0 == position)
+        {
+            return (chunk.clone(), biomes.clone());
+        }
+
+        let biomes = self.biomes.generate(position);
+        let mut chunk = self.terrain.generate_base(position, &biomes);
+        apply_surface(&mut chunk, position, &biomes, &self.terrain);
+        caves::carve(&mut chunk, position, self.seed);
+
+        let mut cache = self.base_cache.lock().unwrap();
+        if let Some((_, existing, existing_biomes)) = cache.iter().find(|entry| entry.0 == position)
+        {
+            return (existing.clone(), existing_biomes.clone());
+        }
+        if cache.len() == BASE_CACHE_CAPACITY {
+            cache.pop_front();
+        }
+        cache.push_back((position, chunk.clone(), biomes.clone()));
+        (chunk, biomes)
     }
 
     /// Topmost solid block in the base density terrain at a world column.

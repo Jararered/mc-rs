@@ -7,11 +7,6 @@ use crate::world::chunk::Chunk;
 use crate::world::chunk::ChunkPos;
 use std::collections::HashMap;
 
-use super::biome::BiomeGenerator;
-use super::caves;
-use super::surface::apply_surface;
-use super::terrain::TerrainGenerator;
-
 const PI: f32 = 3.1415927;
 
 pub(super) fn source_random(seed: u64, source: ChunkPos) -> JavaRandom {
@@ -28,10 +23,8 @@ pub(super) fn source_random(seed: u64, source: ChunkPos) -> JavaRandom {
 struct WorldView<'a> {
     chunk: &'a mut Chunk,
     target: ChunkPos,
-    seed: u64,
-    terrain: &'a TerrainGenerator,
-    biomes: &'a BiomeGenerator,
-    cached: std::collections::HashMap<ChunkPos, Chunk>,
+    remote_chunk: &'a dyn Fn(ChunkPos) -> Chunk,
+    cached: HashMap<ChunkPos, Chunk>,
 }
 
 impl WorldView<'_> {
@@ -48,13 +41,10 @@ impl WorldView<'_> {
         if pos == self.target {
             return self.chunk.get(lx, y as usize, lz).unwrap();
         }
-        let cached = self.cached.entry(pos).or_insert_with(|| {
-            let biomes = self.biomes.generate(pos);
-            let mut chunk = self.terrain.generate_base(pos, &biomes);
-            apply_surface(&mut chunk, pos, &biomes, self.terrain);
-            caves::carve(&mut chunk, pos, self.seed);
-            chunk
-        });
+        let cached = self
+            .cached
+            .entry(pos)
+            .or_insert_with(|| (self.remote_chunk)(pos));
         cached.get(lx, y as usize, lz).unwrap()
     }
 
@@ -81,15 +71,12 @@ pub(super) fn populate(
     chunk: &mut Chunk,
     target: ChunkPos,
     seed: u64,
-    terrain: &TerrainGenerator,
-    biomes: &BiomeGenerator,
+    remote_chunk: &dyn Fn(ChunkPos) -> Chunk,
 ) -> HashMap<ChunkPos, JavaRandom> {
     let mut world = WorldView {
         chunk,
         target,
-        seed,
-        terrain,
-        biomes,
+        remote_chunk,
         cached: Default::default(),
     };
     let mut after = HashMap::new();

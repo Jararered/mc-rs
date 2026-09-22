@@ -36,6 +36,8 @@ use crate::random::JavaRandom;
 /// The reference's `WorldGenBigTree.field_882_a`: for each axis, the two other
 /// axes in a fixed order, used to walk a line along its longest axis.
 const AXIS_ORDER: [usize; 6] = [2, 0, 0, 1, 2, 1];
+/// The widest big-tree leaf cluster can reach eight blocks from its trunk.
+const MAX_TREE_RADIUS: i32 = 8;
 
 /// Which generator a biome rolls for a placement.
 #[derive(Clone, Copy)]
@@ -214,6 +216,18 @@ fn populate(
         let kind = select_tree(biome, &mut rand);
         let world_x = source.x * CHUNK_SIZE as i32 + local_x;
         let world_z = source.z * CHUNK_SIZE as i32 + local_z;
+        let origin_x = local_x + offset_x;
+        let origin_z = local_z + offset_z;
+        // A tree's private RNG cannot affect later placements. Keep its seed
+        // draw, but avoid looking up remote ground if no branch can reach us.
+        let tree_seed = rand.next_long() as u64;
+        if origin_x + MAX_TREE_RADIUS < 0
+            || origin_x - MAX_TREE_RADIUS >= CHUNK_SIZE as i32
+            || origin_z + MAX_TREE_RADIUS < 0
+            || origin_z - MAX_TREE_RADIUS >= CHUNK_SIZE as i32
+        {
+            continue;
+        }
         let (height, ground) = ground_at(
             target,
             heights,
@@ -225,12 +239,12 @@ fn populate(
             world_z,
         );
 
-        let origin = [local_x + offset_x, height, local_z + offset_z];
+        let origin = [origin_x, height, origin_z];
         world.origin = origin;
         world.ground = ground;
         // A private RNG per tree so a failed ground check in one chunk cannot
         // desynchronise later trees when the neighbour does plant it.
-        let mut tree_rand = JavaRandom::new(rand.next_long() as u64);
+        let mut tree_rand = JavaRandom::new(tree_seed);
         generate(kind, &mut world, &mut tree_rand, origin);
     }
 

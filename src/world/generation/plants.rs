@@ -80,12 +80,22 @@ fn tall_grass_patch(
     let origin_x = source.x * CHUNK_SIZE as i32 + rand.next_int(CHUNK_SIZE as u32) as i32 + 8;
     let mut origin_y = rand.next_int(CHUNK_HEIGHT as u32) as i32;
     let origin_z = source.z * CHUNK_SIZE as i32 + rand.next_int(CHUNK_SIZE as u32) as i32 + 8;
-    // Walk down through air. The pre-decoration surface is the same column
-    // every neighbour replays, so a trunk in one chunk cannot stop the walk
-    // early in that chunk only.
-    let surface = surface_air_y(origin_x, origin_z);
-    if origin_y >= surface {
-        origin_y = (surface - 1).max(0);
+    // Scatter offsets are within seven blocks. An out-of-range patch still
+    // consumes its random draws, but needs no remote ground lookup.
+    let target_x = target.x * CHUNK_SIZE as i32;
+    let target_z = target.z * CHUNK_SIZE as i32;
+    if origin_x + 7 >= target_x
+        && origin_x - 7 < target_x + CHUNK_SIZE as i32
+        && origin_z + 7 >= target_z
+        && origin_z - 7 < target_z + CHUNK_SIZE as i32
+    {
+        // Walk down through air. The pre-decoration surface is the same column
+        // every neighbour replays, so a trunk in one chunk cannot stop the walk
+        // early in that chunk only.
+        let surface = surface_air_y(origin_x, origin_z);
+        if origin_y >= surface {
+            origin_y = (surface - 1).max(0);
+        }
     }
     // Rainforest rolls fern (metadata 2) unless `nextInt(3) == 0`.
     let block = if biome == Biome::Rainforest && rand.next_int(3) != 0 {

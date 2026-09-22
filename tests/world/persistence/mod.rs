@@ -140,6 +140,40 @@ fn chunk_round_trips_through_a_chunk_file() {
 }
 
 #[test]
+fn legacy_species_bytes_stay_spruce_while_cake_uses_the_same_number() {
+    assert_eq!(BlockId::Cake.as_u8(), 92);
+    assert!(!BlockId::Cake.in_world());
+    let saves = temp_saves("legacy-spruce");
+    let storage = WorldStorage::create(&saves, 0, "Legacy").unwrap();
+    let position = ChunkPos::ZERO;
+    let generated = WorldGenerator::new(0).generate(position);
+    storage.save_chunk(position, &generated).unwrap();
+
+    let path = storage
+        .root()
+        .join(region_dir_name(region_of(position)))
+        .join(chunk_file_name(position));
+    let mut value: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    let blocks = CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE;
+    value["runs"] = serde_json::json!([[92, blocks as u16]]);
+    fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+    let loaded = storage
+        .load_chunk(position)
+        .expect("legacy spruce byte still loads");
+    assert!(
+        loaded
+            .chunk
+            .blocks()
+            .iter()
+            .all(|block| *block == BlockId::SpruceLeaves)
+    );
+
+    value["runs"] = serde_json::json!([[20, blocks as u16]]);
+    fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+    assert!(storage.load_chunk(position).is_none());
+}
+
+#[test]
 fn dropped_items_round_trip_inside_their_chunk() {
     let saves = temp_saves("items");
     let storage = WorldStorage::create(&saves, 0, "Items").unwrap();

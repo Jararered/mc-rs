@@ -105,13 +105,14 @@ pub struct StoredStack {
 impl StoredStack {
     fn from_stack(stack: ItemStack) -> Self {
         Self {
-            id: stack.item().0,
+            id: stack.item().as_u16(),
             count: stack.count(),
             data: stack.data(),
         }
     }
     fn into_stack(self) -> Option<ItemStack> {
-        ItemStack::with_data(ItemId(self.id), self.count, self.data).ok()
+        let id = ItemId::from_u16(self.id)?;
+        ItemStack::with_data(id, self.count, self.data).ok()
     }
 }
 
@@ -534,6 +535,9 @@ fn decode_blocks(runs: &[(u8, u16)]) -> Option<Vec<BlockId>> {
     }
     let mut blocks = Vec::with_capacity(total);
     for (value, length) in runs {
+        // Bytes 92..=99 are the older chunk encoding of species and torch
+        // facing. 92..=96 are also cake through trapdoor, so this remap runs
+        // before `from_u8`.
         let block = match *value {
             92 => BlockId::SpruceLeaves,
             93 => BlockId::BirchLeaves,
@@ -545,6 +549,9 @@ fn decode_blocks(runs: &[(u8, u16)]) -> Option<Vec<BlockId>> {
             99 => BlockId::TorchSouth,
             value => BlockId::from_u8(value)?,
         };
+        if !block.in_world() {
+            return None;
+        }
         blocks.resize(blocks.len() + *length as usize, block);
     }
     Some(blocks)

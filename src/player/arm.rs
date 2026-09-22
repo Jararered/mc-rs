@@ -63,7 +63,7 @@ struct VisualKey {
 impl VisualKey {
     fn from_stack(stack: ItemStack) -> Self {
         Self {
-            id: stack.item().0,
+            id: stack.item().as_u16(),
             data: if matches!(stack.definition().data, ItemData::Subtype(_)) {
                 stack.data()
             } else {

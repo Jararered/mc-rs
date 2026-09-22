@@ -8,7 +8,7 @@ use std::sync::OnceLock;
 
 use crate::item::ItemId;
 use crate::item::ItemStack;
-use crate::world::block::registry::BetaBlockId;
+use crate::world::block::block::BlockId;
 
 pub const MAX_GRID_SLOTS: usize = 9;
 
@@ -268,8 +268,8 @@ impl RecipeBook {
     }
 }
 
-fn b(id: BetaBlockId) -> ItemId {
-    ItemId::from_block(id)
+fn b(id: BlockId) -> ItemId {
+    ItemId::from_block(id).expect("air is not an item")
 }
 fn i(id: ItemId) -> Ingredient {
     Ingredient::any(id)
@@ -317,363 +317,363 @@ impl RecipeBook {
 pub fn beta_recipe_book() -> &'static RecipeBook {
     static BOOK: OnceLock<RecipeBook> = OnceLock::new();
     BOOK.get_or_init(|| {
-        use BetaBlockId as B;
+        use BlockId as B;
         use ItemId as I;
         let mut r = RecipeBook::default();
         let materials = [
             (
-                b(B::WOODEN_PLANKS),
-                I::WOODEN_PICKAXE,
-                I::WOODEN_SHOVEL,
-                I::WOODEN_AXE,
-                I::WOODEN_HOE,
+                b(B::WoodenPlanks),
+                I::WoodenPickaxe,
+                I::WoodenShovel,
+                I::WoodenAxe,
+                I::WoodenHoe,
             ),
             (
-                b(B::COBBLESTONE),
-                I::STONE_PICKAXE,
-                I::STONE_SHOVEL,
-                I::STONE_AXE,
-                I::STONE_HOE,
+                b(B::Cobblestone),
+                I::StonePickaxe,
+                I::StoneShovel,
+                I::StoneAxe,
+                I::StoneHoe,
             ),
             (
-                I::IRON_INGOT,
-                I::IRON_PICKAXE,
-                I::IRON_SHOVEL,
-                I::IRON_AXE,
-                I::IRON_HOE,
+                I::IronIngot,
+                I::IronPickaxe,
+                I::IronShovel,
+                I::IronAxe,
+                I::IronHoe,
             ),
             (
-                I::DIAMOND,
-                I::DIAMOND_PICKAXE,
-                I::DIAMOND_SHOVEL,
-                I::DIAMOND_AXE,
-                I::DIAMOND_HOE,
+                I::Diamond,
+                I::DiamondPickaxe,
+                I::DiamondShovel,
+                I::DiamondAxe,
+                I::DiamondHoe,
             ),
             (
-                I::GOLD_INGOT,
-                I::GOLD_PICKAXE,
-                I::GOLD_SHOVEL,
-                I::GOLD_AXE,
-                I::GOLD_HOE,
+                I::GoldIngot,
+                I::GoldPickaxe,
+                I::GoldShovel,
+                I::GoldAxe,
+                I::GoldHoe,
             ),
         ];
         for (material, pick, shovel, axe, hoe) in materials {
             r.add_shaped(
                 &["XXX", " # ", " # "],
-                &[('X', i(material)), ('#', i(I::STICK))],
+                &[('X', i(material)), ('#', i(I::Stick))],
                 out(pick, 1, 0),
             );
             r.add_shaped(
                 &["X", "#", "#"],
-                &[('X', i(material)), ('#', i(I::STICK))],
+                &[('X', i(material)), ('#', i(I::Stick))],
                 out(shovel, 1, 0),
             );
             r.add_shaped(
                 &["XX", "X#", " #"],
-                &[('X', i(material)), ('#', i(I::STICK))],
+                &[('X', i(material)), ('#', i(I::Stick))],
                 out(axe, 1, 0),
             );
             r.add_shaped(
                 &["XX", " #", " #"],
-                &[('X', i(material)), ('#', i(I::STICK))],
+                &[('X', i(material)), ('#', i(I::Stick))],
                 out(hoe, 1, 0),
             );
         }
         for (material, sword) in [
-            (b(B::WOODEN_PLANKS), I::WOODEN_SWORD),
-            (b(B::COBBLESTONE), I::STONE_SWORD),
-            (I::IRON_INGOT, I::IRON_SWORD),
-            (I::DIAMOND, I::DIAMOND_SWORD),
-            (I::GOLD_INGOT, I::GOLD_SWORD),
+            (b(B::WoodenPlanks), I::WoodenSword),
+            (b(B::Cobblestone), I::StoneSword),
+            (I::IronIngot, I::IronSword),
+            (I::Diamond, I::DiamondSword),
+            (I::GoldIngot, I::GoldSword),
         ] {
             r.add_shaped(
                 &["X", "X", "#"],
-                &[('X', i(material)), ('#', i(I::STICK))],
+                &[('X', i(material)), ('#', i(I::Stick))],
                 out(sword, 1, 0),
             );
         }
         r.add_shaped(
             &["##", "##"],
-            &[('#', i(b(B::WOODEN_PLANKS)))],
-            out(b(B::CRAFTING_TABLE), 1, 0),
+            &[('#', i(b(B::WoodenPlanks)))],
+            out(b(B::CraftingTable), 1, 0),
         );
         r.add_shaped(
             &["###", "# #", "###"],
-            &[('#', i(b(B::WOODEN_PLANKS)))],
-            out(b(B::CHEST), 1, 0),
+            &[('#', i(b(B::WoodenPlanks)))],
+            out(b(B::Chest), 1, 0),
         );
         r.add_shaped(
             &["###", "# #", "###"],
-            &[('#', i(b(B::COBBLESTONE)))],
-            out(b(B::FURNACE), 1, 0),
+            &[('#', i(b(B::Cobblestone)))],
+            out(b(B::Furnace), 1, 0),
         );
         r.add_shaped(
             &["###", "###", "###"],
-            &[('#', i(b(B::SAND)))],
-            out(b(B::SANDSTONE), 1, 0),
+            &[('#', i(b(B::Sand)))],
+            out(b(B::Sandstone), 1, 0),
         );
         r.add_shaped(
             &["###", "###", "###"],
-            &[('#', i(I::STICK))],
-            out(b(B::FENCE), 2, 0),
+            &[('#', i(I::Stick))],
+            out(b(B::Fence), 2, 0),
         );
         r.add_shaped(
             &["###", "XXX", "###"],
-            &[('#', i(b(B::WOODEN_PLANKS))), ('X', i(I::BOOK))],
-            out(b(B::BOOKSHELF), 1, 0),
+            &[('#', i(b(B::WoodenPlanks))), ('X', i(I::Book))],
+            out(b(B::Bookshelf), 1, 0),
         );
         r.add_shaped(
             &["#", "#"],
-            &[('#', i(b(B::WOODEN_PLANKS)))],
-            out(I::STICK, 4, 0),
+            &[('#', i(b(B::WoodenPlanks)))],
+            out(I::Stick, 4, 0),
         );
         r.add_shaped(
             &["X", "#"],
-            &[('X', i(I::COAL)), ('#', i(I::STICK))],
-            out(b(B::TORCH), 4, 0),
+            &[('X', i(I::Coal)), ('#', i(I::Stick))],
+            out(b(B::Torch), 4, 0),
         );
         r.add_shaped(
             &["# #", " # "],
-            &[('#', i(b(B::WOODEN_PLANKS)))],
-            out(I::BOWL, 4, 0),
+            &[('#', i(b(B::WoodenPlanks)))],
+            out(I::Bowl, 4, 0),
         );
         r.add_shaped(
             &["# #", "###"],
-            &[('#', i(I::IRON_INGOT))],
-            out(I::MINECART, 1, 0),
+            &[('#', i(I::IronIngot))],
+            out(I::Minecart, 1, 0),
         );
         r.add_shaped(
             &["# #", " # "],
-            &[('#', i(I::IRON_INGOT))],
-            out(I::BUCKET, 1, 0),
+            &[('#', i(I::IronIngot))],
+            out(I::Bucket, 1, 0),
         );
-        r.add_shaped(&["###"], &[('#', i(I::WHEAT))], out(I::BREAD, 1, 0));
+        r.add_shaped(&["###"], &[('#', i(I::Wheat))], out(I::Bread, 1, 0));
         r.add_shaped(
             &["###", "#X#", "###"],
-            &[('#', i(I::STICK)), ('X', i(b(B::WOOL)))],
-            out(I::PAINTING, 1, 0),
+            &[('#', i(I::Stick)), ('X', i(b(B::Wool)))],
+            out(I::Painting, 1, 0),
         );
         r.add_shaped(
             &["###", "#X#", "###"],
-            &[('#', i(b(B::GOLD_BLOCK))), ('X', i(I::APPLE))],
-            out(I::GOLDEN_APPLE, 1, 0),
+            &[('#', i(b(B::GoldBlock))), ('X', i(I::Apple))],
+            out(I::GoldenApple, 1, 0),
         );
         r.add_shaped(
             &["X", "#"],
-            &[('X', i(I::STICK)), ('#', i(b(B::COBBLESTONE)))],
-            out(b(B::LEVER), 1, 0),
+            &[('X', i(I::Stick)), ('#', i(b(B::Cobblestone)))],
+            out(b(B::Lever), 1, 0),
         );
         r.add_shaped(
             &["X", "#"],
-            &[('X', i(I::REDSTONE)), ('#', i(I::STICK))],
-            out(b(B::REDSTONE_TORCH), 1, 0),
+            &[('X', i(I::Redstone)), ('#', i(I::Stick))],
+            out(b(B::RedstoneTorch), 1, 0),
         );
         r.add_shaped(
             &["###", "#X#", "#R#"],
             &[
-                ('#', i(b(B::COBBLESTONE))),
-                ('X', i(I::BOW)),
-                ('R', i(I::REDSTONE)),
+                ('#', i(b(B::Cobblestone))),
+                ('X', i(I::Bow)),
+                ('R', i(I::Redstone)),
             ],
-            out(b(B::DISPENSER), 1, 0),
+            out(b(B::Dispenser), 1, 0),
         );
         r.add_shaped(
             &["TTT", "#X#", "#R#"],
             &[
-                ('T', i(b(B::WOODEN_PLANKS))),
-                ('#', i(b(B::COBBLESTONE))),
-                ('X', i(I::IRON_INGOT)),
-                ('R', i(I::REDSTONE)),
+                ('T', i(b(B::WoodenPlanks))),
+                ('#', i(b(B::Cobblestone))),
+                ('X', i(I::IronIngot)),
+                ('R', i(I::Redstone)),
             ],
-            out(b(B::PISTON), 1, 0),
+            out(b(B::Piston), 1, 0),
         );
         r.add_shaped(
             &["###", "XXX"],
-            &[('#', i(b(B::WOOL))), ('X', i(b(B::WOODEN_PLANKS)))],
-            out(I::BED, 1, 0),
+            &[('#', i(b(B::Wool))), ('X', i(b(B::WoodenPlanks)))],
+            out(I::Bed, 1, 0),
         );
         r.add_shaped(
             &["###", "#X#", "###"],
-            &[('#', i(b(B::WOODEN_PLANKS))), ('X', i(I::DIAMOND))],
-            out(b(B::JUKEBOX), 1, 0),
+            &[('#', i(b(B::WoodenPlanks))), ('X', i(I::Diamond))],
+            out(b(B::Jukebox), 1, 0),
         );
         r.add_shaped(
             &["###", "#X#", "###"],
-            &[('#', i(b(B::WOODEN_PLANKS))), ('X', i(I::REDSTONE))],
-            out(b(B::NOTE_BLOCK), 1, 0),
+            &[('#', i(b(B::WoodenPlanks))), ('X', i(I::Redstone))],
+            out(b(B::NoteBlock), 1, 0),
         );
         r.add_shaped(
             &["##", "##"],
-            &[('#', i(I::SNOWBALL))],
-            out(b(B::SNOW), 1, 0),
+            &[('#', i(I::Snowball))],
+            out(b(B::Snow), 1, 0),
         );
         r.add_shaped(
             &["##", "##"],
-            &[('#', i(I::CLAY_BALL))],
-            out(b(B::CLAY), 1, 0),
+            &[('#', i(I::ClayBall))],
+            out(b(B::Clay), 1, 0),
         );
         r.add_shaped(
             &["##", "##"],
-            &[('#', i(I::BRICK))],
-            out(b(B::BRICKS), 1, 0),
+            &[('#', i(I::Brick))],
+            out(b(B::Bricks), 1, 0),
         );
         r.add_shaped(
             &["##", "##"],
-            &[('#', i(I::GLOWSTONE_DUST))],
-            out(b(B::GLOWSTONE), 1, 0),
+            &[('#', i(I::GlowstoneDust))],
+            out(b(B::Glowstone), 1, 0),
         );
         r.add_shaped(
             &["X X", "X#X", "X X"],
-            &[('X', i(I::IRON_INGOT)), ('#', i(I::STICK))],
-            out(b(B::RAIL), 16, 0),
+            &[('X', i(I::IronIngot)), ('#', i(I::Stick))],
+            out(b(B::Rail), 16, 0),
         );
         r.add_shaped(
             &["X X", "X#X", "XRX"],
             &[
-                ('X', i(I::GOLD_INGOT)),
-                ('#', i(I::STICK)),
-                ('R', i(I::REDSTONE)),
+                ('X', i(I::GoldIngot)),
+                ('#', i(I::Stick)),
+                ('R', i(I::Redstone)),
             ],
-            out(b(B::POWERED_RAIL), 6, 0),
+            out(b(B::PoweredRail), 6, 0),
         );
         r.add_shaped(
             &["# #", "###"],
-            &[('#', i(b(B::WOODEN_PLANKS)))],
-            out(I::BOAT, 1, 0),
+            &[('#', i(b(B::WoodenPlanks)))],
+            out(I::Boat, 1, 0),
         );
         r.add_shaped(
             &[" #X", "# X", " #X"],
-            &[('#', i(I::STICK)), ('X', i(I::STRING))],
-            out(I::BOW, 1, 0),
+            &[('#', i(I::Stick)), ('X', i(I::String))],
+            out(I::Bow, 1, 0),
         );
         r.add_shaped(
             &["X", "#", "Y"],
-            &[('X', i(I::FLINT)), ('#', i(I::STICK)), ('Y', i(I::FEATHER))],
-            out(I::ARROW, 4, 0),
+            &[('X', i(I::Flint)), ('#', i(I::Stick)), ('Y', i(I::Feather))],
+            out(I::Arrow, 4, 0),
         );
         r.add_shaped(
             &["  #", " #X", "# X"],
-            &[('#', i(I::STICK)), ('X', i(I::STRING))],
-            out(I::FISHING_ROD, 1, 0),
+            &[('#', i(I::Stick)), ('X', i(I::String))],
+            out(I::FishingRod, 1, 0),
         );
         r.add_shaped(
             &[" #", "# "],
-            &[('#', i(I::IRON_INGOT))],
-            out(I::SHEARS, 1, 0),
+            &[('#', i(I::IronIngot))],
+            out(I::Shears, 1, 0),
         );
         r.add_shaped(
             &["# #", "###", "# #"],
-            &[('#', i(I::STICK))],
-            out(b(B::LADDER), 2, 0),
+            &[('#', i(I::Stick))],
+            out(b(B::Ladder), 2, 0),
         );
         r.add_shaped(
             &["###", "###", "###"],
-            &[('#', i(b(B::COBBLESTONE)))],
-            out(b(B::STONE_SLAB), 3, 3),
+            &[('#', i(b(B::Cobblestone)))],
+            out(b(B::StoneSlab), 3, 3),
         );
         r.add_shaped(
             &["###", "###", "###"],
-            &[('#', i(b(B::STONE)))],
-            out(b(B::STONE_SLAB), 3, 0),
+            &[('#', i(b(B::Stone)))],
+            out(b(B::StoneSlab), 3, 0),
         );
         r.add_shaped(
             &["###", "###", "###"],
-            &[('#', i(b(B::SANDSTONE)))],
-            out(b(B::STONE_SLAB), 3, 1),
+            &[('#', i(b(B::Sandstone)))],
+            out(b(B::StoneSlab), 3, 1),
         );
         r.add_shaped(
             &["###", "###", "###"],
-            &[('#', i(b(B::WOODEN_PLANKS)))],
-            out(b(B::STONE_SLAB), 3, 2),
+            &[('#', i(b(B::WoodenPlanks)))],
+            out(b(B::StoneSlab), 3, 2),
         );
         r.add_shaped(
             &["#  ", "## ", "###"],
-            &[('#', i(b(B::WOODEN_PLANKS)))],
-            out(b(B::WOODEN_STAIRS), 4, 0),
+            &[('#', i(b(B::WoodenPlanks)))],
+            out(b(B::WoodenStairs), 4, 0),
         );
         r.add_shaped(
             &["#  ", "## ", "###"],
-            &[('#', i(b(B::COBBLESTONE)))],
-            out(b(B::COBBLESTONE_STAIRS), 4, 0),
+            &[('#', i(b(B::Cobblestone)))],
+            out(b(B::CobblestoneStairs), 4, 0),
         );
         r.add_shaped(
             &["##", "##", "##"],
-            &[('#', i(b(B::WOODEN_PLANKS)))],
-            out(I::WOODEN_DOOR, 1, 0),
+            &[('#', i(b(B::WoodenPlanks)))],
+            out(I::WoodenDoor, 1, 0),
         );
         r.add_shaped(
             &["###", "#X#", "###"],
-            &[('#', i(I::GUNPOWDER)), ('X', i(b(B::SAND)))],
-            out(b(B::TNT), 1, 0),
+            &[('#', i(I::Gunpowder)), ('X', i(b(B::Sand)))],
+            out(b(B::Tnt), 1, 0),
         );
         r.add_shaped(
             &[" # ", "#X#", " # "],
-            &[('#', i(I::GOLD_INGOT)), ('X', i(I::REDSTONE))],
-            out(I::CLOCK, 1, 0),
+            &[('#', i(I::GoldIngot)), ('X', i(I::Redstone))],
+            out(I::Clock, 1, 0),
         );
         r.add_shaped(
             &["###", "#X#", "###"],
-            &[('#', i(I::PAPER)), ('X', i(I::COMPASS))],
-            out(I::MAP, 1, 0),
+            &[('#', i(I::Paper)), ('X', i(I::Compass))],
+            out(I::Map, 1, 0),
         );
         r.add_shaped(
             &["X X", "X#X", "XRX"],
             &[
-                ('X', i(I::IRON_INGOT)),
-                ('#', i(b(B::STONE_PRESSURE_PLATE))),
-                ('R', i(I::REDSTONE)),
+                ('X', i(I::IronIngot)),
+                ('#', i(b(B::StonePressurePlate))),
+                ('R', i(I::Redstone)),
             ],
-            out(b(B::DETECTOR_RAIL), 6, 0),
+            out(b(B::DetectorRail), 6, 0),
         );
         r.add_shaped(
             &["#X#", "III"],
             &[
-                ('#', i(b(B::REDSTONE_TORCH))),
-                ('X', i(I::REDSTONE)),
-                ('I', i(b(B::STONE))),
+                ('#', i(b(B::RedstoneTorch))),
+                ('X', i(I::Redstone)),
+                ('I', i(b(B::Stone))),
             ],
-            out(I::REPEATER, 1, 0),
+            out(I::Repeater, 1, 0),
         );
         r.add_shaped(
             &["#", "#"],
-            &[('#', i(b(B::STONE)))],
-            out(b(B::STONE_BUTTON), 1, 0),
+            &[('#', i(b(B::Stone)))],
+            out(b(B::StoneButton), 1, 0),
         );
         for (material, helmet, chest, legs, boots) in [
             (
-                i(I::LEATHER),
-                I::LEATHER_HELMET,
-                I::LEATHER_CHESTPLATE,
-                I::LEATHER_LEGGINGS,
-                I::LEATHER_BOOTS,
+                i(I::Leather),
+                I::LeatherHelmet,
+                I::LeatherChestplate,
+                I::LeatherLeggings,
+                I::LeatherBoots,
             ),
             (
-                i(b(B::FIRE)),
-                I::CHAINMAIL_HELMET,
-                I::CHAINMAIL_CHESTPLATE,
-                I::CHAINMAIL_LEGGINGS,
-                I::CHAINMAIL_BOOTS,
+                i(b(B::Fire)),
+                I::ChainmailHelmet,
+                I::ChainmailChestplate,
+                I::ChainmailLeggings,
+                I::ChainmailBoots,
             ),
             (
-                i(I::IRON_INGOT),
-                I::IRON_HELMET,
-                I::IRON_CHESTPLATE,
-                I::IRON_LEGGINGS,
-                I::IRON_BOOTS,
+                i(I::IronIngot),
+                I::IronHelmet,
+                I::IronChestplate,
+                I::IronLeggings,
+                I::IronBoots,
             ),
             (
-                i(I::DIAMOND),
-                I::DIAMOND_HELMET,
-                I::DIAMOND_CHESTPLATE,
-                I::DIAMOND_LEGGINGS,
-                I::DIAMOND_BOOTS,
+                i(I::Diamond),
+                I::DiamondHelmet,
+                I::DiamondChestplate,
+                I::DiamondLeggings,
+                I::DiamondBoots,
             ),
             (
-                i(I::GOLD_INGOT),
-                I::GOLD_HELMET,
-                I::GOLD_CHESTPLATE,
-                I::GOLD_LEGGINGS,
-                I::GOLD_BOOTS,
+                i(I::GoldIngot),
+                I::GoldHelmet,
+                I::GoldChestplate,
+                I::GoldLeggings,
+                I::GoldBoots,
             ),
         ] {
             r.add_shaped(&["XXX", "X X"], &[('X', material)], out(helmet, 1, 0));
@@ -683,95 +683,95 @@ pub fn beta_recipe_book() -> &'static RecipeBook {
         }
         r.add_shaped(
             &["A", "B"],
-            &[('A', i(b(B::PUMPKIN))), ('B', i(b(B::TORCH)))],
-            out(b(B::JACK_OLANTERN), 1, 0),
+            &[('A', i(b(B::Pumpkin))), ('B', i(b(B::Torch)))],
+            out(b(B::JackOLantern), 1, 0),
         );
         r.add_shaped(
             &["###", "# #", "###"],
-            &[('#', i(b(B::STONE)))],
-            out(b(B::STONE_PRESSURE_PLATE), 1, 0),
+            &[('#', i(b(B::Stone)))],
+            out(b(B::StonePressurePlate), 1, 0),
         );
         r.add_shaped(
             &["##"],
-            &[('#', i(b(B::STONE)))],
-            out(b(B::STONE_BUTTON), 1, 0),
+            &[('#', i(b(B::Stone)))],
+            out(b(B::StoneButton), 1, 0),
         );
         r.add_shaped(
             &["###", "###"],
-            &[('#', i(b(B::WOODEN_PLANKS)))],
-            out(b(B::TRAPDOOR), 2, 0),
+            &[('#', i(b(B::WoodenPlanks)))],
+            out(b(B::Trapdoor), 2, 0),
         );
         r.add_shaped(
             &["##", "##", "##"],
-            &[('#', i(I::IRON_INGOT))],
-            out(I::IRON_DOOR, 1, 0),
+            &[('#', i(I::IronIngot))],
+            out(I::IronDoor, 1, 0),
         );
         r.add_shaped(
             &["###", "###", " X "],
-            &[('#', i(b(B::WOODEN_PLANKS))), ('X', i(I::STICK))],
-            out(I::SIGN, 1, 0),
+            &[('#', i(b(B::WoodenPlanks))), ('X', i(I::Stick))],
+            out(I::Sign, 1, 0),
         );
         r.add_shaped(
             &["AAA", "BEB", "CCC"],
             &[
-                ('A', i(I::MILK_BUCKET)),
-                ('B', i(I::SUGAR)),
-                ('C', i(I::WHEAT)),
-                ('E', i(I::EGG)),
+                ('A', i(I::MilkBucket)),
+                ('B', i(I::Sugar)),
+                ('C', i(I::Wheat)),
+                ('E', i(I::Egg)),
             ],
-            out(I::CAKE, 1, 0),
+            out(I::Cake, 1, 0),
         );
         r.add_shaped(
             &["###", "#X#", "###"],
-            &[('#', i(I::PAPER)), ('X', i(I::COMPASS))],
-            out(I::MAP, 1, 0),
+            &[('#', i(I::Paper)), ('X', i(I::Compass))],
+            out(I::Map, 1, 0),
         );
         r.add_shaped(
             &[" # ", "#X#", " # "],
-            &[('#', i(I::IRON_INGOT)), ('X', i(I::REDSTONE))],
-            out(I::COMPASS, 1, 0),
+            &[('#', i(I::IronIngot)), ('X', i(I::Redstone))],
+            out(I::Compass, 1, 0),
         );
-        r.add_shapeless(&[i(b(B::WOOD))], out(b(B::WOODEN_PLANKS), 4, 0));
-        r.add_shapeless(&[i(I::SUGAR_CANE)], out(I::PAPER, 3, 0));
-        r.add_shapeless(&[i(I::SUGAR_CANE)], out(I::SUGAR, 1, 0));
-        r.add_shapeless(&[i(I::BONE)], out(I::DYE, 3, 15));
-        r.add_shapeless(&[d(I::DYE, 1), d(I::DYE, 15)], out(I::DYE, 2, 9));
+        r.add_shapeless(&[i(b(B::Wood))], out(b(B::WoodenPlanks), 4, 0));
+        r.add_shapeless(&[i(I::SugarCane)], out(I::Paper, 3, 0));
+        r.add_shapeless(&[i(I::SugarCane)], out(I::Sugar, 1, 0));
+        r.add_shapeless(&[i(I::Bone)], out(I::Dye, 3, 15));
+        r.add_shapeless(&[d(I::Dye, 1), d(I::Dye, 15)], out(I::Dye, 2, 9));
         for color in 0..16u16 {
             r.add_shapeless(
-                &[d(I::DYE, color), d(b(B::WOOL), 0)],
-                out(b(B::WOOL), 1, color),
+                &[d(I::Dye, color), d(b(B::Wool), 0)],
+                out(b(B::Wool), 1, color),
             );
         }
-        r.add_shapeless(&[i(b(B::DANDELION))], out(I::DYE, 2, 11));
-        r.add_shapeless(&[i(b(B::ROSE))], out(I::DYE, 2, 1));
-        r.add_shapeless(&[i(I::BONE)], out(I::DYE, 3, 15));
+        r.add_shapeless(&[i(b(B::Dandelion))], out(I::Dye, 2, 11));
+        r.add_shapeless(&[i(b(B::Rose))], out(I::Dye, 2, 1));
+        r.add_shapeless(&[i(I::Bone)], out(I::Dye, 3, 15));
         r.add_shaped(
             &["Y", "X", "#"],
             &[
-                ('Y', i(b(B::RED_MUSHROOM))),
-                ('X', i(b(B::BROWN_MUSHROOM))),
-                ('#', i(I::BOWL)),
+                ('Y', i(b(B::RedMushroom))),
+                ('X', i(b(B::BrownMushroom))),
+                ('#', i(I::Bowl)),
             ],
-            out(I::MUSHROOM_STEW, 1, 0),
+            out(I::MushroomStew, 1, 0),
         );
         r.add_shaped(
             &["Y", "X", "#"],
             &[
-                ('Y', i(b(B::BROWN_MUSHROOM))),
-                ('X', i(b(B::RED_MUSHROOM))),
-                ('#', i(I::BOWL)),
+                ('Y', i(b(B::BrownMushroom))),
+                ('X', i(b(B::RedMushroom))),
+                ('#', i(I::Bowl)),
             ],
-            out(I::MUSHROOM_STEW, 1, 0),
+            out(I::MushroomStew, 1, 0),
         );
         r.add_shaped(
             &["#X#"],
-            &[('#', i(I::WHEAT)), ('X', d(I::DYE, 3))],
-            out(I::COOKIE, 8, 0),
+            &[('#', i(I::Wheat)), ('X', d(I::Dye, 3))],
+            out(I::Cookie, 8, 0),
         );
         for (block, item) in [
-            (b(B::GOLD_BLOCK), I::GOLD_INGOT),
-            (b(B::IRON_BLOCK), I::IRON_INGOT),
-            (b(B::DIAMOND_BLOCK), I::DIAMOND),
+            (b(B::GoldBlock), I::GoldIngot),
+            (b(B::IronBlock), I::IronIngot),
+            (b(B::DiamondBlock), I::Diamond),
         ] {
             r.add_shaped(&["###", "###", "###"], &[('#', i(item))], out(block, 1, 0));
             r.add_shapeless(&[i(block)], out(item, 9, 0));

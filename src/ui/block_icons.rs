@@ -20,7 +20,6 @@ use crate::item::ItemData;
 use crate::item::ItemRegistry;
 use crate::item::ItemStack;
 use crate::world::block::block::BlockId;
-use crate::world::block::registry::BetaBlockId;
 
 pub const ICON_SIZE: u32 = 32;
 const COLUMNS: u32 = 16;
@@ -44,7 +43,7 @@ impl BlockIcons {
             ItemData::Subtype(_) => stack.data(),
             _ => 0,
         };
-        self.rectangles.get(&(stack.item().0, data)).copied()
+        self.rectangles.get(&(stack.item().as_u16(), data)).copied()
     }
     pub fn ready(&self) -> bool {
         self.ready
@@ -168,7 +167,7 @@ pub fn build(mut icons: ResMut<BlockIcons>, mut images: ResMut<Assets<Image>>) {
             _ => 0,
         };
         for data in 0..=max_data {
-            let id = definition.id.0;
+            let id = definition.id.as_u16();
             let icon = if id < 256 {
                 render_block_icon(&terrain, id as u8, data)
             } else if let Some(tile) = item_tile(id, data) {
@@ -232,7 +231,7 @@ fn render_block_icon(source: &Source, id: u8, data: u16) -> Vec<u8> {
     let mut out = vec![0; (ICON_SIZE * ICON_SIZE * 4) as usize];
     match appearance.shape {
         Shape::Cube => {
-            let bounds = if id == BetaBlockId::FARMLAND.as_u8() {
+            let bounds = if id == BlockId::Farmland.as_u8() {
                 [0.0, 0.0, 0.0, 1.0, 0.9375, 1.0] // Farmland
             } else {
                 [0.0, 0.0, 0.0, 1.0, 1.0, 1.0]
@@ -240,7 +239,7 @@ fn render_block_icon(source: &Source, id: u8, data: u16) -> Vec<u8> {
             draw_box(&mut out, source, appearance, bounds);
         }
         Shape::Slab => {
-            let bounds = if id == BetaBlockId::CAKE.as_u8() {
+            let bounds = if id == BlockId::Cake.as_u8() {
                 [0.0625, 0.0, 0.0625, 0.9375, 0.5, 0.9375] // Cake
             } else {
                 [0.0, 0.0, 0.0, 1.0, 0.5, 1.0]
@@ -249,16 +248,16 @@ fn render_block_icon(source: &Source, id: u8, data: u16) -> Vec<u8> {
         }
         Shape::Thin => {
             let bounds = match id {
-                id if id == BetaBlockId::STONE_PRESSURE_PLATE.as_u8()
-                    || id == BetaBlockId::WOODEN_PRESSURE_PLATE.as_u8() =>
+                id if id == BlockId::StonePressurePlate.as_u8()
+                    || id == BlockId::WoodenPressurePlate.as_u8() =>
                 {
                     [0.0, 0.375, 0.0, 1.0, 0.625, 1.0]
                 } // Pressure plates
-                id if id == BetaBlockId::STONE_BUTTON.as_u8() => {
+                id if id == BlockId::StoneButton.as_u8() => {
                     [0.3125, 0.375, 0.375, 0.6875, 0.625, 0.625]
                 } // Button
-                id if id == BetaBlockId::SNOW_LAYER.as_u8() => [0.0, 0.0, 0.0, 1.0, 0.125, 1.0], // Snow layer
-                id if id == BetaBlockId::TRAPDOOR.as_u8() => [0.0, 0.40625, 0.0, 1.0, 0.59375, 1.0], // Trapdoor
+                id if id == BlockId::SnowLayer.as_u8() => [0.0, 0.0, 0.0, 1.0, 0.125, 1.0], // Snow layer
+                id if id == BlockId::Trapdoor.as_u8() => [0.0, 0.40625, 0.0, 1.0, 0.59375, 1.0], // Trapdoor
                 _ => [0.0, 0.0, 0.0, 1.0, 0.125, 1.0],
             };
             draw_box(&mut out, source, appearance, bounds);
@@ -418,6 +417,6 @@ pub fn rasterize_icon(source: &[u8], width: u32, block: BlockId) -> Vec<u8> {
     if width < 256 || width % 16 != 0 || source.len() != (width as usize * width as usize * 4) {
         return vec![0; (ICON_SIZE * ICON_SIZE * 4) as usize];
     }
-    let state = block.beta_state();
-    render_block_icon(&image, state.id.as_u8(), state.metadata as u16)
+    let (block, metadata) = block.item_form();
+    render_block_icon(&image, block.as_u8(), u16::from(metadata))
 }

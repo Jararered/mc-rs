@@ -2,25 +2,10 @@
 pub mod registry;
 pub mod tools;
 use crate::world::block::block::BlockId;
-use crate::world::block::registry::BetaBlockId;
-use crate::world::block::registry::BetaBlockState;
 pub use registry::ItemData;
 pub use registry::ItemDefinition;
+pub use registry::ItemId;
 pub use registry::ItemRegistry;
-
-/// Block items share their block's Beta ID; standalone items start at 256.
-/// Resolve raw IDs through the registry before using them.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct ItemId(pub u16);
-
-impl ItemId {
-    pub const fn from_block(block: BetaBlockId) -> Self {
-        Self(block.as_u8() as u16)
-    }
-    pub fn definition(self) -> Option<&'static ItemDefinition> {
-        ItemRegistry::get(self)
-    }
-}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StackError {
@@ -32,7 +17,7 @@ pub enum StackError {
 impl std::fmt::Display for StackError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::UnknownItem(id) => write!(f, "unknown item ID {}", id.0),
+            Self::UnknownItem(id) => write!(f, "unknown item ID {}", id.as_u16()),
             Self::InvalidCount { count, max } => {
                 write!(f, "stack count {count} is outside 1..={max}")
             }
@@ -72,13 +57,11 @@ impl ItemStack {
     /// Direct block representation, not a mining-drop rule (stone may drop cobble).
     /// Torch attachment is discarded; species metadata is retained.
     pub fn from_block(block: BlockId, count: u8) -> Result<Self, StackError> {
-        let state = block.beta_state();
-        let data = if state.id == BetaBlockId::TORCH {
-            0
-        } else {
-            state.metadata
+        let (item_block, data) = block.item_form();
+        let Some(item) = ItemId::from_block(item_block) else {
+            return Err(StackError::UnknownItem(ItemId::Block(item_block)));
         };
-        Self::with_data(ItemId::from_block(state.id), count, u16::from(data))
+        Self::with_data(item, count, u16::from(data))
     }
     pub const fn item(self) -> ItemId {
         self.item
@@ -95,19 +78,15 @@ impl ItemStack {
     pub fn container_item(self) -> Option<ItemId> {
         self.definition().container_item()
     }
-    pub fn definition(self) -> &'static ItemDefinition {
+    pub fn definition(self) -> ItemDefinition {
         self.item.definition().expect("validated stack identity")
     }
 
     /// Direct placement candidate for implemented block states. Special items
     /// such as doors require their own use behavior.
     pub fn runtime_block(self) -> Option<BlockId> {
-        let id = self.definition().block?;
-        BetaBlockState {
-            id,
-            metadata: u8::try_from(self.data).ok()?,
-        }
-        .runtime_block()
+        let block = self.definition().block?;
+        block.placed(u8::try_from(self.data).ok()?)
     }
 
     /// Beta `ItemStack.damageItem`. `None` means the stack broke.

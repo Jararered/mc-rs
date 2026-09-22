@@ -183,6 +183,58 @@ pub fn hardness(block: BlockId) -> f32 {
         BlockId::Pumpkin | BlockId::JackOLantern => 1.0,
         BlockId::Netherrack => 0.4,
         BlockId::Glowstone => 0.3,
+        // Catalog blocks are not placed, so this value is never sampled.
+        BlockId::Sapling
+        | BlockId::FlowingWater
+        | BlockId::FlowingLava
+        | BlockId::Lava
+        | BlockId::Glass
+        | BlockId::Bed
+        | BlockId::PoweredRail
+        | BlockId::DetectorRail
+        | BlockId::StickyPiston
+        | BlockId::Cobweb
+        | BlockId::TallGrass
+        | BlockId::DeadBush
+        | BlockId::Piston
+        | BlockId::PistonHead
+        | BlockId::MovingPiston
+        | BlockId::Dandelion
+        | BlockId::Rose
+        | BlockId::BrownMushroom
+        | BlockId::RedMushroom
+        | BlockId::StoneSlab
+        | BlockId::Fire
+        | BlockId::MobSpawner
+        | BlockId::WoodenStairs
+        | BlockId::Chest
+        | BlockId::RedstoneWire
+        | BlockId::Crops
+        | BlockId::Farmland
+        | BlockId::StandingSign
+        | BlockId::WoodenDoor
+        | BlockId::Ladder
+        | BlockId::Rail
+        | BlockId::CobblestoneStairs
+        | BlockId::WallSign
+        | BlockId::Lever
+        | BlockId::StonePressurePlate
+        | BlockId::IronDoor
+        | BlockId::WoodenPressurePlate
+        | BlockId::UnlitRedstoneTorch
+        | BlockId::RedstoneTorch
+        | BlockId::StoneButton
+        | BlockId::SnowLayer
+        | BlockId::Cactus
+        | BlockId::SugarCane
+        | BlockId::Fence
+        | BlockId::SoulSand
+        | BlockId::NetherPortal
+        | BlockId::Cake
+        | BlockId::Repeater
+        | BlockId::PoweredRepeater
+        | BlockId::LockedChest
+        | BlockId::Trapdoor => 0.0,
     }
 }
 

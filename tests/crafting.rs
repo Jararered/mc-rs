@@ -8,13 +8,13 @@ use game::inventory::Hotbar;
 use game::inventory::Inventory;
 use game::item::ItemId;
 use game::item::ItemStack;
-use game::world::block::registry::BetaBlockId;
+use game::world::block::block::BlockId;
 
 fn stack(item: ItemId, count: u8) -> ItemStack {
     ItemStack::new(item, count).unwrap()
 }
-fn block(block: BetaBlockId) -> ItemId {
-    ItemId::from_block(block)
+fn block(block: BlockId) -> ItemId {
+    ItemId::from_block(block).unwrap()
 }
 
 #[test]
@@ -23,19 +23,19 @@ fn shaped_recipes_offset_and_mirror_inside_three_by_three() {
         width: 2,
         height: 2,
         ingredients: vec![
-            Some(Ingredient::any(ItemId::STICK)),
-            Some(Ingredient::any(ItemId::COAL)),
+            Some(Ingredient::any(ItemId::Stick)),
+            Some(Ingredient::any(ItemId::Coal)),
             None,
-            Some(Ingredient::any(ItemId::DIAMOND)),
+            Some(Ingredient::any(ItemId::Diamond)),
         ],
-        output: stack(block(BetaBlockId::TORCH), 1),
+        output: stack(block(BlockId::Torch), 1),
     };
     let mut grid = CraftingGrid::workbench();
-    grid.set(1, 1, Some(stack(ItemId::COAL, 1)));
-    grid.set(2, 1, Some(stack(ItemId::STICK, 1)));
-    grid.set(1, 2, Some(stack(ItemId::DIAMOND, 1)));
+    grid.set(1, 1, Some(stack(ItemId::Coal, 1)));
+    grid.set(2, 1, Some(stack(ItemId::Stick, 1)));
+    grid.set(1, 2, Some(stack(ItemId::Diamond, 1)));
     assert!(recipe.matches(&grid));
-    grid.set(0, 0, Some(stack(ItemId::BONE, 1)));
+    grid.set(0, 0, Some(stack(ItemId::Bone, 1)));
     assert!(!recipe.matches(&grid));
 }
 
@@ -43,40 +43,40 @@ fn shaped_recipes_offset_and_mirror_inside_three_by_three() {
 fn shapeless_matching_ignores_slot_order_and_data_can_be_exact() {
     let recipe = Recipe::Shapeless {
         ingredients: vec![
-            Ingredient::exact(ItemId::DYE, 1),
-            Ingredient::any(ItemId::DYE),
+            Ingredient::exact(ItemId::Dye, 1),
+            Ingredient::any(ItemId::Dye),
         ],
-        output: stack(ItemId::DYE, 2),
+        output: stack(ItemId::Dye, 2),
     };
     let mut grid = CraftingGrid::player();
-    grid.set(0, 0, Some(ItemStack::with_data(ItemId::DYE, 1, 4).unwrap()));
-    grid.set(1, 1, Some(ItemStack::with_data(ItemId::DYE, 1, 1).unwrap()));
+    grid.set(0, 0, Some(ItemStack::with_data(ItemId::Dye, 1, 4).unwrap()));
+    grid.set(1, 1, Some(ItemStack::with_data(ItemId::Dye, 1, 1).unwrap()));
     assert!(recipe.matches(&grid));
-    grid.set(1, 1, Some(ItemStack::with_data(ItemId::DYE, 1, 2).unwrap()));
+    grid.set(1, 1, Some(ItemStack::with_data(ItemId::Dye, 1, 2).unwrap()));
     assert!(!recipe.matches(&grid));
-    assert_eq!(Ingredient::any(ItemId::DYE).data, IngredientData::Any);
+    assert_eq!(Ingredient::any(ItemId::Dye).data, IngredientData::Any);
 }
 
 #[test]
 fn beta_book_crafts_common_items_in_two_by_two_and_three_by_three() {
     let book = beta_recipe_book();
     let mut player = CraftingGrid::player();
-    player.set(0, 0, Some(stack(block(BetaBlockId::WOOD), 1)));
+    player.set(0, 0, Some(stack(block(BlockId::Wood), 1)));
     assert_eq!(
         book.find(&player).unwrap().item(),
-        block(BetaBlockId::WOODEN_PLANKS)
+        block(BlockId::WoodenPlanks)
     );
     assert_eq!(book.find(&player).unwrap().count(), 4);
 
     let mut workbench = CraftingGrid::workbench();
     for y in 0..3 {
         for x in 0..3 {
-            workbench.set(x, y, Some(stack(ItemId::IRON_INGOT, 1)));
+            workbench.set(x, y, Some(stack(ItemId::IronIngot, 1)));
         }
     }
     assert_eq!(
         book.find(&workbench).unwrap().item(),
-        block(BetaBlockId::IRON_BLOCK)
+        block(BlockId::IronBlock)
     );
     assert!(book.find(&player).is_some());
 }
@@ -86,15 +86,15 @@ fn cake_consumption_returns_empty_buckets_and_repeats_safely() {
     let book = beta_recipe_book();
     let mut grid = CraftingGrid::workbench();
     for x in 0..3 {
-        grid.set(x, 0, Some(stack(ItemId::MILK_BUCKET, 1)));
+        grid.set(x, 0, Some(stack(ItemId::MilkBucket, 1)));
     }
-    grid.set(0, 1, Some(stack(ItemId::SUGAR, 1)));
-    grid.set(1, 1, Some(stack(ItemId::EGG, 1)));
-    grid.set(2, 1, Some(stack(ItemId::SUGAR, 1)));
+    grid.set(0, 1, Some(stack(ItemId::Sugar, 1)));
+    grid.set(1, 1, Some(stack(ItemId::Egg, 1)));
+    grid.set(2, 1, Some(stack(ItemId::Sugar, 1)));
     for x in 0..3 {
-        grid.set(x, 2, Some(stack(ItemId::WHEAT, 1)));
+        grid.set(x, 2, Some(stack(ItemId::Wheat, 1)));
     }
-    assert_eq!(book.find(&grid).unwrap().item(), ItemId::CAKE);
+    assert_eq!(book.find(&grid).unwrap().item(), ItemId::Cake);
     let remainders = book.consume_one(&mut grid).unwrap();
     assert_eq!(remainders.len(), 3);
     assert!(grid.slots().all(|slot| slot.is_none()));
@@ -104,13 +104,10 @@ fn cake_consumption_returns_empty_buckets_and_repeats_safely() {
 fn player_result_pickup_is_atomic_when_carried_conflicts() {
     let mut inventory = Inventory::default();
     let mut hotbar = Hotbar::default();
-    inventory.crafting[0] = Some(stack(block(BetaBlockId::WOOD), 1));
-    inventory.carried = Some(stack(ItemId::STONE_SWORD, 1));
+    inventory.crafting[0] = Some(stack(block(BlockId::Wood), 1));
+    inventory.carried = Some(stack(ItemId::StoneSword, 1));
     assert!(!inventory.take_crafting_result(&mut hotbar));
-    assert_eq!(
-        inventory.crafting[0].unwrap().item(),
-        block(BetaBlockId::WOOD)
-    );
+    assert_eq!(inventory.crafting[0].unwrap().item(), block(BlockId::Wood));
 }
 
 #[test]
@@ -123,8 +120,8 @@ fn workbench_session_matches_beta_reach_limit() {
 #[test]
 fn draining_a_crafting_grid_removes_all_inputs() {
     let mut grid = CraftingGrid::workbench();
-    grid.set(0, 0, Some(stack(ItemId::WOODEN_PICKAXE, 1)));
-    grid.set(2, 2, Some(stack(ItemId::STICK, 3)));
+    grid.set(0, 0, Some(stack(ItemId::WoodenPickaxe, 1)));
+    grid.set(2, 2, Some(stack(ItemId::Stick, 3)));
 
     let drained = grid.drain();
 

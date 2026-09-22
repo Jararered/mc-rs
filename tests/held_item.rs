@@ -63,7 +63,7 @@ fn select(app: &mut App, id: u16, data: u16) {
         .world_mut()
         .query_filtered::<&mut Hotbar, With<Player>>();
     let mut bar = query.single_mut(app.world_mut()).unwrap();
-    bar.slots[0] = Some(ItemStack::with_data(ItemId(id), 1, data).unwrap());
+    bar.slots[0] = Some(ItemStack::with_data(ItemId::from_u16(id).unwrap(), 1, data).unwrap());
 }
 
 fn vertices(app: &App, handle: &Handle<Mesh>) -> usize {

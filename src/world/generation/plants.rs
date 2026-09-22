@@ -49,6 +49,19 @@ pub(super) fn place_plants(
     if rand.next_int(2) == 0 {
         flower_patch(chunk, target, source, rand, BlockId::Rose);
     }
+
+    // ChunkProviderGenerate.populate rolls mushrooms after the flowers. Their
+    // placement uses the same WorldGenFlowers scatter, but BlockMushroom can
+    // stay on any opaque block and requires block light below 13. During
+    // generation there is no propagated lighting yet, so direct sky exposure
+    // is the useful discriminator: exposed positions have skylight 15, while
+    // positions under a cave roof are dark enough absent placed light sources.
+    if rand.next_int(4) == 0 {
+        mushroom_patch(chunk, target, source, rand, BlockId::BrownMushroom);
+    }
+    if rand.next_int(8) == 0 {
+        mushroom_patch(chunk, target, source, rand, BlockId::RedMushroom);
+    }
 }
 
 fn flower_patch(
@@ -67,6 +80,50 @@ fn flower_patch(
         let z = origin_z + rand.next_int(8) as i32 - rand.next_int(8) as i32;
         try_plant(chunk, target, x, y, z, block);
     }
+}
+
+fn mushroom_patch(
+    chunk: &mut Chunk,
+    target: ChunkPos,
+    source: ChunkPos,
+    rand: &mut JavaRandom,
+    block: BlockId,
+) {
+    let origin_x = source.x * CHUNK_SIZE as i32 + rand.next_int(CHUNK_SIZE as u32) as i32 + 8;
+    let origin_y = rand.next_int(CHUNK_HEIGHT as u32) as i32;
+    let origin_z = source.z * CHUNK_SIZE as i32 + rand.next_int(CHUNK_SIZE as u32) as i32 + 8;
+    for _ in 0..64 {
+        let x = origin_x + rand.next_int(8) as i32 - rand.next_int(8) as i32;
+        let y = origin_y + rand.next_int(4) as i32 - rand.next_int(4) as i32;
+        let z = origin_z + rand.next_int(8) as i32 - rand.next_int(8) as i32;
+        try_mushroom(chunk, target, x, y, z, block);
+    }
+}
+
+fn try_mushroom(chunk: &mut Chunk, target: ChunkPos, x: i32, y: i32, z: i32, block: BlockId) {
+    let local_x = x - target.x * CHUNK_SIZE as i32;
+    let local_z = z - target.z * CHUNK_SIZE as i32;
+    if !(0..CHUNK_SIZE as i32).contains(&local_x)
+        || !(0..CHUNK_HEIGHT as i32).contains(&y)
+        || !(0..CHUNK_SIZE as i32).contains(&local_z)
+        || y == 0
+    {
+        return;
+    }
+    let (local_x, local_z, y) = (local_x as usize, local_z as usize, y as usize);
+    if chunk.get(local_x, y, local_z) != Some(BlockId::Air)
+        || !(y + 1..CHUNK_HEIGHT).any(|above| {
+            chunk
+                .get(local_x, above, local_z)
+                .is_some_and(|b| b != BlockId::Air)
+        })
+        || !chunk
+            .get(local_x, y - 1, local_z)
+            .is_some_and(crate::world::block::properties::is_opaque_cube)
+    {
+        return;
+    }
+    chunk.set(local_x, y, local_z, block);
 }
 
 fn tall_grass_patch(

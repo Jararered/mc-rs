@@ -63,11 +63,16 @@ pub fn collision_bounds(block: BlockId) -> Option<([f32; 3], [f32; 3])> {
     }
 }
 
-/// Dandelion, rose, tall grass, and fern. Two crossed sprites, no collision.
+/// Crossed sprites with no collision: flowers, mushrooms, and tall grass.
 pub fn is_crossed_plant(block: BlockId) -> bool {
     matches!(
         block,
-        BlockId::Dandelion | BlockId::Rose | BlockId::TallGrass | BlockId::Fern
+        BlockId::Dandelion
+            | BlockId::Rose
+            | BlockId::BrownMushroom
+            | BlockId::RedMushroom
+            | BlockId::TallGrass
+            | BlockId::Fern
     )
 }
 
@@ -201,6 +206,8 @@ pub fn selection_bounds(block: BlockId) -> ([f32; 3], [f32; 3]) {
         // across and a top at 0.8. The render offset does not move this box.
         return if matches!(block, BlockId::Dandelion | BlockId::Rose) {
             ([0.3, 0.0, 0.3], [0.7, 0.6, 0.7])
+        } else if matches!(block, BlockId::BrownMushroom | BlockId::RedMushroom) {
+            ([0.3, 0.0, 0.3], [0.7, 0.4, 0.7])
         } else {
             ([0.1, 0.0, 0.1], [0.9, 0.8, 0.9])
         };

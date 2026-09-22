@@ -331,7 +331,16 @@ impl MeshBuffers {
         grass_tint: [f32; 3],
         brightness: f32,
     ) {
-        let [dx, dy, dz] = crossed_plant_offset(origin_x + x as i32, y as i32, origin_z + z as i32);
+        // Beta jitters only Block.tallGrass in renderBlockReed. Fern is its
+        // metadata-2 equivalent here; flowers and mushrooms stay centered.
+        let [dx, mut dy, dz] = if matches!(block, BlockId::TallGrass | BlockId::Fern) {
+            crossed_plant_offset(origin_x + x as i32, y as i32, origin_z + z as i32)
+        } else {
+            [0.0; 3]
+        };
+        if matches!(block, BlockId::BrownMushroom | BlockId::RedMushroom) {
+            dy = 2.0 / 16.0;
+        }
         let center_x = 0.5 + dx;
         let center_z = 0.5 + dz;
         let half = 0.5 / std::f32::consts::SQRT_2;

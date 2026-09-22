@@ -339,8 +339,12 @@ pub fn block_drop_position(block: IVec3, jitter: Vec3) -> Vec3 {
 }
 
 /// `EntityItem` constructor motion, in blocks per tick. `rx` and `rz` are in `[0, 1)`.
+///
+/// Beta's horizontal range is `±0.1`. That speed lasts the whole hop (about
+/// eleven ticks), which lands the item in the next block. A tenth of that
+/// still scatters the drop inside the broken cell.
 pub fn item_constructor_motion(rx: f32, rz: f32) -> Vec3 {
-    Vec3::new(rx * 0.2 - 0.1, 0.2, rz * 0.2 - 0.1)
+    Vec3::new(rx * 0.02 - 0.01, 0.2, rz * 0.02 - 0.01)
 }
 
 /// Aimed throw from `EntityPlayer.dropPlayerItemWithRandomChoice` (`randomChoice == false`).
@@ -546,7 +550,7 @@ fn tick_dropped_items(
             motion.0 = apply_item_gravity(motion.0);
             push_out_of_blocks(
                 &chunks,
-                transform.translation,
+                &mut transform.translation,
                 &mut motion.0,
                 &mut state.rng,
             );
@@ -609,9 +613,9 @@ fn block_under_item(chunks: &WorldChunks, position: Vec3, size: EntitySize) -> O
 
 fn push_out_of_blocks(
     chunks: &WorldChunks,
-    position: Vec3,
+    position: &mut Vec3,
     motion: &mut Vec3,
-    rng: &mut JavaRandom,
+    _rng: &mut JavaRandom,
 ) {
     let x = position.x.floor() as i32;
     let y = position.y.floor() as i32;
@@ -639,14 +643,35 @@ fn push_out_of_blocks(
             best = direction;
         }
     }
-    let kick = rng.next_float() * 0.2 + 0.1;
+    // Place the 0.25 box just outside the solid. Beta instead assigns a
+    // 0.1–0.3 block/tick velocity, which keeps going for the rest of the hop
+    // and throws the item into the next block.
+    let clear = EntitySize::DROPPED_ITEM.width * 0.5 + 0.001;
     match best {
-        0 => motion.x = -kick,
-        1 => motion.x = kick,
-        2 => motion.y = -kick,
-        3 => motion.y = kick,
-        4 => motion.z = -kick,
-        5 => motion.z = kick,
+        0 => {
+            position.x = x as f32 - clear;
+            motion.x = motion.x.min(0.0);
+        }
+        1 => {
+            position.x = (x + 1) as f32 + clear;
+            motion.x = motion.x.max(0.0);
+        }
+        2 => {
+            position.y = y as f32 - clear;
+            motion.y = motion.y.min(0.0);
+        }
+        3 => {
+            position.y = (y + 1) as f32 + clear;
+            motion.y = motion.y.max(0.0);
+        }
+        4 => {
+            position.z = z as f32 - clear;
+            motion.z = motion.z.min(0.0);
+        }
+        5 => {
+            position.z = (z + 1) as f32 + clear;
+            motion.z = motion.z.max(0.0);
+        }
         _ => {}
     }
 }

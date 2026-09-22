@@ -112,9 +112,9 @@ fn block_drop_position_stays_inside_the_cell() {
 #[test]
 fn constructor_and_throw_motion_use_tick_units() {
     let spawned = item_constructor_motion(0.0, 1.0);
-    assert!((spawned.x + 0.1).abs() < 1e-5);
+    assert!((spawned.x + 0.01).abs() < 1e-5);
     assert!((spawned.y - 0.2).abs() < 1e-5);
-    assert!((spawned.z - 0.1).abs() < 1e-5);
+    assert!((spawned.z - 0.01).abs() < 1e-5);
 
     let thrown = thrown_item_motion(Vec3::NEG_Z, 0.0, 0.0, 0.0, 0.0);
     assert!(thrown.x.abs() < 1e-5);

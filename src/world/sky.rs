@@ -451,7 +451,15 @@ fn ensure_sky(
             floor: materials.add(plane_material(Color::WHITE)),
             sun: materials.add(body_material(&asset_server, "terrain/sun.png")),
             moon: materials.add(body_material(&asset_server, "terrain/moon.png")),
-            stars: materials.add(unlit_color(Color::WHITE, false)),
+            stars: materials.add(StandardMaterial {
+                base_color: Color::WHITE,
+                unlit: true,
+                fog_enabled: false,
+                alpha_mode: AlphaMode::Blend,
+                cull_mode: None,
+                double_sided: true,
+                ..default()
+            }),
             sunrise: materials.add(StandardMaterial {
                 unlit: true,
                 fog_enabled: false,
@@ -680,7 +688,10 @@ fn update_atmosphere(
             end: sky_fog_end(far),
         };
         distance.directional_light_color = Color::NONE;
-        camera.clear_color = ClearColorConfig::Custom(fog_color);
+        // Keep the atmosphere behind the fog-free sky geometry. World
+        // blocks and clouds still use the player's fog, but the sky pass
+        // should not introduce a second fog-colored horizon.
+        camera.clear_color = ClearColorConfig::Custom(srgb(sky));
         copy_fov(view_fov, &mut projection);
     }
     for mut projection in &mut views.celestial_cameras {
@@ -705,7 +716,7 @@ fn update_atmosphere(
     }
     let stars_on = star_brightness(angle);
     if let Some(mut material) = materials.get_mut(&assets.stars) {
-        material.base_color = Color::srgb(stars_on, stars_on, stars_on).with_alpha(stars_on);
+        material.base_color = Color::WHITE.with_alpha(stars_on);
     }
     for mut visibility in &mut views.stars {
         *visibility = if stars_on > 0.0 {
@@ -762,7 +773,10 @@ fn copy_fov(fov: Option<f32>, projection: &mut Projection) {
 }
 
 fn plane_material(color: Color) -> StandardMaterial {
-    unlit_color(color, true)
+    // The sky is the atmosphere/background pass. Fog belongs to world
+    // geometry and clouds; applying it here creates a hard band where the
+    // flat sky planes meet the world horizon.
+    unlit_color(color, false)
 }
 
 fn unlit_color(color: Color, fog: bool) -> StandardMaterial {

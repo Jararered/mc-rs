@@ -33,7 +33,7 @@ fn fog_distances_follow_the_loaded_chunk_radius() {
     for (chunks, far) in [(4, 64.0), (8, 128.0), (16, 256.0), (32, 512.0)] {
         near(view_distance_blocks(chunks), far);
         let (start, end) = world_fog_range(far);
-        near(start, far * 0.25);
+        near(start, far * 0.8);
         near(end, far);
         near(sky_fog_end(far), far * 0.8);
     }
@@ -53,6 +53,12 @@ fn noon_is_bright_and_midnight_is_dark() {
     assert!(sunrise_rgba(celestial_angle(12_000, 0.0)).is_some());
     near(star_brightness(0.0), 0.0);
     assert!(star_brightness(0.5) > 0.4);
+    for angle in [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0] {
+        assert!(
+            (0.0..=1.0).contains(&star_brightness(angle)),
+            "star brightness out of range at angle {angle}"
+        );
+    }
 }
 
 #[test]

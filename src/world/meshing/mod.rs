@@ -281,6 +281,8 @@ const FACE_BOTTOM: usize = 1;
 const WATER_ALPHA: f32 = 0.8;
 /// Two texels of a 16-pixel block, matching Beta's still-water surface drop.
 const WATER_SURFACE_DROP: f32 = 2.0 / 16.0;
+/// Lava uses the same inset surface plane as water, while remaining opaque.
+const LAVA_SURFACE_DROP: f32 = 2.0 / 16.0;
 
 #[derive(Default)]
 struct MeshBuffers {
@@ -552,7 +554,7 @@ fn mesh_chunk_inner(
                 }
 
                 for (face_index, face) in FACES.iter().enumerate() {
-                    if block == BlockId::Water && face_index != FACE_TOP {
+                    if is_surface_liquid(block) && face_index != FACE_TOP {
                         continue;
                     }
 
@@ -560,7 +562,7 @@ fn mesh_chunk_inner(
                     let ny = y as i32 + face.neighbor[1];
                     let nz = z as i32 + face.neighbor[2];
                     let neighbor = neighbors.get(chunk, nx, ny, nz);
-                    if block == BlockId::Water && neighbor == Some(BlockId::Water) {
+                    if neighbor.is_some_and(|neighbor| same_surface_liquid(block, neighbor)) {
                         continue;
                     }
                     if neighbor_hides_face(block, neighbor, fancy_graphics) {
@@ -597,10 +599,10 @@ fn mesh_chunk_inner(
                     } else {
                         &mut opaque
                     };
-                    let y_drop = if block == BlockId::Water {
-                        WATER_SURFACE_DROP
-                    } else {
-                        0.0
+                    let y_drop = match block {
+                        BlockId::Water => WATER_SURFACE_DROP,
+                        BlockId::Lava | BlockId::FlowingLava => LAVA_SURFACE_DROP,
+                        _ => 0.0,
                     };
                     let corner_ao = if smooth_lighting {
                         face_corner_ao(chunk, neighbors, x, y, z, face)
@@ -784,6 +786,21 @@ fn is_leaf(block: BlockId) -> bool {
         block,
         BlockId::Leaves | BlockId::SpruceLeaves | BlockId::BirchLeaves
     )
+}
+
+fn is_surface_liquid(block: BlockId) -> bool {
+    matches!(block, BlockId::Water | BlockId::Lava | BlockId::FlowingLava)
+}
+
+fn same_surface_liquid(block: BlockId, neighbor: BlockId) -> bool {
+    matches!((block, neighbor), (BlockId::Water, BlockId::Water))
+        || matches!(
+            (block, neighbor),
+            (
+                BlockId::Lava | BlockId::FlowingLava,
+                BlockId::Lava | BlockId::FlowingLava
+            )
+        )
 }
 
 /// Fast leaves hide every non-air neighbour, like any solid cube. Fancy leaves

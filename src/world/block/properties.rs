@@ -153,22 +153,40 @@ pub fn selection_bounds(block: BlockId) -> ([f32; 3], [f32; 3]) {
     (min, max)
 }
 
-/// Whether a pick ray should stop on this block.
+/// Whether the player's block selection ray should stop on this block.
 ///
-/// Water is skipped unless the ray is a bucket trace (`canCollideCheck` is
-/// false for fluids when `stopOnLiquid` is false).
+/// Water and lava are skipped; a separate liquid trace can be added for
+/// bucket interactions when those are implemented.
 pub fn is_targetable(block: BlockId) -> bool {
-    !matches!(block, BlockId::Air | BlockId::Water)
+    !matches!(
+        block,
+        BlockId::Air
+            | BlockId::Water
+            | BlockId::FlowingWater
+            | BlockId::Lava
+            | BlockId::FlowingLava
+    )
 }
 
 /// Whether a placed block may replace this cell.
 pub fn is_replaceable(block: BlockId) -> bool {
-    matches!(block, BlockId::Air | BlockId::Water)
+    matches!(
+        block,
+        BlockId::Air
+            | BlockId::Water
+            | BlockId::FlowingWater
+            | BlockId::Lava
+            | BlockId::FlowingLava
+    )
 }
 
 /// Whether the player may mine this block. Bedrock is unbreakable.
 pub fn is_breakable(block: BlockId) -> bool {
-    is_targetable(block) && hardness(block) >= 0.0
+    !matches!(
+        block,
+        BlockId::Water | BlockId::FlowingWater | BlockId::Lava | BlockId::FlowingLava
+    ) && is_targetable(block)
+        && hardness(block) >= 0.0
 }
 
 /// Beta `Block.blockHardness`. Negative means unbreakable (`setBlockUnbreakable`).

@@ -1,7 +1,7 @@
 //! The 20 Hz world clock, matching Beta's `Timer`.
 //!
 //! One accumulator drives mining, the arm swing, dropped items, particles, and
-//! the water animation. Rendering reads [`WorldTick::partial`] to interpolate
+//! the water and lava animations. Rendering reads [`WorldTick::partial`] to interpolate
 //! between the last two ticks. The clock runs only while a world is being
 //! played, so the menu does not spend ticks or dump a catch-up burst later.
 

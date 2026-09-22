@@ -11,6 +11,10 @@ use crate::world::tick::WorldTick;
 pub const WATER_STILL_TILE: (u8, u8) = (13, 12);
 pub const WATER_FLOW_TILE: (u8, u8) = (14, 12);
 const WATER_FLOW_TILE_SIZE: u8 = 2;
+/// Beta's still and flowing lava atlas tile positions.
+pub const LAVA_STILL_TILE: (u8, u8) = (13, 14);
+pub const LAVA_FLOW_TILE: (u8, u8) = (14, 14);
+const LAVA_FLOW_TILE_SIZE: u8 = 2;
 
 const TILE: usize = ATLAS_TILE_PX as usize;
 const TILE_PIXELS: usize = TILE * TILE;
@@ -149,6 +153,116 @@ impl FlowingWaterTexture {
     }
 }
 
+/// Beta `TextureLavaFX` and `TextureLavaFlowFX` cellular heat simulation.
+/// `flowing` selects the vertically scrolling 2×2 flow tile animation.
+#[derive(Clone)]
+pub struct LavaTexture {
+    current: [f32; TILE_PIXELS],
+    previous: [f32; TILE_PIXELS],
+    heights: [f32; TILE_PIXELS],
+    impulses: [f32; TILE_PIXELS],
+    rgba: [u8; TILE_PIXELS * 4],
+    tick: i32,
+    flowing: bool,
+    random: UnitRandom,
+}
+
+impl LavaTexture {
+    pub fn still() -> Self {
+        Self::new(false)
+    }
+
+    pub fn flowing() -> Self {
+        Self::new(true)
+    }
+
+    fn new(flowing: bool) -> Self {
+        Self {
+            current: [0.0; TILE_PIXELS],
+            previous: [0.0; TILE_PIXELS],
+            heights: [0.0; TILE_PIXELS],
+            impulses: [0.0; TILE_PIXELS],
+            rgba: [0; TILE_PIXELS * 4],
+            tick: 0,
+            flowing,
+            random: UnitRandom::new(if flowing {
+                0x4C415641464C4F57
+            } else {
+                0x4C4156415354494C
+            }),
+        }
+    }
+
+    pub fn tick(&mut self) {
+        if self.flowing {
+            self.tick = self.tick.wrapping_add(1);
+        }
+
+        for x in 0..TILE {
+            for y in 0..TILE {
+                let mut sum = 0.0;
+                let y_shift = ((y as f32 * std::f32::consts::TAU / TILE as f32).sin() * 1.2) as i32;
+                let x_shift = ((x as f32 * std::f32::consts::TAU / TILE as f32).sin() * 1.2) as i32;
+
+                for nx in x as i32 - 1..=x as i32 + 1 {
+                    for ny in y as i32 - 1..=y as i32 + 1 {
+                        let sx = (nx + y_shift).rem_euclid(16) as usize;
+                        let sy = (ny + x_shift).rem_euclid(16) as usize;
+                        sum += self.current[sx + sy * TILE];
+                    }
+                }
+
+                let index = x + y * TILE;
+                let corners = self.heights[(x & 15) + (y & 15) * TILE]
+                    + self.heights[((x + 1) & 15) + (y & 15) * TILE]
+                    + self.heights[((x + 1) & 15) + ((y + 1) & 15) * TILE]
+                    + self.heights[(x & 15) + ((y + 1) & 15) * TILE];
+                self.previous[index] = sum / 10.0 + corners / 4.0 * 0.8;
+
+                self.heights[index] += self.impulses[index] * 0.01;
+                if self.heights[index] < 0.0 {
+                    self.heights[index] = 0.0;
+                }
+                self.impulses[index] -= 0.06;
+                if self.random.next_double() < 0.005 {
+                    self.impulses[index] = 1.5;
+                }
+            }
+        }
+
+        std::mem::swap(&mut self.current, &mut self.previous);
+        write_lava_pixels(
+            &self.current,
+            &mut self.rgba,
+            if self.flowing { self.tick } else { 0 },
+        );
+    }
+
+    pub fn rgba(&self) -> &[u8] {
+        &self.rgba
+    }
+}
+
+fn write_lava_pixels(values: &[f32; TILE_PIXELS], rgba: &mut [u8; TILE_PIXELS * 4], scroll: i32) {
+    for index in 0..TILE_PIXELS {
+        let sample = if scroll == 0 {
+            index
+        } else {
+            (index as i32 - scroll / 3 * TILE as i32).rem_euclid(TILE_PIXELS as i32) as usize
+        };
+        let intensity = (values[sample] * 2.0).clamp(0.0, 1.0);
+        let squared = intensity * intensity;
+        let red = (intensity * 100.0 + 155.0) as u8;
+        let green = (squared * 255.0) as u8;
+        let blue = (squared * squared * 128.0) as u8;
+        let offset = index * 4;
+        rgba[offset] = red;
+        rgba[offset + 1] = green;
+        rgba[offset + 2] = blue;
+        rgba[offset + 3] = 255;
+    }
+}
+
 fn write_water_pixels(values: &[f32; TILE_PIXELS], rgba: &mut [u8; TILE_PIXELS * 4], scroll: i32) {
     for index in 0..TILE_PIXELS {
         let sample = if scroll == 0 {
@@ -250,9 +364,11 @@ pub(super) struct WaterAnimator {
     atlas: Handle<Image>,
     still: StillWaterTexture,
     flow: FlowingWaterTexture,
+    lava: LavaTexture,
+    lava_flow: LavaTexture,
 }
 
-pub(super) fn start_water_animation(
+pub(super) fn start_fluid_animation(
     commands: &mut Commands,
     atlas: Handle<Image>,
     image: &mut Image,
@@ -260,13 +376,23 @@ pub(super) fn start_water_animation(
     image.asset_usage = RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD;
     let mut still = StillWaterTexture::new();
     let mut flow = FlowingWaterTexture::new();
+    let mut lava = LavaTexture::still();
+    let mut lava_flow = LavaTexture::flowing();
     still.tick();
     flow.tick();
-    write_water_frames(image, &still, &flow);
-    commands.insert_resource(WaterAnimator { atlas, still, flow });
+    lava.tick();
+    lava_flow.tick();
+    write_fluid_frames(image, &still, &flow, &lava, &lava_flow);
+    commands.insert_resource(WaterAnimator {
+        atlas,
+        still,
+        flow,
+        lava,
+        lava_flow,
+    });
 }
 
-pub(super) fn animate_water_textures(
+pub(super) fn animate_fluid_textures(
     animator: Option<ResMut<WaterAnimator>>,
     tick: Res<WorldTick>,
     mut images: ResMut<Assets<Image>>,
@@ -281,14 +407,28 @@ pub(super) fn animate_water_textures(
     for _ in 0..ticks {
         animator.still.tick();
         animator.flow.tick();
+        animator.lava.tick();
+        animator.lava_flow.tick();
     }
     let Some(mut image) = images.get_mut(&animator.atlas) else {
         return;
     };
-    write_water_frames(&mut image, &animator.still, &animator.flow);
+    write_fluid_frames(
+        &mut image,
+        &animator.still,
+        &animator.flow,
+        &animator.lava,
+        &animator.lava_flow,
+    );
 }
 
-fn write_water_frames(image: &mut Image, still: &StillWaterTexture, flow: &FlowingWaterTexture) {
+fn write_fluid_frames(
+    image: &mut Image,
+    still: &StillWaterTexture,
+    flow: &FlowingWaterTexture,
+    lava: &LavaTexture,
+    lava_flow: &LavaTexture,
+) {
     write_atlas_tile(image, WATER_STILL_TILE.0, WATER_STILL_TILE.1, still.rgba());
     for dy in 0..WATER_FLOW_TILE_SIZE {
         for dx in 0..WATER_FLOW_TILE_SIZE {
@@ -297,6 +437,17 @@ fn write_water_frames(image: &mut Image, still: &StillWaterTexture, flow: &Flowi
                 WATER_FLOW_TILE.0 + dx,
                 WATER_FLOW_TILE.1 + dy,
                 flow.rgba(),
+            );
+        }
+    }
+    write_atlas_tile(image, LAVA_STILL_TILE.0, LAVA_STILL_TILE.1, lava.rgba());
+    for dy in 0..LAVA_FLOW_TILE_SIZE {
+        for dx in 0..LAVA_FLOW_TILE_SIZE {
+            write_atlas_tile(
+                image,
+                LAVA_FLOW_TILE.0 + dx,
+                LAVA_FLOW_TILE.1 + dy,
+                lava_flow.rgba(),
             );
         }
     }

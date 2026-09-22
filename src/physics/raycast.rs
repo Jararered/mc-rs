@@ -60,7 +60,7 @@ pub struct BlockHit {
 }
 
 /// Walk the voxel grid from `origin` along `direction` and return the first
-/// targetable block within `max_distance`. Air and water are skipped.
+/// targetable block within `max_distance`. Air, water, and lava are skipped.
 pub fn raycast_blocks(
     chunks: &WorldChunks,
     origin: Vec3,

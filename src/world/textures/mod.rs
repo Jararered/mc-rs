@@ -27,6 +27,9 @@ pub use leaf_wiggle::LeafCutoutMaterial;
 pub use leaf_wiggle::LeafWiggle;
 pub use leaf_wiggle::LeafWiggleSettings;
 pub use water::FlowingWaterTexture;
+pub use water::LAVA_FLOW_TILE;
+pub use water::LAVA_STILL_TILE;
+pub use water::LavaTexture;
 pub use water::StillWaterTexture;
 pub use water::WATER_FLOW_TILE;
 pub use water::WATER_STILL_TILE;
@@ -44,7 +47,7 @@ impl Plugin for TerrainTexturePlugin {
                 (
                     apply_terrain_atlas,
                     apply_graphics_materials,
-                    water::animate_water_textures.after(apply_terrain_atlas),
+                    water::animate_fluid_textures.after(apply_terrain_atlas),
                 ),
             );
     }
@@ -183,7 +186,7 @@ fn apply_terrain_atlas(
     if let Some(mut material) = materials.get_mut(&plant_material.0) {
         material.base_color_texture = Some(handle.clone());
     }
-    water::start_water_animation(&mut commands, handle, &mut image);
+    water::start_fluid_animation(&mut commands, handle, &mut image);
     commands.remove_resource::<PendingTerrainAtlas>();
 }
 

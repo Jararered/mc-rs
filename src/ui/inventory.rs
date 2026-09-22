@@ -478,13 +478,14 @@ fn spawn(
                         FurnaceProgress(false),
                         Pickable::IGNORE,
                         Visibility::Hidden,
-                        BackgroundColor(Color::srgb_u8(255, 170, 35)),
+                        ImageNode::new(texture.clone())
+                            .with_rect(Rect::new(176.0, 0.0, 190.0, 14.0)),
                         Node {
                             position_type: PositionType::Absolute,
                             left: px(56.0 * SCALE),
-                            top: px(36.0 * SCALE),
+                            top: px(50.0 * SCALE),
                             width: px(14.0 * SCALE),
-                            height: px(14.0 * SCALE),
+                            height: px(0.0),
                             ..default()
                         },
                     ));
@@ -492,7 +493,8 @@ fn spawn(
                         FurnaceProgress(true),
                         Pickable::IGNORE,
                         Visibility::Hidden,
-                        BackgroundColor(Color::srgb_u8(255, 170, 35)),
+                        ImageNode::new(texture.clone())
+                            .with_rect(Rect::new(176.0, 14.0, 176.0, 30.0)),
                         Node {
                             position_type: PositionType::Absolute,
                             left: px(79.0 * SCALE),
@@ -1198,12 +1200,13 @@ fn refresh(
         ),
     >,
     mut furnace_progress: Query<
-        (&FurnaceProgress, &mut Node, &mut Visibility),
+        (&FurnaceProgress, &mut ImageNode, &mut Node, &mut Visibility),
         (
             Without<SlotLabel>,
             Without<SlotDurability>,
             Without<CarriedLabel>,
             Without<CarriedIcon>,
+            Without<SlotIcon>,
         ),
     >,
     mut icons: Query<
@@ -1327,7 +1330,7 @@ fn refresh(
     let furnace = screen
         .furnace_position
         .and_then(|(x, y, z)| chunks.furnace_at(x, y, z));
-    for (indicator, mut node, mut visibility) in &mut furnace_progress {
+    for (indicator, mut image, mut node, mut visibility) in &mut furnace_progress {
         let progress = furnace.map_or(0.0, |furnace| {
             if indicator.0 {
                 f32::from(furnace.cook_ticks) / f32::from(crate::world::furnace::SMELT_TICKS)
@@ -1342,11 +1345,19 @@ fn refresh(
         } else {
             *visibility = Visibility::Inherited;
             if indicator.0 {
-                node.width = px((24.0 * SCALE * progress).round());
+                let width = (24.0 * progress).ceil().clamp(1.0, 24.0);
+                image.rect = Some(Rect::new(176.0, 14.0, 176.0 + width, 30.0));
+                node.width = px(width * SCALE);
+                node.height = px(16.0 * SCALE);
+                node.left = px(79.0 * SCALE);
+                node.top = px(34.0 * SCALE);
             } else {
-                let height = (14.0 * SCALE * progress).round();
-                node.height = px(height);
-                node.top = px(50.0 * SCALE - height);
+                let height = (14.0 * progress).ceil().clamp(1.0, 14.0);
+                image.rect = Some(Rect::new(176.0, 14.0 - height, 190.0, 14.0));
+                node.height = px(height * SCALE);
+                node.top = px((50.0 - height) * SCALE);
+                node.left = px(56.0 * SCALE);
+                node.width = px(14.0 * SCALE);
             }
         }
     }

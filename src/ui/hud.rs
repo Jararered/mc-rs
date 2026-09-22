@@ -4,9 +4,16 @@ use bevy::image::ImageSampler;
 use bevy::math::Rect;
 use bevy::picking::prelude::Pickable;
 use bevy::prelude::*;
+use bevy::text::LineHeight;
 
 use super::block_icons::BlockIcons;
 use super::inventory::durability_bar;
+use super::stack_overlay::GUI_SCALE;
+use super::stack_overlay::UiFont;
+use super::stack_overlay::count_label;
+use super::stack_overlay::durability_track;
+use super::stack_overlay::icon_size;
+use super::stack_overlay::place_stack_label;
 use crate::app::state::AppScreen;
 use crate::entity::dropped_items::ItemTickClock;
 use crate::entity::dropped_items::hotbar_icon_scale;
@@ -17,7 +24,7 @@ use crate::player::HeartFill;
 use crate::player::Player;
 use crate::player::PlayerHealth;
 
-const HUD_SCALE: f32 = 2.0;
+const HUD_SCALE: f32 = GUI_SCALE;
 const HEART_COUNT: usize = 10;
 const HOTBAR_WIDTH: f32 = 182.0;
 const HOTBAR_HEIGHT: f32 = 22.0;
@@ -26,7 +33,6 @@ const SELECTOR_HEIGHT: f32 = 22.0;
 const CROSSHAIR_SIZE: f32 = 16.0;
 const HEART_SIZE: f32 = 9.0;
 const HEART_STRIDE: f32 = 8.0;
-const ITEM_SIZE: f32 = 16.0;
 const HOTBAR_SLOT_STEP: f32 = 20.0;
 const HOTBAR_ICON_INSET: f32 = 2.0;
 
@@ -73,6 +79,7 @@ struct HotbarBlockIcon(usize);
 struct HotbarDurability(usize, bool);
 
 fn load_hud_textures(mut commands: Commands, asset_server: Res<AssetServer>) {
+    super::stack_overlay::load_ui_font(&mut commands, &asset_server);
     let load = |path| {
         asset_server
             .load_builder()
@@ -91,6 +98,7 @@ fn spawn_hud(
     mut commands: Commands,
     textures: Res<HudTextures>,
     icons: Res<BlockIcons>,
+    font: Res<UiFont>,
     player: Query<(&PlayerHealth, &Hotbar), With<Player>>,
 ) {
     let Ok((health, hotbar)) = player.single() else {
@@ -109,7 +117,7 @@ fn spawn_hud(
         ))
         .with_children(|root| {
             spawn_crosshair(root, &textures);
-            spawn_status(root, &textures, &icons, health, hotbar);
+            spawn_status(root, &textures, &icons, &font.minecraft, health, hotbar);
         });
 }
 
@@ -134,6 +142,7 @@ fn spawn_status(
     parent: &mut ChildSpawnerCommands,
     textures: &HudTextures,
     icons: &BlockIcons,
+    font: &Handle<Font>,
     health: &PlayerHealth,
     hotbar: &Hotbar,
 ) {
@@ -152,7 +161,7 @@ fn spawn_status(
         ))
         .with_children(|bottom| {
             spawn_hearts(bottom, textures, health);
-            spawn_hotbar(bottom, textures, icons, hotbar);
+            spawn_hotbar(bottom, textures, icons, font, hotbar);
         });
 }
 
@@ -205,6 +214,7 @@ fn spawn_hotbar(
     parent: &mut ChildSpawnerCommands,
     textures: &HudTextures,
     icons: &BlockIcons,
+    font: &Handle<Font>,
     hotbar: &Hotbar,
 ) {
     parent
@@ -233,7 +243,7 @@ fn spawn_hotbar(
                 },
             ));
             for (index, stack) in hotbar.slots.iter().copied().enumerate() {
-                spawn_hotbar_item(bar, icons, index, stack);
+                spawn_hotbar_item(bar, icons, font, index, stack);
             }
         });
 }
@@ -249,6 +259,7 @@ fn hotbar_item_rect(index: usize) -> (f32, f32) {
 fn spawn_hotbar_item(
     parent: &mut ChildSpawnerCommands,
     icons: &BlockIcons,
+    font: &Handle<Font>,
     index: usize,
     stack: Option<ItemStack>,
 ) {
@@ -262,12 +273,13 @@ fn spawn_hotbar_item(
             position_type: PositionType::Absolute,
             left: px(left),
             top: px(top),
-            width: px(ITEM_SIZE * HUD_SCALE),
-            height: px(ITEM_SIZE * HUD_SCALE),
+            width: px(icon_size()),
+            height: px(icon_size()),
             ..default()
         },
     ));
-    for (foreground, height, top_offset) in [(false, 4.0, 26.0), (true, 2.0, 28.0)] {
+    for foreground in [false, true] {
+        let (bar_left, bar_top, bar_width, bar_height) = durability_track(left, top, foreground);
         parent.spawn((
             HotbarDurability(index, foreground),
             Pickable::IGNORE,
@@ -275,10 +287,10 @@ fn spawn_hotbar_item(
             BackgroundColor(Color::BLACK),
             Node {
                 position_type: PositionType::Absolute,
-                left: px(left + 4.0),
-                top: px(top + top_offset),
-                width: px(26.0),
-                height: px(height),
+                left: px(bar_left),
+                top: px(bar_top),
+                width: px(bar_width),
+                height: px(bar_height),
                 ..default()
             },
         ));
@@ -286,48 +298,41 @@ fn spawn_hotbar_item(
     let has_icon = stack
         .and_then(|stack| icons.rect_for_stack(stack))
         .is_some();
+    let label = if has_icon {
+        count_label(stack)
+    } else {
+        hotbar_label(stack)
+    };
+    let mut text = Text::new(label.clone());
+    let mut node = Node::default();
+    let mut layout = TextLayout::default();
+    let mut text_font = TextFont::default();
+    let mut line_height = LineHeight::default();
+    let mut shadow = TextShadow::default();
+    place_stack_label(
+        &mut text,
+        &mut node,
+        &mut layout,
+        &mut text_font,
+        &mut line_height,
+        &mut shadow,
+        font,
+        left,
+        top,
+        &label,
+        has_icon,
+    );
     parent.spawn((
         HotbarItem(index),
         Pickable::IGNORE,
-        Text::new(visible_label(stack, icons)),
-        TextFont {
-            font_size: 10.0.into(),
-            ..default()
-        },
+        text,
+        text_font,
+        layout,
+        line_height,
         TextColor(Color::WHITE),
-        TextShadow::default(),
-        Node {
-            position_type: PositionType::Absolute,
-            left: px(if has_icon { left + 14.0 } else { left }),
-            top: px(if has_icon { top + 16.0 } else { top }),
-            width: px(if has_icon {
-                18.0
-            } else {
-                ITEM_SIZE * HUD_SCALE
-            }),
-            height: px(ITEM_SIZE * HUD_SCALE),
-            ..default()
-        },
+        shadow,
+        node,
     ));
-}
-
-fn visible_label(stack: Option<ItemStack>, icons: &BlockIcons) -> String {
-    if stack
-        .and_then(|stack| icons.rect_for_stack(stack))
-        .is_some()
-    {
-        stack
-            .map(|stack| {
-                if stack.count() > 1 {
-                    stack.count().to_string()
-                } else {
-                    String::new()
-                }
-            })
-            .unwrap_or_default()
-    } else {
-        hotbar_label(stack)
-    }
 }
 
 fn hotbar_label(stack: Option<ItemStack>) -> String {
@@ -383,8 +388,17 @@ fn update_hotbar_selector(
 
 fn update_hotbar_items(
     hotbar: Query<Ref<Hotbar>, With<Player>>,
-    mut labels: Query<(&HotbarItem, &mut Text, &mut Node)>,
+    mut labels: Query<(
+        &HotbarItem,
+        &mut Text,
+        &mut Node,
+        &mut TextLayout,
+        &mut TextFont,
+        &mut LineHeight,
+        &mut TextShadow,
+    )>,
     icons: Res<BlockIcons>,
+    font: Res<UiFont>,
 ) {
     let Ok(hotbar) = hotbar.single() else {
         return;
@@ -392,20 +406,32 @@ fn update_hotbar_items(
     if !hotbar.is_changed() && !icons.is_changed() {
         return;
     }
-    for (item, mut text, mut node) in &mut labels {
+    for (item, mut text, mut node, mut layout, mut text_font, mut line_height, mut shadow) in
+        &mut labels
+    {
         let stack = hotbar.slots[item.0];
         let has_icon = stack
             .and_then(|stack| icons.rect_for_stack(stack))
             .is_some();
-        let (left, top) = hotbar_item_rect(item.0);
-        node.left = px(if has_icon { left + 14.0 } else { left });
-        node.top = px(if has_icon { top + 16.0 } else { top });
-        node.width = px(if has_icon {
-            18.0
+        let label = if has_icon {
+            count_label(stack)
         } else {
-            ITEM_SIZE * HUD_SCALE
-        });
-        **text = visible_label(stack, &icons);
+            hotbar_label(stack)
+        };
+        let (left, top) = hotbar_item_rect(item.0);
+        place_stack_label(
+            &mut text,
+            &mut node,
+            &mut layout,
+            &mut text_font,
+            &mut line_height,
+            &mut shadow,
+            &font.minecraft,
+            left,
+            top,
+            &label,
+            has_icon,
+        );
     }
 }
 
@@ -424,11 +450,11 @@ fn update_hotbar_icons(
             image.rect = Some(rect);
             *visibility = Visibility::Inherited;
             let scale = hotbar_icon_scale(hotbar.pop[slot.0], partial);
-            let width = ITEM_SIZE * HUD_SCALE * scale.x;
-            let height = ITEM_SIZE * HUD_SCALE * scale.y;
+            let width = icon_size() * scale.x;
+            let height = icon_size() * scale.y;
             let (left, top) = hotbar_item_rect(slot.0);
-            node.left = px(left + (ITEM_SIZE * HUD_SCALE - width) * 0.5);
-            node.top = px(top + (ITEM_SIZE * HUD_SCALE - height) * 0.5);
+            node.left = px(left + (icon_size() - width) * 0.5);
+            node.top = px(top + (icon_size() - height) * 0.5);
             node.width = px(width);
             node.height = px(height);
         } else {
@@ -452,11 +478,12 @@ fn update_hotbar_bars(
     for (bar, mut node, mut visibility, mut color) in &mut bars {
         if let Some((width, red, green)) = hotbar.slots[bar.0].and_then(durability_bar) {
             *visibility = Visibility::Inherited;
+            let (_, _, track_width, _) = durability_track(0.0, 0.0, bar.1);
             if bar.1 {
                 node.width = px(width);
                 *color = BackgroundColor(Color::srgb_u8(red, green, 0));
             } else {
-                node.width = px(26.0);
+                node.width = px(track_width);
                 *color = BackgroundColor(Color::BLACK);
             }
         } else {

@@ -14,6 +14,7 @@ mod hud;
 pub mod icon_appearance;
 mod inventory;
 mod item_icon_data;
+pub mod stack_overlay;
 
 pub use hud::HudPlugin;
 pub use inventory::InventoryGuiPlugin;

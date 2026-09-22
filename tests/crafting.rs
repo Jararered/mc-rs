@@ -82,6 +82,24 @@ fn beta_book_crafts_common_items_in_two_by_two_and_three_by_three() {
 }
 
 #[test]
+fn logs_craft_into_matching_species_of_planks() {
+    let book = beta_recipe_book();
+    for (log, species, planks) in [
+        (BlockId::Wood, 0, BlockId::WoodenPlanks),
+        (BlockId::SpruceWood, 1, BlockId::SprucePlanks),
+        (BlockId::BirchWood, 2, BlockId::BirchPlanks),
+    ] {
+        let mut grid = CraftingGrid::player();
+        grid.set(0, 0, Some(ItemStack::from_block(log, 1).unwrap()));
+        let output = book.find(&grid).expect("a log should craft into planks");
+        assert_eq!(output.item(), block(BlockId::WoodenPlanks));
+        assert_eq!(output.count(), 4);
+        assert_eq!(output.data(), species);
+        assert_eq!(output.runtime_block(), Some(planks));
+    }
+}
+
+#[test]
 fn cake_consumption_returns_empty_buckets_and_repeats_safely() {
     let book = beta_recipe_book();
     let mut grid = CraftingGrid::workbench();

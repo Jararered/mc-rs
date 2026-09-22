@@ -1,6 +1,6 @@
 //! Chunk block identity. Discriminants `0..=96` are the Beta 1.7.3 block ids,
 //! including blocks the world does not place yet. `200..` are private chunk
-//! values for wood species, torch facing, and furnace facing.
+//! values for wood and plank species, torch facing, and furnace facing.
 use crate::item::registry::ItemData;
 
 /// Horizontal face presented as the front of a furnace.
@@ -150,6 +150,8 @@ pub enum BlockId {
     LitFurnaceEast = 214,
     LitFurnaceSouth = 215,
     LitFurnaceWest = 216,
+    SprucePlanks = 217,
+    BirchPlanks = 218,
 }
 
 impl BlockId {
@@ -256,6 +258,8 @@ impl BlockId {
             214 => Self::LitFurnaceEast,
             215 => Self::LitFurnaceSouth,
             216 => Self::LitFurnaceWest,
+            217 => Self::SprucePlanks,
+            218 => Self::BirchPlanks,
             89 => Self::Glowstone,
             90 => Self::NetherPortal,
             91 => Self::JackOLantern,
@@ -380,6 +384,8 @@ impl BlockId {
             Self::BirchLeaves => "birch_leaves",
             Self::SpruceWood => "spruce_wood",
             Self::BirchWood => "birch_wood",
+            Self::SprucePlanks => "spruce_planks",
+            Self::BirchPlanks => "birch_planks",
             Self::TorchWest => "torch_west",
             Self::TorchEast => "torch_east",
             Self::TorchNorth => "torch_north",
@@ -467,6 +473,8 @@ impl BlockId {
                 | Self::BirchLeaves
                 | Self::SpruceWood
                 | Self::BirchWood
+                | Self::SprucePlanks
+                | Self::BirchPlanks
                 | Self::TorchWest
                 | Self::TorchEast
                 | Self::TorchNorth
@@ -552,6 +560,8 @@ impl BlockId {
         match self {
             Self::SpruceWood => (Self::Wood, 1),
             Self::BirchWood => (Self::Wood, 2),
+            Self::SprucePlanks => (Self::WoodenPlanks, 1),
+            Self::BirchPlanks => (Self::WoodenPlanks, 2),
             Self::SpruceLeaves => (Self::Leaves, 1),
             Self::BirchLeaves => (Self::Leaves, 2),
             Self::Torch
@@ -579,6 +589,8 @@ impl BlockId {
         match (self, metadata) {
             (Self::Wood, 1) => Some(Self::SpruceWood),
             (Self::Wood, 2) => Some(Self::BirchWood),
+            (Self::WoodenPlanks, 1) => Some(Self::SprucePlanks),
+            (Self::WoodenPlanks, 2) => Some(Self::BirchPlanks),
             (Self::Leaves, 1) => Some(Self::SpruceLeaves),
             (Self::Leaves, 2) => Some(Self::BirchLeaves),
             (Self::Torch, 0 | 5) => Some(Self::Torch),
@@ -596,7 +608,7 @@ impl BlockId {
     /// Inventory subtype for the direct block item.
     pub const fn item_data(self) -> ItemData {
         match self {
-            Self::Sapling | Self::Wood | Self::Leaves => ItemData::Subtype(2),
+            Self::Sapling | Self::Wood | Self::Leaves | Self::WoodenPlanks => ItemData::Subtype(2),
             Self::Wool => ItemData::Subtype(15),
             Self::StoneSlab => ItemData::Subtype(3),
             _ => ItemData::None,

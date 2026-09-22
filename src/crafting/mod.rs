@@ -731,7 +731,12 @@ pub fn beta_recipe_book() -> &'static RecipeBook {
             &[('#', i(I::IronIngot)), ('X', i(I::Redstone))],
             out(I::Compass, 1, 0),
         );
-        r.add_shapeless(&[i(b(B::Wood))], out(b(B::WoodenPlanks), 4, 0));
+        for species in 0..=2 {
+            r.add_shapeless(
+                &[d(b(B::Wood), species)],
+                out(b(B::WoodenPlanks), 4, species),
+            );
+        }
         r.add_shapeless(&[i(I::SugarCane)], out(I::Paper, 3, 0));
         r.add_shapeless(&[i(I::SugarCane)], out(I::Sugar, 1, 0));
         r.add_shapeless(&[i(I::Bone)], out(I::Dye, 3, 15));

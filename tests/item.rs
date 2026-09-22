@@ -16,7 +16,7 @@ fn registries_cover_beta_ranges_without_registering_holes_or_air_items() {
         (0..=u8::MAX)
             .filter(|raw| BlockId::from_u8(*raw).is_some())
             .count(),
-        114
+        116
     );
     assert_eq!(ItemRegistry::iter().count(), 202);
     for raw in 0..=u16::MAX {
@@ -37,7 +37,7 @@ fn registries_cover_beta_ranges_without_registering_holes_or_air_items() {
                 assert_eq!(block.as_u8(), raw);
                 assert!(!block.name().is_empty());
             }
-            None => assert!(raw > 96 && !(200..=208).contains(&raw) && !(209..=216).contains(&raw)),
+            None => assert!(raw > 96 && !(200..=208).contains(&raw) && !(209..=218).contains(&raw)),
         }
     }
 }
@@ -154,6 +154,14 @@ fn species_survive_stacks_but_torch_attachments_do_not() {
     assert_eq!(birch.item(), ItemId::Block(BlockId::Leaves));
     assert_eq!(birch.data(), 2);
     assert_eq!(birch.runtime_block(), Some(BlockId::BirchLeaves));
+    let spruce_planks = ItemStack::from_block(BlockId::SprucePlanks, 4).unwrap();
+    assert_eq!(spruce_planks.item(), ItemId::Block(BlockId::WoodenPlanks));
+    assert_eq!(spruce_planks.data(), 1);
+    assert_eq!(spruce_planks.runtime_block(), Some(BlockId::SprucePlanks));
+    let birch_planks = ItemStack::from_block(BlockId::BirchPlanks, 4).unwrap();
+    assert_eq!(birch_planks.item(), ItemId::Block(BlockId::WoodenPlanks));
+    assert_eq!(birch_planks.data(), 2);
+    assert_eq!(birch_planks.runtime_block(), Some(BlockId::BirchPlanks));
     let torch = ItemStack::from_block(BlockId::TorchEast, 4).unwrap();
     assert_eq!(torch.item(), ItemId::Block(BlockId::Torch));
     assert_eq!(torch.data(), 0);

@@ -138,6 +138,8 @@ fn is_wood_material(block: BlockId) -> bool {
             | BlockId::SpruceWood
             | BlockId::BirchWood
             | BlockId::WoodenPlanks
+            | BlockId::SprucePlanks
+            | BlockId::BirchPlanks
             | BlockId::Chest
             | BlockId::CraftingTable
             | BlockId::Bookshelf

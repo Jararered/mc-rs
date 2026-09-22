@@ -346,7 +346,7 @@ pub fn block_tile(
         BlockId::Stone => (1, 0),
         BlockId::Dirt => (2, 0),
         BlockId::Cobblestone => (0, 1),
-        BlockId::WoodenPlanks => (4, 0),
+        BlockId::WoodenPlanks | BlockId::SprucePlanks | BlockId::BirchPlanks => (4, 0),
         // Beta BlockWorkbench: top 43, plank bottom 4, and two alternating
         // side tiles (59/60) based on the block face orientation.
         BlockId::CraftingTable if face == 0 => (11, 2),

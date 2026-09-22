@@ -125,7 +125,14 @@ fn pick_effective(block: BlockId) -> bool {
 /// `ItemAxe.blocksEffectiveAgainst`. Crafting tables, note blocks, jukeboxes,
 /// and pumpkins are wood or pumpkin and are not in this list.
 fn axe_effective(block: BlockId) -> bool {
-    is_log(block) || matches!(block, BlockId::WoodenPlanks | BlockId::Bookshelf)
+    is_log(block)
+        || matches!(
+            block,
+            BlockId::WoodenPlanks
+                | BlockId::SprucePlanks
+                | BlockId::BirchPlanks
+                | BlockId::Bookshelf
+        )
 }
 
 /// `ItemSpade.blocksEffectiveAgainst`. The snow block is the layered entry

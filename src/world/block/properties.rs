@@ -218,7 +218,7 @@ pub fn hardness(block: BlockId) -> f32 {
         BlockId::Grass => 0.6,
         BlockId::Dirt => 0.5,
         BlockId::Cobblestone => 2.0,
-        BlockId::WoodenPlanks => 2.0,
+        BlockId::WoodenPlanks | BlockId::SprucePlanks | BlockId::BirchPlanks => 2.0,
         BlockId::Bedrock => -1.0,
         BlockId::Water => 100.0,
         BlockId::Sand => 0.5,

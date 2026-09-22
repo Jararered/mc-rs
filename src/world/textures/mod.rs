@@ -65,9 +65,9 @@ pub(crate) struct CutoutMaterial(pub Handle<LeafCutoutMaterial>);
 #[derive(Resource)]
 pub(crate) struct WaterMaterial(pub Handle<StandardMaterial>);
 
-/// Crossed flower and tall-grass quads. Cutout, drawn from both sides.
+/// Static alpha-masked geometry such as crossed plants and cactus blocks.
 #[derive(Resource)]
-pub(crate) struct PlantMaterial(pub Handle<StandardMaterial>);
+pub(crate) struct AlphaMaskMaterial(pub Handle<StandardMaterial>);
 
 #[derive(Resource)]
 struct PendingTerrainAtlas(Handle<Image>);
@@ -144,7 +144,7 @@ fn load_terrain_atlas(
     commands.insert_resource(GrassOverlayMaterial(grass_overlay));
     commands.insert_resource(CutoutMaterial(cutout));
     commands.insert_resource(WaterMaterial(water));
-    commands.insert_resource(PlantMaterial(plants));
+    commands.insert_resource(AlphaMaskMaterial(plants));
     commands.insert_resource(PendingTerrainAtlas(image));
     commands.insert_resource(GrassColors::load());
     commands.insert_resource(FoliageColors::load());
@@ -158,7 +158,7 @@ fn apply_terrain_atlas(
     grass_overlay_material: Res<GrassOverlayMaterial>,
     cutout_material: Res<CutoutMaterial>,
     water_material: Res<WaterMaterial>,
-    plant_material: Res<PlantMaterial>,
+    alpha_mask_material: Res<AlphaMaskMaterial>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut cutout_materials: ResMut<Assets<LeafCutoutMaterial>>,
 ) {
@@ -183,7 +183,7 @@ fn apply_terrain_atlas(
     if let Some(mut material) = materials.get_mut(&water_material.0) {
         material.base_color_texture = Some(handle.clone());
     }
-    if let Some(mut material) = materials.get_mut(&plant_material.0) {
+    if let Some(mut material) = materials.get_mut(&alpha_mask_material.0) {
         material.base_color_texture = Some(handle.clone());
     }
     water::start_fluid_animation(&mut commands, handle, &mut image);
@@ -196,7 +196,7 @@ fn apply_graphics_materials(
     grass_overlay_material: Res<GrassOverlayMaterial>,
     cutout_material: Res<CutoutMaterial>,
     water_material: Res<WaterMaterial>,
-    plant_material: Res<PlantMaterial>,
+    alpha_mask_material: Res<AlphaMaskMaterial>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut cutout_materials: ResMut<Assets<LeafCutoutMaterial>>,
 ) {
@@ -216,7 +216,7 @@ fn apply_graphics_materials(
         material.unlit = settings.old_lighting;
         apply_water_quality(&mut material, settings.graphics);
     }
-    if let Some(mut material) = materials.get_mut(&plant_material.0) {
+    if let Some(mut material) = materials.get_mut(&alpha_mask_material.0) {
         material.unlit = settings.old_lighting;
     }
 }

@@ -6,6 +6,7 @@ use bevy::render::render_resource::PrimitiveTopology;
 
 use crate::ui::icon_appearance::Appearance;
 use crate::ui::icon_appearance::Shape;
+use crate::world::meshing::geometry::BlockFaceGeometry;
 use crate::world::textures::atlas_tile_uvs;
 
 struct Builder {
@@ -116,6 +117,17 @@ fn box_part(builder: &mut Builder, bounds: [f32; 6], look: Appearance) {
     }
 }
 
+fn face_geometry_part(builder: &mut Builder, geometry: BlockFaceGeometry, look: Appearance) {
+    let tiles = [
+        look.top, look.top, look.right, look.left, look.right, look.left,
+    ];
+    for (face, tile) in geometry.faces().iter().copied().zip(tiles) {
+        let corners = face.corners.map(|[x, y, z]| [x - 0.5, y - 0.5, z - 0.5]);
+        let uvs = face.uvs.map(|[u, v]| tile_uv(tile, u, v, true));
+        builder.quad(corners, face.normal, uvs, look.tint);
+    }
+}
+
 pub(super) fn block_mesh(id: u8, look: Appearance) -> Mesh {
     let mut builder = Builder::new();
     match look.shape {
@@ -162,7 +174,7 @@ pub(super) fn block_mesh(id: u8, look: Appearance) -> Mesh {
                 box_part(&mut builder, bounds, look);
             }
         }
-        Shape::Cactus => box_part(&mut builder, [0.0625, 0., 0.0625, 0.9375, 1., 0.9375], look),
+        Shape::Cactus => face_geometry_part(&mut builder, BlockFaceGeometry::cactus(), look),
         Shape::Flat => unreachable!(),
     }
     builder.finish()

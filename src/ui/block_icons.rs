@@ -19,6 +19,7 @@ use crate::item::ItemData;
 use crate::item::ItemRegistry;
 use crate::item::ItemStack;
 use crate::world::block::block::BlockId;
+use crate::world::meshing::geometry::BlockFaceGeometry;
 
 pub const ICON_SIZE: u32 = 32;
 const COLUMNS: u32 = 16;
@@ -287,15 +288,31 @@ fn render_block_icon(source: &Source, id: u8, data: u16) -> Vec<u8> {
                 [0.4375, 0.3125, -0.125, 0.5625, 0.4375, 1.125],
             );
         }
-        Shape::Cactus => draw_box(
-            &mut out,
-            source,
-            appearance,
-            [0.0625, 0.0, 0.0625, 0.9375, 1.0, 0.9375],
-        ),
+        Shape::Cactus => draw_cactus(&mut out, source, appearance),
         Shape::Flat => unreachable!(),
     }
     out
+}
+
+fn draw_cactus(out: &mut [u8], source: &Source, look: Appearance) {
+    let geometry = BlockFaceGeometry::cactus();
+    for (face_index, tile, light) in [
+        (4, look.left, 0.78),
+        (2, look.right, 0.62),
+        (0, look.top, 1.0),
+    ] {
+        let face = geometry.face(face_index);
+        let points = face.corners.map(|[x, y, z]| project(x, y, z));
+        draw_face(
+            out,
+            source,
+            tile,
+            look.tint,
+            light,
+            points,
+            face.uvs.map(|[u, v]| (u, v)),
+        );
+    }
 }
 
 // Orthographic projection of the inventory orientation used by RenderItem:

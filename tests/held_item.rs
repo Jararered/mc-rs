@@ -177,6 +177,32 @@ fn held_block_uvs_use_the_padded_terrain_atlas() {
 }
 
 #[test]
+fn held_cactus_has_full_sides_offset_inward_per_face() {
+    let mut app = app();
+    select(&mut app, 81, 0);
+    for _ in 0..7 {
+        app.update();
+    }
+    let (_, handle, _) = visual(&mut app, "Held stack");
+    let mesh = app.world().resource::<Assets<Mesh>>().get(&handle).unwrap();
+    assert_eq!(mesh.count_vertices(), 24);
+    let VertexAttributeValues::Float32x3(positions) =
+        mesh.attribute(Mesh::ATTRIBUTE_POSITION).unwrap()
+    else {
+        panic!("held cactus should have mesh positions");
+    };
+    assert!(positions[..4].iter().all(|point| point[1] == 0.5));
+    assert!(positions[..4].iter().any(|point| point[0] == -0.5));
+    assert!(positions[..4].iter().any(|point| point[2] == 0.5));
+    assert!(positions[8..12].iter().all(|point| point[0] == 0.4375));
+    assert!(positions[8..12].iter().any(|point| point[1] == -0.5));
+    assert!(positions[8..12].iter().any(|point| point[2] == 0.5));
+    assert!(positions[12..16].iter().all(|point| point[0] == -0.4375));
+    assert!(positions[16..20].iter().all(|point| point[2] == 0.4375));
+    assert!(positions[20..24].iter().all(|point| point[2] == -0.4375));
+}
+
+#[test]
 fn count_and_durability_updates_keep_the_held_mesh_and_pose() {
     let mut app = app();
     select(&mut app, 346, 0); // fishing rod

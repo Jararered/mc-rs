@@ -34,6 +34,7 @@ use crate::world::chunk::ChunkPos;
 use crate::world::chunk::WorldChunks;
 use crate::world::meshing::dropped_block_meshes;
 use crate::world::persistence::WorldPersistence;
+use crate::world::textures::AlphaMaskMaterial;
 use crate::world::textures::CutoutMaterial;
 use crate::world::textures::FoliageColors;
 use crate::world::textures::GrassColors;
@@ -707,6 +708,7 @@ struct ItemRenderResources<'w> {
     terrain: Option<Res<'w, TerrainMaterial>>,
     grass_overlay: Option<Res<'w, GrassOverlayMaterial>>,
     cutout: Option<Res<'w, CutoutMaterial>>,
+    alpha_mask: Option<Res<'w, AlphaMaskMaterial>>,
     icons: Option<Res<'w, BlockIcons>>,
 }
 
@@ -816,6 +818,7 @@ fn sync_item_rendering(
                     world.terrain.as_deref(),
                     world.grass_overlay.as_deref(),
                     world.cutout.as_deref(),
+                    world.alpha_mask.as_deref(),
                     &offsets,
                     bob,
                     yaw,
@@ -914,6 +917,7 @@ fn spawn_block_pieces(
     terrain: Option<&TerrainMaterial>,
     grass_overlay: Option<&GrassOverlayMaterial>,
     cutout: Option<&CutoutMaterial>,
+    alpha_mask: Option<&AlphaMaskMaterial>,
     offsets: &[Vec3],
     bob: f32,
     yaw: f32,
@@ -928,9 +932,23 @@ fn spawn_block_pieces(
     let overlay = built.overlay.map(|mesh| meshes.add(mesh));
     let use_cutout = built.cutout;
     let cutout_handle = cutout.map(|material| material.0.clone());
+    let alpha_mask_handle = alpha_mask.map(|material| material.0.clone());
     for offset in offsets {
         let pose = item_piece_transform(bob, yaw, scale, *offset, slide);
         if use_cutout && let Some(material) = cutout_handle.clone() {
+            let child = commands
+                .spawn((
+                    Mesh3d(body.clone()),
+                    MeshMaterial3d(material),
+                    pose,
+                    ItemPilePiece { offset: *offset },
+                    NoFrustumCulling,
+                ))
+                .id();
+            commands.entity(parent).add_child(child);
+        } else if built.alpha_masked
+            && let Some(material) = alpha_mask_handle.clone()
+        {
             let child = commands
                 .spawn((
                     Mesh3d(body.clone()),

@@ -1,6 +1,4 @@
 use bevy::ecs::hierarchy::ChildSpawnerCommands;
-use bevy::image::ImageLoaderSettings;
-use bevy::image::ImageSampler;
 use bevy::math::Rect;
 use bevy::prelude::*;
 use bevy::ui::widget::NodeImageMode;
@@ -102,14 +100,7 @@ enum SettingLabel {
 }
 
 fn load_menu_textures(mut commands: Commands, asset_server: Res<AssetServer>) {
-    let load = |path| {
-        asset_server
-            .load_builder()
-            .with_settings(|settings: &mut ImageLoaderSettings| {
-                settings.sampler = ImageSampler::nearest();
-            })
-            .load(path)
-    };
+    let load = |path| asset_server.load(path);
     commands.insert_resource(MenuTextures {
         background: load("gui/background.png"),
         buttons: load("gui/gui.png"),

@@ -14,8 +14,6 @@ use bevy::camera::visibility::NoFrustumCulling;
 use bevy::camera::visibility::RenderLayers;
 use bevy::ecs::hierarchy::ChildSpawnerCommands;
 use bevy::ecs::system::SystemParam;
-use bevy::image::ImageLoaderSettings;
-use bevy::image::ImageSampler;
 use bevy::light::NotShadowCaster;
 use bevy::mesh::Indices;
 use bevy::pbr::DistanceFog;
@@ -694,14 +692,10 @@ fn unlit_color(color: Color, fog: bool) -> StandardMaterial {
 }
 
 fn body_material(server: &AssetServer, path: &str) -> StandardMaterial {
-    let texture = std::path::Path::new("assets").join(path).exists().then(|| {
-        server
-            .load_builder()
-            .with_settings(|settings: &mut ImageLoaderSettings| {
-                settings.sampler = ImageSampler::nearest();
-            })
-            .load(path.to_string())
-    });
+    let texture = std::path::Path::new("assets")
+        .join(path)
+        .exists()
+        .then(|| server.load(path.to_string()));
     let mut material = unlit_color(Color::WHITE, false);
     material.base_color_texture = texture;
     material.alpha_mode = AlphaMode::Add;

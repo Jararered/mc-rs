@@ -1,5 +1,3 @@
-use bevy::image::ImageLoaderSettings;
-use bevy::image::ImageSampler;
 use bevy::picking::prelude::Pickable;
 use bevy::prelude::*;
 use bevy::text::Justify;
@@ -189,20 +187,9 @@ struct SlotDrag {
 }
 
 fn load_texture(mut commands: Commands, assets: Res<AssetServer>) {
-    let texture = assets
-        .load_builder()
-        .with_settings(|settings: &mut ImageLoaderSettings| {
-            settings.sampler = ImageSampler::nearest()
-        })
-        .load("gui/inventory.png");
     commands.insert_resource(InventoryTexture {
-        background: texture,
-        crafting: assets
-            .load_builder()
-            .with_settings(|settings: &mut ImageLoaderSettings| {
-                settings.sampler = ImageSampler::nearest()
-            })
-            .load("gui/crafting.png"),
+        background: assets.load("gui/inventory.png"),
+        crafting: assets.load("gui/crafting.png"),
     });
 }
 

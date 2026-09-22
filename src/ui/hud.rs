@@ -1,6 +1,4 @@
 use bevy::ecs::hierarchy::ChildSpawnerCommands;
-use bevy::image::ImageLoaderSettings;
-use bevy::image::ImageSampler;
 use bevy::math::Rect;
 use bevy::picking::prelude::Pickable;
 use bevy::prelude::*;
@@ -80,14 +78,7 @@ struct HotbarDurability(usize, bool);
 
 fn load_hud_textures(mut commands: Commands, asset_server: Res<AssetServer>) {
     super::stack_overlay::load_ui_font(&mut commands, &asset_server);
-    let load = |path| {
-        asset_server
-            .load_builder()
-            .with_settings(|settings: &mut ImageLoaderSettings| {
-                settings.sampler = ImageSampler::nearest();
-            })
-            .load(path)
-    };
+    let load = |path| asset_server.load(path);
     commands.insert_resource(HudTextures {
         widgets: load("gui/gui.png"),
         icons: load("gui/icons.png"),

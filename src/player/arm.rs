@@ -5,8 +5,6 @@ use std::collections::HashMap;
 use bevy::asset::RenderAssetUsages;
 use bevy::camera::visibility::RenderLayers;
 use bevy::ecs::hierarchy::ChildSpawnerCommands;
-use bevy::image::ImageLoaderSettings;
-use bevy::image::ImageSampler;
 use bevy::mesh::Indices;
 use bevy::prelude::*;
 use bevy::render::render_resource::PrimitiveTopology;
@@ -131,14 +129,7 @@ fn prepare_arm(
     // A colored cuboid still renders if no skin is available.
     let skin = std::path::Path::new("assets/mob/char.png")
         .exists()
-        .then(|| {
-            asset_server
-                .load_builder()
-                .with_settings(|settings: &mut ImageLoaderSettings| {
-                    settings.sampler = ImageSampler::nearest();
-                })
-                .load("mob/char.png")
-        });
+        .then(|| asset_server.load("mob/char.png"));
     commands.insert_resource(ArmAssets {
         mesh: meshes.add(right_arm_mesh()),
         material: materials.add(StandardMaterial {
@@ -163,14 +154,10 @@ fn held_material(
     server: &AssetServer,
     path: &'static str,
 ) -> Handle<StandardMaterial> {
-    let texture = std::path::Path::new("assets").join(path).exists().then(|| {
-        server
-            .load_builder()
-            .with_settings(|settings: &mut ImageLoaderSettings| {
-                settings.sampler = ImageSampler::nearest();
-            })
-            .load(path)
-    });
+    let texture = std::path::Path::new("assets")
+        .join(path)
+        .exists()
+        .then(|| server.load(path));
     materials.add(StandardMaterial {
         base_color_texture: texture,
         unlit: true,

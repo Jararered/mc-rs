@@ -6,7 +6,7 @@ Compatibility with original Minecraft Beta 1.7.3 worlds and servers is a **secon
 
 # Reference sources
 
-- The decompiled Beta 1.7.3 Java source is checked in under `refs/mc_b1.7.3_release/1.7.3-LTS/src/minecraft/net/minecraft/{src,client}/` (client) and `.../minecraft_server/net/minecraft/src/` (server). Treat it as the behavioral source of truth for generation, block/item behavior, recipes, and options rather than guessing from memory.
+- The decompiled Beta 1.7.3 Java source is checked in under `refs/mc_b1.7.3_release/1.7.3-LTS/src/minecraft/net/minecraft/{src,client}/` (client) and `.../minecraft_server/net/minecraft/src/` (server). Treat it as the behavioral source of truth for generation, block/item behavior, recipes, and options rather than guessing from memory. The Java source files are large; do not read them in their entirety. Use `grep`/`sed`/`rg` to find and inspect only the relevant methods and fields.
 - `refs/mc_b1.7.3_release` is a nested git repo recorded as a gitlink with no `.gitmodules`, so it may be missing in a fresh clone; `refs/` is otherwise not ignored.
 - `docs/PLAN.md` is an aspirational layout sketch; this file and the code are authoritative.
 - The feature/settings workflow lives in `.grok/skills/implement-feature/SKILL.md` (when a `GameSettings` toggle is warranted, menu wiring, when to remesh, and tests). Read it before adding a graphics option.
@@ -55,6 +55,7 @@ The current game has a walking, sprinting, sneaking, and jumping player with vox
 - Keep Beta behavior in simulation data (block states, item data, the recipe book) and keep presentation in `src/world/textures/` and `src/ui/`. Do not fold rendering concerns into world or item data.
 - Persistence uses a custom versioned format, not the Beta region format. Keep it behind `src/world/persistence/` so a Beta adapter can be added at that boundary later.
 - Client options live in `settings.json` and are owned by `src/app/settings.rs`; gameplay reads them through `GameSettings` rather than reading the file directly.
+- Textures use nearest sampling and no mipmaps. `main` sets that on `ImagePlugin`, and loaders should leave `ImageSampler::Default` so they inherit it. An image sets its own sampler only for a different address mode, such as repeating clouds. The terrain atlas also pins `lod_max_clamp` to 0 so a mip cannot blend neighboring tiles.
 
 ## World tick
 

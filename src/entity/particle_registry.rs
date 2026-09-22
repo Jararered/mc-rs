@@ -1,8 +1,6 @@
 //! Named sprites in the original `particles.png` atlas. This describes art,
 //! not particle simulation; callers can use the same sprite in world or UI.
 
-use bevy::image::ImageLoaderSettings;
-use bevy::image::ImageSampler;
 use bevy::prelude::*;
 
 pub const PARTICLE_ATLAS_GRID: u8 = 16;
@@ -22,12 +20,7 @@ impl Plugin for ParticleRegistryPlugin {
 }
 
 fn load_particle_atlas(mut commands: Commands, asset_server: Res<AssetServer>) {
-    let image = asset_server
-        .load_builder()
-        .with_settings(|settings: &mut ImageLoaderSettings| {
-            settings.sampler = ImageSampler::nearest();
-        })
-        .load("particles.png");
+    let image = asset_server.load("particles.png");
     commands.insert_resource(ParticleAtlas(image));
 }
 

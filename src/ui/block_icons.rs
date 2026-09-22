@@ -4,7 +4,6 @@
 use std::collections::HashMap;
 
 use bevy::asset::RenderAssetUsages;
-use bevy::image::ImageLoaderSettings;
 use bevy::image::ImageSampler;
 use bevy::math::Rect;
 use bevy::prelude::*;
@@ -62,14 +61,7 @@ impl BlockIcons {
 }
 
 pub fn setup(mut commands: Commands, server: Res<AssetServer>, mut images: ResMut<Assets<Image>>) {
-    let load = |path| {
-        server
-            .load_builder()
-            .with_settings(|settings: &mut ImageLoaderSettings| {
-                settings.sampler = ImageSampler::nearest()
-            })
-            .load(path)
-    };
+    let load = |path| server.load(path);
     let mut atlas = Image::new_fill(
         Extent3d {
             width: ATLAS_SIZE,
@@ -81,7 +73,7 @@ pub fn setup(mut commands: Commands, server: Res<AssetServer>, mut images: ResMu
         TextureFormat::Rgba8UnormSrgb,
         RenderAssetUsages::default(),
     );
-    atlas.sampler = ImageSampler::nearest();
+    atlas.sampler = ImageSampler::Default;
     commands.insert_resource(BlockIcons {
         image: images.add(atlas),
         terrain: load("terrain.png"),

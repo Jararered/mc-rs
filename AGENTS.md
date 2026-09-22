@@ -4,6 +4,20 @@ Build a Minecraft Beta-inspired game in Rust with Bevy. The first priority is a 
 
 Compatibility with original Minecraft Beta 1.7.3 worlds and servers is a **second, much later priority**. Keep core game data and rendering reasonably separate so adapters can be added later, but do not delay gameplay work or shape every internal API around the old file format, block IDs, or network protocol. When compatibility work begins, put format and protocol translation at explicit boundaries.
 
+# Reference sources
+
+- The decompiled Beta 1.7.3 Java source is checked in under `refs/mc_b1.7.3_release/1.7.3-LTS/src/minecraft/net/minecraft/{src,client}/` (client) and `.../minecraft_server/net/minecraft/src/` (server). Treat it as the behavioral source of truth for generation, block/item behavior, recipes, and options rather than guessing from memory.
+- `refs/mc_b1.7.3_release` is a nested git repo recorded as a gitlink with no `.gitmodules`, so it may be missing in a fresh clone; `refs/` is otherwise not ignored.
+- `docs/PLAN.md` is an aspirational layout sketch; this file and the code are authoritative.
+- The feature/settings workflow lives in `.grok/skills/implement-feature/SKILL.md` (when a `GameSettings` toggle is warranted, menu wiring, when to remesh, and tests). Read it before adding a graphics option.
+
+# Commands
+
+- `cargo run` — start the game. `cargo run --features dev_dynamic_linking` links faster while iterating.
+- `cargo test` — all tests. Focus one target with `cargo test --test <name>` (for example `--test world`) or one test with `cargo test <filter>`.
+- `cargo check` / `cargo fmt` for a quick pass. `cargo fmt` must run on nightly: `rust-toolchain.toml` pins nightly and `rustfmt.toml` enables unstable `imports_granularity = "Item"`.
+- Edition 2024 is in use (let-chains appear in the code, e.g. `if let ... && let ...`).
+
 # Architecture
 
 Organize code by gameplay and engine subsystem, not broad `components/` and `systems/` directories. Add modules as their behavior is implemented; the planned layout below is a guide, not a request to create empty files.
@@ -27,7 +41,7 @@ Organize code by gameplay and engine subsystem, not broad `components/` and `sys
 - `src/ui/`, `src/input/`, and `src/audio/`: presentation, controls, and sound. `src/ui/` currently holds the menu, settings screen, HUD, inventory GUI, block icons, and stack overlays, composited by a dedicated UI camera.
 - `src/networking/`: multiplayer and, eventually, Beta 1.7.3 protocol adapters. Do not introduce protocol constraints into the core simulation prematurely.
 - `src/util/`: small shared utilities that do not belong to a specific subsystem.
-- `assets/`: local Minecraft Beta reference files only. This directory is ignored by Git and must never be committed or treated as distributable game content.
+- `assets/`: local Minecraft Beta reference content. It is currently checked in (the introducing commit says it will be removed before release), but it is not distributable game content; players will supply their own texture ZIP later. Do not add more Minecraft files here.
 - `tests/`: all tests for this repository, including tests for individual modules and integration behavior. Do not put test modules in `src/`.
 - `benches/`: targeted performance benchmarks.
 
@@ -58,4 +72,6 @@ The current game has a walking, sprinting, sneaking, and jumping player with vox
 - Put all tests under the repository root's `tests/` directory. Add tests for behavior and invariants that matter, especially chunk indexing, coordinates, generation determinism, lighting, and block interaction. A standalone Bevy mesh test may use one entity for a block; that does not set the production world representation.
 - Keep changes focused and avoid filling planned modules with placeholders. Run `cargo fmt` and relevant checks or tests for code changes, and report any verification limits.
 - Preserve the user's in-progress changes. The existing source files and tests may be mid-implementation.
-- Treat `assets/` as local, reference-only Minecraft Beta content. Never stage or commit files from it, including `terrain.png`, `misc/grasscolor.png`, `misc/foliagecolor.png`, the `gui/` textures, and `font/minecraft.otf`. Players will eventually supply their own texture ZIP; the current loaders are development paths, not bundled assets. Keep the game able to start when these reference files are absent.
+- Treat `assets/` as local, reference-only Minecraft Beta content (`terrain.png`, `misc/grasscolor.png`, `misc/foliagecolor.png`, the `gui/` textures, `font/minecraft.otf`). Do not add more files from the original game, and keep the game able to start when these reference files are absent. Prefer not to touch `assets/` in commits unless the task requires it.
+- Tests are split between flat files (`tests/<name>.rs`) and multi-file targets rooted at `tests/<name>/main.rs` (for example `tests/world/main.rs`, target `world`) that mirror the matching `src/<name>/` tree. Engine tests build a headless `App` with `MinimalPlugins` + `AssetPlugin` (and `MeshPlugin`), not `DefaultPlugins`, so they run without a GPU or window.
+- `settings.json`, `saves/`, and `screenshots/` are gitignored runtime output. In-game F2 writes to `screenshots/`.

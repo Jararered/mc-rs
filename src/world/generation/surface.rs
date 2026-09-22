@@ -105,6 +105,10 @@ pub(super) fn apply_surface(
                     BlockId::Stone if remaining > 0 => {
                         remaining -= 1;
                         chunk.set(x, y, z, filler);
+                        if remaining == 0 && filler == BlockId::Sand {
+                            remaining = random.next_int(4) as i32;
+                            filler = BlockId::Sandstone;
+                        }
                     }
                     _ => {}
                 }

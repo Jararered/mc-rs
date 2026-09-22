@@ -302,7 +302,7 @@ fn render_block_icon(source: &Source, id: u8, data: u16) -> Vec<u8> {
 // a 45-degree yaw with elevated view. Each visible quad samples the matching
 // clipped region of its Beta terrain tile.
 fn project(x: f32, y: f32, z: f32) -> (f32, f32) {
-    (16.0 + 14.0 * (x - z), 16.0 + 7.0 * (x + z) - 14.0 * y)
+    (16.0 + 14.0 * (x - z), 16.0 + 7.0 * (x + z) - 16.0 * y)
 }
 
 fn draw_box(out: &mut [u8], source: &Source, look: Appearance, bounds: [f32; 6]) {

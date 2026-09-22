@@ -21,6 +21,7 @@ pub fn is_opaque_cube(block: BlockId) -> bool {
             | BlockId::Chest
             | BlockId::Ice
             | BlockId::SnowLayer
+            | BlockId::Cactus
             | BlockId::Leaves
             | BlockId::SpruceLeaves
             | BlockId::BirchLeaves
@@ -55,6 +56,8 @@ pub fn collision_bounds(block: BlockId) -> Option<([f32; 3], [f32; 3])> {
     }
     if block == BlockId::SnowLayer {
         Some(([0.0; 3], [1.0, 0.125, 1.0]))
+    } else if block == BlockId::Cactus {
+        Some(([0.0625, 0.0, 0.0625], [0.9375, 0.9375, 0.9375]))
     } else {
         Some(([0.0; 3], [1.0; 3]))
     }
@@ -71,6 +74,59 @@ pub fn is_crossed_plant(block: BlockId) -> bool {
 /// `BlockFlower.canThisPlantGrowOnThisBlockID`.
 pub fn plant_grows_on(block: BlockId) -> bool {
     matches!(block, BlockId::Grass | BlockId::Dirt | BlockId::Farmland)
+}
+
+/// `BlockCactus.canBlockStay`: cactus may grow on sand or another cactus,
+/// provided each horizontal neighbour has a non-solid material.
+pub fn cactus_can_stay(below: BlockId, neighbors: [BlockId; 4]) -> bool {
+    matches!(below, BlockId::Sand | BlockId::Cactus)
+        && neighbors
+            .into_iter()
+            .all(|block| !has_solid_material(block))
+}
+
+/// Beta's `Material.isSolid`, used for cactus clearance. Transparent glass and
+/// ice still count as solid materials; fluids and logic/plant blocks do not.
+fn has_solid_material(block: BlockId) -> bool {
+    !matches!(
+        block,
+        BlockId::Air
+            | BlockId::Water
+            | BlockId::FlowingWater
+            | BlockId::Lava
+            | BlockId::FlowingLava
+            | BlockId::Torch
+            | BlockId::TorchWest
+            | BlockId::TorchEast
+            | BlockId::TorchNorth
+            | BlockId::TorchSouth
+            | BlockId::DeadBush
+            | BlockId::TallGrass
+            | BlockId::Dandelion
+            | BlockId::Rose
+            | BlockId::Fern
+            | BlockId::BrownMushroom
+            | BlockId::RedMushroom
+            | BlockId::Fire
+            | BlockId::RedstoneWire
+            | BlockId::Crops
+            | BlockId::Sapling
+            | BlockId::Rail
+            | BlockId::PoweredRail
+            | BlockId::DetectorRail
+            | BlockId::Ladder
+            | BlockId::Lever
+            | BlockId::StonePressurePlate
+            | BlockId::WoodenPressurePlate
+            | BlockId::UnlitRedstoneTorch
+            | BlockId::RedstoneTorch
+            | BlockId::StoneButton
+            | BlockId::SugarCane
+            | BlockId::SnowLayer
+            | BlockId::Repeater
+            | BlockId::PoweredRepeater
+            | BlockId::NetherPortal
+    )
 }
 
 pub fn is_torch(block: BlockId) -> bool {
@@ -136,6 +192,9 @@ pub fn torch_normal(block: BlockId, normal: [f32; 3]) -> [f32; 3] {
 pub fn selection_bounds(block: BlockId) -> ([f32; 3], [f32; 3]) {
     if block == BlockId::SnowLayer {
         return ([0.0; 3], [1.0, 0.125, 1.0]);
+    }
+    if block == BlockId::Cactus {
+        return ([0.0625, 0.0, 0.0625], [0.9375, 1.0, 0.9375]);
     }
     if is_crossed_plant(block) {
         // `BlockFlower` uses a 0.2 inset; tall grass overrides that with 0.4
@@ -249,6 +308,7 @@ pub fn hardness(block: BlockId) -> f32 {
         BlockId::RedstoneOre | BlockId::LitRedstoneOre => 3.0,
         BlockId::Ice => 0.5,
         BlockId::SnowLayer => 0.1,
+        BlockId::Cactus => 0.4,
         BlockId::Snow => 0.2,
         BlockId::Clay => 0.6,
         BlockId::Jukebox => 2.0,
@@ -307,7 +367,6 @@ pub fn hardness(block: BlockId) -> f32 {
         | BlockId::UnlitRedstoneTorch
         | BlockId::RedstoneTorch
         | BlockId::StoneButton
-        | BlockId::Cactus
         | BlockId::SugarCane
         | BlockId::Fence
         | BlockId::SoulSand

@@ -30,6 +30,7 @@ use crate::ui::WorkbenchUiSession;
 use crate::ui::close_crafting_interface;
 use crate::world::block::block::BlockId;
 use crate::world::block::block::FurnaceFacing;
+use crate::world::block::properties::cactus_can_stay;
 use crate::world::block::properties::is_breakable;
 use crate::world::block::properties::is_crossed_plant;
 use crate::world::block::properties::is_opaque_cube;
@@ -414,6 +415,22 @@ pub fn place_selected_block_facing(
     }
     if is_crossed_plant(selected) && !chunks.block_at(x, y - 1, z).is_some_and(plant_grows_on) {
         return false;
+    }
+    if selected == BlockId::Cactus {
+        let Some(below) = chunks.block_at(x, y - 1, z) else {
+            return false;
+        };
+        let [Some(west), Some(east), Some(north), Some(south)] = [
+            chunks.block_at(x - 1, y, z),
+            chunks.block_at(x + 1, y, z),
+            chunks.block_at(x, y, z - 1),
+            chunks.block_at(x, y, z + 1),
+        ] else {
+            return false;
+        };
+        if !cactus_can_stay(below, [west, east, north, south]) {
+            return false;
+        }
     }
     if !is_opaque_cube(hit.block) && selected == BlockId::Torch {
         return false;

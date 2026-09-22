@@ -1,4 +1,5 @@
 mod biome;
+mod cactus;
 mod caves;
 mod generator;
 mod heightmap;

@@ -4,6 +4,7 @@ use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::Chunk;
 use crate::world::chunk::ChunkPos;
 
+use super::biome::Biome;
 use super::biome::BiomeMap;
 use super::terrain::TerrainGenerator;
 use crate::random::JavaRandom;
@@ -29,11 +30,15 @@ pub(super) fn apply_surface(
         for z in 0..CHUNK_SIZE {
             let world_x = (position.x * CHUNK_SIZE as i32 + x as i32) as f64;
             let world_z = (position.z * CHUNK_SIZE as i32 + z as i32) as f64;
-            let sandy = terrain
-                .shore
-                .sample_3d(world_x, world_z, 0.0, [0.03125, 0.03125, 1.0])
-                + random.next_double() * 0.2
-                > 0.0;
+            let shore_sandy =
+                terrain
+                    .shore
+                    .sample_3d(world_x, world_z, 0.0, [0.03125, 0.03125, 1.0])
+                    + random.next_double() * 0.2
+                    > 0.0;
+            // Beta's desert and ice-desert biomes use sand for both their top
+            // and filler blocks, independent of the shoreline noise.
+            let desert_surface = matches!(biomes.get(x, z).biome, Biome::Desert | Biome::IceDesert);
             let gravelly = terrain.shore.sample_2d(world_z, world_x, 0.03125, 0.03125)
                 + random.next_double() * 0.2
                 > 3.0;
@@ -67,14 +72,22 @@ pub(super) fn apply_surface(
                                 chunk.set(x, y, z, BlockId::Water);
                             }
                         } else {
-                            let mut top = BlockId::Grass;
-                            filler = BlockId::Dirt;
+                            let mut top = if desert_surface {
+                                BlockId::Sand
+                            } else {
+                                BlockId::Grass
+                            };
+                            filler = if desert_surface {
+                                BlockId::Sand
+                            } else {
+                                BlockId::Dirt
+                            };
                             if y <= SEA_LEVEL + 1 {
                                 if gravelly {
                                     top = BlockId::Gravel;
                                     filler = BlockId::Gravel;
                                 }
-                                if sandy {
+                                if shore_sandy {
                                     top = BlockId::Sand;
                                     filler = BlockId::Sand;
                                 }

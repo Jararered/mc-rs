@@ -42,3 +42,21 @@ fn underwater_surface_is_dirt_not_grass() {
         "expected some underwater dirt beds in the sample"
     );
 }
+
+#[test]
+fn desert_biome_columns_use_sand_as_top_and_filler() {
+    let generated = WorldGenerator::new(12345).generate(ChunkPos::ZERO);
+    let mut desert_columns = 0;
+    for z in 0..CHUNK_SIZE {
+        for x in 0..CHUNK_SIZE {
+            if generated.biomes.get(x, z).biome != game::world::generation::Biome::Desert {
+                continue;
+            }
+            desert_columns += 1;
+            let top = generated.heightmap.get(x, z) as usize;
+            assert_eq!(generated.chunk.get(x, top - 1, z), Some(BlockId::Sand));
+            assert_eq!(generated.chunk.get(x, top - 2, z), Some(BlockId::Sand));
+        }
+    }
+    assert!(desert_columns > 0);
+}

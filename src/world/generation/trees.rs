@@ -19,6 +19,7 @@
 //! trunk.
 
 use std::collections::HashMap;
+use std::collections::HashSet;
 
 use crate::world::block::block::BlockId;
 use crate::world::block::properties::is_opaque_cube;
@@ -29,6 +30,7 @@ use crate::world::chunk::ChunkPos;
 
 use super::biome::Biome;
 use super::biome::Climate;
+use super::cactus::place_cacti;
 use super::plants::place_plants;
 use super::terrain::TerrainGenerator;
 use crate::random::JavaRandom;
@@ -139,6 +141,7 @@ pub(super) fn decorate(
 
     let mut remote_ground = HashMap::new();
     let mut remote_chunks = HashMap::new();
+    let mut cactus_positions = HashSet::new();
     for source_z in -1..=1 {
         for source_x in -1..=1 {
             let source = ChunkPos {
@@ -153,6 +156,7 @@ pub(super) fn decorate(
                 &grounds,
                 &mut remote_ground,
                 &mut remote_chunks,
+                &mut cactus_positions,
                 terrain,
                 population_rng,
                 &climate_at,
@@ -173,6 +177,7 @@ fn populate(
     grounds: &[[BlockId; CHUNK_SIZE]; CHUNK_SIZE],
     remote_ground: &mut HashMap<(i32, i32), (i32, BlockId)>,
     remote_chunks: &mut HashMap<ChunkPos, Chunk>,
+    cactus_positions: &mut HashSet<(i32, i32, i32)>,
     terrain: &TerrainGenerator,
     population_rng: &HashMap<ChunkPos, JavaRandom>,
     climate_at: &impl Fn(f64, f64) -> Climate,
@@ -269,6 +274,16 @@ fn populate(
             )
             .0
         },
+    );
+    place_cacti(
+        world.chunk,
+        target,
+        source,
+        &mut rand,
+        biome,
+        cactus_positions,
+        remote_chunks,
+        remote_chunk,
     );
 }
 

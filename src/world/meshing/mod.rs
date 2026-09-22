@@ -434,9 +434,17 @@ impl MeshBuffers {
         } else {
             1.0
         };
-        let corners = face
-            .corners
-            .map(|corner| [corner[0], corner[1] * shape_height - y_drop, corner[2]]);
+        let corners = face.corners.map(|corner| {
+            if block == BlockId::Cactus {
+                [
+                    0.0625 + corner[0] * 0.875,
+                    corner[1] * shape_height - y_drop,
+                    0.0625 + corner[2] * 0.875,
+                ]
+            } else {
+                [corner[0], corner[1] * shape_height - y_drop, corner[2]]
+            }
+        });
         self.push_quad(x, y, z, face, corners, uvs, color, corner_ao, corner_light);
     }
 
@@ -818,6 +826,7 @@ fn neighbor_hides_face(block: BlockId, neighbor: Option<BlockId>, fancy_graphics
     };
     if neighbor == BlockId::Air
         || neighbor == BlockId::SnowLayer
+        || neighbor == BlockId::Cactus
         || neighbor == BlockId::Water
         || neighbor == BlockId::FlowingWater
         || neighbor == BlockId::Lava
@@ -904,9 +913,18 @@ pub fn dropped_block_meshes(
         };
         let shade = face.shade;
         let color = [tint[0] * shade, tint[1] * shade, tint[2] * shade, 1.0];
-        let corners = face
-            .corners
-            .map(|corner| [corner[0] - 0.5, corner[1] - 0.5, corner[2] - 0.5]);
+        let corners = face.corners.map(|corner| {
+            let [x, y, z] = if block == BlockId::Cactus {
+                [
+                    0.0625 + corner[0] * 0.875,
+                    corner[1],
+                    0.0625 + corner[2] * 0.875,
+                ]
+            } else {
+                corner
+            };
+            [x - 0.5, y - 0.5, z - 0.5]
+        });
         body.push_quad(
             0,
             0,

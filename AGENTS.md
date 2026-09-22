@@ -67,6 +67,7 @@ The current game has a walking, sprinting, sneaking, and jumping player with vox
 - `world_time` counts ticks since the world started. `DAY_LENGTH` is 24000. The sky reads it, with `partial()`, for the sun and moon. It is stored on `WorldManifest` with `#[serde(default)]`, so an older `level.json` loads at time 0, and autosave writes it back.
 - Consumers today: block breaking and the place repeat, arm swing and equip, dropped items and the hotbar pop, block particles, and the water atlas. Leaf wiggle and view bob stay on frame time.
 - New tick-driven work (block entities, scheduled block updates, weather) consumes this clock. Do not add another 20 Hz accumulator.
+- All block tick updates (random ticks, scheduled block updates) are deferred for now. No block performs per-tick simulation.
 
 # Data and performance rules
 

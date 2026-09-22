@@ -30,6 +30,8 @@ use super::lighting::Skylight;
 use super::meshing::ChunkMeshes;
 use super::meshing::ChunkNeighbors;
 use super::meshing::mesh_chunk_with_biomes;
+use super::sky::celestial_angle;
+use super::sky::skylight_subtracted;
 use super::textures::CutoutMaterial;
 use super::textures::FoliageColors;
 use super::textures::GrassColors;
@@ -38,6 +40,7 @@ use super::textures::LEAF_WIGGLE_AMPLITUDE;
 use super::textures::LeafCutoutMaterial;
 use super::textures::TerrainMaterial;
 use super::textures::WaterMaterial;
+use super::tick::WorldTick;
 
 pub const LOAD_RADIUS: i32 = 4;
 /// Chunks are generated one ring beyond the render distance. Decoration such as
@@ -116,6 +119,9 @@ pub struct WorldStreaming {
     old_lighting: bool,
     smooth_lighting: bool,
     fancy_graphics: bool,
+    /// `World.skylightSubtracted`. Meshes bake this into vertex brightness, so
+    /// a change rebuilds the loaded chunks the way Beta's `updateAllRenderers` does.
+    skylight_subtracted: u8,
     remesh_queue: VecDeque<ChunkPos>,
     desired_generation: Vec<ChunkPos>,
     desired_meshing: Vec<ChunkPos>,
@@ -226,6 +232,7 @@ pub(crate) fn setup_streaming(
         old_lighting: settings.old_lighting,
         smooth_lighting: settings.smooth_lighting,
         fancy_graphics: settings.graphics.fancy_leaves(),
+        skylight_subtracted: 0,
         remesh_queue: VecDeque::new(),
         desired_generation: Vec::new(),
         desired_meshing: Vec::new(),
@@ -266,6 +273,7 @@ pub(crate) fn regenerate_loaded_chunks(
 pub(crate) fn stream_chunks(
     mut commands: Commands,
     player: Query<&Transform, With<Player>>,
+    tick: Res<WorldTick>,
     mut streaming: ResMut<WorldStreaming>,
     mut chunks: ResMut<WorldChunks>,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -302,6 +310,15 @@ pub(crate) fn stream_chunks(
         // In-flight meshes were built with the previous lighting or leaf style.
         streaming.meshing.clear();
         streaming.remesh_queue = streaming.rendered.keys().copied().collect();
+    }
+
+    let subtracted = skylight_subtracted(celestial_angle(tick.world_time(), tick.partial()));
+    if streaming.old_lighting && streaming.skylight_subtracted != subtracted {
+        streaming.skylight_subtracted = subtracted;
+        streaming.meshing.clear();
+        streaming.remesh_queue = streaming.rendered.keys().copied().collect();
+    } else {
+        streaming.skylight_subtracted = subtracted;
     }
 
     // Dropping an unfinished task cancels work that is no longer useful.
@@ -569,6 +586,7 @@ fn spawn_mesh_job(
     let old_lighting = streaming.old_lighting;
     let smooth_lighting = streaming.smooth_lighting;
     let fancy_graphics = streaming.fancy_graphics;
+    let skylight_subtracted = streaming.skylight_subtracted;
     let neighbor = |dx: i32, dz: i32| {
         position
             .x
@@ -618,6 +636,7 @@ fn spawn_mesh_job(
             old_lighting,
             smooth_lighting,
             fancy_graphics,
+            skylight_subtracted,
         );
         (layers, start.elapsed())
     });

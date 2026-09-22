@@ -169,6 +169,7 @@ pub fn mesh_chunk(chunk: &Chunk, skylight: &Skylight) -> Mesh {
         true,
         true,
         false,
+        0,
     )
     .opaque
 }
@@ -179,7 +180,7 @@ pub fn mesh_chunk_with_neighbors(
     neighbors: &ChunkNeighbors<'_>,
     skylight: &Skylight,
 ) -> Mesh {
-    mesh_chunk_inner(chunk, neighbors, skylight, None, true, true, false).opaque
+    mesh_chunk_inner(chunk, neighbors, skylight, None, true, true, false, 0).opaque
 }
 
 /// Like [`mesh_chunk`], with lighting and leaf graphics matching the settings menu.
@@ -197,6 +198,7 @@ pub fn mesh_chunk_with_settings(
         old_lighting,
         true,
         fancy_graphics,
+        0,
     )
 }
 
@@ -206,6 +208,7 @@ pub fn mesh_chunk_with_settings_and_smooth_lighting(
     old_lighting: bool,
     smooth_lighting: bool,
     fancy_graphics: bool,
+    skylight_subtracted: u8,
 ) -> ChunkMeshes {
     mesh_chunk_inner(
         chunk,
@@ -215,6 +218,7 @@ pub fn mesh_chunk_with_settings_and_smooth_lighting(
         old_lighting,
         smooth_lighting,
         fancy_graphics,
+        skylight_subtracted,
     )
 }
 
@@ -234,6 +238,7 @@ pub(crate) fn mesh_chunk_with_biomes(
     old_lighting: bool,
     smooth_lighting: bool,
     fancy_graphics: bool,
+    skylight_subtracted: u8,
 ) -> ChunkMeshes {
     let tints = ColumnTints {
         grass: std::array::from_fn(|index| {
@@ -251,6 +256,7 @@ pub(crate) fn mesh_chunk_with_biomes(
         old_lighting,
         smooth_lighting,
         fancy_graphics,
+        skylight_subtracted,
     )
 }
 
@@ -430,6 +436,7 @@ fn mesh_chunk_inner(
     old_lighting: bool,
     smooth_lighting: bool,
     fancy_graphics: bool,
+    skylight_subtracted: u8,
 ) -> ChunkMeshes {
     let mut opaque = MeshBuffers::default();
     let mut grass_overlay = MeshBuffers::default();
@@ -464,7 +471,7 @@ fn mesh_chunk_inner(
                         continue;
                     }
 
-                    let level = skylight.get_extended(nx, ny, nz);
+                    let level = skylight.light_at(nx, ny, nz, skylight_subtracted);
                     let brightness = if old_lighting {
                         beta_brightness(level) * face.shade
                     } else {
@@ -505,7 +512,7 @@ fn mesh_chunk_inner(
                         [1.0; 4]
                     };
                     let corner_light = if old_lighting && smooth_lighting {
-                        face_corner_light(chunk, skylight, x, y, z, face)
+                        face_corner_light(chunk, skylight, x, y, z, face, skylight_subtracted)
                     } else if old_lighting {
                         [brightness; 4]
                     } else {
@@ -565,6 +572,7 @@ fn face_corner_light(
     y: usize,
     z: usize,
     face: &Face,
+    skylight_subtracted: u8,
 ) -> [f32; 4] {
     let tangent_axes = match face.normal {
         [0.0, 1.0, 0.0] | [0.0, -1.0, 0.0] => [0, 2],
@@ -590,7 +598,8 @@ fn face_corner_light(
                     y as i32 + offset[1],
                     z as i32 + offset[2],
                 ];
-                let level = skylight.get_extended(position[0], position[1], position[2]);
+                let level =
+                    skylight.light_at(position[0], position[1], position[2], skylight_subtracted);
                 beta_brightness(level)
             })
             .sum();

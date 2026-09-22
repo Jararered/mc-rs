@@ -18,6 +18,7 @@ use game::world::generation::WorldGenerator;
 use game::world::generation::generate_chunk;
 use game::world::lighting::Skylight;
 use game::world::lighting::beta_brightness;
+use game::world::lighting::combined_light;
 use game::world::lighting::light_emission;
 use game::world::lighting::light_opacity;
 use game::world::meshing::ChunkNeighbors;
@@ -163,8 +164,10 @@ fn smooth_lighting_toggle_controls_corner_interpolation() {
     chunk.set(2, 2, 2, BlockId::Stone);
     let skylight = Skylight::from_chunk(&chunk);
 
-    let smooth = mesh_chunk_with_settings_and_smooth_lighting(&chunk, &skylight, true, true, false);
-    let flat = mesh_chunk_with_settings_and_smooth_lighting(&chunk, &skylight, true, false, false);
+    let smooth =
+        mesh_chunk_with_settings_and_smooth_lighting(&chunk, &skylight, true, true, false, 0);
+    let flat =
+        mesh_chunk_with_settings_and_smooth_lighting(&chunk, &skylight, true, false, false, 0);
     let colors = |mesh: &Mesh| {
         let Some(VertexAttributeValues::Float32x4(colors)) = mesh.attribute(Mesh::ATTRIBUTE_COLOR)
         else {
@@ -408,6 +411,37 @@ fn beta_brightness_curve_keeps_caves_dark() {
     assert!((beta_brightness(15) - 1.0).abs() < f32::EPSILON);
     assert!((beta_brightness(0) - 0.05).abs() < f32::EPSILON);
     assert!(beta_brightness(4) < 0.3);
+}
+
+#[test]
+fn night_dims_sunlight_and_leaves_torches() {
+    assert_eq!(combined_light(15, 0, 0), 15);
+    assert_eq!(combined_light(15, 0, 11), 4);
+    assert_eq!(combined_light(0, 14, 11), 14);
+    assert_eq!(combined_light(15, 14, 11), 14);
+
+    let mut chunk = Chunk::new();
+    chunk.set(1, 64, 1, BlockId::Stone);
+    let light = Skylight::from_chunk(&chunk);
+    let day = mesh_chunk_with_settings_and_smooth_lighting(&chunk, &light, true, false, false, 0);
+    let night =
+        mesh_chunk_with_settings_and_smooth_lighting(&chunk, &light, true, false, false, 11);
+    let day_top = top_vertex_brightness(&day.opaque);
+    let night_top = top_vertex_brightness(&night.opaque);
+    assert!(
+        night_top < day_top,
+        "open sunlight should darken after dusk, day {day_top} night {night_top}"
+    );
+    assert!((day_top - beta_brightness(15)).abs() < 1e-4);
+    assert!((night_top - beta_brightness(4)).abs() < 1e-4);
+}
+
+fn top_vertex_brightness(mesh: &Mesh) -> f32 {
+    let Some(VertexAttributeValues::Float32x4(colors)) = mesh.attribute(Mesh::ATTRIBUTE_COLOR)
+    else {
+        panic!("terrain mesh should have vertex colors");
+    };
+    colors[0][0]
 }
 
 #[test]

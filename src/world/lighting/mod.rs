@@ -13,12 +13,16 @@ const LIGHT_CELLS: usize = CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE;
 pub struct Skylight {
     sky: Box<[u8]>,
     block: Box<[u8]>,
-    /// Light on the four exterior faces, copied from loaded neighboring chunks.
-    /// A full-sky fallback keeps isolated chunks renderable during startup.
-    borders: [Box<[u8]>; 4],
+    /// Sunlight and block light on the four exterior faces, copied from loaded
+    /// neighboring chunks. A full-sky fallback keeps isolated chunks renderable
+    /// during startup. The channels stay separate so the time of day can dim
+    /// sunlight without dimming torches.
+    border_sky: [Box<[u8]>; 4],
+    border_block: [Box<[u8]>; 4],
     /// Light at the four diagonal exterior corners, copied from diagonal
     /// neighboring chunks for smooth vertex-light samples.
-    corners: [Box<[u8]>; 4],
+    corner_sky: [Box<[u8]>; 4],
+    corner_block: [Box<[u8]>; 4],
 }
 
 impl Skylight {
@@ -132,8 +136,12 @@ impl Skylight {
         propagate(chunk, &mut sky, &mut sky_queue);
         propagate(chunk, &mut block, &mut block_queue);
 
-        let mut borders = std::array::from_fn(|_| vec![MAX_LIGHT; LIGHT_CELLS].into_boxed_slice());
-        let mut corners = std::array::from_fn(|_| vec![MAX_LIGHT; CHUNK_HEIGHT].into_boxed_slice());
+        let mut border_sky =
+            std::array::from_fn(|_| vec![MAX_LIGHT; LIGHT_CELLS].into_boxed_slice());
+        let mut border_block = std::array::from_fn(|_| vec![0; LIGHT_CELLS].into_boxed_slice());
+        let mut corner_sky =
+            std::array::from_fn(|_| vec![MAX_LIGHT; CHUNK_HEIGHT].into_boxed_slice());
+        let mut corner_block = std::array::from_fn(|_| vec![0; CHUNK_HEIGHT].into_boxed_slice());
         let neighbors = [west, east, north, south];
         for (border_index, neighbor) in neighbors.into_iter().enumerate() {
             let Some(neighbor) = neighbor else {
@@ -197,8 +205,11 @@ impl Skylight {
                 0 => {
                     for y in 0..CHUNK_HEIGHT {
                         for z in 0..CHUNK_SIZE {
-                            borders[0][Chunk::index(0, y, z)] =
-                                neighbor_light.get(CHUNK_SIZE - 1, y, z).unwrap_or(0);
+                            let (sky_level, block_level) =
+                                neighbor_channels(&neighbor_light, CHUNK_SIZE - 1, y, z);
+                            let index = Chunk::index(0, y, z);
+                            border_sky[0][index] = sky_level;
+                            border_block[0][index] = block_level;
                             seed_from_neighbor(
                                 chunk,
                                 &mut sky,
@@ -206,7 +217,7 @@ impl Skylight {
                                 0,
                                 y,
                                 z,
-                                borders[0][Chunk::index(0, y, z)],
+                                sky_level.max(block_level),
                             );
                             seed_from_neighbor(
                                 chunk,
@@ -215,7 +226,7 @@ impl Skylight {
                                 0,
                                 y,
                                 z,
-                                neighbor_light.block(CHUNK_SIZE - 1, y, z).unwrap_or(0),
+                                block_level,
                             );
                         }
                     }
@@ -223,8 +234,11 @@ impl Skylight {
                 1 => {
                     for y in 0..CHUNK_HEIGHT {
                         for z in 0..CHUNK_SIZE {
-                            borders[1][Chunk::index(CHUNK_SIZE - 1, y, z)] =
-                                neighbor_light.get(0, y, z).unwrap_or(0);
+                            let (sky_level, block_level) =
+                                neighbor_channels(&neighbor_light, 0, y, z);
+                            let index = Chunk::index(CHUNK_SIZE - 1, y, z);
+                            border_sky[1][index] = sky_level;
+                            border_block[1][index] = block_level;
                             seed_from_neighbor(
                                 chunk,
                                 &mut sky,
@@ -232,7 +246,7 @@ impl Skylight {
                                 CHUNK_SIZE - 1,
                                 y,
                                 z,
-                                borders[1][Chunk::index(CHUNK_SIZE - 1, y, z)],
+                                sky_level.max(block_level),
                             );
                             seed_from_neighbor(
                                 chunk,
@@ -241,7 +255,7 @@ impl Skylight {
                                 CHUNK_SIZE - 1,
                                 y,
                                 z,
-                                neighbor_light.block(0, y, z).unwrap_or(0),
+                                block_level,
                             );
                         }
                     }
@@ -249,8 +263,11 @@ impl Skylight {
                 2 => {
                     for y in 0..CHUNK_HEIGHT {
                         for x in 0..CHUNK_SIZE {
-                            borders[2][Chunk::index(x, y, 0)] =
-                                neighbor_light.get(x, y, CHUNK_SIZE - 1).unwrap_or(0);
+                            let (sky_level, block_level) =
+                                neighbor_channels(&neighbor_light, x, y, CHUNK_SIZE - 1);
+                            let index = Chunk::index(x, y, 0);
+                            border_sky[2][index] = sky_level;
+                            border_block[2][index] = block_level;
                             seed_from_neighbor(
                                 chunk,
                                 &mut sky,
@@ -258,7 +275,7 @@ impl Skylight {
                                 x,
                                 y,
                                 0,
-                                borders[2][Chunk::index(x, y, 0)],
+                                sky_level.max(block_level),
                             );
                             seed_from_neighbor(
                                 chunk,
@@ -267,7 +284,7 @@ impl Skylight {
                                 x,
                                 y,
                                 0,
-                                neighbor_light.block(x, y, CHUNK_SIZE - 1).unwrap_or(0),
+                                block_level,
                             );
                         }
                     }
@@ -275,8 +292,11 @@ impl Skylight {
                 _ => {
                     for y in 0..CHUNK_HEIGHT {
                         for x in 0..CHUNK_SIZE {
-                            borders[3][Chunk::index(x, y, CHUNK_SIZE - 1)] =
-                                neighbor_light.get(x, y, 0).unwrap_or(0);
+                            let (sky_level, block_level) =
+                                neighbor_channels(&neighbor_light, x, y, 0);
+                            let index = Chunk::index(x, y, CHUNK_SIZE - 1);
+                            border_sky[3][index] = sky_level;
+                            border_block[3][index] = block_level;
                             seed_from_neighbor(
                                 chunk,
                                 &mut sky,
@@ -284,7 +304,7 @@ impl Skylight {
                                 x,
                                 y,
                                 CHUNK_SIZE - 1,
-                                borders[3][Chunk::index(x, y, CHUNK_SIZE - 1)],
+                                sky_level.max(block_level),
                             );
                             seed_from_neighbor(
                                 chunk,
@@ -293,7 +313,7 @@ impl Skylight {
                                 x,
                                 y,
                                 CHUNK_SIZE - 1,
-                                neighbor_light.block(x, y, 0).unwrap_or(0),
+                                block_level,
                             );
                         }
                     }
@@ -318,9 +338,14 @@ impl Skylight {
             let diagonal_light = Self::from_chunk(diagonal);
             let (local_x, local_z) = diagonal_coords[corner_index];
             for y in 0..CHUNK_HEIGHT {
-                corners[corner_index][y] = diagonal_light
-                    .get(local_x * (CHUNK_SIZE - 1), y, local_z * (CHUNK_SIZE - 1))
-                    .unwrap_or(0);
+                let (sky_level, block_level) = neighbor_channels(
+                    &diagonal_light,
+                    local_x * (CHUNK_SIZE - 1),
+                    y,
+                    local_z * (CHUNK_SIZE - 1),
+                );
+                corner_sky[corner_index][y] = sky_level;
+                corner_block[corner_index][y] = block_level;
             }
         }
         propagate(chunk, &mut sky, &mut sky_queue);
@@ -329,8 +354,10 @@ impl Skylight {
         Self {
             sky,
             block,
-            borders,
-            corners,
+            border_sky,
+            border_block,
+            corner_sky,
+            corner_block,
         }
     }
 
@@ -362,44 +389,76 @@ impl Skylight {
     }
 
     pub fn get_extended(&self, x: i32, y: i32, z: i32) -> u8 {
+        self.light_at(x, y, z, 0)
+    }
+
+    /// Combined light after `Chunk.getBlockLightValue`. `skylight_subtracted`
+    /// is the time-of-day penalty from `World.calculateSkylightSubtracted`.
+    pub fn light_at(&self, x: i32, y: i32, z: i32, skylight_subtracted: u8) -> u8 {
         if y < 0 {
             return 0;
         }
         if y >= CHUNK_HEIGHT as i32 {
-            return MAX_LIGHT;
+            return combined_light(MAX_LIGHT, 0, skylight_subtracted);
         }
-        if x >= 0 && x < CHUNK_SIZE as i32 && z >= 0 && z < CHUNK_SIZE as i32 {
-            return self.get(x as usize, y as usize, z as usize).unwrap_or(0);
-        }
-        if x < 0 && (0..CHUNK_SIZE as i32).contains(&z) {
-            return self.borders[0][Chunk::index(0, y as usize, z as usize)];
-        }
-        if x >= CHUNK_SIZE as i32 && (0..CHUNK_SIZE as i32).contains(&z) {
-            return self.borders[1][Chunk::index(CHUNK_SIZE - 1, y as usize, z as usize)];
-        }
-        if z < 0 && (0..CHUNK_SIZE as i32).contains(&x) {
-            return self.borders[2][Chunk::index(x as usize, y as usize, 0)];
-        }
-        if z >= CHUNK_SIZE as i32 && (0..CHUNK_SIZE as i32).contains(&x) {
-            return self.borders[3][Chunk::index(x as usize, y as usize, CHUNK_SIZE - 1)];
-        }
-        if x < 0 && z < 0 {
-            return self.corners[0][y as usize];
-        }
-        if x >= CHUNK_SIZE as i32 && z < 0 {
-            return self.corners[1][y as usize];
-        }
-        if x < 0 && z >= CHUNK_SIZE as i32 {
-            return self.corners[2][y as usize];
-        }
-        if x >= CHUNK_SIZE as i32 && z >= CHUNK_SIZE as i32 {
-            return self.corners[3][y as usize];
-        }
-        MAX_LIGHT
+        let (sky, block) = if x >= 0 && x < CHUNK_SIZE as i32 && z >= 0 && z < CHUNK_SIZE as i32 {
+            let index = Chunk::index(x as usize, y as usize, z as usize);
+            (self.sky[index], self.block[index])
+        } else if x < 0 && (0..CHUNK_SIZE as i32).contains(&z) {
+            let index = Chunk::index(0, y as usize, z as usize);
+            (self.border_sky[0][index], self.border_block[0][index])
+        } else if x >= CHUNK_SIZE as i32 && (0..CHUNK_SIZE as i32).contains(&z) {
+            let index = Chunk::index(CHUNK_SIZE - 1, y as usize, z as usize);
+            (self.border_sky[1][index], self.border_block[1][index])
+        } else if z < 0 && (0..CHUNK_SIZE as i32).contains(&x) {
+            let index = Chunk::index(x as usize, y as usize, 0);
+            (self.border_sky[2][index], self.border_block[2][index])
+        } else if z >= CHUNK_SIZE as i32 && (0..CHUNK_SIZE as i32).contains(&x) {
+            let index = Chunk::index(x as usize, y as usize, CHUNK_SIZE - 1);
+            (self.border_sky[3][index], self.border_block[3][index])
+        } else if x < 0 && z < 0 {
+            (
+                self.corner_sky[0][y as usize],
+                self.corner_block[0][y as usize],
+            )
+        } else if x >= CHUNK_SIZE as i32 && z < 0 {
+            (
+                self.corner_sky[1][y as usize],
+                self.corner_block[1][y as usize],
+            )
+        } else if x < 0 && z >= CHUNK_SIZE as i32 {
+            (
+                self.corner_sky[2][y as usize],
+                self.corner_block[2][y as usize],
+            )
+        } else if x >= CHUNK_SIZE as i32 && z >= CHUNK_SIZE as i32 {
+            (
+                self.corner_sky[3][y as usize],
+                self.corner_block[3][y as usize],
+            )
+        } else {
+            (MAX_LIGHT, 0)
+        };
+        combined_light(sky, block, skylight_subtracted)
     }
 }
 
-/// Beta's `WorldProvider.lightBrightnessTable`.
+fn neighbor_channels(light: &Skylight, x: usize, y: usize, z: usize) -> (u8, u8) {
+    (
+        light.sky(x, y, z).unwrap_or(0),
+        light.block(x, y, z).unwrap_or(0),
+    )
+}
+
+/// `Chunk.getBlockLightValue`: sunlight loses `skylight_subtracted` levels as
+/// the day ends, then the brighter of that and the block light is kept.
+pub fn combined_light(sky: u8, block: u8, skylight_subtracted: u8) -> u8 {
+    sky.saturating_sub(skylight_subtracted.min(MAX_LIGHT))
+        .max(block.min(MAX_LIGHT))
+}
+
+/// Vertex brightness for a light level. This is Beta's
+/// `WorldProvider.lightBrightnessTable`, the ambient value meshes bake in.
 pub fn beta_brightness(level: u8) -> f32 {
     let level = level.min(MAX_LIGHT) as f32;
     let darkness = 1.0 - level / 15.0;

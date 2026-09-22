@@ -243,9 +243,11 @@ pub fn view_distance_blocks(render_chunks: i32) -> f32 {
     (render_chunks.max(1) * 16) as f32
 }
 
-/// World pass: fog starts at a quarter of the view distance and is opaque at the end.
+/// World pass: fog starts near the view distance edge and is opaque at the end.
+/// Beta used `far * 0.25`, but that wastes a quarter of the visible area to a
+/// gradual haze at modern render distances. A later start keeps the view clear.
 pub fn world_fog_range(far_blocks: f32) -> (f32, f32) {
-    (far_blocks * 0.25, far_blocks)
+    (far_blocks * 0.8, far_blocks)
 }
 
 /// Sky pass (`setupFog(-1)`): fog starts at the camera and ends earlier than the world.

@@ -19,18 +19,27 @@ Organize code by gameplay and engine subsystem, not broad `components/` and `sys
 - `src/world/persistence/`: saving and loading. Add Beta format adapters here when compatibility becomes a priority.
 - `src/player/`: controller, movement, camera, interaction, mining, and placement.
 - `src/physics/`: voxel collision, raycasting, and gravity.
-- `src/entity/`: non-block entities, health, spawning, mobs, and dropped items.
-- `src/item/` and `src/inventory/`: item definitions, stacks, tools, slots, hotbar, and crafting.
+- `src/entity/`: non-block entities, health, spawning, mobs, and dropped items. Shared body components (`EntitySize`, `Velocity`, `Gravity`, `CollisionState`, `StepHeight`) live here. Dropped items and block particles are implemented; mobs are not yet.
+- `src/item/` and `src/inventory/`: item definitions, stacks, tools, slots, hotbar, and inventory transfer.
+- `src/crafting/`: crafting grids, shaped and shapeless recipes, and the Beta 1.7.3 recipe book.
 - `src/gameplay/`: time, weather, damage, respawning, and other game rules.
 - `src/rendering/`: materials, textures, shaders, fog, and sky.
-- `src/ui/`, `src/input/`, and `src/audio/`: presentation, controls, and sound.
+- `src/ui/`, `src/input/`, and `src/audio/`: presentation, controls, and sound. `src/ui/` currently holds the menu, settings screen, HUD, inventory GUI, block icons, and stack overlays, composited by a dedicated UI camera.
 - `src/networking/`: multiplayer and, eventually, Beta 1.7.3 protocol adapters. Do not introduce protocol constraints into the core simulation prematurely.
 - `src/util/`: small shared utilities that do not belong to a specific subsystem.
 - `assets/`: local Minecraft Beta reference files only. This directory is ignored by Git and must never be committed or treated as distributable game content.
 - `tests/`: all tests for this repository, including tests for individual modules and integration behavior. Do not put test modules in `src/`.
 - `benches/`: targeted performance benchmarks.
 
-The current game has a flying player, full-height Beta-style generated chunks, skylight, chunk meshes, streaming around the player, and terrain atlas rendering. `src/main.rs` is the executable entry point, and `src/lib.rs` exposes modules for reuse and tests. The remaining directories describe future responsibilities; add them only as working features require them.
+The current game has a walking, sprinting, sneaking, and jumping player with voxel collision, step height, view bobbing, and a first-person arm; full-height Beta-style generated chunks; skylight and torch block light; chunk meshes with streaming around the player; and terrain atlas rendering with climate-sampled grass and foliage colors. Block interaction raycasts into world data, breaks blocks with per-block stages and tool speed and durability, and places blocks including torches. Items, a nine-slot hotbar, a 27-slot main inventory, a 2×2 crafting grid, a workbench session, dropped item entities, block break and hit particles, a HUD, menus, and settings are implemented. A custom save format under `saves/` persists the world, player, inventory, and dropped items. `src/main.rs` is the executable entry point, and `src/lib.rs` exposes modules for reuse and tests. The remaining directories describe future responsibilities; add them only as working features require them.
+
+# Implemented conventions
+
+- Item IDs: block items reuse their Beta block ID, and standalone items start at 256. Resolve raw IDs through the item registry before use.
+- `ItemStack` is a validated, nonempty stack. Its private fields enforce registry stack limits and per-item data rules, so an empty slot is `None`, never a zero-count stack.
+- Keep Beta behavior in simulation data (block states, item data, the recipe book) and keep presentation in `src/world/textures/` and `src/ui/`. Do not fold rendering concerns into world or item data.
+- Persistence uses a custom versioned format, not the Beta region format. Keep it behind `src/world/persistence/` so a Beta adapter can be added at that boundary later.
+- Client options live in `settings.json` and are owned by `src/app/settings.rs`; gameplay reads them through `GameSettings` rather than reading the file directly.
 
 # Data and performance rules
 
@@ -49,4 +58,4 @@ The current game has a flying player, full-height Beta-style generated chunks, s
 - Put all tests under the repository root's `tests/` directory. Add tests for behavior and invariants that matter, especially chunk indexing, coordinates, generation determinism, lighting, and block interaction. A standalone Bevy mesh test may use one entity for a block; that does not set the production world representation.
 - Keep changes focused and avoid filling planned modules with placeholders. Run `cargo fmt` and relevant checks or tests for code changes, and report any verification limits.
 - Preserve the user's in-progress changes. The existing source files and tests may be mid-implementation.
-- Treat `assets/` as local, reference-only Minecraft Beta content. Never stage or commit files from it, including `terrain.png` and `misc/grasscolor.png`. Players will eventually supply their own texture ZIP; the current loaders are development paths, not bundled assets. Keep the game able to start when these reference files are absent.
+- Treat `assets/` as local, reference-only Minecraft Beta content. Never stage or commit files from it, including `terrain.png`, `misc/grasscolor.png`, `misc/foliagecolor.png`, the `gui/` textures, and `font/minecraft.otf`. Players will eventually supply their own texture ZIP; the current loaders are development paths, not bundled assets. Keep the game able to start when these reference files are absent.

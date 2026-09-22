@@ -1,6 +1,6 @@
 //! Chunk block identity. Discriminants `0..=96` are the Beta 1.7.3 block ids,
 //! including blocks the world does not place yet. `200..` are private chunk
-//! values for wood and plank species, torch facing, and furnace facing.
+//! values for wood and plank species, plant data, and oriented blocks.
 use crate::item::registry::ItemData;
 
 /// Horizontal face presented as the front of a furnace.
@@ -152,6 +152,10 @@ pub enum BlockId {
     LitFurnaceWest = 216,
     SprucePlanks = 217,
     BirchPlanks = 218,
+    PumpkinNorth = 219,
+    PumpkinEast = 220,
+    PumpkinSouth = 221,
+    PumpkinWest = 222,
 }
 
 impl BlockId {
@@ -260,6 +264,10 @@ impl BlockId {
             216 => Self::LitFurnaceWest,
             217 => Self::SprucePlanks,
             218 => Self::BirchPlanks,
+            219 => Self::PumpkinNorth,
+            220 => Self::PumpkinEast,
+            221 => Self::PumpkinSouth,
+            222 => Self::PumpkinWest,
             89 => Self::Glowstone,
             90 => Self::NetherPortal,
             91 => Self::JackOLantern,
@@ -386,6 +394,10 @@ impl BlockId {
             Self::BirchWood => "birch_wood",
             Self::SprucePlanks => "spruce_planks",
             Self::BirchPlanks => "birch_planks",
+            Self::PumpkinNorth => "pumpkin_north",
+            Self::PumpkinEast => "pumpkin_east",
+            Self::PumpkinSouth => "pumpkin_south",
+            Self::PumpkinWest => "pumpkin_west",
             Self::TorchWest => "torch_west",
             Self::TorchEast => "torch_east",
             Self::TorchNorth => "torch_north",
@@ -414,6 +426,7 @@ impl BlockId {
                 | Self::Cobblestone
                 | Self::WoodenPlanks
                 | Self::Bedrock
+                | Self::FlowingWater
                 | Self::Water
                 | Self::FlowingLava
                 | Self::Lava
@@ -441,10 +454,13 @@ impl BlockId {
                 | Self::MobSpawner
                 | Self::Chest
                 | Self::Obsidian
+                | Self::DeadBush
                 | Self::Torch
                 | Self::TallGrass
                 | Self::Dandelion
                 | Self::Rose
+                | Self::BrownMushroom
+                | Self::RedMushroom
                 | Self::Fern
                 | Self::Cactus
                 | Self::SugarCane
@@ -468,6 +484,10 @@ impl BlockId {
                 | Self::Clay
                 | Self::Jukebox
                 | Self::Pumpkin
+                | Self::PumpkinNorth
+                | Self::PumpkinEast
+                | Self::PumpkinSouth
+                | Self::PumpkinWest
                 | Self::Netherrack
                 | Self::Glowstone
                 | Self::JackOLantern
@@ -536,6 +556,35 @@ impl BlockId {
         }
     }
 
+    pub const fn pumpkin_facing(self) -> Option<FurnaceFacing> {
+        match self {
+            Self::PumpkinNorth => Some(FurnaceFacing::North),
+            Self::PumpkinEast => Some(FurnaceFacing::East),
+            Self::PumpkinSouth => Some(FurnaceFacing::South),
+            Self::PumpkinWest | Self::Pumpkin => Some(FurnaceFacing::West),
+            _ => None,
+        }
+    }
+
+    pub const fn with_pumpkin_facing(self, facing: FurnaceFacing) -> Self {
+        match facing {
+            FurnaceFacing::North => Self::PumpkinNorth,
+            FurnaceFacing::East => Self::PumpkinEast,
+            FurnaceFacing::South => Self::PumpkinSouth,
+            FurnaceFacing::West => Self::PumpkinWest,
+        }
+    }
+
+    /// Convert Beta pumpkin metadata into the outward-facing side.
+    pub const fn pumpkin_from_metadata(metadata: u32) -> Self {
+        match metadata & 3 {
+            0 => Self::PumpkinWest,
+            1 => Self::PumpkinSouth,
+            2 => Self::PumpkinEast,
+            _ => Self::PumpkinNorth,
+        }
+    }
+
     pub fn with_furnace_lit(self, lit: bool) -> Self {
         match self {
             Self::Furnace if lit => Self::LitFurnace,
@@ -581,6 +630,9 @@ impl BlockId {
             | Self::LitFurnaceSouth
             | Self::LitFurnaceWest
             | Self::LitFurnace => (Self::Furnace, 0),
+            Self::PumpkinNorth | Self::PumpkinEast | Self::PumpkinSouth | Self::PumpkinWest => {
+                (Self::Pumpkin, 0)
+            }
             block => (block, 0),
         }
     }
@@ -602,6 +654,7 @@ impl BlockId {
             (Self::Torch, 4) => Some(Self::TorchSouth),
             (Self::TallGrass, 0 | 1) => Some(Self::TallGrass),
             (Self::TallGrass, 2) => Some(Self::Fern),
+            (Self::Pumpkin, 0) => Some(Self::Pumpkin),
             (block, 0) if block.in_world() => Some(block),
             _ => None,
         }

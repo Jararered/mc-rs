@@ -148,6 +148,41 @@ fn desert_chunks_generate_dead_bushes_on_sand() {
 }
 
 #[test]
+fn pumpkin_patches_generate_facing_pumpkins_on_grass() {
+    let generator = WorldGenerator::new(0);
+    for chunk_z in -16..=16 {
+        for chunk_x in -16..=16 {
+            let generated = generator.generate(ChunkPos {
+                x: chunk_x,
+                z: chunk_z,
+            });
+            for z in 0..CHUNK_SIZE {
+                for x in 0..CHUNK_SIZE {
+                    for y in 1..CHUNK_HEIGHT {
+                        let Some(block) = generated.chunk.get(x, y, z) else {
+                            continue;
+                        };
+                        if !matches!(
+                            block,
+                            BlockId::PumpkinNorth
+                                | BlockId::PumpkinEast
+                                | BlockId::PumpkinSouth
+                                | BlockId::PumpkinWest
+                        ) {
+                            continue;
+                        }
+                        assert_eq!(generated.chunk.get(x, y - 1, z), Some(BlockId::Grass));
+                        assert!(block.pumpkin_facing().is_some());
+                        return;
+                    }
+                }
+            }
+        }
+    }
+    panic!("seeded terrain should eventually generate pumpkins");
+}
+
+#[test]
 fn dry_biomes_have_no_trees() {
     // Seed 1 puts the tree biome at the chunk's far corner in the desert, which
     // subtracts more trees than the density noise can add.

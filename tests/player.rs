@@ -166,6 +166,23 @@ fn placed_furnace_front_faces_the_player_and_survives_lit_transitions() {
 }
 
 #[test]
+fn placed_pumpkin_front_faces_the_player() {
+    let mut chunk = Chunk::new();
+    chunk.set(8, 64, 8, BlockId::Grass);
+    let mut chunks = world_with(chunk);
+    let player = Aabb::new(Vec3::new(2.0, 70.0, 2.0), Vec3::new(2.6, 71.8, 2.6));
+
+    assert!(place_selected_block_facing(
+        &mut chunks,
+        hit(8, 64, 8, BlockFace::Up, BlockId::Grass),
+        player,
+        BlockId::Pumpkin,
+        FurnaceFacing::East,
+    ));
+    assert_eq!(chunks.block_at(8, 65, 8), Some(BlockId::PumpkinEast));
+}
+
+#[test]
 fn placing_torch_can_overlap_the_player() {
     let mut chunk = Chunk::new();
     chunk.set(8, 64, 8, BlockId::Stone);

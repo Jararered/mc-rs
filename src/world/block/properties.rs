@@ -332,7 +332,12 @@ pub fn hardness(block: BlockId) -> f32 {
         BlockId::Snow => 0.2,
         BlockId::Clay => 0.6,
         BlockId::Jukebox => 2.0,
-        BlockId::Pumpkin | BlockId::JackOLantern => 1.0,
+        BlockId::Pumpkin
+        | BlockId::PumpkinNorth
+        | BlockId::PumpkinEast
+        | BlockId::PumpkinSouth
+        | BlockId::PumpkinWest
+        | BlockId::JackOLantern => 1.0,
         BlockId::Netherrack => 0.4,
         BlockId::Glowstone => 0.3,
         BlockId::Furnace

@@ -451,6 +451,9 @@ pub fn place_selected_block_facing(
             return false;
         }
     }
+    if selected == BlockId::Pumpkin && !chunks.block_at(x, y - 1, z).is_some_and(is_opaque_cube) {
+        return false;
+    }
     if !is_opaque_cube(hit.block) && selected == BlockId::Torch {
         return false;
     }
@@ -465,6 +468,8 @@ pub fn place_selected_block_facing(
         }
     } else if selected == BlockId::Furnace {
         selected.with_furnace_state(furnace_facing, false)
+    } else if selected == BlockId::Pumpkin {
+        selected.with_pumpkin_facing(furnace_facing)
     } else {
         selected
     };

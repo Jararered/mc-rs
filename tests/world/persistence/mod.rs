@@ -120,11 +120,23 @@ fn chunk_round_trips_through_a_chunk_file() {
     let saves = temp_saves("roundtrip");
     let storage = WorldStorage::create(&saves, 0, "Roundtrip").unwrap();
     let position = ChunkPos { x: -1, z: 2 };
-    let generated = WorldGenerator::new(0).generate(position);
+    let mut generated = WorldGenerator::new(0).generate(position);
+    for (x, facing) in [
+        (1, BlockId::PumpkinNorth),
+        (2, BlockId::PumpkinEast),
+        (3, BlockId::PumpkinSouth),
+        (4, BlockId::PumpkinWest),
+    ] {
+        generated.chunk.set(x, 70, 1, facing);
+    }
     storage.save_chunk(position, &generated).unwrap();
 
     let loaded = storage.load_chunk(position).expect("chunk should load");
     assert_same_blocks(&loaded.chunk, &generated.chunk);
+    assert_eq!(loaded.chunk.get(1, 70, 1), Some(BlockId::PumpkinNorth));
+    assert_eq!(loaded.chunk.get(2, 70, 1), Some(BlockId::PumpkinEast));
+    assert_eq!(loaded.chunk.get(3, 70, 1), Some(BlockId::PumpkinSouth));
+    assert_eq!(loaded.chunk.get(4, 70, 1), Some(BlockId::PumpkinWest));
     for z in 0..CHUNK_SIZE {
         for x in 0..CHUNK_SIZE {
             assert_eq!(loaded.heightmap.get(x, z), generated.heightmap.get(x, z));

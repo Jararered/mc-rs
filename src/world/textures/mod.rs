@@ -353,6 +353,32 @@ pub fn block_tile(
         BlockId::CraftingTable if face == 1 => (4, 0),
         BlockId::CraftingTable if face == 2 || face == 4 => (12, 3),
         BlockId::CraftingTable => (11, 3),
+        BlockId::Pumpkin
+        | BlockId::PumpkinNorth
+        | BlockId::PumpkinEast
+        | BlockId::PumpkinSouth
+        | BlockId::PumpkinWest
+            if face == 0 || face == 1 =>
+        {
+            (6, 6)
+        }
+        BlockId::Pumpkin
+        | BlockId::PumpkinNorth
+        | BlockId::PumpkinEast
+        | BlockId::PumpkinSouth
+        | BlockId::PumpkinWest => {
+            if block
+                .pumpkin_facing()
+                .is_some_and(|facing| facing.face_index() == face)
+            {
+                (7, 7)
+            } else {
+                (6, 7)
+            }
+        }
+        BlockId::JackOLantern if face == 0 || face == 1 => (6, 6),
+        BlockId::JackOLantern if face == 3 => (8, 7),
+        BlockId::JackOLantern => (6, 7),
         BlockId::Bedrock => (1, 1),
         BlockId::Sand => (2, 1),
         BlockId::Gravel => (3, 1),

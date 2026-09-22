@@ -1,4 +1,3 @@
-mod app;
 mod perf;
 mod plugin;
 pub mod screenshot;

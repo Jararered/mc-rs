@@ -63,11 +63,12 @@ pub fn collision_bounds(block: BlockId) -> Option<([f32; 3], [f32; 3])> {
     }
 }
 
-/// Crossed sprites with no collision: flowers, mushrooms, tall grass, and reeds.
+/// Crossed sprites with no collision: flowers, mushrooms, plants, and reeds.
 pub fn is_crossed_plant(block: BlockId) -> bool {
     matches!(
         block,
-        BlockId::Dandelion
+        BlockId::DeadBush
+            | BlockId::Dandelion
             | BlockId::Rose
             | BlockId::BrownMushroom
             | BlockId::RedMushroom

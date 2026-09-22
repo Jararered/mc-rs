@@ -416,6 +416,7 @@ pub fn block_tile(
         | BlockId::TorchSouth => (0, 5),
         BlockId::Dandelion => (13, 0),
         BlockId::Rose => (12, 0),
+        BlockId::DeadBush => (7, 3),
         BlockId::RedMushroom => (12, 1),
         BlockId::BrownMushroom => (13, 1),
         BlockId::TallGrass => (7, 2),

@@ -9,8 +9,10 @@ use bevy::window::PrimaryWindow;
 
 use crate::entity::CollisionState;
 use crate::entity::EntitySize;
+use crate::entity::dropped_items::ItemRng;
 use crate::entity::dropped_items::block_drop;
-use crate::entity::dropped_items::spawn_dropped_item;
+use crate::entity::dropped_items::spawn_block_drop;
+use crate::entity::dropped_items::spawn_thrown_item;
 use crate::entity::particles::BlockParticles;
 use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
@@ -58,6 +60,7 @@ pub(super) struct BlockInteractState {
 pub(super) fn interact_blocks(
     mut commands: Commands,
     time: Res<Time>,
+    keys: Res<ButtonInput<KeyCode>>,
     mouse: Res<ButtonInput<MouseButton>>,
     mut windows: Query<(&Window, &mut CursorOptions), With<PrimaryWindow>>,
     mut player: Query<
@@ -79,6 +82,7 @@ pub(super) fn interact_blocks(
     mut state: Local<BlockInteractState>,
     mut inventory_screen: ResMut<InventoryScreen>,
     mut workbench: ResMut<WorkbenchUiSession>,
+    mut item_rng: Local<ItemRng>,
 ) {
     state.place_cooldown = (state.place_cooldown - time.delta_secs()).max(0.0);
 
@@ -96,6 +100,26 @@ pub(super) fn interact_blocks(
         *focus = BlockFocus::default();
         return;
     };
+
+    if locked
+        && !inventory_screen.open
+        && keys.just_pressed(KeyCode::KeyQ)
+        && let Some(stack) = hotbar.take_selected(1)
+    {
+        spawn_thrown_item(
+            &mut commands,
+            &mut item_rng,
+            transform,
+            *transform.forward(),
+            stack,
+        );
+        if let Some(persistence) = persistence.as_deref_mut() {
+            persistence.mark_dirty(ChunkPos::from_block(
+                transform.translation.x.floor() as i32,
+                transform.translation.z.floor() as i32,
+            ));
+        }
+    }
 
     let left_click = mouse.just_pressed(MouseButton::Left);
     let right_click = mouse.just_pressed(MouseButton::Right);
@@ -133,7 +157,8 @@ pub(super) fn interact_blocks(
         // system ran.
         close_crafting_interface(
             &mut commands,
-            transform.translation,
+            transform,
+            &mut item_rng,
             &mut hotbar,
             &mut inventory,
             &mut workbench,
@@ -161,6 +186,7 @@ pub(super) fn interact_blocks(
             if let Some(broken) = state.mining.try_instant(hit, on_ground, in_water) {
                 apply_break(
                     &mut commands,
+                    &mut item_rng,
                     &mut chunks,
                     &mut streaming,
                     &mut persistence,
@@ -178,6 +204,7 @@ pub(super) fn interact_blocks(
             if let Some(broken) = state.mining.tick(hit, on_ground, in_water) {
                 apply_break(
                     &mut commands,
+                    &mut item_rng,
                     &mut chunks,
                     &mut streaming,
                     &mut persistence,
@@ -215,6 +242,7 @@ pub(super) fn interact_blocks(
 
 fn apply_break(
     commands: &mut Commands,
+    rng: &mut ItemRng,
     chunks: &mut WorldChunks,
     streaming: &mut Option<ResMut<WorldStreaming>>,
     persistence: &mut Option<ResMut<WorldPersistence>>,
@@ -246,29 +274,11 @@ fn apply_break(
             .any(|(_, _, _, torch)| is_torch(torch));
     if break_block(chunks, hit) {
         if let Some(stack) = block_drop(hit.block) {
-            spawn_dropped_item(
-                commands,
-                Vec3::new(hit.x as f32 + 0.5, hit.y as f32 + 0.5, hit.z as f32 + 0.5),
-                stack,
-                Vec3::new(
-                    (hit.x as f32 * 12.989).sin() * 0.15,
-                    3.0,
-                    (hit.z as f32 * 78.233).sin() * 0.15,
-                ),
-            );
+            spawn_block_drop(commands, rng, IVec3::new(hit.x, hit.y, hit.z), stack);
         }
         for (x, y, z, torch) in attached {
             if let Some(stack) = block_drop(torch) {
-                spawn_dropped_item(
-                    commands,
-                    Vec3::new(x as f32 + 0.5, y as f32 + 0.5, z as f32 + 0.5),
-                    stack,
-                    Vec3::new(
-                        (x as f32 * 12.989).sin() * 0.15,
-                        2.5,
-                        (z as f32 * 78.233).sin() * 0.15,
-                    ),
-                );
+                spawn_block_drop(commands, rng, IVec3::new(x, y, z), stack);
             }
         }
         if let Some(particles) = particles.as_deref_mut() {

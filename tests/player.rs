@@ -78,6 +78,7 @@ fn world_with(chunk: Chunk) -> WorldChunks {
             heightmap: Heightmap::from_chunk(&chunk),
             biomes: plains(),
             chunk,
+            items: Vec::new(),
         },
     );
     chunks

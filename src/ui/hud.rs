@@ -8,6 +8,8 @@ use bevy::prelude::*;
 use super::block_icons::BlockIcons;
 use super::inventory::durability_bar;
 use crate::app::state::AppScreen;
+use crate::entity::dropped_items::ItemTickClock;
+use crate::entity::dropped_items::hotbar_icon_scale;
 use crate::inventory::HOTBAR_SLOTS;
 use crate::inventory::Hotbar;
 use crate::item::ItemStack;
@@ -410,15 +412,25 @@ fn update_hotbar_items(
 fn update_hotbar_icons(
     hotbar: Query<&Hotbar, With<Player>>,
     icons: Res<BlockIcons>,
-    mut images: Query<(&HotbarBlockIcon, &mut ImageNode, &mut Visibility)>,
+    clock: Option<Res<ItemTickClock>>,
+    mut images: Query<(&HotbarBlockIcon, &mut ImageNode, &mut Visibility, &mut Node)>,
 ) {
     let Ok(hotbar) = hotbar.single() else {
         return;
     };
-    for (slot, mut image, mut visibility) in &mut images {
+    let partial = clock.map(|clock| clock.partial()).unwrap_or(0.0);
+    for (slot, mut image, mut visibility, mut node) in &mut images {
         if let Some(rect) = hotbar.slots[slot.0].and_then(|stack| icons.rect_for_stack(stack)) {
             image.rect = Some(rect);
             *visibility = Visibility::Inherited;
+            let scale = hotbar_icon_scale(hotbar.pop[slot.0], partial);
+            let width = ITEM_SIZE * HUD_SCALE * scale.x;
+            let height = ITEM_SIZE * HUD_SCALE * scale.y;
+            let (left, top) = hotbar_item_rect(slot.0);
+            node.left = px(left + (ITEM_SIZE * HUD_SCALE - width) * 0.5);
+            node.top = px(top + (ITEM_SIZE * HUD_SCALE - height) * 0.5);
+            node.width = px(width);
+            node.height = px(height);
         } else {
             *visibility = Visibility::Hidden;
         }

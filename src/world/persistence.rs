@@ -53,6 +53,7 @@ use crate::world::chunk::ChunkPos;
 use crate::world::chunk::WorldChunks;
 use crate::world::generation::Biome;
 use crate::world::generation::BiomeMap;
+use crate::world::generation::ChunkDroppedItem;
 use crate::world::generation::Climate;
 use crate::world::generation::GeneratedChunk;
 use crate::world::generation::Heightmap;
@@ -396,6 +397,24 @@ struct StoredChunk {
     runs: Vec<(u8, u16)>,
     heightmap: Vec<u8>,
     biomes: Vec<StoredClimate>,
+    /// Absent on chunks saved before dropped items were stored.
+    #[serde(default)]
+    items: Vec<StoredDroppedItem>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct StoredDroppedItem {
+    stack: StoredStack,
+    x: f32,
+    y: f32,
+    z: f32,
+    motion_x: f32,
+    motion_y: f32,
+    motion_z: f32,
+    age_ticks: u32,
+    pickup_delay_ticks: u16,
+    hover_start: f32,
+    rng_state: u64,
 }
 
 /// Climate quantized to a byte per field. Temperature and humidity only feed the
@@ -421,6 +440,23 @@ impl StoredChunk {
                     temperature: quantize(climate.temperature),
                     humidity: quantize(climate.humidity),
                     biome: climate.biome.as_u8(),
+                })
+                .collect(),
+            items: generated
+                .items
+                .iter()
+                .map(|item| StoredDroppedItem {
+                    stack: StoredStack::from_stack(item.stack),
+                    x: item.position[0],
+                    y: item.position[1],
+                    z: item.position[2],
+                    motion_x: item.motion[0],
+                    motion_y: item.motion[1],
+                    motion_z: item.motion[2],
+                    age_ticks: item.age_ticks,
+                    pickup_delay_ticks: item.pickup_delay_ticks,
+                    hover_start: item.hover_start,
+                    rng_state: item.rng_state,
                 })
                 .collect(),
         }
@@ -451,6 +487,21 @@ impl StoredChunk {
             chunk: Chunk::from_blocks(blocks),
             heightmap: Heightmap::from_heights(heights),
             biomes: BiomeMap::from_cells(cells),
+            items: self
+                .items
+                .into_iter()
+                .filter_map(|item| {
+                    item.stack.into_stack().map(|stack| ChunkDroppedItem {
+                        stack,
+                        position: [item.x, item.y, item.z],
+                        motion: [item.motion_x, item.motion_y, item.motion_z],
+                        age_ticks: item.age_ticks,
+                        pickup_delay_ticks: item.pickup_delay_ticks,
+                        hover_start: item.hover_start,
+                        rng_state: item.rng_state,
+                    })
+                })
+                .collect(),
         })
     }
 }
@@ -715,28 +766,42 @@ impl WorldPersistence {
     /// Write dirty chunks and current player state.
     pub fn flush(
         &mut self,
-        chunks: &WorldChunks,
+        chunks: &mut WorldChunks,
         player: Option<(&Transform, Option<&Hotbar>, Option<&Inventory>)>,
+        items: &std::collections::HashMap<ChunkPos, Vec<ChunkDroppedItem>>,
     ) {
         let Some(storage) = self.storage.clone() else {
             return;
         };
 
         let pending = std::mem::take(&mut self.pending);
+        let dirty: Vec<_> = self.dirty.drain().collect();
+        for position in &dirty {
+            if let Some(chunk) = chunks.get_mut(*position) {
+                chunk.items = items.get(position).cloned().unwrap_or_default();
+            }
+        }
         let mut batch: Vec<(ChunkPos, &GeneratedChunk)> =
-            Vec::with_capacity(pending.len() + self.dirty.len());
+            Vec::with_capacity(pending.len() + dirty.len());
         for (position, chunk) in &pending {
             batch.push((*position, chunk));
         }
-        for position in self.dirty.drain() {
-            if let Some(chunk) = chunks.get(position) {
-                batch.push((position, chunk));
+        for position in &dirty {
+            if let Some(chunk) = chunks.get(*position) {
+                batch.push((*position, chunk));
             }
         }
         if !batch.is_empty() {
             match storage.save_chunks(batch) {
                 Ok(count) => info!("Saved {count} chunks to {}", storage.root().display()),
                 Err(error) => warn!("Failed to save world: {error}"),
+            }
+        }
+        // Entities remain the live copy. Drop the snapshot so a later load of
+        // this in-memory chunk does not spawn the items a second time.
+        for position in &dirty {
+            if let Some(chunk) = chunks.get_mut(*position) {
+                chunk.items.clear();
             }
         }
         if let Some((transform, hotbar, inventory)) = player
@@ -770,14 +835,39 @@ fn setup_persistence(mut commands: Commands, config: Res<PersistenceConfig>) {
 
 fn flush_persistence(
     mut persistence: ResMut<WorldPersistence>,
-    chunks: Res<WorldChunks>,
+    mut chunks: ResMut<WorldChunks>,
     player: Query<(&Transform, Option<&Hotbar>, Option<&Inventory>), With<Player>>,
+    items: Query<
+        (
+            &Transform,
+            &crate::entity::DroppedItem,
+            &crate::entity::dropped_items::ItemMotion,
+            &crate::entity::dropped_items::DroppedItemState,
+        ),
+        Without<crate::entity::dropped_items::PickupAnimation>,
+    >,
     time: Res<Time>,
     mut exit: MessageReader<AppExit>,
 ) {
     let exiting = exit.read().next().is_some();
     persistence.timer.tick(time.delta());
     if exiting || persistence.timer.just_finished() {
-        persistence.flush(&chunks, player.single().ok());
+        let mut saved = std::collections::HashMap::<ChunkPos, Vec<ChunkDroppedItem>>::new();
+        for (transform, dropped, motion, state) in &items {
+            let position = ChunkPos::from_block(
+                transform.translation.x.floor() as i32,
+                transform.translation.z.floor() as i32,
+            );
+            saved
+                .entry(position)
+                .or_default()
+                .push(crate::entity::dropped_items::chunk_record(
+                    dropped.0,
+                    transform.translation,
+                    motion.0,
+                    state,
+                ));
+        }
+        persistence.flush(&mut chunks, player.single().ok(), &saved);
     }
 }

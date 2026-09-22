@@ -1,3 +1,4 @@
+use crate::item::ItemStack;
 use crate::world::chunk::Chunk;
 use crate::world::chunk::ChunkPos;
 
@@ -12,6 +13,21 @@ pub struct GeneratedChunk {
     pub chunk: Chunk,
     pub heightmap: Heightmap,
     pub biomes: BiomeMap,
+    /// Dropped items stored with this chunk. Live entities are authoritative
+    /// while the chunk is loaded; this list is the on-disk copy.
+    pub items: Vec<ChunkDroppedItem>,
+}
+
+/// A dropped item saved inside the chunk that contains its position.
+#[derive(Clone, Debug)]
+pub struct ChunkDroppedItem {
+    pub stack: ItemStack,
+    pub position: [f32; 3],
+    pub motion: [f32; 3],
+    pub age_ticks: u32,
+    pub pickup_delay_ticks: u16,
+    pub hover_start: f32,
+    pub rng_state: u64,
 }
 
 /// Beta-style climate, density, and surface generation for a full chunk.
@@ -49,6 +65,7 @@ impl WorldGenerator {
             chunk,
             heightmap,
             biomes,
+            items: Vec::new(),
         }
     }
 

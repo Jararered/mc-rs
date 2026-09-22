@@ -712,3 +712,78 @@ fn linear_rgb(r: u8, g: u8, b: u8) -> [f32; 3] {
     let color = Color::srgb_u8(r, g, b).to_linear();
     [color.red, color.green, color.blue]
 }
+
+/// A dropped block: the world cube, centered on the origin, with the same
+/// face tiles, shade, and tints the chunk mesher uses. Fancy grass also
+/// gets the side overlay. Fancy leaves are marked cutout.
+pub struct DroppedBlockMeshes {
+    pub body: Mesh,
+    pub overlay: Option<Mesh>,
+    pub cutout: bool,
+}
+
+pub fn dropped_block_meshes(
+    block: BlockId,
+    fancy_graphics: bool,
+    grass_tint: [f32; 3],
+    foliage_tint: [f32; 3],
+) -> DroppedBlockMeshes {
+    let mut body = MeshBuffers::default();
+    let mut overlay = MeshBuffers::default();
+    for (face_index, face) in FACES.iter().enumerate() {
+        let grass_side =
+            block == BlockId::Grass && face_index != FACE_TOP && face_index != FACE_BOTTOM;
+        let tint = if block == BlockId::Grass && face_index == FACE_TOP {
+            grass_tint
+        } else {
+            block_tint(block, Some(foliage_tint))
+        };
+        let shade = face.shade;
+        let color = [tint[0] * shade, tint[1] * shade, tint[2] * shade, 1.0];
+        let corners = face
+            .corners
+            .map(|corner| [corner[0] - 0.5, corner[1] - 0.5, corner[2] - 0.5]);
+        body.push_quad(
+            0,
+            0,
+            0,
+            face,
+            corners,
+            face_uvs(block, face_index, fancy_graphics),
+            color,
+            [1.0; 4],
+            [1.0; 4],
+        );
+        if grass_side && fancy_graphics {
+            let overlay_color = [
+                grass_tint[0] * shade,
+                grass_tint[1] * shade,
+                grass_tint[2] * shade,
+                1.0,
+            ];
+            let corners = face.corners.map(|corner| {
+                [
+                    corner[0] - 0.5 + face.normal[0] * 0.001,
+                    corner[1] - 0.5 + face.normal[1] * 0.001,
+                    corner[2] - 0.5 + face.normal[2] * 0.001,
+                ]
+            });
+            overlay.push_quad(
+                0,
+                0,
+                0,
+                face,
+                corners,
+                face_uvs_for_tile(6, 2, face_index),
+                overlay_color,
+                [1.0; 4],
+                [1.0; 4],
+            );
+        }
+    }
+    DroppedBlockMeshes {
+        body: body.into_mesh(),
+        overlay: (!overlay.positions.is_empty()).then(|| overlay.into_mesh()),
+        cutout: fancy_graphics && is_leaf(block),
+    }
+}

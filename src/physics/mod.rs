@@ -14,6 +14,7 @@ use bevy::prelude::*;
 
 use crate::app::state::AppScreen;
 use crate::entity::CollisionState;
+use crate::entity::DroppedItem;
 use crate::entity::EntitySize;
 use crate::entity::Gravity;
 use crate::entity::StepHeight;
@@ -348,14 +349,17 @@ pub fn colliding_aabbs(chunks: &WorldChunks, area: Aabb) -> Vec<Aabb> {
 fn integrate_bodies(
     time: Res<Time>,
     chunks: Res<WorldChunks>,
-    mut bodies: Query<(
-        &mut Transform,
-        &mut Velocity,
-        &EntitySize,
-        &mut CollisionState,
-        Option<&StepHeight>,
-        Option<&Gravity>,
-    )>,
+    mut bodies: Query<
+        (
+            &mut Transform,
+            &mut Velocity,
+            &EntitySize,
+            &mut CollisionState,
+            Option<&StepHeight>,
+            Option<&Gravity>,
+        ),
+        Without<DroppedItem>,
+    >,
 ) {
     let dt = time.delta_secs().min(MAX_STEP_SECS);
     if dt <= 0.0 {

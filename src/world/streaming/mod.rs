@@ -13,6 +13,12 @@ use bevy::tasks::futures::check_ready;
 
 use crate::app::settings::GameSettings;
 use crate::app::state::AppScreen;
+use crate::entity::DroppedItem;
+use crate::entity::dropped_items::DroppedItemState;
+use crate::entity::dropped_items::ItemMotion;
+use crate::entity::dropped_items::PickupAnimation;
+use crate::entity::dropped_items::chunk_record;
+use crate::entity::dropped_items::spawn_saved_item;
 use crate::player::Player;
 use crate::world::persistence::WorldPersistence;
 
@@ -180,7 +186,7 @@ pub(crate) fn setup_streaming(
         .as_ref()
         .and_then(|persistence| persistence.storage())
         .and_then(|storage| storage.load_chunk(ChunkPos::ZERO));
-    let generated = match stored {
+    let mut generated = match stored {
         Some(chunk) => {
             perf.load.record(load_start.elapsed());
             chunk
@@ -199,7 +205,11 @@ pub(crate) fn setup_streaming(
     let cutout_material = cutout_material.0.clone();
     let water_material = water_material.0.clone();
     let grass_overlay_material = grass_overlay_material.0.clone();
+    let saved_items = std::mem::take(&mut generated.items);
     chunks.insert(ChunkPos::ZERO, generated);
+    for item in saved_items {
+        spawn_saved_item(&mut commands, item);
+    }
     commands.insert_resource(WorldStreaming {
         generator,
         grass_colors: grass_colors.clone(),
@@ -263,6 +273,16 @@ pub(crate) fn stream_chunks(
     screen: Option<Res<State<AppScreen>>>,
     mut persistence: Option<ResMut<WorldPersistence>>,
     mut perf: ResMut<StreamingPerf>,
+    dropped: Query<
+        (
+            Entity,
+            &Transform,
+            &DroppedItem,
+            &ItemMotion,
+            &DroppedItemState,
+        ),
+        Without<PickupAnimation>,
+    >,
 ) {
     let Ok(player) = player.single() else {
         return;
@@ -314,10 +334,29 @@ pub(crate) fn stream_chunks(
         .filter(|position| !within_radius(*position, center, generate_radius))
         .collect();
     for position in stale {
-        if let Some(chunk) = chunks.remove(position)
-            && let Some(persistence) = persistence.as_deref_mut()
-        {
-            persistence.queue_unload(position, chunk);
+        if let Some(mut chunk) = chunks.remove(position) {
+            let mut leaving = Vec::new();
+            for (entity, transform, dropped, motion, state) in &dropped {
+                let item_chunk = ChunkPos::from_block(
+                    transform.translation.x.floor() as i32,
+                    transform.translation.z.floor() as i32,
+                );
+                if item_chunk == position {
+                    chunk.items.push(chunk_record(
+                        dropped.0,
+                        transform.translation,
+                        motion.0,
+                        state,
+                    ));
+                    leaving.push(entity);
+                }
+            }
+            for entity in leaving {
+                commands.entity(entity).despawn();
+            }
+            if let Some(persistence) = persistence.as_deref_mut() {
+                persistence.queue_unload(position, chunk);
+            }
         }
     }
 
@@ -328,7 +367,7 @@ pub(crate) fn stream_chunks(
         .iter_mut()
         .filter_map(|(position, task)| check_ready(task).map(|job| (*position, job)))
         .collect();
-    for (position, job) in generated {
+    for (position, mut job) in generated {
         streaming.generating.remove(&position);
         if job.loaded {
             perf.load.record(job.elapsed);
@@ -341,7 +380,13 @@ pub(crate) fn stream_chunks(
             {
                 persistence.mark_dirty(position);
             }
+            let saved_items = std::mem::take(&mut job.chunk.items);
             chunks.insert(position, job.chunk);
+            if job.loaded {
+                for item in saved_items {
+                    spawn_saved_item(&mut commands, item);
+                }
+            }
         }
     }
 

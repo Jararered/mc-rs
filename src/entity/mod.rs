@@ -37,11 +37,12 @@ impl EntitySize {
         y_offset: 1.62,
     };
 
-    /// Compact Beta item entity collision box.
+    /// Beta `EntityItem`: a 0.25 cube whose transform is the center
+    /// (`yOffset = height / 2`).
     pub const DROPPED_ITEM: Self = Self {
         width: 0.25,
         height: 0.25,
-        y_offset: 0.0,
+        y_offset: 0.125,
     };
 }
 

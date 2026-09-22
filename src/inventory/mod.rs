@@ -84,6 +84,9 @@ impl Inventory {
 pub struct Hotbar {
     pub slots: [Option<ItemStack>; HOTBAR_SLOTS],
     pub selected: usize,
+    /// Beta `ItemStack.animationsToGo` for each hotbar slot. Five ticks of pop
+    /// after a pickup increases that slot's count.
+    pub pop: [u8; HOTBAR_SLOTS],
 }
 
 impl Default for Hotbar {
@@ -91,6 +94,7 @@ impl Default for Hotbar {
         Self {
             slots: [None; HOTBAR_SLOTS],
             selected: 0,
+            pop: [0; HOTBAR_SLOTS],
         }
     }
 }
@@ -99,16 +103,51 @@ impl Hotbar {
     /// Merge matching stacks before filling empty slots. Return the remainder
     /// when full, without discarding any items.
     pub fn insert(&mut self, mut stack: ItemStack) -> Option<ItemStack> {
-        for slot in self.slots.iter_mut().flatten() {
-            stack = slot.merge(stack)?;
+        let before = self.counts();
+        let remainder = (|| {
+            for slot in self.slots.iter_mut().flatten() {
+                stack = slot.merge(stack)?;
+            }
+            for slot in &mut self.slots {
+                if slot.is_none() {
+                    *slot = Some(stack);
+                    return None;
+                }
+            }
+            Some(stack)
+        })();
+        self.note_gains(&before);
+        remainder
+    }
+
+    /// Take up to `count` items from the selected slot. An empty slot returns nothing.
+    pub fn take_selected(&mut self, count: u8) -> Option<ItemStack> {
+        let current = self.slots.get(self.selected).copied().flatten()?;
+        if count == 0 {
+            return None;
         }
-        for slot in &mut self.slots {
-            if slot.is_none() {
-                *slot = Some(stack);
-                return None;
+        let taken = count.min(current.count());
+        let stack = ItemStack::with_data(current.item(), taken, current.data()).ok()?;
+        let left = current.count() - taken;
+        self.slots[self.selected] = if left == 0 {
+            None
+        } else {
+            ItemStack::with_data(current.item(), left, current.data()).ok()
+        };
+        Some(stack)
+    }
+
+    fn counts(&self) -> [u8; HOTBAR_SLOTS] {
+        std::array::from_fn(|index| self.slots[index].map(|stack| stack.count()).unwrap_or(0))
+    }
+
+    fn note_gains(&mut self, before: &[u8; HOTBAR_SLOTS]) {
+        for index in 0..HOTBAR_SLOTS {
+            let after = self.slots[index].map(|stack| stack.count()).unwrap_or(0);
+            if after > before[index] {
+                self.pop[index] = 5;
             }
         }
-        Some(stack)
     }
 
     pub fn select(&mut self, slot: usize) {

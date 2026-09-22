@@ -473,6 +473,7 @@ fn set_block_updates_the_column_heightmap() {
                 }; CHUNK_SIZE * CHUNK_SIZE],
             ),
             chunk,
+            items: Vec::new(),
         },
     );
     assert_eq!(chunks.get(ChunkPos::ZERO).unwrap().heightmap.get(3, 4), 11);

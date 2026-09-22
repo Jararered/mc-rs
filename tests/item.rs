@@ -164,6 +164,7 @@ fn full_hotbar_returns_exact_remainder_and_does_not_stack_tools() {
     let mut hotbar = Hotbar {
         slots: [Some(coal); 9],
         selected: 0,
+        pop: [0; 9],
     };
     hotbar.slots[8] = Some(ItemStack::new(ItemId::COAL, 63).unwrap());
     let remainder = hotbar

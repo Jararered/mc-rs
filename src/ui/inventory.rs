@@ -12,7 +12,8 @@ use super::block_icons::BlockIcons;
 use crate::app::state::AppScreen;
 use crate::crafting::CraftingGrid;
 use crate::crafting::beta_recipe_book;
-use crate::entity::dropped_items::spawn_dropped_item;
+use crate::entity::dropped_items::ItemRng;
+use crate::entity::dropped_items::spawn_thrown_item;
 use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
 use crate::item::ItemData;
@@ -53,6 +54,7 @@ fn validate_workbench(
     mut player: Query<(&mut Hotbar, &mut Inventory), With<Player>>,
     roots: Query<Entity, With<InventoryRoot>>,
     mut windows: Query<&mut CursorOptions, With<PrimaryWindow>>,
+    mut item_rng: Local<ItemRng>,
 ) {
     if !screen.open || !screen.workbench {
         return;
@@ -75,7 +77,8 @@ fn validate_workbench(
     if let Ok((mut hotbar, mut inventory)) = player.single_mut() {
         close_crafting_interface(
             &mut commands,
-            player_position,
+            transform,
+            &mut item_rng,
             &mut hotbar,
             &mut inventory,
             &mut session,
@@ -167,6 +170,7 @@ fn toggle(
     roots: Query<Entity, With<InventoryRoot>>,
     mut player: Query<(&Transform, &mut Hotbar, &mut Inventory), With<Player>>,
     mut windows: Query<(&Window, &mut CursorOptions), With<PrimaryWindow>>,
+    mut item_rng: Local<ItemRng>,
 ) {
     if screen.open && roots.is_empty() {
         let background = if screen.workbench {
@@ -189,7 +193,8 @@ fn toggle(
         if let Ok((transform, mut hotbar, mut inventory)) = player.single_mut() {
             close_crafting_interface(
                 &mut commands,
-                transform.translation,
+                transform,
+                &mut item_rng,
                 &mut hotbar,
                 &mut inventory,
                 &mut workbench,
@@ -227,11 +232,13 @@ fn close(
     mut workbench: ResMut<WorkbenchUiSession>,
     roots: Query<Entity, With<InventoryRoot>>,
     mut player: Query<(&Transform, &mut Hotbar, &mut Inventory), With<Player>>,
+    mut item_rng: Local<ItemRng>,
 ) {
     if let Ok((transform, mut hotbar, mut inventory)) = player.single_mut() {
         close_crafting_interface(
             &mut commands,
-            transform.translation,
+            transform,
+            &mut item_rng,
             &mut hotbar,
             &mut inventory,
             &mut workbench,
@@ -246,7 +253,8 @@ fn close(
 
 pub(crate) fn close_crafting_interface(
     commands: &mut Commands,
-    player_position: Vec3,
+    player: &Transform,
+    rng: &mut ItemRng,
     hotbar: &mut Hotbar,
     inventory: &mut Inventory,
     workbench: &mut WorkbenchUiSession,
@@ -258,10 +266,10 @@ pub(crate) fn close_crafting_interface(
         .collect();
     stacks.extend(workbench.grid.drain());
     for stack in stacks {
-        return_or_drop(commands, player_position, hotbar, inventory, stack);
+        return_or_drop(commands, rng, player, hotbar, inventory, stack);
     }
     if let Some(stack) = inventory.carried.take() {
-        return_or_drop(commands, player_position, hotbar, inventory, stack);
+        return_or_drop(commands, rng, player, hotbar, inventory, stack);
     }
     // A closed interface must never leave a reusable session holding inputs;
     // the next workbench always starts with a fresh 3×3 grid.
@@ -271,18 +279,14 @@ pub(crate) fn close_crafting_interface(
 
 fn return_or_drop(
     commands: &mut Commands,
-    player_position: Vec3,
+    rng: &mut ItemRng,
+    player: &Transform,
     hotbar: &mut Hotbar,
     inventory: &mut Inventory,
     stack: ItemStack,
 ) {
     if let Some(remainder) = inventory.insert(hotbar, stack) {
-        spawn_dropped_item(
-            commands,
-            player_position + Vec3::Y * 0.35,
-            remainder,
-            Vec3::new(0.0, 1.5, 0.0),
-        );
+        spawn_thrown_item(commands, rng, player, *player.forward(), remainder);
     }
 }
 

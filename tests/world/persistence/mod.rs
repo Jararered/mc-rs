@@ -10,6 +10,7 @@ use std::time::UNIX_EPOCH;
 use bevy::asset::AssetPlugin;
 use bevy::mesh::MeshPlugin;
 use bevy::prelude::*;
+use game::item::ItemStack;
 use game::player::Player;
 use game::world::block::block::BlockId;
 use game::world::chunk::CHUNK_HEIGHT;
@@ -17,6 +18,7 @@ use game::world::chunk::CHUNK_SIZE;
 use game::world::chunk::Chunk;
 use game::world::chunk::ChunkPos;
 use game::world::chunk::WorldChunks;
+use game::world::generation::ChunkDroppedItem;
 use game::world::generation::WorldGenerator;
 use game::world::persistence::FORMAT_VERSION;
 use game::world::persistence::PersistencePlugin;
@@ -135,6 +137,46 @@ fn chunk_round_trips_through_a_chunk_file() {
             assert!((after.humidity - before.humidity).abs() < 0.01);
         }
     }
+}
+
+#[test]
+fn dropped_items_round_trip_inside_their_chunk() {
+    let saves = temp_saves("items");
+    let storage = WorldStorage::create(&saves, 0, "Items").unwrap();
+    let position = ChunkPos { x: 1, z: -1 };
+    let mut generated = WorldGenerator::new(0).generate(position);
+    generated.items.push(ChunkDroppedItem {
+        stack: ItemStack::from_block(BlockId::Cobblestone, 3).unwrap(),
+        position: [20.25, 70.0, -8.5],
+        motion: [0.05, 0.2, -0.08],
+        age_ticks: 12,
+        pickup_delay_ticks: 10,
+        hover_start: 1.25,
+        rng_state: 99,
+    });
+    storage.save_chunk(position, &generated).unwrap();
+    let loaded = storage.load_chunk(position).unwrap();
+    assert_eq!(loaded.items.len(), 1);
+    let item = &loaded.items[0];
+    assert_eq!(item.stack.count(), 3);
+    assert_eq!(item.position, [20.25, 70.0, -8.5]);
+    assert_eq!(item.motion, [0.05, 0.2, -0.08]);
+    assert_eq!(item.age_ticks, 12);
+    assert_eq!(item.pickup_delay_ticks, 10);
+    assert!((item.hover_start - 1.25).abs() < 1e-5);
+    assert_eq!(item.rng_state, 99);
+
+    let path = storage
+        .root()
+        .join(region_dir_name(region_of(position)))
+        .join(chunk_file_name(position));
+    let mut value: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    value.as_object_mut().unwrap().remove("items");
+    fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+    let legacy = storage
+        .load_chunk(position)
+        .expect("chunks without items still load");
+    assert!(legacy.items.is_empty());
 }
 
 #[test]

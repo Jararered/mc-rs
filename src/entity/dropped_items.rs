@@ -35,9 +35,8 @@ use crate::world::textures::FoliageColors;
 use crate::world::textures::GrassColors;
 use crate::world::textures::GrassOverlayMaterial;
 use crate::world::textures::TerrainMaterial;
+use crate::world::tick::WorldTick;
 
-const TICK_SECS: f32 = 1.0 / 20.0;
-const MAX_TICKS_PER_FRAME: u32 = 20;
 const ITEM_LIFETIME_TICKS: u32 = 6000;
 const PICKUP_DELAY_TICKS: u16 = 10;
 const THROW_DELAY_TICKS: u16 = 40;
@@ -58,7 +57,7 @@ pub struct DroppedItemPlugin;
 
 impl Plugin for DroppedItemPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<ItemTickClock>().add_systems(
+        app.add_systems(
             Update,
             (
                 tick_dropped_items,
@@ -69,18 +68,6 @@ impl Plugin for DroppedItemPlugin {
                 .after(PhysicsSet::Integrate)
                 .run_if(in_state(AppScreen::Playing)),
         );
-    }
-}
-
-#[derive(Resource, Default)]
-pub struct ItemTickClock {
-    accumulator: f32,
-    partial: f32,
-}
-
-impl ItemTickClock {
-    pub fn partial(&self) -> f32 {
-        self.partial
     }
 }
 
@@ -151,15 +138,18 @@ pub struct DroppedItemState {
     pub pickup_delay_ticks: u16,
     pub age_ticks: u32,
     pub hover_start: f32,
+    /// Position before the latest tick. Rendering lerps from here with `partial`.
+    previous_position: Vec3,
     rng: JavaRandom,
 }
 
 impl DroppedItemState {
-    pub fn new(pickup_delay_ticks: u16, hover_start: f32, rng_seed: u64) -> Self {
+    pub fn new(pickup_delay_ticks: u16, hover_start: f32, rng_seed: u64, position: Vec3) -> Self {
         Self {
             pickup_delay_ticks,
             age_ticks: 0,
             hover_start,
+            previous_position: position,
             rng: JavaRandom::new(rng_seed),
         }
     }
@@ -169,11 +159,13 @@ impl DroppedItemState {
         age_ticks: u32,
         hover_start: f32,
         rng_state: u64,
+        position: Vec3,
     ) -> Self {
         Self {
             pickup_delay_ticks,
             age_ticks,
             hover_start,
+            previous_position: position,
             rng: JavaRandom::from_state(rng_state),
         }
     }
@@ -192,8 +184,8 @@ pub struct ItemMotion(pub Vec3);
 #[derive(Component, Clone, Copy, Debug)]
 pub struct PickupAnimation {
     pub start: Vec3,
-    /// `Time::elapsed_secs` when the flight began. The flight lasts 3 ticks.
-    pub started_at: f32,
+    /// Ticks since the flight began. It lasts [`PICKUP_TICKS`].
+    pub age_ticks: u32,
 }
 
 #[derive(Component)]
@@ -270,6 +262,7 @@ pub fn spawn_saved_item(commands: &mut Commands, item: crate::world::generation:
             item.age_ticks,
             item.hover_start,
             item.rng_state,
+            Vec3::from_array(item.position),
         ),
         Transform::from_translation(Vec3::from_array(item.position)),
         ItemMotion(Vec3::from_array(item.motion)),
@@ -311,7 +304,7 @@ fn spawn_item(
     commands.spawn((
         Name::new("Dropped item"),
         DroppedItem(stack),
-        DroppedItemState::new(pickup_delay_ticks, hover_start, rng_seed),
+        DroppedItemState::new(pickup_delay_ticks, hover_start, rng_seed, position),
         Transform::from_translation(position),
         ItemMotion(motion),
         CollisionState::default(),
@@ -405,6 +398,13 @@ pub fn item_motion_after_collision(
     motion
 }
 
+/// Render position between the previous tick and the current one.
+///
+/// Same shape as the arm swing: `previous + (current - previous) * partial`.
+pub fn interpolated_item_position(previous: Vec3, current: Vec3, partial: f32) -> Vec3 {
+    previous.lerp(current, partial.clamp(0.0, 1.0))
+}
+
 /// `sin((age + partial) / 10 + hover) * 0.1 + 0.1`. Age is in ticks.
 pub fn item_bob_offset(age_ticks: f32, partial: f32, hover: f32) -> f32 {
     ((age_ticks + partial) / 10.0 + hover).sin() * 0.1 + 0.1
@@ -478,9 +478,15 @@ pub fn hotbar_icon_scale(pop: u8, partial: f32) -> Vec2 {
     Vec2::new(1.0 / grow, (grow + 1.0) / 2.0)
 }
 
-pub fn item_piece_transform(bob: f32, yaw: f32, scale: f32, offset: Vec3) -> Transform {
+pub fn item_piece_transform(
+    bob: f32,
+    yaw: f32,
+    scale: f32,
+    offset: Vec3,
+    slide: Vec3,
+) -> Transform {
     let rotation = Quat::from_rotation_y(yaw);
-    Transform::from_translation(Vec3::Y * bob + rotation * (offset * scale))
+    Transform::from_translation(slide + Vec3::Y * bob + rotation * (offset * scale))
         .with_rotation(rotation)
         .with_scale(Vec3::splat(scale))
 }
@@ -492,12 +498,12 @@ pub fn dropped_block_model(stack: ItemStack) -> Option<BlockId> {
 }
 
 fn tick_dropped_items(
-    time: Res<Time>,
-    mut clock: ResMut<ItemTickClock>,
+    tick: Res<WorldTick>,
     chunks: Res<WorldChunks>,
     mut persistence: Option<ResMut<WorldPersistence>>,
     mut commands: Commands,
     mut hotbars: Query<&mut Hotbar>,
+    mut pickups: Query<(Entity, &mut PickupAnimation)>,
     mut items: Query<(
         Entity,
         &mut Transform,
@@ -508,16 +514,13 @@ fn tick_dropped_items(
         Option<&mut ItemChunkHome>,
     )>,
 ) {
-    clock.accumulator += time.delta_secs();
-    let mut steps = 0;
-    while clock.accumulator >= TICK_SECS && steps < MAX_TICKS_PER_FRAME {
-        clock.accumulator -= TICK_SECS;
-        steps += 1;
+    let steps = tick.ticks_this_frame();
+    for (entity, mut pickup) in &mut pickups {
+        pickup.age_ticks = pickup.age_ticks.saturating_add(steps);
+        if pickup.age_ticks >= u32::from(PICKUP_TICKS) {
+            commands.entity(entity).despawn();
+        }
     }
-    if clock.accumulator >= TICK_SECS {
-        clock.accumulator %= TICK_SECS;
-    }
-    clock.partial = (clock.accumulator / TICK_SECS).clamp(0.0, 1.0);
     if steps == 0 {
         return;
     }
@@ -538,6 +541,7 @@ fn tick_dropped_items(
             continue;
         }
         for _ in 0..steps {
+            state.previous_position = transform.translation;
             state.age_ticks += 1;
             if state.pickup_delay_ticks > 0 {
                 state.pickup_delay_ticks -= 1;
@@ -678,7 +682,6 @@ fn push_out_of_blocks(
 
 fn pickup_dropped_items(
     mut commands: Commands,
-    time: Res<Time>,
     mut persistence: Option<ResMut<WorldPersistence>>,
     mut player: Query<(&Transform, &EntitySize, &mut Hotbar, &mut Inventory), With<Player>>,
     mut items: Query<(
@@ -710,13 +713,7 @@ fn pickup_dropped_items(
             dropped.0 = remainder;
             let taken = original.count() - remainder.count();
             if let Ok(stack) = ItemStack::with_data(original.item(), taken, original.data()) {
-                spawn_pickup_flyer(
-                    &mut commands,
-                    transform.translation,
-                    stack,
-                    state,
-                    time.elapsed_secs(),
-                );
+                spawn_pickup_flyer(&mut commands, transform.translation, stack, state);
             }
         } else {
             commands
@@ -724,7 +721,7 @@ fn pickup_dropped_items(
                 .remove::<ItemMotion>()
                 .insert(PickupAnimation {
                     start: transform.translation,
-                    started_at: time.elapsed_secs(),
+                    age_ticks: 0,
                 });
         }
         mark_chunk(&mut persistence, transform.translation);
@@ -736,16 +733,21 @@ fn spawn_pickup_flyer(
     origin: Vec3,
     stack: ItemStack,
     state: &DroppedItemState,
-    started_at: f32,
 ) {
     commands.spawn((
         Name::new("Item pickup"),
         DroppedItem(stack),
-        DroppedItemState::from_saved(0, state.age_ticks, state.hover_start, state.rng_state()),
+        DroppedItemState::from_saved(
+            0,
+            state.age_ticks,
+            state.hover_start,
+            state.rng_state(),
+            origin,
+        ),
         Transform::from_translation(origin),
         PickupAnimation {
             start: origin,
-            started_at,
+            age_ticks: 0,
         },
         EntitySize::DROPPED_ITEM,
     ));
@@ -765,8 +767,7 @@ struct ItemRenderResources<'w> {
 
 fn sync_item_rendering(
     mut commands: Commands,
-    time: Res<Time>,
-    clock: Res<ItemTickClock>,
+    tick: Res<WorldTick>,
     world: ItemRenderResources,
     camera: Query<&GlobalTransform, With<crate::player::PlayerCamera>>,
     player: Query<&Transform, (With<Player>, Without<DroppedItem>, Without<ItemPilePiece>)>,
@@ -812,20 +813,31 @@ fn sync_item_rendering(
     let player_eye = player.single().ok().map(|transform| transform.translation);
     for (entity, mut transform, dropped, state, visual, children, pickup) in &mut items {
         if let (Some(pickup), Some(player_eye)) = (pickup, player_eye) {
-            let age_ticks = (time.elapsed_secs() - pickup.started_at) / TICK_SECS;
-            if age_ticks >= f32::from(PICKUP_TICKS) {
-                commands.entity(entity).despawn();
-                continue;
-            }
-            transform.translation = pickup_position(pickup.start, player_eye, age_ticks, 0.0);
+            transform.translation = pickup_position(
+                pickup.start,
+                player_eye,
+                pickup.age_ticks as f32,
+                tick.partial(),
+            );
         }
         let model = dropped_block_model(dropped.0);
         let cube = model.is_some();
         let current = visual.is_some_and(|visual| {
             visual.stack == dropped.0 && visual.fancy == fancy && visual.cube == cube
         });
-        let bob = item_bob_offset(state.age_ticks as f32, clock.partial, state.hover_start);
-        let spin = item_spin_yaw(state.age_ticks as f32, clock.partial, state.hover_start);
+        let bob = item_bob_offset(state.age_ticks as f32, tick.partial(), state.hover_start);
+        let spin = item_spin_yaw(state.age_ticks as f32, tick.partial(), state.hover_start);
+        // Physics keeps the post-tick position. The mesh is a child, so this
+        // local slide shows the in-between point without moving the simulation.
+        let slide = if pickup.is_some() {
+            Vec3::ZERO
+        } else {
+            interpolated_item_position(
+                state.previous_position,
+                transform.translation,
+                tick.partial(),
+            ) - transform.translation
+        };
         let yaw = item_visual_yaw(cube, spin, camera_yaw);
         let scale = if cube { CUBE_SCALE } else { SPRITE_SCALE };
         if !current {
@@ -863,6 +875,7 @@ fn sync_item_rendering(
                     bob,
                     yaw,
                     scale,
+                    slide,
                 );
             } else {
                 let Some(material) = icon_material.clone() else {
@@ -880,7 +893,7 @@ fn sync_item_rendering(
                         .spawn((
                             item_quad(u0, v0, u1, v1, &mut meshes),
                             MeshMaterial3d(material.clone()),
-                            item_piece_transform(bob, yaw, scale, offset),
+                            item_piece_transform(bob, yaw, scale, offset, slide),
                             ItemPilePiece { offset },
                             NoFrustumCulling,
                         ))
@@ -902,7 +915,7 @@ fn sync_item_rendering(
             let Ok((piece, mut piece_transform)) = pieces.get_mut(child) else {
                 continue;
             };
-            *piece_transform = item_piece_transform(bob, yaw, scale, piece.offset);
+            *piece_transform = item_piece_transform(bob, yaw, scale, piece.offset, slide);
         }
     }
 }
@@ -960,6 +973,7 @@ fn spawn_block_pieces(
     bob: f32,
     yaw: f32,
     scale: f32,
+    slide: Vec3,
 ) {
     let Some(terrain) = terrain else {
         return;
@@ -970,7 +984,7 @@ fn spawn_block_pieces(
     let use_cutout = built.cutout;
     let cutout_handle = cutout.map(|material| material.0.clone());
     for offset in offsets {
-        let pose = item_piece_transform(bob, yaw, scale, *offset);
+        let pose = item_piece_transform(bob, yaw, scale, *offset, slide);
         if use_cutout && let Some(material) = cutout_handle.clone() {
             let child = commands
                 .spawn((

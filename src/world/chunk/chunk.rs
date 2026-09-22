@@ -4,6 +4,7 @@ use std::sync::Arc;
 use bevy::prelude::Resource;
 
 use crate::world::block::block::BlockId;
+use crate::world::generation::Climate;
 use crate::world::generation::GeneratedChunk;
 
 use super::ChunkPos;
@@ -110,6 +111,14 @@ impl WorldChunks {
 
     /// Block at a world-space integer position, if that chunk is loaded and `y`
     /// is inside the world height.
+    /// Climate stored for the column, when that chunk is loaded.
+    pub fn climate_at(&self, x: i32, z: i32) -> Option<Climate> {
+        let generated = self.get(ChunkPos::from_block(x, z))?;
+        let local_x = x.rem_euclid(CHUNK_SIZE as i32) as usize;
+        let local_z = z.rem_euclid(CHUNK_SIZE as i32) as usize;
+        Some(generated.biomes.get(local_x, local_z))
+    }
+
     pub fn block_at(&self, x: i32, y: i32, z: i32) -> Option<BlockId> {
         if y < 0 || y >= CHUNK_HEIGHT as i32 {
             return None;

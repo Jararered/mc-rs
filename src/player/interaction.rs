@@ -39,6 +39,7 @@ use crate::world::chunk::WorldChunks;
 use crate::world::chunk::remesh_chunks_touching;
 use crate::world::persistence::WorldPersistence;
 use crate::world::streaming::WorldStreaming;
+use crate::world::tick::WorldTick;
 
 use super::Player;
 use super::PlayerCamera;
@@ -46,23 +47,20 @@ use super::mining::MiningState;
 use super::overlay::BlockFocus;
 
 /// Held-button place repeat, matching Beta's `ticksPerSecond / 4`.
-const INTERACT_REPEAT_SECS: f32 = 0.25;
-const TICK_SECS: f32 = 1.0 / 20.0;
-const MAX_TICKS_PER_FRAME: u32 = 4;
+const PLACE_DELAY_TICKS: i32 = 5;
 
 /// Torch used by the standalone placement helper and legacy tests.
 pub const PLACED_BLOCK: BlockId = BlockId::Torch;
 
 #[derive(Default)]
 pub(super) struct BlockInteractState {
-    place_cooldown: f32,
-    tick_accum: f32,
+    place_delay: i32,
     mining: MiningState,
 }
 
 pub(super) fn interact_blocks(
     mut commands: Commands,
-    time: Res<Time>,
+    tick: Res<WorldTick>,
     keys: Res<ButtonInput<KeyCode>>,
     mouse: Res<ButtonInput<MouseButton>>,
     mut windows: Query<(&Window, &mut CursorOptions), With<PrimaryWindow>>,
@@ -87,14 +85,18 @@ pub(super) fn interact_blocks(
     mut workbench: ResMut<WorkbenchUiSession>,
     mut item_rng: Local<ItemRng>,
 ) {
-    state.place_cooldown = (state.place_cooldown - time.delta_secs()).max(0.0);
+    let ticks = tick.ticks_this_frame();
+    for _ in 0..ticks {
+        if state.place_delay > 0 {
+            state.place_delay -= 1;
+        }
+    }
 
     let locked = windows
         .single()
         .is_ok_and(|(window, cursor)| window.focused && cursor.grab_mode == CursorGrabMode::Locked);
     if !locked {
         state.mining.reset();
-        state.tick_accum = 0.0;
         *focus = BlockFocus::default();
         return;
     }
@@ -131,7 +133,6 @@ pub(super) fn interact_blocks(
 
     if !left_held {
         state.mining.reset();
-        state.tick_accum = 0.0;
     }
 
     let camera_transform = camera.single().ok();
@@ -200,11 +201,7 @@ pub(super) fn interact_blocks(
                 );
             }
         }
-        state.tick_accum += time.delta_secs();
-        let mut ticks = 0;
-        while state.tick_accum >= TICK_SECS && ticks < MAX_TICKS_PER_FRAME {
-            state.tick_accum -= TICK_SECS;
-            ticks += 1;
+        for _ in 0..ticks {
             let old_damage = state.mining.damage();
             let tool = hotbar.selected_stack();
             if let Some(broken) = state.mining.tick(hit, tool, on_ground, in_water) {
@@ -227,9 +224,9 @@ pub(super) fn interact_blocks(
         }
     }
 
-    let can_place = right_click || (right_held && state.place_cooldown <= 0.0 && !left_held);
+    let can_place = right_click || (right_held && state.place_delay <= 0 && !left_held);
     if can_place {
-        state.place_cooldown = INTERACT_REPEAT_SECS;
+        state.place_delay = PLACE_DELAY_TICKS;
         if let Some(hit) = hit
             && let Some(stack) = hotbar.selected_stack()
             && let Some(block) = stack.runtime_block()

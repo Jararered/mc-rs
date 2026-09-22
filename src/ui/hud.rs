@@ -15,7 +15,6 @@ use super::stack_overlay::durability_track;
 use super::stack_overlay::icon_size;
 use super::stack_overlay::place_stack_label;
 use crate::app::state::AppScreen;
-use crate::entity::dropped_items::ItemTickClock;
 use crate::entity::dropped_items::hotbar_icon_scale;
 use crate::inventory::HOTBAR_SLOTS;
 use crate::inventory::Hotbar;
@@ -23,6 +22,7 @@ use crate::item::ItemStack;
 use crate::player::HeartFill;
 use crate::player::Player;
 use crate::player::PlayerHealth;
+use crate::world::tick::WorldTick;
 
 const HUD_SCALE: f32 = GUI_SCALE;
 const HEART_COUNT: usize = 10;
@@ -438,7 +438,7 @@ fn update_hotbar_items(
 fn update_hotbar_icons(
     hotbar: Query<&Hotbar, With<Player>>,
     icons: Res<BlockIcons>,
-    clock: Option<Res<ItemTickClock>>,
+    clock: Option<Res<WorldTick>>,
     mut images: Query<(&HotbarBlockIcon, &mut ImageNode, &mut Visibility, &mut Node)>,
 ) {
     let Ok(hotbar) = hotbar.single() else {

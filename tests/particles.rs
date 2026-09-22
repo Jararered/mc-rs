@@ -15,6 +15,8 @@ use game::physics::BlockHit;
 use game::world::block::block::BlockId;
 use game::world::chunk::WorldChunks;
 use game::world::textures::atlas_tile_uvs;
+use game::world::tick::WorldTick;
+use game::world::tick::advance_world_tick;
 
 #[test]
 fn particle_registry_maps_named_sprites_to_their_atlas_tiles() {
@@ -65,6 +67,8 @@ fn test_app() -> App {
     )))
     .init_state::<AppScreen>()
     .init_resource::<WorldChunks>()
+    .init_resource::<WorldTick>()
+    .add_systems(First, advance_world_tick)
     .add_plugins(BlockParticlePlugin);
     app.update();
     app.world_mut()

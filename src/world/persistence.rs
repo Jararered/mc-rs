@@ -198,6 +198,9 @@ pub struct WorldManifest {
     pub created_unix_millis: u64,
     pub last_played_unix_millis: u64,
     pub format_version: u32,
+    /// World age in 20 Hz ticks. Missing on saves from before the day cycle.
+    #[serde(default)]
+    pub world_time: u64,
 }
 
 /// The region a chunk belongs to, as `(region_x, region_z)`.
@@ -247,6 +250,7 @@ impl WorldStorage {
                 created_unix_millis: now,
                 last_played_unix_millis: now,
                 format_version: FORMAT_VERSION,
+                world_time: 0,
             }),
         };
         storage.write_manifest()?;
@@ -280,6 +284,11 @@ impl WorldStorage {
 
     pub fn seed(&self) -> u64 {
         self.manifest.lock().unwrap().seed
+    }
+
+    /// Remember the day counter. The next manifest write persists it.
+    pub fn set_world_time(&self, time: u64) {
+        self.manifest.lock().unwrap().world_time = time;
     }
 
     /// Load the stored player state, or `None` if it was never saved.
@@ -823,7 +832,11 @@ impl WorldPersistence {
     }
 }
 
-fn setup_persistence(mut commands: Commands, config: Res<PersistenceConfig>) {
+fn setup_persistence(
+    mut commands: Commands,
+    config: Res<PersistenceConfig>,
+    mut tick: Option<ResMut<crate::world::tick::WorldTick>>,
+) {
     match WorldStorage::open_latest_or_create(&config.saves_directory, config.seed) {
         Ok(storage) => {
             info!(
@@ -831,6 +844,9 @@ fn setup_persistence(mut commands: Commands, config: Res<PersistenceConfig>) {
                 storage.manifest().name,
                 storage.root().display()
             );
+            if let Some(tick) = tick.as_deref_mut() {
+                tick.set_world_time(storage.manifest().world_time);
+            }
             commands.insert_resource(WorldPersistence::new(storage));
         }
         Err(error) => {
@@ -854,11 +870,17 @@ fn flush_persistence(
         Without<crate::entity::dropped_items::PickupAnimation>,
     >,
     time: Res<Time>,
+    tick: Option<Res<crate::world::tick::WorldTick>>,
     mut exit: MessageReader<AppExit>,
 ) {
     let exiting = exit.read().next().is_some();
     persistence.timer.tick(time.delta());
     if exiting || persistence.timer.just_finished() {
+        if let Some(tick) = tick.as_deref()
+            && let Some(storage) = persistence.storage()
+        {
+            storage.set_world_time(tick.world_time());
+        }
         let mut saved = std::collections::HashMap::<ChunkPos, Vec<ChunkDroppedItem>>::new();
         for (transform, dropped, motion, state) in &items {
             let position = ChunkPos::from_block(

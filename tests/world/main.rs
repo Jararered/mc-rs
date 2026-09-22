@@ -3,5 +3,6 @@
 mod chunk;
 mod generation;
 mod persistence;
+mod sky;
 mod streaming;
 mod textures;

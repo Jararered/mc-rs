@@ -24,9 +24,8 @@ use crate::world::textures::FoliageColors;
 use crate::world::textures::TerrainMaterial;
 use crate::world::textures::atlas_tile_uvs;
 use crate::world::textures::block_tile;
+use crate::world::tick::WorldTick;
 
-const TICK_SECONDS: f32 = 1.0 / 20.0;
-const MAX_TICKS_PER_FRAME: usize = 4;
 const MAX_PARTICLES: usize = 4_000;
 const BURST_SIDE: usize = 4;
 
@@ -59,7 +58,6 @@ pub struct BlockParticles {
     requests: Vec<ParticleRequest>,
     active: VecDeque<Particle>,
     random: u64,
-    tick_remainder: f32,
 }
 
 impl Default for BlockParticles {
@@ -68,7 +66,6 @@ impl Default for BlockParticles {
             requests: Vec::new(),
             active: VecDeque::new(),
             random: 0x9e37_79b9_7f4a_7c15,
-            tick_remainder: 0.0,
         }
     }
 }
@@ -332,7 +329,7 @@ fn sync_terrain_texture(
 }
 
 fn update_particles(
-    time: Res<Time>,
+    tick: Res<WorldTick>,
     chunks: Res<WorldChunks>,
     foliage: Option<Res<FoliageColors>>,
     camera: Query<&GlobalTransform, With<PlayerCamera>>,
@@ -342,16 +339,10 @@ fn update_particles(
     mut visibility: Query<&mut Visibility>,
 ) {
     particles.spawn_pending(&chunks, foliage.as_deref());
-    particles.tick_remainder += time
-        .delta_secs()
-        .min(TICK_SECONDS * MAX_TICKS_PER_FRAME as f32);
-    let mut ticks = 0;
-    while particles.tick_remainder >= TICK_SECONDS && ticks < MAX_TICKS_PER_FRAME {
-        particles.tick_remainder -= TICK_SECONDS;
+    for _ in 0..tick.ticks_this_frame() {
         particles
             .active
             .retain_mut(|particle| particle.tick(&chunks));
-        ticks += 1;
     }
     if particles.active.is_empty() {
         if renderer.has_geometry {
@@ -368,12 +359,7 @@ fn update_particles(
     let right = rotation * Vec3::X;
     let up = rotation * Vec3::Y;
     if let Some(mut mesh) = meshes.get_mut(&renderer.mesh) {
-        *mesh = particle_mesh(
-            particles.active.iter(),
-            right,
-            up,
-            particles.tick_remainder / TICK_SECONDS,
-        );
+        *mesh = particle_mesh(particles.active.iter(), right, up, tick.partial());
         renderer.has_geometry = !particles.active.is_empty();
         if let Ok(mut visible) = visibility.get_mut(renderer.entity) {
             *visible = Visibility::Visible;

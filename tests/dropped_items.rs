@@ -5,6 +5,7 @@ use game::entity::EntitySize;
 use game::entity::dropped_items::block_drop;
 use game::entity::dropped_items::block_drop_position;
 use game::entity::dropped_items::hotbar_icon_scale;
+use game::entity::dropped_items::interpolated_item_position;
 use game::entity::dropped_items::item_bob_offset;
 use game::entity::dropped_items::item_constructor_motion;
 use game::entity::dropped_items::item_motion_after_collision;
@@ -123,11 +124,21 @@ fn constructor_and_throw_motion_use_tick_units() {
 }
 
 #[test]
+fn dropped_item_motion_lerps_across_the_partial_tick() {
+    let previous = Vec3::new(1.0, 2.0, 3.0);
+    let current = Vec3::new(1.4, 1.8, 3.2);
+    assert_eq!(interpolated_item_position(previous, current, 0.0), previous);
+    assert_eq!(interpolated_item_position(previous, current, 1.0), current);
+    let midway = interpolated_item_position(previous, current, 0.5);
+    assert!((midway - Vec3::new(1.2, 1.9, 3.1)).length() < 1e-5);
+}
+
+#[test]
 fn cubes_spin_on_y_and_sprites_only_face_the_camera() {
     assert!((item_spin_yaw(20.0, 0.0, 0.5) - 1.5).abs() < 1e-5);
     assert!((item_visual_yaw(true, 1.25, 0.4) - 1.25).abs() < 1e-5);
     assert!((item_visual_yaw(false, 1.25, 0.4) - 0.4).abs() < 1e-5);
-    let pose = item_piece_transform(0.2, 0.4, 0.5, Vec3::ZERO);
+    let pose = item_piece_transform(0.2, 0.4, 0.5, Vec3::ZERO, Vec3::ZERO);
     let (yaw, pitch, roll) = pose.rotation.to_euler(bevy::prelude::EulerRot::YXZ);
     assert!((yaw - 0.4).abs() < 1e-5);
     assert!(pitch.abs() < 1e-5 && roll.abs() < 1e-5);

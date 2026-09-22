@@ -4,6 +4,7 @@ use bevy::prelude::*;
 use super::ATLAS_GRID;
 use super::ATLAS_PAD_TEXELS;
 use super::ATLAS_TILE_PX;
+use crate::world::tick::WorldTick;
 
 /// Still water occupies atlas tile (13, 12). Flowing water is a 2×2 of the same
 /// generated 16×16, matching Beta `TextureWaterFlowFX.tileSize`.
@@ -13,8 +14,6 @@ const WATER_FLOW_TILE_SIZE: u8 = 2;
 
 const TILE: usize = ATLAS_TILE_PX as usize;
 const TILE_PIXELS: usize = TILE * TILE;
-const TICK_SECS: f32 = 1.0 / 20.0;
-const MAX_TICKS_PER_FRAME: u32 = 4;
 
 /// Beta `TextureWaterFX` still-water simulation.
 #[derive(Clone)]
@@ -251,7 +250,6 @@ pub(super) struct WaterAnimator {
     atlas: Handle<Image>,
     still: StillWaterTexture,
     flow: FlowingWaterTexture,
-    accumulator: f32,
 }
 
 pub(super) fn start_water_animation(
@@ -265,32 +263,24 @@ pub(super) fn start_water_animation(
     still.tick();
     flow.tick();
     write_water_frames(image, &still, &flow);
-    commands.insert_resource(WaterAnimator {
-        atlas,
-        still,
-        flow,
-        accumulator: 0.0,
-    });
+    commands.insert_resource(WaterAnimator { atlas, still, flow });
 }
 
 pub(super) fn animate_water_textures(
     animator: Option<ResMut<WaterAnimator>>,
-    time: Res<Time>,
+    tick: Res<WorldTick>,
     mut images: ResMut<Assets<Image>>,
 ) {
     let Some(mut animator) = animator else {
         return;
     };
-    animator.accumulator += time.delta_secs();
-    let mut ticks = 0;
-    while animator.accumulator >= TICK_SECS && ticks < MAX_TICKS_PER_FRAME {
-        animator.accumulator -= TICK_SECS;
-        animator.still.tick();
-        animator.flow.tick();
-        ticks += 1;
-    }
+    let ticks = tick.ticks_this_frame();
     if ticks == 0 {
         return;
+    }
+    for _ in 0..ticks {
+        animator.still.tick();
+        animator.flow.tick();
     }
     let Some(mut image) = images.get_mut(&animator.atlas) else {
         return;

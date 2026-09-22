@@ -22,6 +22,7 @@ use crate::item::ItemStack;
 use crate::ui::icon_appearance::Shape;
 use crate::ui::icon_appearance::block_appearance;
 use crate::ui::icon_appearance::item_tile;
+use crate::world::tick::WorldTick;
 
 use super::CameraBobbing;
 use super::Player;
@@ -30,7 +31,10 @@ use super::held_mesh;
 use super::update_camera_bobbing;
 
 const ARM_LAYER: usize = 1;
-const SWING_SECONDS: f32 = 8.0 / 20.0;
+/// Beta `EntityPlayer.swingItem` counts eight ticks.
+const SWING_TICKS: i32 = 8;
+/// `ItemRenderer.updateEquippedItem` moves at most this much per tick.
+const EQUIP_STEP: f32 = 0.4;
 
 #[derive(Resource)]
 pub(super) struct ArmAssets {
@@ -46,9 +50,14 @@ struct ArmCamera;
 
 #[derive(Component)]
 struct FirstPersonArm {
-    swing_time: Option<f32>,
-    displayed: Option<VisualKey>,
+    swinging: bool,
+    /// Beta `swingProgressInt`. `-1` is the tick a swing is armed.
+    swing_tick: i32,
+    prev_swing: f32,
+    swing: f32,
+    prev_equip: f32,
     equip: f32,
+    displayed: Option<VisualKey>,
 }
 
 #[derive(Component)]
@@ -76,9 +85,13 @@ impl VisualKey {
 impl Default for FirstPersonArm {
     fn default() -> Self {
         Self {
-            swing_time: None,
-            displayed: None,
+            swinging: false,
+            swing_tick: 0,
+            prev_swing: 0.0,
+            swing: 0.0,
+            prev_equip: 1.0,
             equip: 1.0,
+            displayed: None,
         }
     }
 }
@@ -209,8 +222,18 @@ pub(super) fn spawn(parent: &mut ChildSpawnerCommands, assets: &ArmAssets, fov: 
         });
 }
 
+/// `EntityLiving.getSwingProgress`. A wrap from the end of a swing back to 0
+/// interpolates forward through the last slice instead of reversing.
+pub fn interpolated_swing(previous: f32, current: f32, partial: f32) -> f32 {
+    let mut delta = current - previous;
+    if delta < 0.0 {
+        delta += 1.0;
+    }
+    previous + delta * partial
+}
+
 fn animate_arm(
-    time: Res<Time>,
+    tick: Res<WorldTick>,
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<(&Window, &CursorOptions), With<PrimaryWindow>>,
     settings: Res<GameSettings>,
@@ -251,36 +274,59 @@ fn animate_arm(
         return;
     };
     for (mut arm, mut transform, mut arm_visibility) in &mut arms {
+        let start_swing = locked
+            && (mouse.just_pressed(MouseButton::Left)
+                || mouse.just_pressed(MouseButton::Right)
+                || (mouse.pressed(MouseButton::Left) && !arm.swinging));
         if !locked {
-            arm.swing_time = None;
-        } else if mouse.just_pressed(MouseButton::Left)
-            || mouse.just_pressed(MouseButton::Right)
-            || (mouse.pressed(MouseButton::Left) && arm.swing_time.is_none())
-        {
-            arm.swing_time = Some(0.0);
+            arm.swinging = false;
+            arm.swing_tick = 0;
+        } else if start_swing {
+            // `swingItem` arms the counter at -1 so the next tick lands on 0.
+            arm.swinging = true;
+            arm.swing_tick = -1;
         }
 
-        let progress = arm
-            .swing_time
-            .map_or(0.0, |elapsed| elapsed / SWING_SECONDS);
-        let step = time.delta_secs() * 20.0 * 0.4;
-        let target = if arm.displayed == desired { 1.0 } else { 0.0 };
-        arm.equip += (target - arm.equip).clamp(-step, step);
-        if arm.equip < 0.1 && arm.displayed != desired {
-            arm.displayed = desired;
-            if let Some(key) = desired {
-                let mesh = assets
-                    .held_meshes
-                    .entry(key)
-                    .or_insert_with(|| meshes.add(mesh_for(key)));
-                held_mesh.0 = mesh.clone();
-                held_material.0 = if key.id < 256 {
-                    assets.terrain.clone()
-                } else {
-                    assets.items.clone()
-                };
+        for _ in 0..tick.ticks_this_frame() {
+            arm.prev_swing = arm.swing;
+            if arm.swinging {
+                arm.swing_tick += 1;
+                if arm.swing_tick >= SWING_TICKS {
+                    arm.swing_tick = 0;
+                    arm.swinging = false;
+                }
+            } else {
+                arm.swing_tick = 0;
+            }
+            arm.swing = if arm.swing_tick < 0 {
+                0.0
+            } else {
+                arm.swing_tick as f32 / SWING_TICKS as f32
+            };
+
+            arm.prev_equip = arm.equip;
+            let target = if arm.displayed == desired { 1.0 } else { 0.0 };
+            arm.equip += (target - arm.equip).clamp(-EQUIP_STEP, EQUIP_STEP);
+            if arm.equip < 0.1 && arm.displayed != desired {
+                arm.displayed = desired;
+                if let Some(key) = desired {
+                    let mesh = assets
+                        .held_meshes
+                        .entry(key)
+                        .or_insert_with(|| meshes.add(mesh_for(key)));
+                    held_mesh.0 = mesh.clone();
+                    held_material.0 = if key.id < 256 {
+                        assets.terrain.clone()
+                    } else {
+                        assets.items.clone()
+                    };
+                }
             }
         }
+
+        let partial = tick.partial();
+        let progress = interpolated_swing(arm.prev_swing, arm.swing, partial);
+        let equip = arm.prev_equip + (arm.equip - arm.prev_equip) * partial;
         *arm_visibility = if arm.displayed.is_none() {
             Visibility::Visible
         } else {
@@ -296,7 +342,7 @@ fn animate_arm(
             walk_pose
                 * held_pose(
                     progress,
-                    arm.equip,
+                    equip,
                     arm.displayed == Some(VisualKey { id: 346, data: 0 }),
                     arm.displayed.is_some_and(|key| {
                         key.id < 256
@@ -304,12 +350,6 @@ fn animate_arm(
                     }),
                 ),
         );
-        if let Some(elapsed) = &mut arm.swing_time {
-            *elapsed += time.delta_secs();
-            if *elapsed >= SWING_SECONDS {
-                arm.swing_time = None;
-            }
-        }
     }
 }
 

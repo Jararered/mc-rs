@@ -30,13 +30,14 @@ Organize code by gameplay and engine subsystem, not broad `components/` and `sys
 - `src/world/streaming/`: chunk loading, unloading, view distance, and work priorities.
 - `src/world/textures/`: the terrain atlas plugin, block-face tile mappings, and climate-based grass colors.
 - `src/world/lighting/`: sunlight, block light, and propagation in world data.
+- `src/world/tick.rs`: the shared 20 Hz `WorldTick` clock. Tick-counted simulation reads this instead of keeping a private accumulator.
 - `src/world/persistence/`: saving and loading. Add Beta format adapters here when compatibility becomes a priority.
 - `src/player/`: controller, movement, camera, interaction, mining, and placement.
 - `src/physics/`: voxel collision, raycasting, and gravity.
 - `src/entity/`: non-block entities, health, spawning, mobs, and dropped items. Shared body components (`EntitySize`, `Velocity`, `Gravity`, `CollisionState`, `StepHeight`) live here. Dropped items and block particles are implemented; mobs are not yet.
 - `src/item/` and `src/inventory/`: item definitions, stacks, tools, slots, hotbar, and inventory transfer.
 - `src/crafting/`: crafting grids, shaped and shapeless recipes, and the Beta 1.7.3 recipe book.
-- `src/gameplay/`: time, weather, damage, respawning, and other game rules.
+- `src/gameplay/`: weather, damage, respawning, and other game rules. Day time is `WorldTick::world_time` in `src/world/tick.rs`, not a second clock.
 - `src/rendering/`: materials, textures, shaders, fog, and sky.
 - `src/ui/`, `src/input/`, and `src/audio/`: presentation, controls, and sound. `src/ui/` currently holds the menu, settings screen, HUD, inventory GUI, block icons, and stack overlays, composited by a dedicated UI camera.
 - `src/networking/`: multiplayer and, eventually, Beta 1.7.3 protocol adapters. Do not introduce protocol constraints into the core simulation prematurely.
@@ -45,7 +46,7 @@ Organize code by gameplay and engine subsystem, not broad `components/` and `sys
 - `tests/`: all tests for this repository, including tests for individual modules and integration behavior. Do not put test modules in `src/`.
 - `benches/`: targeted performance benchmarks.
 
-The current game has a walking, sprinting, sneaking, and jumping player with voxel collision, step height, view bobbing, and a first-person arm; full-height Beta-style generated chunks; skylight and torch block light; chunk meshes with streaming around the player; and terrain atlas rendering with climate-sampled grass and foliage colors. Block interaction raycasts into world data, breaks blocks with per-block stages and tool speed and durability, and places blocks including torches. Items, a nine-slot hotbar, a 27-slot main inventory, a 2×2 crafting grid, a workbench session, dropped item entities, block break and hit particles, a HUD, menus, and settings are implemented. A custom save format under `saves/` persists the world, player, inventory, and dropped items. `src/main.rs` is the executable entry point, and `src/lib.rs` exposes modules for reuse and tests. The remaining directories describe future responsibilities; add them only as working features require them.
+The current game has a walking, sprinting, sneaking, and jumping player with voxel collision, step height, view bobbing, and a first-person arm; full-height Beta-style generated chunks; skylight and torch block light; chunk meshes with streaming around the player; and terrain atlas rendering with climate-sampled grass and foliage colors. Block interaction raycasts into world data, breaks blocks with per-block stages and tool speed and durability, and places blocks including torches. Items, a nine-slot hotbar, a 27-slot main inventory, a 2×2 crafting grid, a workbench session, dropped item entities, block break and hit particles, a HUD, menus, and settings are implemented. A custom save format under `saves/` persists the world, player, inventory, dropped items, and the world's `world_time`. A shared 20 Hz `WorldTick` advances while a world is being played. `src/main.rs` is the executable entry point, and `src/lib.rs` exposes modules for reuse and tests. The remaining directories describe future responsibilities; add them only as working features require them.
 
 # Implemented conventions
 
@@ -54,6 +55,17 @@ The current game has a walking, sprinting, sneaking, and jumping player with vox
 - Keep Beta behavior in simulation data (block states, item data, the recipe book) and keep presentation in `src/world/textures/` and `src/ui/`. Do not fold rendering concerns into world or item data.
 - Persistence uses a custom versioned format, not the Beta region format. Keep it behind `src/world/persistence/` so a Beta adapter can be added at that boundary later.
 - Client options live in `settings.json` and are owned by `src/app/settings.rs`; gameplay reads them through `GameSettings` rather than reading the file directly.
+
+## World tick
+
+`WorldTick` in `src/world/tick.rs` is the only 20 Hz clock, matching Beta's `Timer`. `WorldPlugin` advances it in `First` from virtual time while `AppScreen::Playing`. The menu does not accumulate ticks, so returning to the game does not replay a catch-up burst.
+
+- 20 ticks per second. A frame's delta is clamped to 1 second, and at most 10 ticks are emitted. Whole ticks beyond that are discarded. `partial()` is the leftover fraction in `0..1`, used to interpolate renders between the last tick and the next.
+- Step simulation with `ticks_this_frame()`. Sample `just_pressed` once per frame, then run held-button work inside the tick loop. Bevy keeps `just_pressed` true for the whole frame, so reading it inside the loop would repeat a click on every catch-up tick.
+- Keep this on `WorldTick` in `First`. A `FixedUpdate` schedule would repeat `just_pressed` the same way, and pausing Bevy's fixed clock would also freeze frame-time systems.
+- `world_time` counts ticks since the world started. `DAY_LENGTH` is 24000. The sky reads it, with `partial()`, for the sun and moon. It is stored on `WorldManifest` with `#[serde(default)]`, so an older `level.json` loads at time 0, and autosave writes it back.
+- Consumers today: block breaking and the place repeat, arm swing and equip, dropped items and the hotbar pop, block particles, and the water atlas. Leaf wiggle and view bob stay on frame time.
+- New tick-driven work (block entities, scheduled block updates, weather) consumes this clock. Do not add another 20 Hz accumulator.
 
 # Data and performance rules
 

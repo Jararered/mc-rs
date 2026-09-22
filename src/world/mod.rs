@@ -5,5 +5,7 @@ pub mod lighting;
 pub mod meshing;
 pub mod persistence;
 pub mod plugin;
+pub mod sky;
 pub mod streaming;
 pub mod textures;
+pub mod tick;

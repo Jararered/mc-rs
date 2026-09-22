@@ -20,6 +20,8 @@ use game::ui::HudPlugin;
 use game::ui::InventoryGuiPlugin;
 use game::world::chunk::WorldChunks;
 use game::world::textures::atlas_tile_uvs;
+use game::world::tick::WorldTick;
+use game::world::tick::advance_world_tick;
 
 fn app() -> App {
     let mut app = App::new();
@@ -38,6 +40,8 @@ fn app() -> App {
     .init_state::<AppScreen>()
     .init_resource::<GameSettings>()
     .init_resource::<WorldChunks>()
+    .init_resource::<WorldTick>()
+    .add_systems(First, advance_world_tick)
     .add_plugins((PlayerPlugin, InventoryGuiPlugin, HudPlugin));
     app.update();
     app.world_mut()
@@ -196,12 +200,13 @@ fn selection_lowers_old_visual_before_swapping_and_raising() {
     }
     let (_, old_mesh, rest) = visual(&mut app, "Held stack");
     select(&mut app, 4, 0);
+    // Equip steps 0.4 per tick, and the pose shows the previous tick, so the
+    // first update only stores the drop.
+    app.update();
     app.update();
     let (_, current_mesh, lowered) = visual(&mut app, "Held stack");
     assert_eq!(current_mesh, old_mesh);
     assert!(lowered.translation.y < rest.translation.y);
-    app.update();
-    assert_eq!(visual(&mut app, "Held stack").1, old_mesh);
     app.update();
     let (_, replacement, bottom) = visual(&mut app, "Held stack");
     assert_ne!(replacement, old_mesh);
@@ -229,6 +234,9 @@ fn click_swing_moves_the_arm_and_held_item() {
     app.world_mut()
         .resource_mut::<ButtonInput<MouseButton>>()
         .press(MouseButton::Left);
+    // The click arms the swing. The next tick reaches progress 0, and the
+    // tick after that is the first one the pose can show.
+    app.update();
     app.update();
     app.update();
     let arm_swing = visual(&mut app, "Right arm").2;
@@ -246,6 +254,7 @@ fn click_swing_moves_the_arm_and_held_item() {
     app.world_mut()
         .resource_mut::<ButtonInput<MouseButton>>()
         .press(MouseButton::Right);
+    app.update();
     app.update();
     app.update();
     let held_after = visual(&mut app, "Held stack").2;

@@ -19,6 +19,7 @@ mod interaction;
 mod mining;
 mod overlay;
 
+pub use arm::interpolated_swing;
 pub use interaction::PLACED_BLOCK;
 pub use interaction::break_block;
 pub use interaction::place_block;

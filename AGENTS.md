@@ -14,7 +14,7 @@ Compatibility with original Minecraft Beta 1.7.3 worlds and servers is a **secon
 # Commands
 
 - `cargo run` — start the game. `cargo run --features dev_dynamic_linking` links faster while iterating.
-- `cargo test` — all tests. Focus one target with `cargo test --test <name>` (for example `--test world`) or one test with `cargo test <filter>`.
+- `cargo nextest run` — all tests. Focus one target with `cargo nextest run --test <name>` (for example `--test world`) or one test with `cargo nextest run <filter>`.
 - `cargo check` / `cargo fmt` for a quick pass. `cargo fmt` must run on nightly: `rust-toolchain.toml` pins nightly and `rustfmt.toml` enables unstable `imports_granularity = "Item"`.
 - Edition 2024 is in use (let-chains appear in the code, e.g. `if let ... && let ...`).
 

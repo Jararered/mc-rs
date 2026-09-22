@@ -1,6 +1,7 @@
 //! Break and place blocks along the camera ray.
 //!
-//! Selected hotbar blocks can be placed; mining currently uses empty-hand strength.
+//! Selected hotbar blocks can be placed. Mining speed, drops, and tool wear
+//! follow the held stack.
 
 use bevy::prelude::*;
 use bevy::window::CursorGrabMode;
@@ -17,6 +18,8 @@ use crate::entity::particles::BlockParticles;
 use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
 use crate::item::ItemStack;
+use crate::item::tools::break_durability;
+use crate::item::tools::can_harvest;
 use crate::physics::Aabb;
 use crate::physics::BLOCK_REACH;
 use crate::physics::BlockFace;
@@ -183,7 +186,8 @@ pub(super) fn interact_blocks(
 
     if left_held {
         if left_click && let Some(hit) = hit {
-            if let Some(broken) = state.mining.try_instant(hit, on_ground, in_water) {
+            let tool = hotbar.selected_stack();
+            if let Some(broken) = state.mining.try_instant(hit, tool, on_ground, in_water) {
                 apply_break(
                     &mut commands,
                     &mut item_rng,
@@ -191,6 +195,7 @@ pub(super) fn interact_blocks(
                     &mut streaming,
                     &mut persistence,
                     &mut particles,
+                    &mut hotbar,
                     broken,
                 );
             }
@@ -201,7 +206,8 @@ pub(super) fn interact_blocks(
             state.tick_accum -= TICK_SECS;
             ticks += 1;
             let old_damage = state.mining.damage();
-            if let Some(broken) = state.mining.tick(hit, on_ground, in_water) {
+            let tool = hotbar.selected_stack();
+            if let Some(broken) = state.mining.tick(hit, tool, on_ground, in_water) {
                 apply_break(
                     &mut commands,
                     &mut item_rng,
@@ -209,6 +215,7 @@ pub(super) fn interact_blocks(
                     &mut streaming,
                     &mut persistence,
                     &mut particles,
+                    &mut hotbar,
                     broken,
                 );
             } else if state.mining.damage() > old_damage
@@ -247,6 +254,7 @@ fn apply_break(
     streaming: &mut Option<ResMut<WorldStreaming>>,
     persistence: &mut Option<ResMut<WorldPersistence>>,
     particles: &mut Option<ResMut<BlockParticles>>,
+    hotbar: &mut Hotbar,
     hit: BlockHit,
 ) {
     let attached = [
@@ -272,8 +280,12 @@ fn apply_break(
             .copied()
             .into_iter()
             .any(|(_, _, _, torch)| is_torch(torch));
+    let tool = hotbar.selected_stack();
+    // `canHarvestBlock` gates the drop. The tool still takes durability when
+    // the block comes out, including a block the tool cannot harvest.
+    let harvested = can_harvest(tool, hit.block);
     if break_block(chunks, hit) {
-        if let Some(stack) = block_drop(hit.block) {
+        if harvested && let Some(stack) = block_drop(hit.block) {
             spawn_block_drop(commands, rng, IVec3::new(hit.x, hit.y, hit.z), stack);
         }
         for (x, y, z, torch) in attached {
@@ -285,6 +297,12 @@ fn apply_break(
             particles.emit_break(hit);
         }
         notify_edit(streaming, persistence, hit.x, hit.z, light_edit);
+        if let Some(tool) = tool {
+            let cost = break_durability(tool, hit.block);
+            if cost > 0 {
+                hotbar.damage_selected(cost);
+            }
+        }
     }
 }
 

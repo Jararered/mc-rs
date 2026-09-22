@@ -2,6 +2,8 @@ use bevy::mesh::VertexAttributeValues;
 use bevy::prelude::Mesh;
 use bevy::prelude::Vec3;
 use game::entity::EntitySize;
+use game::item::ItemId;
+use game::item::ItemStack;
 use game::physics::Aabb;
 use game::physics::BlockFace;
 use game::physics::BlockHit;
@@ -243,12 +245,12 @@ fn airborne_and_water_only_slow_blocks_harvestable_by_hand() {
 fn punching_accumulates_until_the_block_breaks() {
     let dirt = hit(8, 64, 8, BlockFace::Up, BlockId::Dirt);
     let mut mining = MiningState::default();
-    assert!(mining.tick(Some(dirt), true, false).is_none());
+    assert!(mining.tick(Some(dirt), None, true, false).is_none());
     let mut ticks = 0;
     let broken = loop {
         ticks += 1;
         assert!(ticks <= 20, "dirt should break within 15 damaging ticks");
-        if mining.tick(Some(dirt), true, false).is_some() {
+        if mining.tick(Some(dirt), None, true, false).is_some() {
             break ticks;
         }
     };
@@ -260,10 +262,15 @@ fn punching_accumulates_until_the_block_breaks() {
 fn hardness_zero_breaks_on_the_click() {
     let tnt = hit(4, 10, 4, BlockFace::North, BlockId::Tnt);
     let mut mining = MiningState::default();
-    assert!(mining.try_instant(tnt, true, false).is_some());
+    assert!(mining.try_instant(tnt, None, true, false).is_some());
     assert!(
         mining
-            .try_instant(hit(4, 10, 4, BlockFace::North, BlockId::Dirt), true, false)
+            .try_instant(
+                hit(4, 10, 4, BlockFace::North, BlockId::Dirt),
+                None,
+                true,
+                false
+            )
             .is_none()
     );
 }
@@ -273,12 +280,12 @@ fn looking_at_a_new_block_resets_mining_progress() {
     let dirt = hit(8, 64, 8, BlockFace::Up, BlockId::Dirt);
     let grass = hit(8, 65, 8, BlockFace::Up, BlockId::Grass);
     let mut mining = MiningState::default();
-    mining.tick(Some(dirt), true, false);
+    mining.tick(Some(dirt), None, true, false);
     for _ in 0..10 {
-        mining.tick(Some(dirt), true, false);
+        mining.tick(Some(dirt), None, true, false);
     }
     assert!(mining.damage() > 0.0);
-    mining.tick(Some(grass), true, false);
+    mining.tick(Some(grass), None, true, false);
     assert_eq!(mining.damage(), 0.0);
     assert!((hardness(BlockId::Grass) - 0.6).abs() < f32::EPSILON);
     assert!(hand_mine_progress_per_tick(BlockId::Dirt, true, false) > 0.0);
@@ -297,9 +304,9 @@ fn destroy_stage_follows_beta_damage_partial_time() {
 fn mining_reset_clears_the_destroy_overlay_stage() {
     let dirt = hit(8, 64, 8, BlockFace::Up, BlockId::Dirt);
     let mut mining = MiningState::default();
-    mining.tick(Some(dirt), true, false);
+    mining.tick(Some(dirt), None, true, false);
     for _ in 0..10 {
-        mining.tick(Some(dirt), true, false);
+        mining.tick(Some(dirt), None, true, false);
     }
     assert!(mining.destroy_stage().is_some());
     mining.reset();
@@ -313,6 +320,49 @@ fn mining_reset_clears_the_destroy_overlay_stage() {
     assert_eq!(focus.destroy_stage(), Some(4));
     focus.mining_damage = 0.0;
     assert_eq!(focus.destroy_stage(), None);
+}
+
+#[test]
+fn diamond_pick_breaks_stone_in_six_damaging_ticks() {
+    let stone = hit(8, 64, 8, BlockFace::Up, BlockId::Stone);
+    let pick = Some(ItemStack::new(ItemId::DIAMOND_PICKAXE, 1).unwrap());
+    let mut mining = MiningState::default();
+    assert!(mining.tick(Some(stone), pick, true, false).is_none());
+    let mut ticks = 0;
+    let broken = loop {
+        ticks += 1;
+        assert!(ticks <= 6, "diamond pick should break stone in 6 ticks");
+        if mining.tick(Some(stone), pick, true, false).is_some() {
+            break ticks;
+        }
+    };
+    assert_eq!(broken, 6);
+    assert_eq!(mining.damage(), 0.0);
+}
+
+#[test]
+fn shears_break_leaves_on_the_click() {
+    let leaves = hit(3, 70, 3, BlockFace::Up, BlockId::Leaves);
+    let shears = Some(ItemStack::new(ItemId::SHEARS, 1).unwrap());
+    let mut mining = MiningState::default();
+    assert!(mining.try_instant(leaves, shears, true, false).is_some());
+    assert!(mining.tick(Some(leaves), shears, true, false).is_none());
+    assert_eq!(mining.damage(), 0.0);
+}
+
+#[test]
+fn switching_tools_keeps_mining_progress() {
+    let stone = hit(8, 64, 8, BlockFace::Up, BlockId::Stone);
+    let wood = Some(ItemStack::new(ItemId::WOODEN_PICKAXE, 1).unwrap());
+    let diamond = Some(ItemStack::new(ItemId::DIAMOND_PICKAXE, 1).unwrap());
+    let mut mining = MiningState::default();
+    mining.tick(Some(stone), wood, true, false);
+    mining.tick(Some(stone), wood, true, false);
+    let damage = mining.damage();
+    assert!(damage > 0.0);
+    mining.tick(Some(stone), diamond, true, false);
+    assert!(mining.damage() > damage);
+    assert_eq!(mining.target(), Some((8, 64, 8)));
 }
 
 #[test]

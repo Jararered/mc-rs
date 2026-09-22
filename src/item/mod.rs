@@ -1,5 +1,6 @@
 //! Item identities, definitions, and validated inventory stacks.
 pub mod registry;
+pub mod tools;
 use crate::world::block::block::BlockId;
 use crate::world::block::registry::BetaBlockId;
 use crate::world::block::registry::BetaBlockState;
@@ -107,6 +108,30 @@ impl ItemStack {
             metadata: u8::try_from(self.data).ok()?,
         }
         .runtime_block()
+    }
+
+    /// Beta `ItemStack.damageItem`. `None` means the stack broke.
+    ///
+    /// Uses may equal max damage. The item is destroyed only when damage
+    /// exceeds it, matching `itemDamage > getMaxDamage()`.
+    pub fn apply_damage(self, amount: u16) -> Option<Self> {
+        let ItemData::Durability(max) = self.definition().data else {
+            return Some(self);
+        };
+        if amount == 0 {
+            return Some(self);
+        }
+        let next = u32::from(self.data) + u32::from(amount);
+        if next > u32::from(max) {
+            let left = self.count.saturating_sub(1);
+            if left == 0 {
+                None
+            } else {
+                Self::with_data(self.item, left, 0).ok()
+            }
+        } else {
+            Self::with_data(self.item, self.count, next as u16).ok()
+        }
     }
 
     pub fn can_merge(self, other: Self) -> bool {

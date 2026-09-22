@@ -219,10 +219,19 @@ pub fn harvestable_by_hand(block: BlockId) -> bool {
     )
 }
 
-/// Damage added each game tick while punching, matching `Block.blockStrength`
-/// with no tool. Harvestable blocks use `/ 30` and the water / airborne
-/// penalties from `getCurrentPlayerStrVsBlock`; everything else uses `/ 100`.
-pub fn hand_mine_progress_per_tick(block: BlockId, on_ground: bool, in_water: bool) -> f32 {
+/// Damage added each game tick, matching `Block.blockStrength`.
+///
+/// `strength` is the held item's `getStrVsBlock` before the water and airborne
+/// penalties. Those penalties and the `/ 30` divisor apply only when the block
+/// can be harvested. Otherwise the tool is ignored and the step is `/ 100`.
+/// Hardness `0` is an instant break.
+pub fn mine_progress_per_tick(
+    block: BlockId,
+    strength: f32,
+    can_harvest: bool,
+    on_ground: bool,
+    in_water: bool,
+) -> f32 {
     let hardness = hardness(block);
     if hardness < 0.0 {
         return 0.0;
@@ -230,8 +239,8 @@ pub fn hand_mine_progress_per_tick(block: BlockId, on_ground: bool, in_water: bo
     if hardness == 0.0 {
         return f32::INFINITY;
     }
-    if harvestable_by_hand(block) {
-        let mut strength = 1.0;
+    if can_harvest {
+        let mut strength = strength;
         if in_water {
             strength /= 5.0;
         }
@@ -242,4 +251,9 @@ pub fn hand_mine_progress_per_tick(block: BlockId, on_ground: bool, in_water: bo
     } else {
         1.0 / hardness / 100.0
     }
+}
+
+/// Empty-hand `Block.blockStrength`.
+pub fn hand_mine_progress_per_tick(block: BlockId, on_ground: bool, in_water: bool) -> f32 {
+    mine_progress_per_tick(block, 1.0, harvestable_by_hand(block), on_ground, in_water)
 }

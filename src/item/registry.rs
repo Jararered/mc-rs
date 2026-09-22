@@ -9,7 +9,8 @@ pub enum ItemData {
     None,
     /// Highest supported subtype value (inclusive).
     Subtype(u16),
-    /// Beta's maxDamage threshold, not a simulation of tool behavior.
+    /// Beta `maxDamage`. Stored data is uses so far; the item breaks when uses
+    /// exceed this value.
     Durability(u16),
     Map,
 }

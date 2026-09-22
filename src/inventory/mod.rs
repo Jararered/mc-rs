@@ -168,4 +168,13 @@ impl Hotbar {
     pub fn selected_stack(&self) -> Option<ItemStack> {
         self.slots[self.selected]
     }
+
+    /// Apply block-break durability to the selected stack. A broken tool
+    /// leaves the slot empty.
+    pub fn damage_selected(&mut self, amount: u16) {
+        let Some(stack) = self.selected_stack() else {
+            return;
+        };
+        self.slots[self.selected] = stack.apply_damage(amount);
+    }
 }

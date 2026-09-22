@@ -1,8 +1,13 @@
-//! Survival punching, matching Beta `PlayerControllerSP` with an empty hand.
+//! Survival mining, matching Beta `PlayerControllerSP`.
+//!
+//! The held stack is sampled every tick. Switching tools changes the rate and
+//! does not reset progress. Looking at a different block does.
 
+use crate::item::ItemStack;
+use crate::item::tools::mine_step;
+use crate::item::tools::ticks_to_break;
 use crate::physics::BlockHit;
 use crate::world::block::block::BlockId;
-use crate::world::block::properties::hand_mine_progress_per_tick;
 use crate::world::block::properties::is_breakable;
 
 /// Ticks after a break before mining can start again (`blockHitWait`).
@@ -40,13 +45,14 @@ impl MiningState {
     pub fn try_instant(
         &mut self,
         hit: BlockHit,
+        tool: Option<ItemStack>,
         on_ground: bool,
         in_water: bool,
     ) -> Option<BlockHit> {
         if !is_breakable(hit.block) {
             return None;
         }
-        if hand_mine_progress_per_tick(hit.block, on_ground, in_water) < 1.0 {
+        if mine_step(hit.block, tool, on_ground, in_water) < 1.0 {
             return None;
         }
         self.reset();
@@ -58,6 +64,7 @@ impl MiningState {
     pub fn tick(
         &mut self,
         looked_at: Option<BlockHit>,
+        tool: Option<ItemStack>,
         on_ground: bool,
         in_water: bool,
     ) -> Option<BlockHit> {
@@ -81,7 +88,7 @@ impl MiningState {
             self.damage = 0.0;
             return None;
         }
-        let step = hand_mine_progress_per_tick(hit.block, on_ground, in_water);
+        let step = mine_step(hit.block, tool, on_ground, in_water);
         if step <= 0.0 {
             return None;
         }
@@ -110,15 +117,5 @@ pub fn destroy_stage(damage: f32) -> Option<u8> {
 
 /// Ticks of punching needed to break `block` by hand, or `None` if it cannot.
 pub fn hand_ticks_to_break(block: BlockId, on_ground: bool, in_water: bool) -> Option<u32> {
-    if !is_breakable(block) {
-        return None;
-    }
-    let step = hand_mine_progress_per_tick(block, on_ground, in_water);
-    if !step.is_finite() || step >= 1.0 {
-        return Some(1);
-    }
-    if step <= 0.0 {
-        return None;
-    }
-    Some((1.0 / step).ceil() as u32)
+    ticks_to_break(block, None, on_ground, in_water)
 }

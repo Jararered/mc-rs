@@ -17,6 +17,7 @@ use super::stack_overlay::place_stack_label;
 use crate::app::state::AppScreen;
 use crate::entity::CollisionState;
 use crate::entity::EntitySize;
+use crate::entity::Flying;
 use crate::entity::dropped_items::hotbar_icon_scale;
 use crate::inventory::HOTBAR_SLOTS;
 use crate::inventory::Hotbar;
@@ -157,7 +158,7 @@ fn spawn_hud(
 fn update_debug_overlay(
     keys: Option<Res<ButtonInput<KeyCode>>>,
     mut visible: ResMut<DebugVisible>,
-    player: Query<(&Transform, &CollisionState), With<Player>>,
+    player: Query<(&Transform, &CollisionState, Option<&Flying>), With<Player>>,
     camera: Query<&GlobalTransform, With<PlayerCamera>>,
     chunks: Res<WorldChunks>,
     mut overlay: Query<(&mut Text, &mut Visibility), With<DebugOverlay>>,
@@ -176,7 +177,7 @@ fn update_debug_overlay(
     if !visible.0 {
         return;
     }
-    let Ok((transform, collision)) = player.single() else {
+    let Ok((transform, collision, flying)) = player.single() else {
         return;
     };
     let p = transform.translation;
@@ -205,9 +206,22 @@ fn update_debug_overlay(
             || "none".to_string(),
             |hit| format!("{} at {} / {} / {}", hit.block.name(), hit.x, hit.y, hit.z),
         );
+    let flight = if flying.is_some() { "ON" } else { "OFF" };
     text.0 = format!(
-        "XYZ: {:.2} / {:.2} / {:.2}\nBlock: {} / {} / {}  Chunk: {} / {}\nFeet Y: {:.2}  Grounded: {}  Below: {}\nTarget: {}",
-        p.x, p.y, p.z, bx, by, bz, chunk.x, chunk.z, feet_y, collision.on_ground, below, target
+        "XYZ: {:.2} / {:.2} / {:.2}\nBlock: {} / {} / {}  Chunk: {} / {}\nFeet Y: {:.2}  Grounded: {}  Below: {}\nFlight: {}  Target: {}",
+        p.x,
+        p.y,
+        p.z,
+        bx,
+        by,
+        bz,
+        chunk.x,
+        chunk.z,
+        feet_y,
+        collision.on_ground,
+        below,
+        flight,
+        target
     );
 }
 

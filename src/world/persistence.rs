@@ -95,6 +95,10 @@ pub struct StoredPlayer {
     pub armor: Vec<Option<StoredStack>>,
     #[serde(default)]
     pub carried: Option<StoredStack>,
+    #[serde(default)]
+    pub flying: bool,
+    #[serde(default)]
+    pub fly_speed: f32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -134,7 +138,15 @@ impl StoredPlayer {
             crafting: Vec::new(),
             armor: Vec::new(),
             carried: None,
+            flying: false,
+            fly_speed: 1.0,
         }
+    }
+
+    pub fn with_flying(mut self, flying: bool, fly_speed: f32) -> Self {
+        self.flying = flying;
+        self.fly_speed = fly_speed;
+        self
     }
 
     pub fn with_inventory(mut self, hotbar: &Hotbar, inventory: &Inventory) -> Self {
@@ -841,7 +853,7 @@ impl WorldPersistence {
     pub fn flush(
         &mut self,
         chunks: &mut WorldChunks,
-        player: Option<(&Transform, Option<&Hotbar>, Option<&Inventory>)>,
+        player: Option<(&Transform, Option<&Hotbar>, Option<&Inventory>, bool, f32)>,
         items: &std::collections::HashMap<ChunkPos, Vec<ChunkDroppedItem>>,
     ) {
         let Some(storage) = self.storage.clone() else {
@@ -878,12 +890,15 @@ impl WorldPersistence {
                 chunk.items.clear();
             }
         }
-        if let Some((transform, hotbar, inventory)) = player
-            && let Err(error) =
-                storage.save_player(&StoredPlayer::from_transform(transform).with_inventory(
-                    hotbar.unwrap_or(&Hotbar::default()),
-                    inventory.unwrap_or(&Inventory::default()),
-                ))
+        if let Some((transform, hotbar, inventory, flying, fly_speed)) = player
+            && let Err(error) = storage.save_player(
+                &StoredPlayer::from_transform(transform)
+                    .with_flying(flying, fly_speed)
+                    .with_inventory(
+                        hotbar.unwrap_or(&Hotbar::default()),
+                        inventory.unwrap_or(&Inventory::default()),
+                    ),
+            )
         {
             warn!("Failed to save player: {error}");
         }
@@ -917,7 +932,16 @@ fn setup_persistence(
 fn flush_persistence(
     mut persistence: ResMut<WorldPersistence>,
     mut chunks: ResMut<WorldChunks>,
-    player: Query<(&Transform, Option<&Hotbar>, Option<&Inventory>), With<Player>>,
+    player: Query<
+        (
+            &Transform,
+            Option<&Hotbar>,
+            Option<&Inventory>,
+            Option<&crate::entity::Flying>,
+            &crate::player::FlySpeed,
+        ),
+        With<Player>,
+    >,
     items: Query<
         (
             &Transform,
@@ -955,6 +979,15 @@ fn flush_persistence(
                     state,
                 ));
         }
-        persistence.flush(&mut chunks, player.single().ok(), &saved);
+        persistence.flush(
+            &mut chunks,
+            player
+                .single()
+                .ok()
+                .map(|(transform, hotbar, inventory, flying, fly_speed)| {
+                    (transform, hotbar, inventory, flying.is_some(), fly_speed.0)
+                }),
+            &saved,
+        );
     }
 }

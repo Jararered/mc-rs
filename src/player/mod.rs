@@ -9,6 +9,7 @@ use crate::app::settings::GameSettings;
 use crate::app::state::AppScreen;
 use crate::entity::CollisionState;
 use crate::entity::EntitySize;
+use crate::entity::Flying;
 use crate::entity::Gravity;
 use crate::entity::StepHeight;
 use crate::entity::Velocity;
@@ -71,6 +72,8 @@ impl Plugin for PlayerPlugin {
                     look_player,
                     interaction::interact_blocks,
                     update_mouse_capture,
+                    toggle_flying,
+                    adjust_fly_speed,
                     apply_player_input,
                     select_hotbar,
                 )
@@ -94,9 +97,26 @@ impl Plugin for PlayerPlugin {
     CollisionState,
     Gravity,
     EntitySize = EntitySize::PLAYER,
-    StepHeight = StepHeight::PLAYER
+    StepHeight = StepHeight::PLAYER,
+    FlySpeed
 )]
 pub struct Player;
+
+/// How fast the player moves while flying. Multiplied by [`FLY_SPEED`].
+#[derive(Component, Clone, Copy, Debug)]
+pub struct FlySpeed(pub f32);
+
+impl Default for FlySpeed {
+    fn default() -> Self {
+        Self(1.0)
+    }
+}
+
+impl FlySpeed {
+    pub fn clamp_value(&mut self) {
+        self.0 = self.0.clamp(MIN_FLY_SPEED, MAX_FLY_SPEED);
+    }
+}
 
 /// The render camera is a child of the physics player so view bobbing does
 /// not move the player's collision box or interaction origin.
@@ -154,6 +174,12 @@ const SPRINT_JUMP_SPEED: f32 = 7.1;
 const JUMP_SPEED: f32 = 8.4;
 const MOUSE_SENSITIVITY: f32 = 0.002;
 
+/// Flying mode base speed in blocks per second.
+const FLY_SPEED: f32 = 30.0;
+const MIN_FLY_SPEED: f32 = 1.0;
+const MAX_FLY_SPEED: f32 = 50.0;
+const FLY_SPEED_STEP: f32 = 1.25;
+
 fn spawn_player(
     mut commands: Commands,
     chunks: Res<WorldChunks>,
@@ -173,29 +199,34 @@ fn spawn_player(
         .as_ref()
         .map(|player| player.to_inventory())
         .unwrap_or_default();
-    commands
-        .spawn((
-            Name::new("Player"),
-            Player,
-            PlayerHealth::default(),
-            hotbar,
-            inventory,
-            CameraBobbing::default(),
-            transform,
-        ))
-        .with_children(|parent| {
-            parent
-                .spawn((
-                    PlayerCamera,
-                    Camera3d::default(),
-                    Projection::from(PerspectiveProjection {
-                        fov: settings.fov_radians(),
-                        ..default()
-                    }),
-                    Transform::default(),
-                ))
-                .with_children(|camera| arm::spawn(camera, &arm_assets, settings.fov_radians()));
-        });
+    let flying = saved.as_ref().map(|p| p.flying).unwrap_or(false);
+    let fly_speed = saved.as_ref().map(|p| p.fly_speed).unwrap_or(1.0);
+    let mut entity = commands.spawn((
+        Name::new("Player"),
+        Player,
+        PlayerHealth::default(),
+        hotbar,
+        inventory,
+        CameraBobbing::default(),
+        FlySpeed(fly_speed),
+        transform,
+    ));
+    if flying {
+        entity.insert(Flying);
+    }
+    entity.with_children(|parent| {
+        parent
+            .spawn((
+                PlayerCamera,
+                Camera3d::default(),
+                Projection::from(PerspectiveProjection {
+                    fov: settings.fov_radians(),
+                    ..default()
+                }),
+                Transform::default(),
+            ))
+            .with_children(|camera| arm::spawn(camera, &arm_assets, settings.fov_radians()));
+    });
 }
 
 fn apply_camera_fov(
@@ -218,7 +249,10 @@ fn apply_camera_fov(
 /// control the bob's amplitude.
 fn update_camera_bobbing(
     time: Res<Time>,
-    mut players: Query<(&Velocity, &CollisionState, &mut CameraBobbing, &Children)>,
+    mut players: Query<
+        (&Velocity, &CollisionState, &mut CameraBobbing, &Children),
+        (With<Player>, Without<Flying>),
+    >,
     mut cameras: Query<&mut Transform, With<PlayerCamera>>,
 ) {
     let dt = time.delta_secs();
@@ -316,6 +350,40 @@ fn update_mouse_capture(
     }
 }
 
+fn toggle_flying(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut player: Query<(Entity, Option<&Flying>, &mut FlySpeed), With<Player>>,
+    mut commands: Commands,
+) {
+    if !keys.just_pressed(KeyCode::KeyF) {
+        return;
+    }
+    let Ok((entity, flying, mut fly_speed)) = player.single_mut() else {
+        return;
+    };
+    if flying.is_some() {
+        commands.entity(entity).remove::<Flying>();
+    } else {
+        fly_speed.clamp_value();
+        commands.entity(entity).insert(Flying);
+    }
+}
+
+fn adjust_fly_speed(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut player: Query<(&Flying, &mut FlySpeed), With<Player>>,
+) {
+    let Ok((_flying, mut fly_speed)) = player.single_mut() else {
+        return;
+    };
+    if keys.just_pressed(KeyCode::Equal) || keys.just_pressed(KeyCode::NumpadAdd) {
+        fly_speed.0 = (fly_speed.0 * FLY_SPEED_STEP).min(MAX_FLY_SPEED);
+    }
+    if keys.just_pressed(KeyCode::Minus) || keys.just_pressed(KeyCode::NumpadSubtract) {
+        fly_speed.0 = (fly_speed.0 / FLY_SPEED_STEP).max(MIN_FLY_SPEED);
+    }
+}
+
 fn look_player(
     mouse_motion: Res<AccumulatedMouseMotion>,
     windows: Query<(&Window, &CursorOptions), With<PrimaryWindow>>,
@@ -344,16 +412,56 @@ fn look_player(
 fn apply_player_input(
     keys: Res<ButtonInput<KeyCode>>,
     windows: Query<(&Window, &CursorOptions), With<PrimaryWindow>>,
-    mut player: Query<(&Transform, &mut Velocity, &CollisionState), With<Player>>,
+    mut player: Query<
+        (
+            &Transform,
+            &mut Velocity,
+            &CollisionState,
+            Option<&Flying>,
+            &FlySpeed,
+        ),
+        With<Player>,
+    >,
 ) {
-    let Ok((transform, mut velocity, collision)) = player.single_mut() else {
+    let Ok((transform, mut velocity, collision, flying, fly_speed)) = player.single_mut() else {
         return;
     };
-
     let locked = windows
         .single()
         .is_ok_and(|(window, cursor)| window.focused && cursor.grab_mode == CursorGrabMode::Locked);
 
+    if flying.is_some() {
+        // Flying mode: full 3D movement along the camera axes
+        let mut direction = Vec3::ZERO;
+        if locked {
+            let forward = *transform.forward();
+            let right = *transform.right();
+
+            if keys.pressed(KeyCode::KeyW) {
+                direction += forward;
+            }
+            if keys.pressed(KeyCode::KeyS) {
+                direction -= forward;
+            }
+            if keys.pressed(KeyCode::KeyD) {
+                direction += right;
+            }
+            if keys.pressed(KeyCode::KeyA) {
+                direction -= right;
+            }
+            if keys.pressed(KeyCode::Space) {
+                direction.y += 1.0;
+            }
+            if keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight) {
+                direction.y -= 1.0;
+            }
+        }
+        let speed = FLY_SPEED * fly_speed.0;
+        velocity.0 = direction.normalize_or_zero() * speed;
+        return;
+    }
+
+    // Walking mode (existing behavior)
     let mut direction = Vec3::ZERO;
     if locked {
         let mut forward = *transform.forward();

@@ -435,7 +435,9 @@ fn ensure_sky(
         directional_light_color: Color::NONE,
         ..default()
     };
-    commands.entity(camera).insert((SkyAttached, initial.clone()));
+    commands
+        .entity(camera)
+        .insert((SkyAttached, initial.clone()));
 
     let sky_assets = if let Some(existing) = assets.as_deref() {
         existing.clone()

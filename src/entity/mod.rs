@@ -94,3 +94,7 @@ impl Default for Gravity {
         Self::DEFAULT
     }
 }
+
+/// Marker for entities that are flying (no gravity, noclip movement).
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct Flying;

@@ -16,6 +16,7 @@ use crate::app::state::AppScreen;
 use crate::entity::CollisionState;
 use crate::entity::DroppedItem;
 use crate::entity::EntitySize;
+use crate::entity::Flying;
 use crate::entity::Gravity;
 use crate::entity::StepHeight;
 use crate::entity::Velocity;
@@ -359,6 +360,7 @@ fn integrate_bodies(
             &mut CollisionState,
             Option<&StepHeight>,
             Option<&Gravity>,
+            Option<&Flying>,
         ),
         Without<DroppedItem>,
     >,
@@ -368,11 +370,20 @@ fn integrate_bodies(
         return;
     }
 
-    for (mut transform, mut velocity, size, mut collision, step_height, gravity) in &mut bodies {
+    for (mut transform, mut velocity, size, mut collision, step_height, gravity, flying) in
+        &mut bodies
+    {
         if !chunks.contains(ChunkPos::from_world(
             transform.translation.x,
             transform.translation.z,
         )) {
+            continue;
+        }
+
+        // Flying: noclip, no gravity, no collision resolution
+        if flying.is_some() {
+            transform.translation += velocity.0 * dt;
+            *collision = CollisionState::default();
             continue;
         }
 

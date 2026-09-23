@@ -1,5 +1,6 @@
 use game::inventory::HOTBAR_SLOTS;
 use game::inventory::Hotbar;
+use game::inventory::collect_matching_stacks;
 use game::item::ItemId;
 use game::item::ItemStack;
 
@@ -37,6 +38,41 @@ fn select_clamps_to_valid_slots() {
     assert_eq!(hotbar.selected, 8);
     hotbar.select(9);
     assert_eq!(hotbar.selected, 8);
+}
+
+#[test]
+fn double_click_collection_fills_cursor_and_leaves_overflow_in_slots() {
+    let mut carried = Some(ItemStack::new(ItemId::Coal, 60).unwrap());
+    let mut slots = [
+        Some(ItemStack::new(ItemId::Coal, 8).unwrap()),
+        Some(ItemStack::new(ItemId::Coal, 5).unwrap()),
+        Some(ItemStack::new(ItemId::Diamond, 2).unwrap()),
+    ];
+
+    let moved = collect_matching_stacks(&mut carried, &mut slots);
+
+    assert_eq!(moved, 4);
+    assert_eq!(carried.unwrap().count(), 64);
+    assert_eq!(slots[0], Some(ItemStack::new(ItemId::Coal, 4).unwrap()));
+    assert_eq!(slots[1], Some(ItemStack::new(ItemId::Coal, 5).unwrap()));
+    assert_eq!(slots[2], Some(ItemStack::new(ItemId::Diamond, 2).unwrap()));
+}
+
+#[test]
+fn double_click_collection_requires_stack_compatible_item_data() {
+    let mut carried = Some(ItemStack::with_data(ItemId::Coal, 1, 0).unwrap());
+    let mut slots = [
+        Some(ItemStack::with_data(ItemId::Coal, 3, 1).unwrap()),
+        Some(ItemStack::with_data(ItemId::Coal, 4, 0).unwrap()),
+    ];
+
+    assert_eq!(collect_matching_stacks(&mut carried, &mut slots), 4);
+    assert_eq!(carried.unwrap().count(), 5);
+    assert_eq!(
+        slots[0],
+        Some(ItemStack::with_data(ItemId::Coal, 3, 1).unwrap())
+    );
+    assert_eq!(slots[1], None);
 }
 
 #[test]

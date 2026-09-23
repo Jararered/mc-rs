@@ -10,6 +10,7 @@ pub use transfer::DragPlace;
 pub use transfer::SlotId;
 pub use transfer::chest_drag_place;
 pub use transfer::chest_slot_accepts_drag;
+pub use transfer::collect_matching_stacks;
 pub use transfer::drag_place;
 pub use transfer::hotbar_key_swap;
 pub use transfer::hotbar_key_swap_chest;

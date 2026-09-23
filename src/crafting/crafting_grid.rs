@@ -72,6 +72,9 @@ impl CraftingGrid {
     pub fn slots(&self) -> impl Iterator<Item = Option<ItemStack>> + '_ {
         self.slots[..self.width * self.height].iter().copied()
     }
+    pub fn slots_mut(&mut self) -> &mut [Option<ItemStack>] {
+        &mut self.slots[..self.width * self.height]
+    }
     pub fn occupied(&self) -> usize {
         self.slots().filter(Option::is_some).count()
     }

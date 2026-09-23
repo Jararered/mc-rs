@@ -29,6 +29,7 @@ use crate::inventory::Inventory;
 use crate::inventory::SlotId;
 use crate::inventory::chest_drag_place;
 use crate::inventory::chest_slot_accepts_drag;
+use crate::inventory::collect_matching_stacks;
 use crate::inventory::drag_place;
 use crate::inventory::hotbar_key_swap;
 use crate::inventory::hotbar_key_swap_chest;
@@ -60,6 +61,7 @@ impl Plugin for InventoryGuiPlugin {
         app.init_resource::<InventoryScreen>()
             .init_resource::<WorkbenchUiSession>()
             .init_resource::<SlotDrag>()
+            .init_resource::<LastInventoryClick>()
             .add_systems(PreStartup, (load_texture, super::block_icons::setup))
             .add_systems(Update, super::block_icons::build.before(refresh))
             .add_systems(
@@ -302,6 +304,33 @@ struct SlotDrag {
     button: Option<MouseButton>,
     origin: Option<Slot>,
     slots: Vec<Slot>,
+}
+
+#[derive(Resource, Default)]
+struct LastInventoryClick {
+    at: Option<f64>,
+    slot: Option<Slot>,
+    container: u8,
+}
+
+const DOUBLE_CLICK_SECONDS: f64 = 0.35;
+
+fn is_double_click(
+    last: &mut LastInventoryClick,
+    screen: &InventoryScreen,
+    slot: Slot,
+    now: f64,
+) -> bool {
+    let container = u8::from(screen.chest)
+        | (u8::from(screen.furnace) << 1)
+        | (u8::from(screen.workbench) << 2);
+    let double = last.slot == Some(slot)
+        && last.container == container
+        && last.at.is_some_and(|at| now - at <= DOUBLE_CLICK_SECONDS);
+    last.at = Some(now);
+    last.slot = Some(slot);
+    last.container = container;
+    double
 }
 
 fn load_texture(mut commands: Commands, assets: Res<AssetServer>) {
@@ -917,6 +946,7 @@ fn take_workbench_result(
 
 fn handle_slots(
     screen: Res<InventoryScreen>,
+    time: Res<Time>,
     mouse: Res<ButtonInput<MouseButton>>,
     keys: Res<ButtonInput<KeyCode>>,
     slots: Query<(&RelativeCursorPosition, &Slot)>,
@@ -925,9 +955,11 @@ fn handle_slots(
     mut chunks: ResMut<WorldChunks>,
     mut persistence: Option<ResMut<WorldPersistence>>,
     mut drag: ResMut<SlotDrag>,
+    mut last_click: ResMut<LastInventoryClick>,
 ) {
     if !screen.open {
         *drag = SlotDrag::default();
+        *last_click = LastInventoryClick::default();
         return;
     }
     let Ok((mut hotbar, mut inventory)) = player.single_mut() else {
@@ -945,6 +977,8 @@ fn handle_slots(
             &mut chunks,
             &mut persistence,
             &mut drag,
+            &mut last_click,
+            time.elapsed_secs_f64(),
         );
         return;
     }
@@ -984,6 +1018,29 @@ fn handle_slots(
         {
             let right =
                 mouse.just_pressed(MouseButton::Right) && !mouse.just_pressed(MouseButton::Left);
+            if !right
+                && !shift
+                && is_double_click(&mut last_click, &screen, slot, time.elapsed_secs_f64())
+            {
+                collect_open_inventory(
+                    &screen,
+                    slot,
+                    &mut chunks,
+                    &mut hotbar,
+                    &mut inventory,
+                    &mut workbench,
+                );
+                if matches!(slot, Slot::Furnace(_))
+                    && let Some(persistence) = persistence.as_deref_mut()
+                {
+                    persistence.mark_dirty(ChunkPos::from_block(position.0, position.2));
+                }
+                *drag = SlotDrag::default();
+                return;
+            }
+            if right || shift {
+                last_click.at = None;
+            }
             if shift {
                 shift_click_furnace(slot, position, &mut chunks, &mut hotbar, &mut inventory);
             } else {
@@ -1033,6 +1090,24 @@ fn handle_slots(
             return;
         };
         let right = right && !left;
+        if !right
+            && !shift
+            && is_double_click(&mut last_click, &screen, slot, time.elapsed_secs_f64())
+        {
+            collect_open_inventory(
+                &screen,
+                slot,
+                &mut chunks,
+                &mut hotbar,
+                &mut inventory,
+                &mut workbench,
+            );
+            *drag = SlotDrag::default();
+            return;
+        }
+        if right || shift {
+            last_click.at = None;
+        }
         if shift {
             let _ = shift_click_slot(
                 &mut inventory,
@@ -1119,6 +1194,8 @@ fn handle_chest_slots(
     chunks: &mut WorldChunks,
     persistence: &mut Option<ResMut<WorldPersistence>>,
     drag: &mut SlotDrag,
+    last_click: &mut LastInventoryClick,
+    now: f64,
 ) {
     let Some(group) = screen.chest_group else {
         return;
@@ -1154,6 +1231,21 @@ fn handle_chest_slots(
             return;
         };
         let right = right && !left;
+        if !right && !shift && is_double_click(last_click, screen, slot, now) {
+            if matches!(slot, Slot::Chest(_)) {
+                let mut chest_slots = read_chest_group_slots(chunks, group);
+                collect_matching_stacks(&mut inventory.carried, &mut chest_slots);
+                write_chest_group_slots(chunks, group, &chest_slots);
+                mark_chest_dirty(persistence, group);
+            } else {
+                collect_storage_stacks(inventory, hotbar);
+            }
+            *drag = SlotDrag::default();
+            return;
+        }
+        if right || shift {
+            last_click.at = None;
+        }
         if shift {
             let mut chest_slots = read_chest_group_slots(chunks, group);
             let _ = shift_click_chest_slot(inventory, hotbar, &mut chest_slots, to_slot_id(slot));
@@ -1250,6 +1342,56 @@ fn apply_chest_click(
         write_chest_group_slots(chunks, group, &chest_slots);
     } else {
         apply_click(slot, right, false, hotbar, inventory, workbench);
+    }
+}
+
+fn collect_player_stacks(
+    inventory: &mut Inventory,
+    hotbar: &mut Hotbar,
+    workbench: &mut WorkbenchUiSession,
+    workbench_open: bool,
+) {
+    collect_storage_stacks(inventory, hotbar);
+    let Inventory {
+        crafting,
+        armor,
+        carried,
+        ..
+    } = inventory;
+    if workbench_open {
+        collect_matching_stacks(carried, workbench.grid.slots_mut());
+    } else {
+        collect_matching_stacks(carried, crafting);
+    }
+    collect_matching_stacks(carried, armor);
+}
+
+fn collect_storage_stacks(inventory: &mut Inventory, hotbar: &mut Hotbar) {
+    let Inventory { main, carried, .. } = inventory;
+    collect_matching_stacks(carried, &mut hotbar.slots);
+    collect_matching_stacks(carried, main);
+}
+
+fn collect_open_inventory(
+    screen: &InventoryScreen,
+    clicked: Slot,
+    chunks: &mut WorldChunks,
+    hotbar: &mut Hotbar,
+    inventory: &mut Inventory,
+    workbench: &mut WorkbenchUiSession,
+) {
+    if screen.furnace {
+        if matches!(clicked, Slot::Furnace(_)) {
+            if let Some(position) = screen.furnace_position
+                && let Some(furnace) = chunks.furnace_at_mut(position.0, position.1, position.2)
+            {
+                collect_matching_stacks(&mut inventory.carried, &mut furnace.slots);
+            }
+        } else {
+            collect_storage_stacks(inventory, hotbar);
+        }
+    } else {
+        collect_player_stacks(inventory, hotbar, workbench, screen.workbench);
     }
 }
 

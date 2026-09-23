@@ -31,6 +31,34 @@ pub enum SlotId {
     Armor(usize),
 }
 
+/// Collect compatible stacks from a container into the carried stack.
+/// Returns the number of items moved; any amount that does not fit remains in
+/// its original slot.
+pub fn collect_matching_stacks(
+    carried: &mut Option<ItemStack>,
+    slots: &mut [Option<ItemStack>],
+) -> u16 {
+    let Some(mut cursor) = *carried else {
+        return 0;
+    };
+    let mut moved = 0;
+    for slot in slots {
+        if cursor.count() == cursor.definition().max_stack_size {
+            break;
+        }
+        let Some(stack) = *slot else {
+            continue;
+        };
+        if stack.item() != cursor.item() || stack.data() != cursor.data() {
+            continue;
+        }
+        *slot = cursor.merge(stack);
+        moved += u16::from(stack.count()) - u16::from(slot.map_or(0, ItemStack::count));
+    }
+    *carried = Some(cursor);
+    moved
+}
+
 /// Shift-click between a chest inventory and player storage.
 pub fn shift_click_chest_slot(
     inventory: &mut Inventory,

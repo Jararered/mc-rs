@@ -824,7 +824,7 @@ fn neighbor_hides_face(block: BlockId, neighbor: Option<BlockId>, fancy_graphics
         || neighbor == BlockId::Lava
         || neighbor == BlockId::FlowingLava
         || neighbor == BlockId::MobSpawner
-        || neighbor == BlockId::Chest
+        || neighbor.is_chest()
         || is_torch(neighbor)
         || is_crossed_plant(neighbor)
     {

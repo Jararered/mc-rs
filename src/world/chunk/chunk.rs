@@ -4,6 +4,7 @@ use std::sync::Arc;
 use bevy::prelude::Resource;
 
 use crate::world::block::block::BlockId;
+use crate::world::chest::Chest;
 use crate::world::furnace::Furnace;
 use crate::world::generation::Climate;
 use crate::world::generation::GeneratedChunk;
@@ -21,6 +22,7 @@ pub struct Chunk {
     blocks: Arc<[BlockId]>,
     /// Block-local inventories and simulation state. Keyed by flat block index.
     furnaces: HashMap<usize, Furnace>,
+    chests: HashMap<usize, Chest>,
 }
 
 impl Chunk {
@@ -28,6 +30,7 @@ impl Chunk {
         Self {
             blocks: vec![BlockId::Air; CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE].into(),
             furnaces: HashMap::new(),
+            chests: HashMap::new(),
         }
     }
 
@@ -44,9 +47,16 @@ impl Chunk {
             .filter(|(_, block)| is_furnace(**block))
             .map(|(index, _)| (index, Furnace::default()))
             .collect();
+        let chests = blocks
+            .iter()
+            .enumerate()
+            .filter(|(_, block)| block.is_chest())
+            .map(|(index, _)| (index, Chest::default()))
+            .collect();
         Self {
             blocks: blocks.into(),
             furnaces,
+            chests,
         }
     }
 
@@ -71,6 +81,11 @@ impl Chunk {
         } else if !is_furnace(previous) && is_furnace(block) {
             self.furnaces.entry(index).or_default();
         }
+        if previous.is_chest() && !block.is_chest() {
+            self.chests.remove(&index);
+        } else if !previous.is_chest() && block.is_chest() {
+            self.chests.entry(index).or_default();
+        }
         Arc::make_mut(&mut self.blocks)[index] = block;
     }
 
@@ -90,6 +105,22 @@ impl Chunk {
 
     pub fn insert_furnace(&mut self, index: usize, furnace: Furnace) {
         self.furnaces.insert(index, furnace);
+    }
+
+    pub fn chests(&self) -> impl Iterator<Item = (usize, &Chest)> {
+        self.chests.iter().map(|(index, chest)| (*index, chest))
+    }
+
+    pub fn chest(&self, index: usize) -> Option<&Chest> {
+        self.chests.get(&index)
+    }
+
+    pub fn chest_mut(&mut self, index: usize) -> Option<&mut Chest> {
+        self.chests.get_mut(&index)
+    }
+
+    pub fn insert_chest(&mut self, index: usize, chest: Chest) {
+        self.chests.insert(index, chest);
     }
 
     pub(crate) const fn index(x: usize, y: usize, z: usize) -> usize {
@@ -185,6 +216,35 @@ impl WorldChunks {
         let mut positions = Vec::new();
         for (chunk_pos, generated) in &self.chunks {
             for (index, _) in generated.chunk.furnaces() {
+                let x = index % CHUNK_SIZE;
+                let z = index / CHUNK_SIZE % CHUNK_SIZE;
+                let y = index / (CHUNK_SIZE * CHUNK_SIZE);
+                positions.push((
+                    chunk_pos.x * CHUNK_SIZE as i32 + x as i32,
+                    y as i32,
+                    chunk_pos.z * CHUNK_SIZE as i32 + z as i32,
+                ));
+            }
+        }
+        positions
+    }
+
+    pub fn chest_at(&self, x: i32, y: i32, z: i32) -> Option<&Chest> {
+        let chunk = self.get(ChunkPos::from_block(x, z))?;
+        let index = local_index(x, y, z)?;
+        chunk.chunk.chest(index)
+    }
+
+    pub fn chest_at_mut(&mut self, x: i32, y: i32, z: i32) -> Option<&mut Chest> {
+        let chunk = self.get_mut(ChunkPos::from_block(x, z))?;
+        let index = local_index(x, y, z)?;
+        chunk.chunk.chest_mut(index)
+    }
+
+    pub fn chest_positions(&self) -> Vec<(i32, i32, i32)> {
+        let mut positions = Vec::new();
+        for (chunk_pos, generated) in &self.chunks {
+            for (index, _) in generated.chunk.chests() {
                 let x = index % CHUNK_SIZE;
                 let z = index / CHUNK_SIZE % CHUNK_SIZE;
                 let y = index / (CHUNK_SIZE * CHUNK_SIZE);

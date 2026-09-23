@@ -13,6 +13,7 @@
 use crate::crafting::CraftingGrid;
 use crate::crafting::beta_recipe_book;
 use crate::item::ItemStack;
+use crate::world::chest::Chest;
 
 use super::HOTBAR_SLOTS;
 use super::Hotbar;
@@ -27,7 +28,238 @@ pub enum SlotId {
     Craft(usize),
     CraftResult,
     Workbench(usize),
+    Chest(usize),
     Armor(usize),
+}
+
+/// Shift-click between a single chest and player storage.
+pub fn shift_click_chest_slot(
+    inventory: &mut Inventory,
+    hotbar: &mut Hotbar,
+    chest: &mut Chest,
+    slot: SlotId,
+) -> bool {
+    match slot {
+        SlotId::Chest(index) if index < chest.slots.len() => {
+            let Some(stack) = chest.slots[index].take() else {
+                return false;
+            };
+            let before = stack.count();
+            chest.slots[index] = place_stack(inventory, hotbar, stack, &player_slots_forward());
+            chest.slots[index].is_none_or(|rest| rest.count() != before)
+        }
+        SlotId::Main(index) if index < inventory.main.len() => {
+            let Some(stack) = inventory.main[index].take() else {
+                return false;
+            };
+            let before = stack.count();
+            let rest = place_in_chest(chest, stack);
+            let moved = rest.is_none_or(|rest| rest.count() != before);
+            inventory.main[index] = rest;
+            moved
+        }
+        SlotId::Hotbar(index) if index < hotbar.slots.len() => {
+            let Some(stack) = hotbar.slots[index].take() else {
+                return false;
+            };
+            let before = stack.count();
+            let rest = place_in_chest(chest, stack);
+            let moved = rest.is_none_or(|rest| rest.count() != before);
+            hotbar.slots[index] = rest;
+            moved
+        }
+        _ => false,
+    }
+}
+
+/// Swap a chest or player slot with a hotbar key destination.
+pub fn hotbar_key_swap_chest(
+    inventory: &mut Inventory,
+    hotbar: &mut Hotbar,
+    chest: &mut Chest,
+    slot: SlotId,
+    hotbar_index: usize,
+) -> bool {
+    if hotbar_index >= HOTBAR_SLOTS
+        || matches!(slot, SlotId::Hotbar(index) if index == hotbar_index)
+    {
+        return false;
+    }
+    match slot {
+        SlotId::Chest(index) => chest.slots.get_mut(index).is_some_and(|source| {
+            std::mem::swap(source, &mut hotbar.slots[hotbar_index]);
+            true
+        }),
+        SlotId::Main(index) => inventory.main.get_mut(index).is_some_and(|source| {
+            std::mem::swap(source, &mut hotbar.slots[hotbar_index]);
+            true
+        }),
+        SlotId::Hotbar(index) if index < hotbar.slots.len() => {
+            hotbar.slots.swap(index, hotbar_index);
+            true
+        }
+        _ => false,
+    }
+}
+
+/// Whether a chest or player slot can receive a drag-painted stack.
+pub fn chest_slot_accepts_drag(
+    inventory: &Inventory,
+    hotbar: &Hotbar,
+    chest: &Chest,
+    slot: SlotId,
+    carried: ItemStack,
+) -> bool {
+    let existing = match slot {
+        SlotId::Chest(index) => chest.slots.get(index).copied().flatten(),
+        SlotId::Main(index) => inventory.main.get(index).copied().flatten(),
+        SlotId::Hotbar(index) => hotbar.slots.get(index).copied().flatten(),
+        _ => return false,
+    };
+    accepts_stack(existing, carried)
+}
+
+/// Preview drag placement when a chest is open.
+pub fn preview_chest_drag_place(
+    inventory: &Inventory,
+    hotbar: &Hotbar,
+    chest: &Chest,
+    slots: &[SlotId],
+    mode: DragPlace,
+) -> Vec<(SlotId, ItemStack)> {
+    let Some(carried) = inventory.carried else {
+        return Vec::new();
+    };
+    let accepted = slots
+        .iter()
+        .copied()
+        .filter(|slot| chest_slot_accepts_drag(inventory, hotbar, chest, *slot, carried))
+        .fold(Vec::new(), |mut unique, slot| {
+            if !unique.contains(&slot) {
+                unique.push(slot);
+            }
+            unique
+        });
+    if accepted.len() < 2 || (carried.count() as usize) < accepted.len() {
+        return Vec::new();
+    }
+    let share = match mode {
+        DragPlace::Split => carried.count() / accepted.len() as u8,
+        DragPlace::OneEach => 1,
+    };
+    if share == 0 {
+        return Vec::new();
+    }
+    accepted
+        .into_iter()
+        .filter_map(|slot| {
+            let current = read_chest_slot(inventory, hotbar, chest, slot)?;
+            let target = (u16::from(share) + u16::from(current.map_or(0, ItemStack::count)))
+                .min(u16::from(carried.definition().max_stack_size)) as u8;
+            (target > current.map_or(0, ItemStack::count))
+                .then(|| ItemStack::with_data(carried.item(), target, carried.data()).ok())
+                .flatten()
+                .map(|stack| (slot, stack))
+        })
+        .collect()
+}
+
+/// Apply a drag preview to chest/player storage and leave the remainder carried.
+pub fn chest_drag_place(
+    inventory: &mut Inventory,
+    hotbar: &mut Hotbar,
+    chest: &mut Chest,
+    slots: &[SlotId],
+    mode: DragPlace,
+) -> bool {
+    let preview = preview_chest_drag_place(inventory, hotbar, chest, slots, mode);
+    let Some(carried) = inventory.carried else {
+        return false;
+    };
+    if preview.is_empty() {
+        return false;
+    }
+    let mut removed = 0u16;
+    for (slot, stack) in preview {
+        let already = read_chest_slot(inventory, hotbar, chest, slot)
+            .flatten()
+            .map_or(0, ItemStack::count);
+        removed += u16::from(stack.count() - already);
+        write_chest_slot(inventory, hotbar, chest, slot, Some(stack));
+    }
+    let left = u16::from(carried.count()).saturating_sub(removed);
+    inventory.carried = (left > 0).then(|| {
+        ItemStack::with_data(carried.item(), left as u8, carried.data())
+            .expect("drag remainder stays within the stack limit")
+    });
+    true
+}
+
+fn accepts_stack(existing: Option<ItemStack>, carried: ItemStack) -> bool {
+    match existing {
+        None => true,
+        Some(existing) => {
+            existing.item() == carried.item()
+                && existing.data() == carried.data()
+                && existing.count() < existing.definition().max_stack_size
+        }
+    }
+}
+
+fn read_chest_slot(
+    inventory: &Inventory,
+    hotbar: &Hotbar,
+    chest: &Chest,
+    slot: SlotId,
+) -> Option<Option<ItemStack>> {
+    match slot {
+        SlotId::Chest(index) => chest.slots.get(index).copied(),
+        SlotId::Main(index) => inventory.main.get(index).copied(),
+        SlotId::Hotbar(index) => hotbar.slots.get(index).copied(),
+        _ => None,
+    }
+}
+
+fn write_chest_slot(
+    inventory: &mut Inventory,
+    hotbar: &mut Hotbar,
+    chest: &mut Chest,
+    slot: SlotId,
+    stack: Option<ItemStack>,
+) {
+    match slot {
+        SlotId::Chest(index) => {
+            if let Some(target) = chest.slots.get_mut(index) {
+                *target = stack;
+            }
+        }
+        SlotId::Main(index) => {
+            if let Some(target) = inventory.main.get_mut(index) {
+                *target = stack;
+            }
+        }
+        SlotId::Hotbar(index) => {
+            if let Some(target) = hotbar.slots.get_mut(index) {
+                *target = stack;
+            }
+        }
+        _ => {}
+    }
+}
+
+fn place_in_chest(chest: &mut Chest, mut stack: ItemStack) -> Option<ItemStack> {
+    if stack.definition().max_stack_size > 1 {
+        for existing in chest.slots.iter_mut().flatten() {
+            stack = existing.merge(stack)?;
+        }
+    }
+    for slot in &mut chest.slots {
+        if slot.is_none() {
+            *slot = Some(stack);
+            return None;
+        }
+    }
+    Some(stack)
 }
 
 /// How a carried stack is painted across slots on mouse release.
@@ -73,7 +305,9 @@ pub fn shift_click_slot(
     let order = match slot {
         SlotId::Hotbar(_) => main_slots(),
         SlotId::Main(_) => hotbar_slots(),
-        SlotId::Craft(_) | SlotId::Workbench(_) | SlotId::Armor(_) => player_slots_forward(),
+        SlotId::Craft(_) | SlotId::Workbench(_) | SlotId::Chest(_) | SlotId::Armor(_) => {
+            player_slots_forward()
+        }
         SlotId::CraftResult => unreachable!("handled above"),
     };
     match place_stack(inventory, hotbar, stack, &order) {
@@ -423,6 +657,7 @@ fn read_slot(
             workbench.and_then(|grid| grid.get(index % 3, index / 3))
         }
         SlotId::Workbench(_) => None,
+        SlotId::Chest(_) => None,
         SlotId::CraftResult if workbench_open => {
             workbench.and_then(|grid| beta_recipe_book().find(grid))
         }
@@ -463,7 +698,7 @@ fn write_slot(
                 grid.set(index % 3, index / 3, stack);
             }
         }
-        SlotId::Workbench(_) | SlotId::CraftResult => {}
+        SlotId::Workbench(_) | SlotId::Chest(_) | SlotId::CraftResult => {}
     }
 }
 

@@ -13,6 +13,7 @@ use crate::entity::EntitySize;
 use crate::entity::block_drops::natural_drops;
 use crate::entity::block_drops::player_break_drops;
 use crate::entity::dropped_items::spawn_block_drop;
+use crate::entity::dropped_items::spawn_chest_drops;
 use crate::entity::dropped_items::spawn_thrown_item;
 use crate::entity::particles::BlockParticles;
 use crate::inventory::Hotbar;
@@ -170,6 +171,40 @@ pub(super) fn interact_blocks(
         inventory_screen.workbench = false;
         inventory_screen.furnace = true;
         inventory_screen.furnace_position = Some((hit.x, hit.y, hit.z));
+        inventory_screen.chest = false;
+        inventory_screen.chest_position = None;
+        if let Ok((_, mut cursor)) = windows.single_mut() {
+            cursor.visible = true;
+            cursor.grab_mode = CursorGrabMode::None;
+        }
+        state.mining.reset();
+        *focus = BlockFocus::default();
+        return;
+    }
+    if right_click && !inventory_screen.open && hit.is_some_and(|hit| hit.block.is_chest()) {
+        let hit = hit.expect("checked above");
+        if chunks
+            .block_at(hit.x, hit.y + 1, hit.z)
+            .is_some_and(is_opaque_cube)
+        {
+            state.mining.reset();
+            *focus = BlockFocus::default();
+            return;
+        }
+        close_crafting_interface(
+            &mut commands,
+            transform,
+            &mut item_rng,
+            &mut hotbar,
+            &mut inventory,
+            &mut workbench,
+        );
+        inventory_screen.open = true;
+        inventory_screen.workbench = false;
+        inventory_screen.furnace = false;
+        inventory_screen.furnace_position = None;
+        inventory_screen.chest = true;
+        inventory_screen.chest_position = Some((hit.x, hit.y, hit.z));
         if let Ok((_, mut cursor)) = windows.single_mut() {
             cursor.visible = true;
             cursor.grab_mode = CursorGrabMode::None;
@@ -198,6 +233,8 @@ pub(super) fn interact_blocks(
         inventory_screen.workbench = true;
         inventory_screen.furnace = false;
         inventory_screen.furnace_position = None;
+        inventory_screen.chest = false;
+        inventory_screen.chest_position = None;
         workbench.position = Some((hit.x, hit.y, hit.z));
         if let Ok((_, mut cursor)) = windows.single_mut() {
             cursor.visible = true;
@@ -316,6 +353,10 @@ fn apply_break(
         .furnace_at(hit.x, hit.y, hit.z)
         .map(|furnace| furnace.slots.into_iter().flatten().collect::<Vec<_>>())
         .unwrap_or_default();
+    let chest_drops = chunks
+        .chest_at(hit.x, hit.y, hit.z)
+        .map(|chest| chest.slots.into_iter().flatten().collect::<Vec<_>>())
+        .unwrap_or_default();
     let light_edit = is_torch(hit.block)
         || hit.block.is_lit_furnace()
         || attached
@@ -331,6 +372,7 @@ fn apply_break(
         for stack in furnace_drops {
             spawn_block_drop(commands, rng, IVec3::new(hit.x, hit.y, hit.z), stack);
         }
+        spawn_chest_drops(commands, rng, IVec3::new(hit.x, hit.y, hit.z), chest_drops);
         for stack in player_break_drops(hit.block, tool, rng) {
             spawn_block_drop(commands, rng, IVec3::new(hit.x, hit.y, hit.z), stack);
         }
@@ -414,6 +456,9 @@ pub fn place_selected_block_facing(
     if !is_replaceable(current) {
         return false;
     }
+    if selected == BlockId::Chest && !chest_can_place_at(chunks, x, y, z) {
+        return false;
+    }
     if is_crossed_plant(selected)
         && selected != BlockId::SugarCane
         && !chunks.block_at(x, y - 1, z).is_some_and(plant_grows_on)
@@ -470,6 +515,8 @@ pub fn place_selected_block_facing(
         selected.with_furnace_state(furnace_facing, false)
     } else if selected == BlockId::Pumpkin {
         selected.with_pumpkin_facing(furnace_facing)
+    } else if selected == BlockId::Chest {
+        selected.with_chest_facing(furnace_facing)
     } else {
         selected
     };
@@ -484,6 +531,27 @@ pub fn place_selected_block_facing(
     chunks
         .set_block(x, y, z, block)
         .is_some_and(|previous| previous != block)
+}
+
+fn chest_can_place_at(chunks: &WorldChunks, x: i32, y: i32, z: i32) -> bool {
+    let neighbors = [(x - 1, y, z), (x + 1, y, z), (x, y, z - 1), (x, y, z + 1)];
+    let chests = neighbors
+        .into_iter()
+        .filter(|&(nx, ny, nz)| chunks.block_at(nx, ny, nz).is_some_and(BlockId::is_chest))
+        .collect::<Vec<_>>();
+    if chests.len() > 1 {
+        return false;
+    }
+    chests.into_iter().all(|(cx, cy, cz)| {
+        [
+            (cx - 1, cy, cz),
+            (cx + 1, cy, cz),
+            (cx, cy, cz - 1),
+            (cx, cy, cz + 1),
+        ]
+        .into_iter()
+        .all(|(nx, ny, nz)| !chunks.block_at(nx, ny, nz).is_some_and(BlockId::is_chest))
+    })
 }
 
 fn furnace_facing_toward_player(player_forward: Vec3) -> FurnaceFacing {

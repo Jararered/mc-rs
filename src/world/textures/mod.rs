@@ -432,8 +432,29 @@ pub fn block_tile(
         BlockId::SugarCane => (9, 4),
         BlockId::Clay => (8, 4),
         BlockId::MobSpawner => (1, 4),
-        BlockId::Chest if face == 0 || face == 1 => (9, 1),
-        BlockId::Chest => (10, 1),
+        BlockId::ChestNorth
+        | BlockId::ChestEast
+        | BlockId::ChestSouth
+        | BlockId::ChestWest
+        | BlockId::Chest
+            if face == 0 || face == 1 =>
+        {
+            (9, 1)
+        }
+        BlockId::ChestNorth
+        | BlockId::ChestEast
+        | BlockId::ChestSouth
+        | BlockId::ChestWest
+        | BlockId::Chest => {
+            if block
+                .chest_facing()
+                .is_some_and(|facing| facing.face_index() == face)
+            {
+                (11, 1)
+            } else {
+                (10, 1)
+            }
+        }
         BlockId::Lava | BlockId::FlowingLava => (13, 14),
         BlockId::Netherrack => (7, 6),
         BlockId::Glowstone => (9, 6),

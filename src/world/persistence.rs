@@ -46,6 +46,8 @@ use crate::item::ItemId;
 use crate::item::ItemStack;
 use crate::player::Player;
 use crate::world::block::block::BlockId;
+use crate::world::chest::CHEST_SLOTS;
+use crate::world::chest::Chest;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::Chunk;
@@ -427,6 +429,9 @@ struct StoredChunk {
     /// Absent on chunks saved before furnace inventories were added.
     #[serde(default)]
     furnaces: Vec<StoredFurnace>,
+    /// Absent on chunks saved before chest inventories were added.
+    #[serde(default)]
+    chests: Vec<StoredChest>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -436,6 +441,12 @@ struct StoredFurnace {
     burn_ticks: u16,
     fuel_ticks: u16,
     cook_ticks: u16,
+}
+
+#[derive(Serialize, Deserialize)]
+struct StoredChest {
+    index: u16,
+    slots: [Option<StoredStack>; CHEST_SLOTS],
 }
 
 #[derive(Serialize, Deserialize)]
@@ -508,6 +519,14 @@ impl StoredChunk {
                     cook_ticks: furnace.cook_ticks,
                 })
                 .collect(),
+            chests: generated
+                .chunk
+                .chests()
+                .map(|(index, chest)| StoredChest {
+                    index: index as u16,
+                    slots: chest.slots.map(|stack| stack.map(StoredStack::from_stack)),
+                })
+                .collect(),
         }
     }
 
@@ -561,6 +580,22 @@ impl StoredChunk {
                         .min(crate::world::furnace::SMELT_TICKS - 1),
                 },
             );
+        }
+        for chest in self.chests {
+            let index = usize::from(chest.index);
+            if index >= BLOCKS_PER_CHUNK {
+                continue;
+            }
+            let y = index / (CHUNK_SIZE * CHUNK_SIZE);
+            let z = index / CHUNK_SIZE % CHUNK_SIZE;
+            let x = index % CHUNK_SIZE;
+            if !chunk.get(x, y, z).is_some_and(BlockId::is_chest) {
+                continue;
+            }
+            let slots = chest
+                .slots
+                .map(|stack| stack.and_then(StoredStack::into_stack));
+            chunk.insert_chest(index, Chest { slots });
         }
 
         Some(GeneratedChunk {

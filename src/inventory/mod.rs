@@ -8,9 +8,14 @@ use crate::item::ItemStack;
 
 pub use transfer::DragPlace;
 pub use transfer::SlotId;
+pub use transfer::chest_drag_place;
+pub use transfer::chest_slot_accepts_drag;
 pub use transfer::drag_place;
 pub use transfer::hotbar_key_swap;
+pub use transfer::hotbar_key_swap_chest;
+pub use transfer::preview_chest_drag_place;
 pub use transfer::preview_drag_place;
+pub use transfer::shift_click_chest_slot;
 pub use transfer::shift_click_slot;
 pub use transfer::slot_accepts_drag;
 

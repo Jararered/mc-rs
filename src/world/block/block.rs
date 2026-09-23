@@ -156,6 +156,10 @@ pub enum BlockId {
     PumpkinEast = 220,
     PumpkinSouth = 221,
     PumpkinWest = 222,
+    ChestNorth = 223,
+    ChestEast = 224,
+    ChestSouth = 225,
+    ChestWest = 226,
 }
 
 impl BlockId {
@@ -268,6 +272,10 @@ impl BlockId {
             220 => Self::PumpkinEast,
             221 => Self::PumpkinSouth,
             222 => Self::PumpkinWest,
+            223 => Self::ChestNorth,
+            224 => Self::ChestEast,
+            225 => Self::ChestSouth,
+            226 => Self::ChestWest,
             89 => Self::Glowstone,
             90 => Self::NetherPortal,
             91 => Self::JackOLantern,
@@ -346,6 +354,10 @@ impl BlockId {
             Self::MobSpawner => "mob_spawner",
             Self::WoodenStairs => "wooden_stairs",
             Self::Chest => "chest",
+            Self::ChestNorth => "chest_north",
+            Self::ChestEast => "chest_east",
+            Self::ChestSouth => "chest_south",
+            Self::ChestWest => "chest_west",
             Self::RedstoneWire => "redstone_wire",
             Self::DiamondOre => "diamond_ore",
             Self::DiamondBlock => "diamond_block",
@@ -453,6 +465,10 @@ impl BlockId {
                 | Self::MossyCobblestone
                 | Self::MobSpawner
                 | Self::Chest
+                | Self::ChestNorth
+                | Self::ChestEast
+                | Self::ChestSouth
+                | Self::ChestWest
                 | Self::Obsidian
                 | Self::DeadBush
                 | Self::Torch
@@ -518,6 +534,32 @@ impl BlockId {
                 | Self::LitFurnaceSouth
                 | Self::LitFurnaceWest
         )
+    }
+
+    pub const fn is_chest(self) -> bool {
+        matches!(
+            self,
+            Self::Chest | Self::ChestNorth | Self::ChestEast | Self::ChestSouth | Self::ChestWest
+        )
+    }
+
+    pub const fn chest_facing(self) -> Option<FurnaceFacing> {
+        match self {
+            Self::ChestNorth | Self::Chest => Some(FurnaceFacing::North),
+            Self::ChestEast => Some(FurnaceFacing::East),
+            Self::ChestSouth => Some(FurnaceFacing::South),
+            Self::ChestWest => Some(FurnaceFacing::West),
+            _ => None,
+        }
+    }
+
+    pub const fn with_chest_facing(self, facing: FurnaceFacing) -> Self {
+        match facing {
+            FurnaceFacing::North => Self::ChestNorth,
+            FurnaceFacing::East => Self::ChestEast,
+            FurnaceFacing::South => Self::ChestSouth,
+            FurnaceFacing::West => Self::ChestWest,
+        }
     }
 
     pub const fn is_lit_furnace(self) -> bool {
@@ -632,6 +674,9 @@ impl BlockId {
             | Self::LitFurnace => (Self::Furnace, 0),
             Self::PumpkinNorth | Self::PumpkinEast | Self::PumpkinSouth | Self::PumpkinWest => {
                 (Self::Pumpkin, 0)
+            }
+            Self::ChestNorth | Self::ChestEast | Self::ChestSouth | Self::ChestWest => {
+                (Self::Chest, 0)
             }
             block => (block, 0),
         }

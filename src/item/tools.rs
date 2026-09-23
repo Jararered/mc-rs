@@ -126,6 +126,7 @@ fn pick_effective(block: BlockId) -> bool {
 /// and pumpkins are wood or pumpkin and are not in this list.
 fn axe_effective(block: BlockId) -> bool {
     is_log(block)
+        || block.is_chest()
         || matches!(
             block,
             BlockId::WoodenPlanks

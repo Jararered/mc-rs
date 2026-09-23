@@ -169,6 +169,53 @@ pub fn spawn_block_drop(
     );
 }
 
+/// Spill chest contents as Beta-style random piles when the chest block breaks.
+pub fn spawn_chest_drops(
+    commands: &mut Commands,
+    rng: &mut ItemRng,
+    block: IVec3,
+    stacks: impl IntoIterator<Item = ItemStack>,
+) {
+    for stack in stacks {
+        let position = Vec3::new(
+            block.x as f32 + rng.unit() * 0.8 + 0.1,
+            block.y as f32 + rng.unit() * 0.8 + 0.1,
+            block.z as f32 + rng.unit() * 0.8 + 0.1,
+        );
+        let mut remaining = stack.count();
+        while remaining > 0 {
+            let count = ((rng.unit() * 21.0) as u8 + 10).min(remaining);
+            remaining -= count;
+            let pile = ItemStack::with_data(stack.item(), count, stack.data())
+                .expect("a chest pile keeps valid item data and stack size");
+            let (gaussian_x, gaussian_y) = gaussian_pair(rng);
+            let (gaussian_z, _) = gaussian_pair(rng);
+            let motion = Vec3::new(
+                gaussian_x * 0.05,
+                gaussian_y * 0.05 + 0.2,
+                gaussian_z * 0.05,
+            );
+            spawn_item(
+                commands,
+                position,
+                pile,
+                motion,
+                PICKUP_DELAY_TICKS,
+                rng.unit() * std::f32::consts::TAU,
+                rng.next_u64(),
+            );
+        }
+    }
+}
+
+fn gaussian_pair(rng: &mut ItemRng) -> (f32, f32) {
+    let first = rng.unit().max(f32::MIN_POSITIVE);
+    let second = rng.unit();
+    let radius = (-2.0 * first.ln()).sqrt();
+    let angle = second * std::f32::consts::TAU;
+    (radius * angle.cos(), radius * angle.sin())
+}
+
 /// Player throw from eye height. `look` is the view direction. Pickup waits 40 ticks.
 pub fn spawn_thrown_item(
     commands: &mut Commands,

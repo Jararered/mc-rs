@@ -18,7 +18,6 @@ pub fn is_opaque_cube(block: BlockId) -> bool {
             | BlockId::Lava
             | BlockId::FlowingLava
             | BlockId::MobSpawner
-            | BlockId::Chest
             | BlockId::Ice
             | BlockId::SnowLayer
             | BlockId::Cactus
@@ -30,7 +29,7 @@ pub fn is_opaque_cube(block: BlockId) -> bool {
             | BlockId::TorchEast
             | BlockId::TorchNorth
             | BlockId::TorchSouth
-    )
+    ) && !block.is_chest()
 }
 
 /// Whether an entity AABB should collide with this block.
@@ -323,6 +322,11 @@ pub fn hardness(block: BlockId) -> f32 {
         BlockId::MossyCobblestone => 2.0,
         BlockId::Obsidian => 10.0,
         BlockId::DiamondOre => 3.0,
+        BlockId::Chest
+        | BlockId::ChestNorth
+        | BlockId::ChestEast
+        | BlockId::ChestSouth
+        | BlockId::ChestWest => 2.5,
         BlockId::DiamondBlock => 5.0,
         BlockId::CraftingTable => 2.5,
         BlockId::RedstoneOre | BlockId::LitRedstoneOre => 3.0,
@@ -375,7 +379,6 @@ pub fn hardness(block: BlockId) -> f32 {
         | BlockId::Fire
         | BlockId::MobSpawner
         | BlockId::WoodenStairs
-        | BlockId::Chest
         | BlockId::RedstoneWire
         | BlockId::Crops
         | BlockId::Farmland

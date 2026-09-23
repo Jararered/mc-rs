@@ -10,6 +10,7 @@ pub use transfer::DragPlace;
 pub use transfer::SlotId;
 pub use transfer::drag_place;
 pub use transfer::hotbar_key_swap;
+pub use transfer::preview_drag_place;
 pub use transfer::shift_click_slot;
 pub use transfer::slot_accepts_drag;
 

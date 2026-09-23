@@ -29,6 +29,7 @@ use crate::inventory::Inventory;
 use crate::inventory::SlotId;
 use crate::inventory::drag_place;
 use crate::inventory::hotbar_key_swap;
+use crate::inventory::preview_drag_place;
 use crate::inventory::shift_click_slot;
 use crate::inventory::slot_accepts_drag;
 use crate::item::ItemData;
@@ -1166,6 +1167,7 @@ fn refresh(
     player: Query<(&Hotbar, &Inventory), With<Player>>,
     workbench: Res<WorkbenchUiSession>,
     chunks: Res<WorldChunks>,
+    drag: Res<SlotDrag>,
     mut labels: Query<
         (
             &SlotLabel,
@@ -1250,10 +1252,24 @@ fn refresh(
     let Ok((hotbar, inventory)) = player.single() else {
         return;
     };
+    let preview_slots: Vec<_> = drag.slots.iter().copied().map(to_slot_id).collect();
+    let preview = drag.button.map_or_else(Vec::new, |button| {
+        preview_drag_place(
+            inventory,
+            hotbar,
+            Some(&workbench.grid),
+            &preview_slots,
+            if button == MouseButton::Right {
+                DragPlace::OneEach
+            } else {
+                DragPlace::Split
+            },
+        )
+    });
     for (label, mut text, mut node, mut layout, mut text_font, mut line_height, mut shadow) in
         &mut labels
     {
-        let stack = slot_stack(
+        let stack = displayed_stack(
             label.0,
             hotbar,
             inventory,
@@ -1261,6 +1277,7 @@ fn refresh(
             screen.workbench,
             screen.furnace_position,
             &chunks,
+            &preview,
         );
         let has_icon = stack
             .and_then(|stack| block_icons.rect_for_stack(stack))
@@ -1285,7 +1302,7 @@ fn refresh(
         );
     }
     for (bar, mut node, mut visibility, mut color) in &mut bars {
-        let stack = slot_stack(
+        let stack = displayed_stack(
             bar.0,
             hotbar,
             inventory,
@@ -1293,6 +1310,7 @@ fn refresh(
             screen.workbench,
             screen.furnace_position,
             &chunks,
+            &preview,
         );
         if let Some((width, red, green)) = stack.and_then(durability_bar) {
             *visibility = Visibility::Inherited;
@@ -1309,7 +1327,7 @@ fn refresh(
         }
     }
     for (icon, mut image, mut visibility) in &mut icons {
-        let stack = slot_stack(
+        let stack = displayed_stack(
             icon.0,
             hotbar,
             inventory,
@@ -1317,6 +1335,7 @@ fn refresh(
             screen.workbench,
             screen.furnace_position,
             &chunks,
+            &preview,
         );
         if let Some(rect) = stack.and_then(|stack| block_icons.rect_for_stack(stack)) {
             image.rect = Some(rect);
@@ -1414,6 +1433,32 @@ fn refresh(
             **text = label_text;
         }
     }
+}
+
+fn displayed_stack(
+    slot: Slot,
+    hotbar: &Hotbar,
+    inventory: &Inventory,
+    workbench: &WorkbenchUiSession,
+    workbench_open: bool,
+    furnace_position: Option<(i32, i32, i32)>,
+    chunks: &WorldChunks,
+    preview: &[(SlotId, ItemStack)],
+) -> Option<ItemStack> {
+    preview
+        .iter()
+        .find_map(|(preview_slot, stack)| (*preview_slot == to_slot_id(slot)).then_some(*stack))
+        .or_else(|| {
+            slot_stack(
+                slot,
+                hotbar,
+                inventory,
+                workbench,
+                workbench_open,
+                furnace_position,
+                chunks,
+            )
+        })
 }
 
 fn slot_stack(

@@ -348,6 +348,58 @@ fn right_drag_places_one_item_in_each_slot() {
 }
 
 #[test]
+fn left_drag_preview_shows_split_results_and_merges_without_mutating() {
+    use game::inventory::DragPlace;
+    use game::inventory::SlotId;
+    use game::inventory::preview_drag_place;
+
+    let mut inventory = game::inventory::Inventory::default();
+    let hotbar = Hotbar::default();
+    inventory.carried = Some(stack(ItemId::Diamond, 64));
+    inventory.main[1] = Some(stack(ItemId::Diamond, 10));
+    let before = inventory.clone();
+    let slots = [SlotId::Main(0), SlotId::Main(1), SlotId::Main(2)];
+
+    let preview = preview_drag_place(&inventory, &hotbar, None, &slots, DragPlace::Split);
+
+    assert_eq!(preview.len(), 3);
+    assert_eq!(preview[0], (SlotId::Main(0), stack(ItemId::Diamond, 21)));
+    assert_eq!(preview[1], (SlotId::Main(1), stack(ItemId::Diamond, 31)));
+    assert_eq!(preview[2], (SlotId::Main(2), stack(ItemId::Diamond, 21)));
+    assert_eq!(inventory.main, before.main);
+    assert_eq!(inventory.carried, before.carried);
+}
+
+#[test]
+fn right_drag_preview_places_one_each_and_omits_invalid_slots() {
+    use game::inventory::DragPlace;
+    use game::inventory::SlotId;
+    use game::inventory::preview_drag_place;
+
+    let mut inventory = game::inventory::Inventory::default();
+    let hotbar = Hotbar::default();
+    inventory.carried = Some(stack(ItemId::Diamond, 5));
+    inventory.main[1] = Some(stack(ItemId::Coal, 1));
+    inventory.main[2] = Some(stack(ItemId::Diamond, 64));
+    inventory.main[3] = Some(stack(ItemId::Diamond, 63));
+    let before = inventory.clone();
+    let slots = [
+        SlotId::Main(0),
+        SlotId::Main(1),
+        SlotId::Main(2),
+        SlotId::Main(3),
+    ];
+
+    let preview = preview_drag_place(&inventory, &hotbar, None, &slots, DragPlace::OneEach);
+
+    assert_eq!(preview.len(), 2);
+    assert_eq!(preview[0], (SlotId::Main(0), stack(ItemId::Diamond, 1)));
+    assert_eq!(preview[1], (SlotId::Main(3), stack(ItemId::Diamond, 64)));
+    assert_eq!(inventory.main, before.main);
+    assert_eq!(inventory.carried, before.carried);
+}
+
+#[test]
 fn drag_over_one_slot_is_left_for_a_normal_click() {
     use game::inventory::DragPlace;
     use game::inventory::SlotId;

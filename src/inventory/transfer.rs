@@ -134,52 +134,25 @@ pub fn drag_place(
     slots: &[SlotId],
     mode: DragPlace,
 ) -> bool {
+    let preview = preview_drag_place(inventory, hotbar, workbench.as_deref(), slots, mode);
     let Some(carried) = inventory.carried else {
         return false;
     };
-    let mut accepted = Vec::new();
-    for slot in slots {
-        if accepted.contains(slot) {
-            continue;
-        }
-        if slot_accepts_drag(inventory, hotbar, workbench.as_deref(), *slot, carried) {
-            accepted.push(*slot);
-        }
-    }
-    if accepted.len() < 2 || (carried.count() as usize) < accepted.len() {
+    if preview.is_empty() {
         return false;
     }
-    let share = match mode {
-        DragPlace::Split => carried.count() / accepted.len() as u8,
-        DragPlace::OneEach => 1,
-    };
-    if share == 0 {
-        return false;
-    }
-    let max = carried.definition().max_stack_size;
-    let existing: Vec<u8> = accepted
-        .iter()
-        .map(|slot| {
-            read_slot(inventory, hotbar, workbench.as_deref(), false, *slot)
-                .map(|stack| stack.count())
-                .unwrap_or(0)
-        })
-        .collect();
     let mut removed = 0u16;
-    for (slot, already) in accepted.iter().zip(existing) {
-        let target = (u16::from(share) + u16::from(already)).min(u16::from(max)) as u8;
-        let add = target.saturating_sub(already);
-        if add == 0 {
-            continue;
-        }
+    for (slot, stack) in preview {
+        let already = read_slot(inventory, hotbar, workbench.as_deref(), false, slot)
+            .map_or(0, ItemStack::count);
+        removed += u16::from(stack.count() - already);
         write_slot(
             inventory,
             hotbar,
             workbench.as_deref_mut(),
-            *slot,
-            ItemStack::with_data(carried.item(), target, carried.data()).ok(),
+            slot,
+            Some(stack),
         );
-        removed += u16::from(add);
     }
     let left = u16::from(carried.count()).saturating_sub(removed);
     inventory.carried = (left > 0).then(|| {
@@ -187,6 +160,52 @@ pub fn drag_place(
             .expect("drag remainder stays within the stack limit")
     });
     true
+}
+
+/// Calculate the resulting stacks for a drag without changing inventory data.
+/// Invalid slots and stacks that would not receive any items are omitted.
+pub fn preview_drag_place(
+    inventory: &Inventory,
+    hotbar: &Hotbar,
+    workbench: Option<&CraftingGrid>,
+    slots: &[SlotId],
+    mode: DragPlace,
+) -> Vec<(SlotId, ItemStack)> {
+    let Some(carried) = inventory.carried else {
+        return Vec::new();
+    };
+    let mut accepted = Vec::new();
+    for slot in slots {
+        if accepted.contains(slot) {
+            continue;
+        }
+        if slot_accepts_drag(inventory, hotbar, workbench, *slot, carried) {
+            accepted.push(*slot);
+        }
+    }
+    if accepted.len() < 2 || (carried.count() as usize) < accepted.len() {
+        return Vec::new();
+    }
+    let share = match mode {
+        DragPlace::Split => carried.count() / accepted.len() as u8,
+        DragPlace::OneEach => 1,
+    };
+    if share == 0 {
+        return Vec::new();
+    }
+    let max = carried.definition().max_stack_size;
+    accepted
+        .into_iter()
+        .filter_map(|slot| {
+            let already =
+                read_slot(inventory, hotbar, workbench, false, slot).map_or(0, ItemStack::count);
+            let target = (u16::from(share) + u16::from(already)).min(u16::from(max)) as u8;
+            (target > already)
+                .then(|| ItemStack::with_data(carried.item(), target, carried.data()).ok())
+                .flatten()
+                .map(|stack| (slot, stack))
+        })
+        .collect()
 }
 
 /// Empty slots accept the carried stack. A partial matching stack accepts more.

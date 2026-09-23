@@ -1,10 +1,12 @@
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::ChunkPos;
+use num_enum::FromPrimitive;
+use num_enum::IntoPrimitive;
 
 use super::noise::SimplexOctaves;
 
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, FromPrimitive, IntoPrimitive)]
 pub enum Biome {
     Rainforest,
     Swampland,
@@ -17,30 +19,22 @@ pub enum Biome {
     Plains,
     IceDesert,
     Tundra,
+    #[num_enum(catch_all)]
+    Unknown(u8),
 }
 
 impl Biome {
     /// Stable on-disk value. Persistence stores this rather than the enum's
     /// variant index so saves survive new biomes being added.
-    pub const fn as_u8(self) -> u8 {
-        self as u8
+    pub fn as_u8(self) -> u8 {
+        self.into()
     }
 
-    pub const fn from_u8(value: u8) -> Option<Self> {
-        Some(match value {
-            0 => Self::Rainforest,
-            1 => Self::Swampland,
-            2 => Self::SeasonalForest,
-            3 => Self::Forest,
-            4 => Self::Savanna,
-            5 => Self::Shrubland,
-            6 => Self::Taiga,
-            7 => Self::Desert,
-            8 => Self::Plains,
-            9 => Self::IceDesert,
-            10 => Self::Tundra,
-            _ => return None,
-        })
+    pub fn from_u8(value: u8) -> Option<Self> {
+        match Self::from(value) {
+            Self::Unknown(_) => None,
+            biome => Some(biome),
+        }
     }
 }
 

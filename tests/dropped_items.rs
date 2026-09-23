@@ -178,11 +178,11 @@ fn break_drops_follow_beta_tool_and_item_rules() {
     assert!(break_drops(BlockId::Leaves, None, &[1]).is_empty());
     assert_eq!(
         break_drops(BlockId::Leaves, None, &[0]),
-        vec![one(ItemId::Block(BlockId::Sapling), 0)]
+        vec![one(ItemId::BlockSapling, 0)]
     );
     assert_eq!(
         break_drops(BlockId::SpruceLeaves, None, &[0]),
-        vec![one(ItemId::Block(BlockId::Sapling), 1)]
+        vec![one(ItemId::BlockSapling, 1)]
     );
     assert_eq!(
         break_drops(BlockId::Leaves, shears, &[]),
@@ -190,11 +190,11 @@ fn break_drops_follow_beta_tool_and_item_rules() {
     );
     assert_eq!(
         break_drops(BlockId::SpruceLeaves, shears, &[]),
-        vec![one(ItemId::Block(BlockId::Leaves), 1)]
+        vec![one(ItemId::BlockLeaves, 1)]
     );
     assert_eq!(
         break_drops(BlockId::BirchLeaves, shears, &[]),
-        vec![one(ItemId::Block(BlockId::Leaves), 2)]
+        vec![one(ItemId::BlockLeaves, 2)]
     );
 
     assert_eq!(
@@ -230,11 +230,11 @@ fn break_drops_follow_beta_tool_and_item_rules() {
 fn break_drops_preserve_wood_species_and_clear_torch_facing() {
     assert_eq!(
         break_drops(BlockId::SpruceWood, None, &[]),
-        vec![one(ItemId::Block(BlockId::Wood), 1)]
+        vec![one(ItemId::BlockWood, 1)]
     );
     assert_eq!(
         break_drops(BlockId::BirchWood, None, &[]),
-        vec![one(ItemId::Block(BlockId::Wood), 2)]
+        vec![one(ItemId::BlockWood, 2)]
     );
     assert_eq!(
         natural_drops(

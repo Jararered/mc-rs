@@ -9,6 +9,38 @@ use game::item::tools::can_harvest;
 use game::item::tools::str_vs_block;
 use game::item::tools::ticks_to_break;
 use game::world::block::block::BlockId;
+use game::world::generation::Biome;
+
+#[test]
+fn numeric_enum_conversions_preserve_valid_and_unknown_values() {
+    for raw in 0..=u8::MAX {
+        let block = BlockId::from(raw);
+        let round_trip: u8 = block.into();
+        assert_eq!(round_trip, raw);
+        assert_eq!(
+            BlockId::from_u8(raw).is_some(),
+            !matches!(block, BlockId::Unknown(_))
+        );
+
+        let biome = Biome::from(raw);
+        let round_trip: u8 = biome.into();
+        assert_eq!(round_trip, raw);
+        assert_eq!(
+            Biome::from_u8(raw).is_some(),
+            !matches!(biome, Biome::Unknown(_))
+        );
+    }
+
+    for raw in 0..=u16::MAX {
+        let item = ItemId::from(raw);
+        let round_trip: u16 = item.into();
+        assert_eq!(round_trip, raw);
+        assert_eq!(
+            ItemId::from_u16(raw).is_some(),
+            !matches!(item, ItemId::Unknown(_))
+        );
+    }
+}
 
 #[test]
 fn registries_cover_beta_ranges_without_registering_holes_or_air_items() {
@@ -16,7 +48,7 @@ fn registries_cover_beta_ranges_without_registering_holes_or_air_items() {
         (0..=u8::MAX)
             .filter(|raw| BlockId::from_u8(*raw).is_some())
             .count(),
-        120
+        124
     );
     assert_eq!(ItemRegistry::iter().count(), 202);
     for raw in 0..=u16::MAX {
@@ -86,6 +118,8 @@ fn native_save_values_and_supported_states_round_trip() {
                 assert_eq!(placed, Some(BlockId::Pumpkin));
             } else if block.is_furnace() {
                 assert_eq!(placed, Some(BlockId::Furnace));
+            } else if block.is_chest() {
+                assert_eq!(placed, Some(BlockId::Chest));
             } else if block.in_world() {
                 assert_eq!(placed, Some(block));
             }
@@ -108,8 +142,8 @@ fn native_save_values_and_supported_states_round_trip() {
 fn stacks_reject_unknown_ids_zero_overflow_and_invalid_data() {
     assert!(ItemId::from_u16(0).is_none());
     assert_eq!(
-        ItemStack::new(ItemId::Block(BlockId::Air), 1),
-        Err(StackError::UnknownItem(ItemId::Block(BlockId::Air)))
+        ItemStack::new(ItemId::Unknown(0), 1),
+        Err(StackError::UnknownItem(ItemId::Unknown(0)))
     );
     assert!(ItemStack::new(ItemId::Coal, 0).is_err());
     assert!(ItemStack::new(ItemId::Coal, 65).is_err());
@@ -155,23 +189,23 @@ fn beta_stack_and_durability_rules_include_pre_release_differences() {
 #[test]
 fn species_survive_stacks_but_torch_attachments_do_not() {
     let spruce = ItemStack::from_block(BlockId::SpruceWood, 4).unwrap();
-    assert_eq!(spruce.item(), ItemId::Block(BlockId::Wood));
+    assert_eq!(spruce.item(), ItemId::BlockWood);
     assert_eq!(spruce.data(), 1);
     assert_eq!(spruce.runtime_block(), Some(BlockId::SpruceWood));
     let birch = ItemStack::from_block(BlockId::BirchLeaves, 4).unwrap();
-    assert_eq!(birch.item(), ItemId::Block(BlockId::Leaves));
+    assert_eq!(birch.item(), ItemId::BlockLeaves);
     assert_eq!(birch.data(), 2);
     assert_eq!(birch.runtime_block(), Some(BlockId::BirchLeaves));
     let spruce_planks = ItemStack::from_block(BlockId::SprucePlanks, 4).unwrap();
-    assert_eq!(spruce_planks.item(), ItemId::Block(BlockId::WoodenPlanks));
+    assert_eq!(spruce_planks.item(), ItemId::BlockWoodenPlanks);
     assert_eq!(spruce_planks.data(), 1);
     assert_eq!(spruce_planks.runtime_block(), Some(BlockId::SprucePlanks));
     let birch_planks = ItemStack::from_block(BlockId::BirchPlanks, 4).unwrap();
-    assert_eq!(birch_planks.item(), ItemId::Block(BlockId::WoodenPlanks));
+    assert_eq!(birch_planks.item(), ItemId::BlockWoodenPlanks);
     assert_eq!(birch_planks.data(), 2);
     assert_eq!(birch_planks.runtime_block(), Some(BlockId::BirchPlanks));
     let torch = ItemStack::from_block(BlockId::TorchEast, 4).unwrap();
-    assert_eq!(torch.item(), ItemId::Block(BlockId::Torch));
+    assert_eq!(torch.item(), ItemId::BlockTorch);
     assert_eq!(torch.data(), 0);
     assert_eq!(torch.runtime_block(), Some(BlockId::Torch));
     assert!(ItemStack::from_block(BlockId::Air, 1).is_err());

@@ -54,7 +54,7 @@ fn beta_smelting_recipes_cover_the_reference_list() {
             ItemStack::with_data(ItemId::Dye, 1, 2).unwrap(),
         ),
         (
-            ItemStack::with_data(ItemId::Block(BlockId::Wood), 1, 2).unwrap(),
+            ItemStack::with_data(ItemId::BlockWood, 1, 2).unwrap(),
             ItemStack::with_data(ItemId::Coal, 1, 1).unwrap(),
         ),
     ];

@@ -102,12 +102,12 @@ fn sorting_uses_block_families_then_materials_and_equipment() {
     assert_eq!(
         items,
         vec![
-            ItemId::Block(BlockId::Stone),
-            ItemId::Block(BlockId::Dirt),
+            ItemId::BlockStone,
+            ItemId::BlockDirt,
             ItemId::SugarCane,
-            ItemId::Block(BlockId::WoodenPlanks),
-            ItemId::Block(BlockId::Wool),
-            ItemId::Block(BlockId::Torch),
+            ItemId::BlockWoodenPlanks,
+            ItemId::BlockWool,
+            ItemId::BlockTorch,
             ItemId::Diamond,
             ItemId::Bow,
             ItemId::WoodenPickaxe,
@@ -175,7 +175,7 @@ fn sorting_follows_the_top_level_tree_and_places_equipment_last() {
     assert_eq!(
         items,
         vec![
-            ItemId::Block(BlockId::Stone),
+            ItemId::BlockStone,
             ItemId::Apple,
             ItemId::GoldIngot,
             ItemId::Boat,
@@ -212,15 +212,15 @@ fn block_sorting_follows_natural_building_functional_and_redstone_groups() {
     assert_eq!(
         items,
         vec![
-            ItemId::Block(BlockId::Stone),
-            ItemId::Block(BlockId::Dirt),
-            ItemId::Block(BlockId::WoodenPlanks),
-            ItemId::Block(BlockId::Wool),
-            ItemId::Block(BlockId::Chest),
-            ItemId::Block(BlockId::CraftingTable),
-            ItemId::Block(BlockId::RedstoneWire),
-            ItemId::Block(BlockId::Torch),
-            ItemId::Block(BlockId::Repeater),
+            ItemId::BlockStone,
+            ItemId::BlockDirt,
+            ItemId::BlockWoodenPlanks,
+            ItemId::BlockWool,
+            ItemId::BlockChest,
+            ItemId::BlockCraftingTable,
+            ItemId::BlockRedstoneWire,
+            ItemId::BlockTorch,
+            ItemId::BlockRepeater,
         ]
     );
 }

@@ -2,6 +2,8 @@
 //! including blocks the world does not place yet. `200..` are private chunk
 //! values for wood and plank species, plant data, and oriented blocks.
 use crate::item::registry::ItemData;
+use num_enum::FromPrimitive;
+use num_enum::IntoPrimitive;
 
 /// Horizontal face presented as the front of a furnace.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -26,7 +28,7 @@ impl FurnaceFacing {
 }
 
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, FromPrimitive, IntoPrimitive)]
 pub enum BlockId {
     Air = 0,
     Stone = 1,
@@ -160,141 +162,20 @@ pub enum BlockId {
     ChestEast = 224,
     ChestSouth = 225,
     ChestWest = 226,
+    #[num_enum(catch_all)]
+    Unknown(u8),
 }
 
 impl BlockId {
-    pub const fn as_u8(self) -> u8 {
-        self as u8
+    pub fn as_u8(self) -> u8 {
+        self.into()
     }
 
-    pub const fn from_u8(value: u8) -> Option<Self> {
-        Some(match value {
-            0 => Self::Air,
-            1 => Self::Stone,
-            2 => Self::Grass,
-            3 => Self::Dirt,
-            4 => Self::Cobblestone,
-            5 => Self::WoodenPlanks,
-            6 => Self::Sapling,
-            7 => Self::Bedrock,
-            8 => Self::FlowingWater,
-            9 => Self::Water,
-            10 => Self::FlowingLava,
-            11 => Self::Lava,
-            12 => Self::Sand,
-            13 => Self::Gravel,
-            14 => Self::GoldOre,
-            15 => Self::IronOre,
-            16 => Self::CoalOre,
-            17 => Self::Wood,
-            18 => Self::Leaves,
-            19 => Self::Sponge,
-            20 => Self::Glass,
-            21 => Self::LapisOre,
-            22 => Self::LapisBlock,
-            23 => Self::Dispenser,
-            24 => Self::Sandstone,
-            25 => Self::NoteBlock,
-            26 => Self::Bed,
-            27 => Self::PoweredRail,
-            28 => Self::DetectorRail,
-            29 => Self::StickyPiston,
-            30 => Self::Cobweb,
-            31 => Self::TallGrass,
-            32 => Self::DeadBush,
-            33 => Self::Piston,
-            34 => Self::PistonHead,
-            35 => Self::Wool,
-            36 => Self::MovingPiston,
-            37 => Self::Dandelion,
-            38 => Self::Rose,
-            39 => Self::BrownMushroom,
-            40 => Self::RedMushroom,
-            41 => Self::GoldBlock,
-            42 => Self::IronBlock,
-            43 => Self::DoubleStoneSlab,
-            44 => Self::StoneSlab,
-            45 => Self::Bricks,
-            46 => Self::Tnt,
-            47 => Self::Bookshelf,
-            48 => Self::MossyCobblestone,
-            49 => Self::Obsidian,
-            50 => Self::Torch,
-            51 => Self::Fire,
-            52 => Self::MobSpawner,
-            53 => Self::WoodenStairs,
-            54 => Self::Chest,
-            55 => Self::RedstoneWire,
-            56 => Self::DiamondOre,
-            57 => Self::DiamondBlock,
-            58 => Self::CraftingTable,
-            59 => Self::Crops,
-            60 => Self::Farmland,
-            61 => Self::Furnace,
-            62 => Self::LitFurnace,
-            63 => Self::StandingSign,
-            64 => Self::WoodenDoor,
-            65 => Self::Ladder,
-            66 => Self::Rail,
-            67 => Self::CobblestoneStairs,
-            68 => Self::WallSign,
-            69 => Self::Lever,
-            70 => Self::StonePressurePlate,
-            71 => Self::IronDoor,
-            72 => Self::WoodenPressurePlate,
-            73 => Self::RedstoneOre,
-            74 => Self::LitRedstoneOre,
-            75 => Self::UnlitRedstoneTorch,
-            76 => Self::RedstoneTorch,
-            77 => Self::StoneButton,
-            78 => Self::SnowLayer,
-            79 => Self::Ice,
-            80 => Self::Snow,
-            81 => Self::Cactus,
-            82 => Self::Clay,
-            83 => Self::SugarCane,
-            84 => Self::Jukebox,
-            85 => Self::Fence,
-            86 => Self::Pumpkin,
-            87 => Self::Netherrack,
-            88 => Self::SoulSand,
-            209 => Self::FurnaceNorth,
-            210 => Self::FurnaceEast,
-            211 => Self::FurnaceSouth,
-            212 => Self::FurnaceWest,
-            213 => Self::LitFurnaceNorth,
-            214 => Self::LitFurnaceEast,
-            215 => Self::LitFurnaceSouth,
-            216 => Self::LitFurnaceWest,
-            217 => Self::SprucePlanks,
-            218 => Self::BirchPlanks,
-            219 => Self::PumpkinNorth,
-            220 => Self::PumpkinEast,
-            221 => Self::PumpkinSouth,
-            222 => Self::PumpkinWest,
-            223 => Self::ChestNorth,
-            224 => Self::ChestEast,
-            225 => Self::ChestSouth,
-            226 => Self::ChestWest,
-            89 => Self::Glowstone,
-            90 => Self::NetherPortal,
-            91 => Self::JackOLantern,
-            92 => Self::Cake,
-            93 => Self::Repeater,
-            94 => Self::PoweredRepeater,
-            95 => Self::LockedChest,
-            96 => Self::Trapdoor,
-            200 => Self::SpruceLeaves,
-            201 => Self::BirchLeaves,
-            202 => Self::SpruceWood,
-            203 => Self::BirchWood,
-            204 => Self::TorchWest,
-            205 => Self::TorchEast,
-            206 => Self::TorchNorth,
-            207 => Self::TorchSouth,
-            208 => Self::Fern,
-            _ => return None,
-        })
+    pub fn from_u8(value: u8) -> Option<Self> {
+        match Self::from(value) {
+            Self::Unknown(_) => None,
+            block => Some(block),
+        }
     }
 
     pub const fn name(self) -> &'static str {
@@ -423,6 +304,7 @@ impl BlockId {
             Self::LitFurnaceEast => "lit_furnace_east",
             Self::LitFurnaceSouth => "lit_furnace_south",
             Self::LitFurnaceWest => "lit_furnace_west",
+            Self::Unknown(_) => "unknown",
         }
     }
 

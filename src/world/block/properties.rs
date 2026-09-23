@@ -403,7 +403,8 @@ pub fn hardness(block: BlockId) -> f32 {
         | BlockId::Repeater
         | BlockId::PoweredRepeater
         | BlockId::LockedChest
-        | BlockId::Trapdoor => 0.0,
+        | BlockId::Trapdoor
+        | BlockId::Unknown(_) => 0.0,
     }
 }
 

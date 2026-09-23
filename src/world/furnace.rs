@@ -99,10 +99,7 @@ impl Furnace {
 
 /// Complete Beta 1.7.3 smelting map. Log species share the same charcoal result.
 pub fn smelting_result(input: ItemStack) -> Option<ItemStack> {
-    let (item, data) = match input.item() {
-        ItemId::Block(block) => (Some(block), input.data()),
-        _ => (None, input.data()),
-    };
+    let (item, data) = (input.item().block(), input.data());
     let result = match (item, input.item()) {
         (Some(BlockId::IronOre), _) => ItemStack::new(ItemId::IronIngot, 1).ok(),
         (Some(BlockId::GoldOre), _) => ItemStack::new(ItemId::GoldIngot, 1).ok(),
@@ -125,8 +122,8 @@ pub fn fuel_ticks(fuel: ItemStack) -> Option<u16> {
         ItemId::Coal => Some(1_600),
         ItemId::Stick => Some(100),
         ItemId::LavaBucket => Some(20_000),
-        ItemId::Block(BlockId::Sapling) => Some(100),
-        ItemId::Block(block) if is_wood_material(block) => Some(300),
+        ItemId::BlockSapling => Some(100),
+        item if item.block().is_some_and(is_wood_material) => Some(300),
         _ => None,
     }
 }

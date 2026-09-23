@@ -16,7 +16,7 @@ fn registries_cover_beta_ranges_without_registering_holes_or_air_items() {
         (0..=u8::MAX)
             .filter(|raw| BlockId::from_u8(*raw).is_some())
             .count(),
-        116
+        120
     );
     assert_eq!(ItemRegistry::iter().count(), 202);
     for raw in 0..=u16::MAX {
@@ -76,6 +76,14 @@ fn native_save_values_and_supported_states_round_trip() {
                 BlockId::TorchWest | BlockId::TorchEast | BlockId::TorchNorth | BlockId::TorchSouth
             ) {
                 assert_eq!(placed, Some(BlockId::Torch));
+            } else if matches!(
+                block,
+                BlockId::PumpkinNorth
+                    | BlockId::PumpkinEast
+                    | BlockId::PumpkinSouth
+                    | BlockId::PumpkinWest
+            ) {
+                assert_eq!(placed, Some(BlockId::Pumpkin));
             } else if block.is_furnace() {
                 assert_eq!(placed, Some(BlockId::Furnace));
             } else if block.in_world() {

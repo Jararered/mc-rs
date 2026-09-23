@@ -35,7 +35,9 @@ use crate::inventory::hotbar_key_swap;
 use crate::inventory::hotbar_key_swap_chest;
 use crate::inventory::preview_chest_drag_place;
 use crate::inventory::preview_drag_place;
+use crate::inventory::quick_move_drag_slot;
 use crate::inventory::shift_click_chest_slot;
+use crate::inventory::shift_click_furnace_slot;
 use crate::inventory::shift_click_slot;
 use crate::inventory::slot_accepts_drag;
 use crate::inventory::sort_container_slots;
@@ -306,6 +308,8 @@ struct SlotDrag {
     button: Option<MouseButton>,
     origin: Option<Slot>,
     slots: Vec<Slot>,
+    quick_move: bool,
+    quick_move_visited: Vec<SlotId>,
 }
 
 #[derive(Resource, Default)]
@@ -1021,6 +1025,46 @@ fn handle_slots(
                 }
             }
         }
+        if drag.button.is_none()
+            && shift
+            && mouse.just_pressed(MouseButton::Left)
+            && let Some(slot) = hovered
+        {
+            drag.button = Some(MouseButton::Left);
+            drag.origin = Some(slot);
+            drag.slots.clear();
+            drag.quick_move = true;
+            drag.quick_move_visited.clear();
+            last_click.at = None;
+        }
+        if drag.quick_move {
+            if shift && let Some(slot) = hovered {
+                let moved = if let Some(furnace) =
+                    chunks.furnace_at_mut(position.0, position.1, position.2)
+                {
+                    quick_move_drag_slot(
+                        &mut drag.quick_move_visited,
+                        &mut inventory,
+                        &mut hotbar,
+                        None,
+                        false,
+                        None,
+                        Some(&mut furnace.slots),
+                        to_slot_id(slot),
+                    )
+                } else {
+                    false
+                };
+                if moved && let Some(persistence) = persistence.as_deref_mut() {
+                    persistence.mark_dirty(ChunkPos::from_block(position.0, position.2));
+                }
+            }
+            if mouse.pressed(MouseButton::Left) {
+                return;
+            }
+            *drag = SlotDrag::default();
+            return;
+        }
         if let Some(slot) = hovered
             && (mouse.just_pressed(MouseButton::Left) || mouse.just_pressed(MouseButton::Right))
         {
@@ -1116,7 +1160,13 @@ fn handle_slots(
         if right || shift {
             last_click.at = None;
         }
-        if shift {
+        if shift && !right {
+            drag.button = Some(MouseButton::Left);
+            drag.origin = Some(slot);
+            drag.slots.clear();
+            drag.quick_move = true;
+            drag.quick_move_visited.clear();
+        } else if shift {
             let _ = shift_click_slot(
                 &mut inventory,
                 &mut hotbar,
@@ -1126,7 +1176,7 @@ fn handle_slots(
             );
             return;
         }
-        if inventory.carried.is_none() {
+        if !drag.quick_move && inventory.carried.is_none() {
             apply_click(
                 slot,
                 right,
@@ -1137,17 +1187,38 @@ fn handle_slots(
             );
             return;
         }
-        drag.button = Some(if right {
-            MouseButton::Right
-        } else {
-            MouseButton::Left
-        });
-        drag.origin = Some(slot);
-        drag.slots.clear();
+        if !drag.quick_move {
+            drag.button = Some(if right {
+                MouseButton::Right
+            } else {
+                MouseButton::Left
+            });
+            drag.origin = Some(slot);
+            drag.slots.clear();
+        }
     }
     let Some(button) = drag.button else {
         return;
     };
+    if drag.quick_move {
+        if shift && let Some(slot) = hovered {
+            let _ = quick_move_drag_slot(
+                &mut drag.quick_move_visited,
+                &mut inventory,
+                &mut hotbar,
+                Some(&mut workbench.grid),
+                screen.workbench,
+                None,
+                None,
+                to_slot_id(slot),
+            );
+        }
+        if mouse.pressed(button) {
+            return;
+        }
+        *drag = SlotDrag::default();
+        return;
+    }
     if let Some(slot) = hovered {
         remember_drag_slot(&mut drag, slot, &inventory, &hotbar, &workbench.grid);
     }
@@ -1267,29 +1338,61 @@ fn handle_chest_slots(
         if right || shift {
             last_click.at = None;
         }
-        if shift {
+        if shift && !right {
+            drag.button = Some(MouseButton::Left);
+            drag.origin = Some(slot);
+            drag.slots.clear();
+            drag.quick_move = true;
+            drag.quick_move_visited.clear();
+        } else if shift {
             let mut chest_slots = read_chest_group_slots(chunks, group);
             let _ = shift_click_chest_slot(inventory, hotbar, &mut chest_slots, to_slot_id(slot));
             write_chest_group_slots(chunks, group, &chest_slots);
             mark_chest_dirty(persistence, group);
             return;
         }
-        if inventory.carried.is_none() {
+        if !drag.quick_move && inventory.carried.is_none() {
             apply_chest_click(slot, right, group, chunks, hotbar, inventory, workbench);
             mark_chest_dirty(persistence, group);
             return;
         }
-        drag.button = Some(if right {
-            MouseButton::Right
-        } else {
-            MouseButton::Left
-        });
-        drag.origin = Some(slot);
-        drag.slots.clear();
+        if !drag.quick_move {
+            drag.button = Some(if right {
+                MouseButton::Right
+            } else {
+                MouseButton::Left
+            });
+            drag.origin = Some(slot);
+            drag.slots.clear();
+        }
     }
     let Some(button) = drag.button else {
         return;
     };
+    if drag.quick_move {
+        if shift && let Some(slot) = hovered {
+            let mut chest_slots = read_chest_group_slots(chunks, group);
+            let moved = quick_move_drag_slot(
+                &mut drag.quick_move_visited,
+                inventory,
+                hotbar,
+                Some(&mut workbench.grid),
+                screen.workbench,
+                Some(&mut chest_slots),
+                None,
+                to_slot_id(slot),
+            );
+            if moved {
+                write_chest_group_slots(chunks, group, &chest_slots);
+                mark_chest_dirty(persistence, group);
+            }
+        }
+        if mouse.pressed(button) {
+            return;
+        }
+        *drag = SlotDrag::default();
+        return;
+    }
     if let Some(slot) = hovered {
         let chest_slots = read_chest_group_slots(chunks, group);
         remember_chest_drag_slot(drag, slot, inventory, hotbar, &chest_slots);
@@ -1488,7 +1591,7 @@ fn to_slot_id(slot: Slot) -> SlotId {
         Slot::CraftResult => SlotId::CraftResult,
         Slot::Workbench(index) => SlotId::Workbench(index),
         Slot::Chest(index) => SlotId::Chest(index),
-        Slot::Furnace(index) => SlotId::Craft(index),
+        Slot::Furnace(index) => SlotId::Furnace(index),
         Slot::Armor(index) => SlotId::Armor(index),
     }
 }
@@ -1536,88 +1639,11 @@ fn shift_click_furnace(
     chunks: &mut WorldChunks,
     hotbar: &mut Hotbar,
     inventory: &mut Inventory,
-) {
-    match slot {
-        Slot::Furnace(index) if index < 3 => {
-            let Some(stack) = chunks
-                .furnace_at(position.0, position.1, position.2)
-                .and_then(|furnace| furnace.slots[index])
-            else {
-                return;
-            };
-            let mut simulated_hotbar = hotbar.clone();
-            let mut simulated_inventory = inventory.clone();
-            let remainder = simulated_inventory.insert(&mut simulated_hotbar, stack);
-            let moved = stack.count() - remainder.map_or(0, ItemStack::count);
-            if moved == 0 {
-                return;
-            }
-            *hotbar = simulated_hotbar;
-            *inventory = simulated_inventory;
-            if let Some(furnace) = chunks.furnace_at_mut(position.0, position.1, position.2) {
-                furnace.slots[index] = remainder;
-            }
-        }
-        Slot::Main(index) => shift_player_stack_into_furnace(
-            PlayerSlot::Main(index),
-            position,
-            chunks,
-            hotbar,
-            inventory,
-        ),
-        Slot::Hotbar(index) => shift_player_stack_into_furnace(
-            PlayerSlot::Hotbar(index),
-            position,
-            chunks,
-            hotbar,
-            inventory,
-        ),
-        _ => {}
-    }
-}
-
-#[derive(Clone, Copy)]
-enum PlayerSlot {
-    Main(usize),
-    Hotbar(usize),
-}
-
-fn shift_player_stack_into_furnace(
-    source: PlayerSlot,
-    position: (i32, i32, i32),
-    chunks: &mut WorldChunks,
-    hotbar: &mut Hotbar,
-    inventory: &mut Inventory,
-) {
-    let stack = match source {
-        PlayerSlot::Main(index) => inventory.main.get(index).copied().flatten(),
-        PlayerSlot::Hotbar(index) => hotbar.slots.get(index).copied().flatten(),
-    };
-    let Some(stack) = stack else { return };
+) -> bool {
     let Some(furnace) = chunks.furnace_at_mut(position.0, position.1, position.2) else {
-        return;
+        return false;
     };
-    let target = if crate::world::furnace::smelting_result(stack).is_some() {
-        0
-    } else if crate::world::furnace::fuel_ticks(stack).is_some() {
-        1
-    } else {
-        return;
-    };
-    let remainder = if let Some(existing) = furnace.slots[target].as_mut() {
-        existing.merge(stack)
-    } else {
-        furnace.slots[target] = Some(stack);
-        None
-    };
-    let moved = stack.count() - remainder.map_or(0, ItemStack::count);
-    if moved == 0 {
-        return;
-    }
-    match source {
-        PlayerSlot::Main(index) => inventory.main[index] = remainder,
-        PlayerSlot::Hotbar(index) => hotbar.slots[index] = remainder,
-    }
+    shift_click_furnace_slot(inventory, hotbar, &mut furnace.slots, to_slot_id(slot))
 }
 
 fn apply_click(

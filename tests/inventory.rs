@@ -395,6 +395,188 @@ fn shift_click_from_hotbar_does_not_spill_into_other_hotbar_slots() {
 }
 
 #[test]
+fn quick_move_drag_moves_slots_in_both_directions_once_per_gesture() {
+    use game::inventory::SlotId;
+    use game::inventory::quick_move_drag_slot;
+    let mut inventory = game::inventory::Inventory::default();
+    let mut hotbar = Hotbar::default();
+    let mut chest = [None; 27];
+    let mut visited = Vec::new();
+
+    inventory.main[0] = Some(stack(ItemId::Diamond, 5));
+    assert!(quick_move_drag_slot(
+        &mut visited,
+        &mut inventory,
+        &mut hotbar,
+        None,
+        false,
+        Some(&mut chest),
+        None,
+        SlotId::Main(0),
+    ));
+    assert!(inventory.main[0].is_none());
+    assert_eq!(chest[0], Some(stack(ItemId::Diamond, 5)));
+
+    inventory.main[1] = Some(stack(ItemId::Coal, 3));
+    assert!(quick_move_drag_slot(
+        &mut visited,
+        &mut inventory,
+        &mut hotbar,
+        None,
+        false,
+        Some(&mut chest),
+        None,
+        SlotId::Main(1),
+    ));
+    assert!(inventory.main[1].is_none());
+    assert_eq!(chest[1], Some(stack(ItemId::Coal, 3)));
+
+    assert!(!quick_move_drag_slot(
+        &mut visited,
+        &mut inventory,
+        &mut hotbar,
+        None,
+        false,
+        Some(&mut chest),
+        None,
+        SlotId::Main(0),
+    ));
+    assert_eq!(chest[0], Some(stack(ItemId::Diamond, 5)));
+
+    assert!(quick_move_drag_slot(
+        &mut visited,
+        &mut inventory,
+        &mut hotbar,
+        None,
+        false,
+        Some(&mut chest),
+        None,
+        SlotId::Chest(0),
+    ));
+    assert_eq!(inventory.main[0], Some(stack(ItemId::Diamond, 5)));
+    assert!(chest[0].is_none());
+}
+
+#[test]
+fn quick_move_drag_moves_only_what_fits_and_leaves_full_destinations_untouched() {
+    use game::inventory::SlotId;
+    use game::inventory::quick_move_drag_slot;
+    let mut inventory = game::inventory::Inventory::default();
+    let mut hotbar = Hotbar::default();
+    let mut chest = [Some(stack(ItemId::Coal, 60))];
+    let mut visited = Vec::new();
+    inventory.main[0] = Some(stack(ItemId::Coal, 10));
+
+    assert!(quick_move_drag_slot(
+        &mut visited,
+        &mut inventory,
+        &mut hotbar,
+        None,
+        false,
+        Some(&mut chest),
+        None,
+        SlotId::Main(0),
+    ));
+    assert_eq!(inventory.main[0], Some(stack(ItemId::Coal, 6)));
+    assert_eq!(chest[0], Some(stack(ItemId::Coal, 64)));
+
+    let mut full_chest = [Some(stack(ItemId::Diamond, 64))];
+    let mut full_visited = Vec::new();
+    inventory.main[1] = Some(stack(ItemId::Coal, 4));
+    assert!(!quick_move_drag_slot(
+        &mut full_visited,
+        &mut inventory,
+        &mut hotbar,
+        None,
+        false,
+        Some(&mut full_chest),
+        None,
+        SlotId::Main(1),
+    ));
+    assert_eq!(inventory.main[1], Some(stack(ItemId::Coal, 4)));
+    assert_eq!(full_chest[0], Some(stack(ItemId::Diamond, 64)));
+
+    fill_storage(&mut inventory, &mut hotbar, stack(ItemId::Diamond, 64));
+    let mut blocked_chest = [Some(stack(ItemId::Coal, 4))];
+    let mut blocked_visited = Vec::new();
+    assert!(!quick_move_drag_slot(
+        &mut blocked_visited,
+        &mut inventory,
+        &mut hotbar,
+        None,
+        false,
+        Some(&mut blocked_chest),
+        None,
+        SlotId::Chest(0),
+    ));
+    assert_eq!(blocked_chest[0], Some(stack(ItemId::Coal, 4)));
+}
+
+#[test]
+fn quick_move_drag_respects_furnace_slot_eligibility_and_empty_slots() {
+    use game::inventory::SlotId;
+    use game::inventory::quick_move_drag_slot;
+    use game::world::block::block::BlockId;
+    let mut inventory = game::inventory::Inventory::default();
+    let mut hotbar = Hotbar::default();
+    let mut furnace = [None; 3];
+    let mut visited = Vec::new();
+
+    assert!(!quick_move_drag_slot(
+        &mut visited,
+        &mut inventory,
+        &mut hotbar,
+        None,
+        false,
+        None,
+        Some(&mut furnace),
+        SlotId::Furnace(0),
+    ));
+    inventory.main[0] = Some(stack(ItemId::Diamond, 2));
+    assert!(!quick_move_drag_slot(
+        &mut visited,
+        &mut inventory,
+        &mut hotbar,
+        None,
+        false,
+        None,
+        Some(&mut furnace),
+        SlotId::Main(0),
+    ));
+    assert_eq!(inventory.main[0], Some(stack(ItemId::Diamond, 2)));
+    assert!(furnace.iter().all(Option::is_none));
+
+    let mut visited = Vec::new();
+    inventory.main[1] = Some(stack(block(BlockId::IronOre), 3));
+    assert!(quick_move_drag_slot(
+        &mut visited,
+        &mut inventory,
+        &mut hotbar,
+        None,
+        false,
+        None,
+        Some(&mut furnace),
+        SlotId::Main(1),
+    ));
+    assert!(inventory.main[1].is_none());
+    assert_eq!(furnace[0], Some(stack(block(BlockId::IronOre), 3)));
+
+    let mut visited = Vec::new();
+    assert!(quick_move_drag_slot(
+        &mut visited,
+        &mut inventory,
+        &mut hotbar,
+        None,
+        false,
+        None,
+        Some(&mut furnace),
+        SlotId::Furnace(0),
+    ));
+    assert!(furnace[0].is_none());
+    assert_eq!(hotbar.slots[0], Some(stack(block(BlockId::IronOre), 3)));
+}
+
+#[test]
 fn shift_click_returns_crafting_inputs_to_main_storage_first() {
     use game::crafting::CraftingGrid;
     use game::inventory::SlotId;

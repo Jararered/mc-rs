@@ -6,6 +6,7 @@
 //! until another output will not fit. Results fill the hotbar from the right,
 //! then main storage from the bottom-right.
 //!
+//! Shift+left-drag quick-moves each newly hovered source slot immediately.
 //! Drag placement runs when the cursor is released over more than one accepting
 //! slot. A left drag splits the carried stack evenly. A right drag places one
 //! item in each slot. The remainder stays on the cursor.
@@ -28,7 +29,116 @@ pub enum SlotId {
     CraftResult,
     Workbench(usize),
     Chest(usize),
+    Furnace(usize),
     Armor(usize),
+}
+
+/// Quick-move one slot during a Shift+left-drag gesture.
+///
+/// Each slot is considered at most once per gesture, even when it is empty or
+/// its destination cannot accept items. Pass a fresh `visited` vector when a
+/// new gesture starts.
+pub fn quick_move_drag_slot(
+    visited: &mut Vec<SlotId>,
+    inventory: &mut Inventory,
+    hotbar: &mut Hotbar,
+    workbench: Option<&mut CraftingGrid>,
+    workbench_open: bool,
+    chest: Option<&mut [Option<ItemStack>]>,
+    furnace: Option<&mut [Option<ItemStack>]>,
+    slot: SlotId,
+) -> bool {
+    if visited.contains(&slot) {
+        return false;
+    }
+    visited.push(slot);
+
+    if let Some(furnace) = furnace {
+        shift_click_furnace_slot(inventory, hotbar, furnace, slot)
+    } else if let Some(chest) = chest {
+        shift_click_chest_slot(inventory, hotbar, chest, slot)
+    } else {
+        shift_click_slot(inventory, hotbar, workbench, workbench_open, slot)
+    }
+}
+
+/// Shift-click a slot in a furnace or the player inventory beside it.
+pub fn shift_click_furnace_slot(
+    inventory: &mut Inventory,
+    hotbar: &mut Hotbar,
+    furnace: &mut [Option<ItemStack>],
+    slot: SlotId,
+) -> bool {
+    match slot {
+        SlotId::Furnace(index) if index < 3 => {
+            let Some(stack) = furnace.get(index).copied().flatten() else {
+                return false;
+            };
+            let mut simulated_inventory = inventory.clone();
+            let mut simulated_hotbar = hotbar.clone();
+            let remainder = simulated_inventory.insert(&mut simulated_hotbar, stack);
+            if remainder.is_some_and(|rest| rest.count() == stack.count()) {
+                return false;
+            }
+            *inventory = simulated_inventory;
+            *hotbar = simulated_hotbar;
+            furnace[index] = remainder;
+            true
+        }
+        SlotId::Main(index) => {
+            let Some(stack) = inventory.main.get(index).copied().flatten() else {
+                return false;
+            };
+            let target = if crate::world::furnace::smelting_result(stack).is_some() {
+                0
+            } else if crate::world::furnace::fuel_ticks(stack).is_some() {
+                1
+            } else {
+                return false;
+            };
+            let Some(destination) = furnace.get_mut(target) else {
+                return false;
+            };
+            let remainder = if let Some(existing) = destination.as_mut() {
+                existing.merge(stack)
+            } else {
+                *destination = Some(stack);
+                None
+            };
+            if remainder.is_some_and(|rest| rest.count() == stack.count()) {
+                return false;
+            }
+            inventory.main[index] = remainder;
+            true
+        }
+        SlotId::Hotbar(index) => {
+            let Some(stack) = hotbar.slots.get(index).copied().flatten() else {
+                return false;
+            };
+            let target = if crate::world::furnace::smelting_result(stack).is_some() {
+                0
+            } else if crate::world::furnace::fuel_ticks(stack).is_some() {
+                1
+            } else {
+                return false;
+            };
+            let Some(destination) = furnace.get_mut(target) else {
+                return false;
+            };
+            let remainder = if let Some(existing) = destination.as_mut() {
+                existing.merge(stack)
+            } else {
+                *destination = Some(stack);
+                None
+            };
+            if remainder.is_some_and(|rest| rest.count() == stack.count()) {
+                return false;
+            }
+            hotbar.slots[index] = remainder;
+            true
+        }
+        _ => false,
+    }
 }
 
 /// Collect compatible stacks from a container into the carried stack.
@@ -141,6 +251,7 @@ pub fn chest_slot_accepts_drag(
         SlotId::Chest(index) => chest.get(index).copied().flatten(),
         SlotId::Main(index) => inventory.main.get(index).copied().flatten(),
         SlotId::Hotbar(index) => hotbar.slots.get(index).copied().flatten(),
+        SlotId::Furnace(_) => None,
         _ => return false,
     };
     accepts_stack(existing, carried)
@@ -241,6 +352,7 @@ fn read_chest_slot(
 ) -> Option<Option<ItemStack>> {
     match slot {
         SlotId::Chest(index) => chest.get(index).copied(),
+        SlotId::Furnace(_) => None,
         SlotId::Main(index) => inventory.main.get(index).copied(),
         SlotId::Hotbar(index) => hotbar.slots.get(index).copied(),
         _ => None,
@@ -260,6 +372,7 @@ fn write_chest_slot(
                 *target = stack;
             }
         }
+        SlotId::Furnace(_) => {}
         SlotId::Main(index) => {
             if let Some(target) = inventory.main.get_mut(index) {
                 *target = stack;
@@ -322,6 +435,9 @@ pub fn shift_click_slot(
     workbench_open: bool,
     slot: SlotId,
 ) -> bool {
+    if matches!(slot, SlotId::Furnace(_)) {
+        return false;
+    }
     if matches!(slot, SlotId::CraftResult) {
         return shift_craft(inventory, hotbar, workbench, workbench_open);
     }
@@ -335,6 +451,7 @@ pub fn shift_click_slot(
         SlotId::Craft(_) | SlotId::Workbench(_) | SlotId::Chest(_) | SlotId::Armor(_) => {
             player_slots_forward()
         }
+        SlotId::Furnace(_) => unreachable!("handled above"),
         SlotId::CraftResult => unreachable!("handled above"),
     };
     match place_stack(inventory, hotbar, stack, &order) {
@@ -359,6 +476,9 @@ pub fn hotbar_key_swap(
     hotbar_index: usize,
 ) -> bool {
     if hotbar_index >= HOTBAR_SLOTS {
+        return false;
+    }
+    if matches!(slot, SlotId::Furnace(_)) {
         return false;
     }
     if matches!(slot, SlotId::Hotbar(index) if index == hotbar_index) {
@@ -479,6 +599,9 @@ pub fn slot_accepts_drag(
     carried: ItemStack,
 ) -> bool {
     if matches!(slot, SlotId::CraftResult) {
+        return false;
+    }
+    if matches!(slot, SlotId::Furnace(_)) {
         return false;
     }
     match read_slot(inventory, hotbar, workbench, false, slot) {
@@ -685,6 +808,7 @@ fn read_slot(
         }
         SlotId::Workbench(_) => None,
         SlotId::Chest(_) => None,
+        SlotId::Furnace(_) => None,
         SlotId::CraftResult if workbench_open => {
             workbench.and_then(|grid| beta_recipe_book().find(grid))
         }
@@ -725,7 +849,7 @@ fn write_slot(
                 grid.set(index % 3, index / 3, stack);
             }
         }
-        SlotId::Workbench(_) | SlotId::Chest(_) | SlotId::CraftResult => {}
+        SlotId::Workbench(_) | SlotId::Chest(_) | SlotId::Furnace(_) | SlotId::CraftResult => {}
     }
 }
 

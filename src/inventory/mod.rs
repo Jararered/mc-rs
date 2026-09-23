@@ -1,3 +1,4 @@
+mod sorting;
 mod transfer;
 
 use bevy::prelude::Component;
@@ -6,6 +7,8 @@ use crate::crafting::CraftingGrid;
 use crate::crafting::beta_recipe_book;
 use crate::item::ItemStack;
 
+pub use sorting::sort_container_slots;
+pub use sorting::sort_main_inventory;
 pub use transfer::DragPlace;
 pub use transfer::SlotId;
 pub use transfer::chest_drag_place;
@@ -19,8 +22,6 @@ pub use transfer::preview_drag_place;
 pub use transfer::shift_click_chest_slot;
 pub use transfer::shift_click_slot;
 pub use transfer::slot_accepts_drag;
-pub use transfer::sort_container_slots;
-pub use transfer::sort_main_inventory;
 
 /// Number of hotbar slots shown on the in-game HUD.
 pub const HOTBAR_SLOTS: usize = 9;

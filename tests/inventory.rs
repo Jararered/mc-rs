@@ -79,7 +79,7 @@ fn double_click_collection_requires_stack_compatible_item_data() {
 }
 
 #[test]
-fn sorting_uses_material_families_then_items_tools_and_armor() {
+fn sorting_uses_block_families_then_materials_and_equipment() {
     let mut slots = [
         Some(ItemStack::new(ItemId::IronBoots, 1).unwrap()),
         Some(ItemStack::from_block(BlockId::Torch, 4).unwrap()),
@@ -145,10 +145,84 @@ fn sorting_merges_matching_stacks_and_keeps_overflow_in_a_new_stack() {
 
     sort_container_slots(&mut slots);
 
-    assert_eq!(slots[0], Some(ItemStack::new(ItemId::Coal, 64).unwrap()));
-    assert_eq!(slots[1], Some(ItemStack::new(ItemId::Coal, 6).unwrap()));
-    assert_eq!(slots[2], Some(ItemStack::new(ItemId::Diamond, 3).unwrap()));
+    assert_eq!(slots[0], Some(ItemStack::new(ItemId::Diamond, 3).unwrap()));
+    assert_eq!(slots[1], Some(ItemStack::new(ItemId::Coal, 64).unwrap()));
+    assert_eq!(slots[2], Some(ItemStack::new(ItemId::Coal, 6).unwrap()));
     assert_eq!(slots[3], None);
+}
+
+#[test]
+fn sorting_follows_the_top_level_tree_and_places_equipment_last() {
+    let mut slots = [
+        Some(ItemStack::new(ItemId::IronBoots, 1).unwrap()),
+        Some(ItemStack::new(ItemId::Compass, 1).unwrap()),
+        Some(ItemStack::new(ItemId::Boat, 1).unwrap()),
+        Some(ItemStack::new(ItemId::GoldIngot, 2).unwrap()),
+        Some(ItemStack::new(ItemId::Apple, 1).unwrap()),
+        Some(ItemStack::new(ItemId::Arrow, 8).unwrap()),
+        Some(ItemStack::new(ItemId::Bow, 1).unwrap()),
+        Some(ItemStack::new(ItemId::WoodenSword, 1).unwrap()),
+        Some(ItemStack::from_block(BlockId::Stone, 1).unwrap()),
+        Some(ItemStack::new(ItemId::WoodenPickaxe, 1).unwrap()),
+    ];
+
+    sort_container_slots(&mut slots);
+
+    let items: Vec<_> = slots
+        .iter()
+        .filter_map(|stack| stack.map(ItemStack::item))
+        .collect();
+    assert_eq!(
+        items,
+        vec![
+            ItemId::Block(BlockId::Stone),
+            ItemId::Apple,
+            ItemId::GoldIngot,
+            ItemId::Boat,
+            ItemId::Compass,
+            ItemId::WoodenSword,
+            ItemId::Bow,
+            ItemId::Arrow,
+            ItemId::WoodenPickaxe,
+            ItemId::IronBoots,
+        ]
+    );
+}
+
+#[test]
+fn block_sorting_follows_natural_building_functional_and_redstone_groups() {
+    let mut slots = [
+        Some(ItemStack::from_block(BlockId::RedstoneWire, 1).unwrap()),
+        Some(ItemStack::from_block(BlockId::Chest, 1).unwrap()),
+        Some(ItemStack::from_block(BlockId::Wool, 1).unwrap()),
+        Some(ItemStack::from_block(BlockId::Dirt, 1).unwrap()),
+        Some(ItemStack::from_block(BlockId::Stone, 1).unwrap()),
+        Some(ItemStack::from_block(BlockId::CraftingTable, 1).unwrap()),
+        Some(ItemStack::from_block(BlockId::WoodenPlanks, 1).unwrap()),
+        Some(ItemStack::from_block(BlockId::Repeater, 1).unwrap()),
+        Some(ItemStack::from_block(BlockId::Torch, 1).unwrap()),
+    ];
+
+    sort_container_slots(&mut slots);
+
+    let items: Vec<_> = slots
+        .iter()
+        .filter_map(|stack| stack.map(ItemStack::item))
+        .collect();
+    assert_eq!(
+        items,
+        vec![
+            ItemId::Block(BlockId::Stone),
+            ItemId::Block(BlockId::Dirt),
+            ItemId::Block(BlockId::WoodenPlanks),
+            ItemId::Block(BlockId::Wool),
+            ItemId::Block(BlockId::Chest),
+            ItemId::Block(BlockId::CraftingTable),
+            ItemId::Block(BlockId::RedstoneWire),
+            ItemId::Block(BlockId::Torch),
+            ItemId::Block(BlockId::Repeater),
+        ]
+    );
 }
 
 #[test]

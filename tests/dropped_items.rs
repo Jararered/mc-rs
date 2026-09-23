@@ -6,6 +6,7 @@ use game::entity::block_drops::DropRoll;
 use game::entity::block_drops::natural_drops;
 use game::entity::block_drops::player_break_drops;
 use game::entity::dropped_items::block_drop_position;
+use game::entity::dropped_items::dropped_block_model;
 use game::entity::dropped_items::hotbar_icon_scale;
 use game::entity::dropped_items::interpolated_item_position;
 use game::entity::dropped_items::item_bob_offset;
@@ -390,6 +391,13 @@ fn dropped_blocks_use_the_world_cube() {
     let leaves = dropped_block_meshes(BlockId::Leaves, true, [1.0; 3], [0.2, 0.7, 0.1]);
     assert!(leaves.cutout);
     assert!(!dropped_block_meshes(BlockId::Leaves, false, [1.0; 3], [0.2, 0.7, 0.1]).cutout);
+}
+
+#[test]
+fn dropped_ladder_uses_the_flat_item_sprite() {
+    let ladder = ItemStack::from_block(BlockId::LadderWest, 1).unwrap();
+    assert_eq!(ladder.runtime_block(), Some(BlockId::Ladder));
+    assert_eq!(dropped_block_model(ladder), None);
 }
 
 fn position_count(mesh: &Mesh) -> usize {

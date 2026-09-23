@@ -480,10 +480,11 @@ pub fn item_piece_transform(
         .with_scale(Vec3::splat(scale))
 }
 
-/// Full cubes we already mesh in the world. Torches stay sprites (`renderType` 2).
+/// Full cubes we already mesh in the world. Torch and ladder items use Beta's
+/// flat item sprite path rather than their in-world block render types.
 pub fn dropped_block_model(stack: ItemStack) -> Option<BlockId> {
     let block = stack.runtime_block()?;
-    if is_torch(block) || is_crossed_plant(block) {
+    if block.is_ladder() || is_torch(block) || is_crossed_plant(block) {
         None
     } else {
         Some(block)

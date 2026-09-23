@@ -158,6 +158,11 @@ impl WorldStreaming {
         self.meshing.len()
     }
 
+    /// Chunks waiting to be remeshed, in dispatch order.
+    pub fn queued_remesh_positions(&self) -> impl Iterator<Item = ChunkPos> + '_ {
+        self.remesh_queue.iter().copied()
+    }
+
     /// Rebuild this chunk's mesh from current world data.
     ///
     /// Cancels an in-flight first mesh so it cannot apply stale geometry after
@@ -165,8 +170,9 @@ impl WorldStreaming {
     /// again on the next streaming pass.
     pub fn request_remesh(&mut self, position: ChunkPos) {
         self.meshing.remove(&position);
-        if self.rendered.contains_key(&position) && !self.remesh_queue.contains(&position) {
-            self.remesh_queue.push_back(position);
+        if self.rendered.contains_key(&position) {
+            self.remesh_queue.retain(|queued| *queued != position);
+            self.remesh_queue.push_front(position);
         }
     }
 }

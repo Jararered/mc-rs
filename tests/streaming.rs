@@ -195,6 +195,49 @@ fn spawn_chunk_waits_for_all_neighbor_block_data_before_its_first_mesh() {
 }
 
 #[test]
+fn repeated_remesh_request_promotes_chunk_without_duplicates() {
+    let mut app = test_app();
+    app.world_mut()
+        .spawn((Player, Transform::from_xyz(8.0, 80.0, 8.0)));
+
+    let first = ChunkPos::ZERO;
+    let second = ChunkPos { x: 1, z: 0 };
+    let third = ChunkPos { x: 0, z: 1 };
+    assert!(run_until(&mut app, Duration::from_secs(10), |app| {
+        let rendered = rendered_positions(app);
+        [first, second, third]
+            .into_iter()
+            .all(|position| rendered.contains(&position))
+    }));
+
+    {
+        let mut streaming = app.world_mut().resource_mut::<WorldStreaming>();
+        streaming.request_remesh(first);
+        streaming.request_remesh(second);
+        streaming.request_remesh(third);
+        streaming.request_remesh(second);
+
+        assert_eq!(
+            streaming.queued_remesh_positions().collect::<Vec<_>>(),
+            vec![second, third, first]
+        );
+
+        streaming.request_remesh(third);
+        streaming.request_remesh(third);
+
+        assert_eq!(
+            streaming.queued_remesh_positions().collect::<Vec<_>>(),
+            vec![third, second, first]
+        );
+    }
+
+    // The streaming pass pops from the front, so these promoted requests are
+    // the next remeshes considered for dispatch.
+    app.update();
+    assert!(app.world().resource::<WorldStreaming>().meshing_job_count() > 0);
+}
+
+#[test]
 fn edited_chunk_remesh_is_dispatched_without_main_thread_meshing() {
     let mut app = test_app();
     app.world_mut()

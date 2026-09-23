@@ -37,8 +37,12 @@ fn numeric_enum_conversions_preserve_valid_and_unknown_values() {
         assert_eq!(round_trip, raw);
         assert_eq!(
             ItemId::from_u16(raw).is_some(),
-            !matches!(item, ItemId::Unknown(_))
+            matches!(raw, 1..=96 | 256..=359 | 2256..=2257)
         );
+        if let ItemId::BlockOrUnknown(value) = item {
+            assert_eq!(value, raw);
+            assert_eq!(item.block().is_some(), (1..=96).contains(&raw));
+        }
     }
 }
 
@@ -142,8 +146,8 @@ fn native_save_values_and_supported_states_round_trip() {
 fn stacks_reject_unknown_ids_zero_overflow_and_invalid_data() {
     assert!(ItemId::from_u16(0).is_none());
     assert_eq!(
-        ItemStack::new(ItemId::Unknown(0), 1),
-        Err(StackError::UnknownItem(ItemId::Unknown(0)))
+        ItemStack::new(ItemId::BlockOrUnknown(0), 1),
+        Err(StackError::UnknownItem(ItemId::BlockOrUnknown(0)))
     );
     assert!(ItemStack::new(ItemId::Coal, 0).is_err());
     assert!(ItemStack::new(ItemId::Coal, 65).is_err());
@@ -189,23 +193,29 @@ fn beta_stack_and_durability_rules_include_pre_release_differences() {
 #[test]
 fn species_survive_stacks_but_torch_attachments_do_not() {
     let spruce = ItemStack::from_block(BlockId::SpruceWood, 4).unwrap();
-    assert_eq!(spruce.item(), ItemId::BlockWood);
+    assert_eq!(spruce.item(), ItemId::from_block(BlockId::Wood).unwrap());
     assert_eq!(spruce.data(), 1);
     assert_eq!(spruce.runtime_block(), Some(BlockId::SpruceWood));
     let birch = ItemStack::from_block(BlockId::BirchLeaves, 4).unwrap();
-    assert_eq!(birch.item(), ItemId::BlockLeaves);
+    assert_eq!(birch.item(), ItemId::from_block(BlockId::Leaves).unwrap());
     assert_eq!(birch.data(), 2);
     assert_eq!(birch.runtime_block(), Some(BlockId::BirchLeaves));
     let spruce_planks = ItemStack::from_block(BlockId::SprucePlanks, 4).unwrap();
-    assert_eq!(spruce_planks.item(), ItemId::BlockWoodenPlanks);
+    assert_eq!(
+        spruce_planks.item(),
+        ItemId::from_block(BlockId::WoodenPlanks).unwrap()
+    );
     assert_eq!(spruce_planks.data(), 1);
     assert_eq!(spruce_planks.runtime_block(), Some(BlockId::SprucePlanks));
     let birch_planks = ItemStack::from_block(BlockId::BirchPlanks, 4).unwrap();
-    assert_eq!(birch_planks.item(), ItemId::BlockWoodenPlanks);
+    assert_eq!(
+        birch_planks.item(),
+        ItemId::from_block(BlockId::WoodenPlanks).unwrap()
+    );
     assert_eq!(birch_planks.data(), 2);
     assert_eq!(birch_planks.runtime_block(), Some(BlockId::BirchPlanks));
     let torch = ItemStack::from_block(BlockId::TorchEast, 4).unwrap();
-    assert_eq!(torch.item(), ItemId::BlockTorch);
+    assert_eq!(torch.item(), ItemId::from_block(BlockId::Torch).unwrap());
     assert_eq!(torch.data(), 0);
     assert_eq!(torch.runtime_block(), Some(BlockId::Torch));
     assert!(ItemStack::from_block(BlockId::Air, 1).is_err());

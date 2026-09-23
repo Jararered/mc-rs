@@ -102,12 +102,12 @@ fn sorting_uses_block_families_then_materials_and_equipment() {
     assert_eq!(
         items,
         vec![
-            ItemId::BlockStone,
-            ItemId::BlockDirt,
+            ItemId::from_block(BlockId::Stone).unwrap(),
+            ItemId::from_block(BlockId::Dirt).unwrap(),
             ItemId::SugarCane,
-            ItemId::BlockWoodenPlanks,
-            ItemId::BlockWool,
-            ItemId::BlockTorch,
+            ItemId::from_block(BlockId::WoodenPlanks).unwrap(),
+            ItemId::from_block(BlockId::Wool).unwrap(),
+            ItemId::from_block(BlockId::Torch).unwrap(),
             ItemId::Diamond,
             ItemId::Bow,
             ItemId::WoodenPickaxe,
@@ -175,7 +175,7 @@ fn sorting_follows_the_top_level_tree_and_places_equipment_last() {
     assert_eq!(
         items,
         vec![
-            ItemId::BlockStone,
+            ItemId::from_block(BlockId::Stone).unwrap(),
             ItemId::Apple,
             ItemId::GoldIngot,
             ItemId::Boat,
@@ -212,15 +212,15 @@ fn block_sorting_follows_natural_building_functional_and_redstone_groups() {
     assert_eq!(
         items,
         vec![
-            ItemId::BlockStone,
-            ItemId::BlockDirt,
-            ItemId::BlockWoodenPlanks,
-            ItemId::BlockWool,
-            ItemId::BlockChest,
-            ItemId::BlockCraftingTable,
-            ItemId::BlockRedstoneWire,
-            ItemId::BlockTorch,
-            ItemId::BlockRepeater,
+            ItemId::from_block(BlockId::Stone).unwrap(),
+            ItemId::from_block(BlockId::Dirt).unwrap(),
+            ItemId::from_block(BlockId::WoodenPlanks).unwrap(),
+            ItemId::from_block(BlockId::Wool).unwrap(),
+            ItemId::from_block(BlockId::Chest).unwrap(),
+            ItemId::from_block(BlockId::CraftingTable).unwrap(),
+            ItemId::from_block(BlockId::RedstoneWire).unwrap(),
+            ItemId::from_block(BlockId::Torch).unwrap(),
+            ItemId::from_block(BlockId::Repeater).unwrap(),
         ]
     );
 }

@@ -167,8 +167,16 @@ pub enum BlockId {
 }
 
 impl BlockId {
+    /// Highest block ID that can be used directly as an item ID.
+    pub const MAX_ITEM_ID: u8 = 96;
+
     pub fn as_u8(self) -> u8 {
         self.into()
+    }
+
+    pub fn has_item_id(self) -> bool {
+        let raw: u8 = self.into();
+        raw != 0 && raw <= Self::MAX_ITEM_ID && !matches!(self, Self::Unknown(_))
     }
 
     pub fn from_u8(value: u8) -> Option<Self> {

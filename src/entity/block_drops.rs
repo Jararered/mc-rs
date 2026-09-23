@@ -134,7 +134,12 @@ fn push_natural(drops: &mut Vec<ItemStack>, block: BlockId, rolls: &mut impl Dro
             // `quantityDropped`: one sapling on `nextInt(20) == 0`, species in `damageDropped`.
             if rolls.next_int(20) == 0 {
                 let species = block.item_form().1 as u16;
-                push_item(drops, ItemId::BlockSapling, species, 1);
+                push_item(
+                    drops,
+                    ItemId::from_block(BlockId::Sapling).expect("sapling has an item form"),
+                    species,
+                    1,
+                );
             }
         }
         other => push_block(drops, other, 1),

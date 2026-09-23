@@ -122,7 +122,7 @@ pub fn fuel_ticks(fuel: ItemStack) -> Option<u16> {
         ItemId::Coal => Some(1_600),
         ItemId::Stick => Some(100),
         ItemId::LavaBucket => Some(20_000),
-        ItemId::BlockSapling => Some(100),
+        item if item.block() == Some(BlockId::Sapling) => Some(100),
         item if item.block().is_some_and(is_wood_material) => Some(300),
         _ => None,
     }

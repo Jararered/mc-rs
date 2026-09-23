@@ -47,107 +47,11 @@ impl ItemDefinition {
 
 /// Block items share their block's Beta id. Standalone items start at 256.
 ///
-/// Each variant has its persisted id as its `#[repr(u16)]` discriminant.
-/// Resolve raw values with [`ItemId::from_u16`] before using them as items.
+/// Standalone variants use their Beta item ids as discriminants. Block item ids
+/// are represented by `BlockOrUnknown` and resolved through [`Self::block`].
 #[repr(u16)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, FromPrimitive, IntoPrimitive)]
 pub enum ItemId {
-    BlockStone = 1,
-    BlockGrass = 2,
-    BlockDirt = 3,
-    BlockCobblestone = 4,
-    BlockWoodenPlanks = 5,
-    BlockSapling = 6,
-    BlockBedrock = 7,
-    BlockFlowingWater = 8,
-    BlockWater = 9,
-    BlockFlowingLava = 10,
-    BlockLava = 11,
-    BlockSand = 12,
-    BlockGravel = 13,
-    BlockGoldOre = 14,
-    BlockIronOre = 15,
-    BlockCoalOre = 16,
-    BlockWood = 17,
-    BlockLeaves = 18,
-    BlockSponge = 19,
-    BlockGlass = 20,
-    BlockLapisOre = 21,
-    BlockLapisBlock = 22,
-    BlockDispenser = 23,
-    BlockSandstone = 24,
-    BlockNoteBlock = 25,
-    BlockBed = 26,
-    BlockPoweredRail = 27,
-    BlockDetectorRail = 28,
-    BlockStickyPiston = 29,
-    BlockCobweb = 30,
-    BlockTallGrass = 31,
-    BlockDeadBush = 32,
-    BlockPiston = 33,
-    BlockPistonHead = 34,
-    BlockWool = 35,
-    BlockMovingPiston = 36,
-    BlockDandelion = 37,
-    BlockRose = 38,
-    BlockBrownMushroom = 39,
-    BlockRedMushroom = 40,
-    BlockGoldBlock = 41,
-    BlockIronBlock = 42,
-    BlockDoubleStoneSlab = 43,
-    BlockStoneSlab = 44,
-    BlockBricks = 45,
-    BlockTnt = 46,
-    BlockBookshelf = 47,
-    BlockMossyCobblestone = 48,
-    BlockObsidian = 49,
-    BlockTorch = 50,
-    BlockFire = 51,
-    BlockMobSpawner = 52,
-    BlockWoodenStairs = 53,
-    BlockChest = 54,
-    BlockRedstoneWire = 55,
-    BlockDiamondOre = 56,
-    BlockDiamondBlock = 57,
-    BlockCraftingTable = 58,
-    BlockCrops = 59,
-    BlockFarmland = 60,
-    BlockFurnace = 61,
-    BlockLitFurnace = 62,
-    BlockStandingSign = 63,
-    BlockWoodenDoor = 64,
-    BlockLadder = 65,
-    BlockRail = 66,
-    BlockCobblestoneStairs = 67,
-    BlockWallSign = 68,
-    BlockLever = 69,
-    BlockStonePressurePlate = 70,
-    BlockIronDoor = 71,
-    BlockWoodenPressurePlate = 72,
-    BlockRedstoneOre = 73,
-    BlockLitRedstoneOre = 74,
-    BlockUnlitRedstoneTorch = 75,
-    BlockRedstoneTorch = 76,
-    BlockStoneButton = 77,
-    BlockSnowLayer = 78,
-    BlockIce = 79,
-    BlockSnow = 80,
-    BlockCactus = 81,
-    BlockClay = 82,
-    BlockSugarCane = 83,
-    BlockJukebox = 84,
-    BlockFence = 85,
-    BlockPumpkin = 86,
-    BlockNetherrack = 87,
-    BlockSoulSand = 88,
-    BlockGlowstone = 89,
-    BlockNetherPortal = 90,
-    BlockJackOLantern = 91,
-    BlockCake = 92,
-    BlockRepeater = 93,
-    BlockPoweredRepeater = 94,
-    BlockLockedChest = 95,
-    BlockTrapdoor = 96,
     IronShovel = 256,
     IronPickaxe = 257,
     IronAxe = 258,
@@ -255,7 +159,7 @@ pub enum ItemId {
     Record13 = 2256,
     RecordCat = 2257,
     #[num_enum(catch_all)]
-    Unknown(u16),
+    BlockOrUnknown(u16),
 }
 const fn standalone(
     id: ItemId,
@@ -274,9 +178,9 @@ const fn standalone(
 
 impl ItemId {
     pub fn from_block(block: BlockId) -> Option<Self> {
-        let raw: u8 = block.into();
-        BlockId::from_u8(raw)?;
-        (1..=96).contains(&raw).then(|| Self::from(u16::from(raw)))
+        block
+            .has_item_id()
+            .then(|| Self::from(u16::from(block.as_u8())))
     }
 
     pub fn as_u16(self) -> u16 {
@@ -285,17 +189,18 @@ impl ItemId {
 
     pub fn from_u16(value: u16) -> Option<Self> {
         match Self::from(value) {
-            Self::Unknown(_) => None,
+            item @ Self::BlockOrUnknown(_) if item.block().is_some() => Some(item),
+            Self::BlockOrUnknown(_) => None,
             item => Some(item),
         }
     }
 
     pub fn block(self) -> Option<BlockId> {
-        let raw: u16 = self.into();
-        if !(1..=96).contains(&raw) || matches!(self, Self::Unknown(_)) {
+        let Self::BlockOrUnknown(raw) = self else {
             return None;
-        }
-        BlockId::from_u8(u8::try_from(raw).ok()?)
+        };
+        let block = BlockId::from_u8(u8::try_from(raw).ok()?)?;
+        block.has_item_id().then_some(block)
     }
 
     pub fn definition(self) -> Option<ItemDefinition> {
@@ -584,7 +489,7 @@ impl ItemId {
 }
 
 /// Raw id ranges that contain an item: block items, the main item list, and records.
-const RAW_RANGES: [(u16, u16); 3] = [(1, 96), (256, 359), (2256, 2257)];
+const RAW_RANGES: [(u16, u16); 3] = [(1, BlockId::MAX_ITEM_ID as u16), (256, 359), (2256, 2257)];
 
 /// Stateless immutable registry; lookups allocate nothing.
 pub struct ItemRegistry;

@@ -335,23 +335,24 @@ fn apply_break(
     hotbar: &mut Hotbar,
     hit: BlockHit,
 ) {
-    let mut attached = [
-        (0, 1, 0, BlockId::Torch),
-        (1, 0, 0, BlockId::TorchWest),
-        (-1, 0, 0, BlockId::TorchEast),
-        (0, 0, 1, BlockId::TorchNorth),
-        (0, 0, -1, BlockId::TorchSouth),
-    ]
-    .into_iter()
-    .filter_map(|(dx, dy, dz, torch)| {
-        (chunks.block_at(hit.x + dx, hit.y + dy, hit.z + dz) == Some(torch)).then_some((
-            hit.x + dx,
-            hit.y + dy,
-            hit.z + dz,
-            torch,
-        ))
-    })
-    .collect::<Vec<_>>();
+    let mut attached =
+        [
+            (0, 1, 0, BlockId::Torch),
+            (1, 0, 0, BlockId::TorchWest),
+            (-1, 0, 0, BlockId::TorchEast),
+            (0, 0, 1, BlockId::TorchNorth),
+            (0, 0, -1, BlockId::TorchSouth),
+            (0, 0, 1, BlockId::LadderNorth),
+            (0, 0, -1, BlockId::LadderSouth),
+            (-1, 0, 0, BlockId::LadderEast),
+            (1, 0, 0, BlockId::LadderWest),
+        ]
+        .into_iter()
+        .filter_map(|(dx, dy, dz, attached_block)| {
+            (chunks.block_at(hit.x + dx, hit.y + dy, hit.z + dz) == Some(attached_block))
+                .then_some((hit.x + dx, hit.y + dy, hit.z + dz, attached_block))
+        })
+        .collect::<Vec<_>>();
     if let Some(plant) = chunks
         .block_at(hit.x, hit.y + 1, hit.z)
         .filter(|block| is_crossed_plant(*block))
@@ -372,7 +373,7 @@ fn apply_break(
             .iter()
             .copied()
             .into_iter()
-            .any(|(_, _, _, torch)| is_torch(torch));
+            .any(|(_, _, _, attached_block)| is_torch(attached_block));
     let tool = hotbar.selected_stack();
     // `canHarvestBlock` gates the harvest drop. The tool still takes durability
     // when the block comes out, including a block the tool cannot harvest.
@@ -385,8 +386,8 @@ fn apply_break(
         for stack in player_break_drops(hit.block, tool, rng) {
             spawn_block_drop(commands, rng, IVec3::new(hit.x, hit.y, hit.z), stack);
         }
-        for (x, y, z, torch) in attached {
-            for stack in natural_drops(torch, rng) {
+        for (x, y, z, attached_block) in attached {
+            for stack in natural_drops(attached_block, rng) {
                 spawn_block_drop(commands, rng, IVec3::new(x, y, z), stack);
             }
         }
@@ -418,6 +419,10 @@ pub fn break_block(chunks: &mut WorldChunks, hit: BlockHit) -> bool {
             (-1, 0, 0, BlockId::TorchEast),
             (0, 0, 1, BlockId::TorchNorth),
             (0, 0, -1, BlockId::TorchSouth),
+            (0, 0, 1, BlockId::LadderNorth),
+            (0, 0, -1, BlockId::LadderSouth),
+            (-1, 0, 0, BlockId::LadderEast),
+            (1, 0, 0, BlockId::LadderWest),
         ] {
             let (x, y, z) = (hit.x + dx, hit.y + dy, hit.z + dz);
             if chunks.block_at(x, y, z) == Some(attached) {
@@ -466,6 +471,10 @@ pub fn place_selected_block_facing(
         return false;
     }
     if selected == BlockId::Chest && !chest_can_place_at(chunks, x, y, z) {
+        return false;
+    }
+    if selected == BlockId::Ladder && ladder_facing(chunks, x, y, z, hit.face, hit.block).is_none()
+    {
         return false;
     }
     if is_crossed_plant(selected)
@@ -526,6 +535,11 @@ pub fn place_selected_block_facing(
         selected.with_pumpkin_facing(furnace_facing)
     } else if selected == BlockId::Chest {
         selected.with_chest_facing(furnace_facing)
+    } else if selected == BlockId::Ladder {
+        let Some(facing) = ladder_facing(chunks, x, y, z, hit.face, hit.block) else {
+            return false;
+        };
+        selected.with_ladder_support(facing)
     } else {
         selected
     };
@@ -540,6 +554,40 @@ pub fn place_selected_block_facing(
     chunks
         .set_block(x, y, z, block)
         .is_some_and(|previous| previous != block)
+}
+
+fn ladder_facing(
+    chunks: &WorldChunks,
+    x: i32,
+    y: i32,
+    z: i32,
+    hit_face: BlockFace,
+    hit_block: BlockId,
+) -> Option<FurnaceFacing> {
+    let support_at = |facing: FurnaceFacing| {
+        let [dx, dy, dz] = BlockId::Ladder
+            .with_ladder_support(facing)
+            .ladder_support_offset()?;
+        chunks
+            .block_at(x + dx, y + dy, z + dz)
+            .filter(|block| is_opaque_cube(*block))
+            .map(|_| facing)
+    };
+
+    let clicked_wall = match hit_face {
+        BlockFace::West if is_opaque_cube(hit_block) => Some(FurnaceFacing::East),
+        BlockFace::East if is_opaque_cube(hit_block) => Some(FurnaceFacing::West),
+        BlockFace::North if is_opaque_cube(hit_block) => Some(FurnaceFacing::South),
+        BlockFace::South if is_opaque_cube(hit_block) => Some(FurnaceFacing::North),
+        _ => None,
+    };
+    clicked_wall
+        .and_then(support_at)
+        // Beta's onBlockPlaced fallback checks +Z, -Z, +X, -X.
+        .or_else(|| support_at(FurnaceFacing::South))
+        .or_else(|| support_at(FurnaceFacing::North))
+        .or_else(|| support_at(FurnaceFacing::East))
+        .or_else(|| support_at(FurnaceFacing::West))
 }
 
 fn chest_can_place_at(chunks: &WorldChunks, x: i32, y: i32, z: i32) -> bool {

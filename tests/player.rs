@@ -166,6 +166,31 @@ fn placed_furnace_front_faces_the_player_and_survives_lit_transitions() {
 }
 
 #[test]
+fn placed_ladder_attaches_to_the_clicked_wall_and_drops_as_a_ladder_item() {
+    let mut chunk = Chunk::new();
+    chunk.set(8, 64, 8, BlockId::Stone);
+    let mut chunks = world_with(chunk);
+    let player = Aabb::new(Vec3::new(2.0, 70.0, 2.0), Vec3::new(2.6, 71.8, 2.6));
+
+    assert!(place_selected_block_facing(
+        &mut chunks,
+        hit(8, 64, 8, BlockFace::East, BlockId::Stone),
+        player,
+        BlockId::Ladder,
+        FurnaceFacing::South,
+    ));
+    let ladder = chunks.block_at(9, 64, 8).unwrap();
+    assert_eq!(ladder, BlockId::LadderWest);
+    assert_eq!(ladder.item_form(), (BlockId::Ladder, 0));
+    assert_eq!(ladder.item_form().0.placed(0), Some(BlockId::Ladder));
+    assert!(break_block(
+        &mut chunks,
+        hit(8, 64, 8, BlockFace::Up, BlockId::Stone)
+    ));
+    assert_eq!(chunks.block_at(9, 64, 8), Some(BlockId::Air));
+}
+
+#[test]
 fn placed_pumpkin_front_faces_the_player() {
     let mut chunk = Chunk::new();
     chunk.set(8, 64, 8, BlockId::Grass);

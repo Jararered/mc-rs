@@ -305,6 +305,11 @@ pub fn block_tile(
     use super::block::block::BlockId;
 
     match block {
+        BlockId::Ladder
+        | BlockId::LadderNorth
+        | BlockId::LadderEast
+        | BlockId::LadderSouth
+        | BlockId::LadderWest => (3, 5),
         BlockId::Furnace
         | BlockId::FurnaceNorth
         | BlockId::FurnaceEast

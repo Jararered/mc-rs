@@ -162,6 +162,10 @@ pub enum BlockId {
     ChestEast = 224,
     ChestSouth = 225,
     ChestWest = 226,
+    LadderNorth = 227,
+    LadderEast = 228,
+    LadderSouth = 229,
+    LadderWest = 230,
     #[num_enum(catch_all)]
     Unknown(u8),
 }
@@ -247,6 +251,10 @@ impl BlockId {
             Self::ChestEast => "chest_east",
             Self::ChestSouth => "chest_south",
             Self::ChestWest => "chest_west",
+            Self::LadderNorth => "ladder_north",
+            Self::LadderEast => "ladder_east",
+            Self::LadderSouth => "ladder_south",
+            Self::LadderWest => "ladder_west",
             Self::RedstoneWire => "redstone_wire",
             Self::DiamondOre => "diamond_ore",
             Self::DiamondBlock => "diamond_block",
@@ -359,6 +367,11 @@ impl BlockId {
                 | Self::ChestEast
                 | Self::ChestSouth
                 | Self::ChestWest
+                | Self::Ladder
+                | Self::LadderNorth
+                | Self::LadderEast
+                | Self::LadderSouth
+                | Self::LadderWest
                 | Self::Obsidian
                 | Self::DeadBush
                 | Self::Torch
@@ -449,6 +462,38 @@ impl BlockId {
             FurnaceFacing::East => Self::ChestEast,
             FurnaceFacing::South => Self::ChestSouth,
             FurnaceFacing::West => Self::ChestWest,
+        }
+    }
+
+    /// Ladder orientation names the wall the ladder is attached to.
+    pub const fn is_ladder(self) -> bool {
+        matches!(
+            self,
+            Self::Ladder
+                | Self::LadderNorth
+                | Self::LadderEast
+                | Self::LadderSouth
+                | Self::LadderWest
+        )
+    }
+
+    /// The offset from this ladder cell to its supporting wall.
+    pub const fn ladder_support_offset(self) -> Option<[i32; 3]> {
+        match self {
+            Self::LadderNorth => Some([0, 0, -1]),
+            Self::LadderEast => Some([1, 0, 0]),
+            Self::LadderSouth => Some([0, 0, 1]),
+            Self::LadderWest => Some([-1, 0, 0]),
+            _ => None,
+        }
+    }
+
+    pub const fn with_ladder_support(self, support: FurnaceFacing) -> Self {
+        match support {
+            FurnaceFacing::North => Self::LadderNorth,
+            FurnaceFacing::East => Self::LadderEast,
+            FurnaceFacing::South => Self::LadderSouth,
+            FurnaceFacing::West => Self::LadderWest,
         }
     }
 
@@ -568,6 +613,9 @@ impl BlockId {
             Self::ChestNorth | Self::ChestEast | Self::ChestSouth | Self::ChestWest => {
                 (Self::Chest, 0)
             }
+            Self::LadderNorth | Self::LadderEast | Self::LadderSouth | Self::LadderWest => {
+                (Self::Ladder, 0)
+            }
             block => (block, 0),
         }
     }
@@ -590,6 +638,7 @@ impl BlockId {
             (Self::TallGrass, 0 | 1) => Some(Self::TallGrass),
             (Self::TallGrass, 2) => Some(Self::Fern),
             (Self::Pumpkin, 0) => Some(Self::Pumpkin),
+            (Self::Ladder, 0 | 2) => Some(Self::Ladder),
             (block, 0) if block.in_world() => Some(block),
             _ => None,
         }

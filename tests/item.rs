@@ -52,7 +52,7 @@ fn registries_cover_beta_ranges_without_registering_holes_or_air_items() {
         (0..=u8::MAX)
             .filter(|raw| BlockId::from_u8(*raw).is_some())
             .count(),
-        124
+        128
     );
     assert_eq!(ItemRegistry::iter().count(), 202);
     for raw in 0..=u16::MAX {
@@ -124,6 +124,8 @@ fn native_save_values_and_supported_states_round_trip() {
                 assert_eq!(placed, Some(BlockId::Furnace));
             } else if block.is_chest() {
                 assert_eq!(placed, Some(BlockId::Chest));
+            } else if block.is_ladder() && block != BlockId::Ladder {
+                assert_eq!(placed, Some(BlockId::Ladder));
             } else if block.in_world() {
                 assert_eq!(placed, Some(block));
             }

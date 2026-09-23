@@ -265,6 +265,42 @@ struct MeshBuffers {
 }
 
 impl MeshBuffers {
+    fn push_ladder(&mut self, x: usize, y: usize, z: usize, block: BlockId) {
+        // Beta's ladder is one transparent wall plane. The saved facing names
+        // the supporting wall; draw the texture toward the room side.
+        let (face_index, coordinate) = match block.ladder_support_offset() {
+            Some([0, 0, -1]) => (FACE_SOUTH, 0.125),
+            Some([0, 0, 1]) => (FACE_NORTH, 0.875),
+            Some([1, 0, 0]) => (FACE_WEST, 0.875),
+            Some([-1, 0, 0]) => (FACE_EAST, 0.125),
+            _ => (FACE_NORTH, 0.125),
+        };
+        let face = &FACES[face_index];
+        let corners = BlockFaceGeometry::unit_cube()
+            .face(face_index)
+            .corners
+            .map(|mut corner| {
+                let axis = if face_index == FACE_EAST || face_index == FACE_WEST {
+                    0
+                } else {
+                    2
+                };
+                corner[axis] = coordinate;
+                corner
+            });
+        self.push_quad(
+            x,
+            y,
+            z,
+            face,
+            corners,
+            face_uvs_for_tile(3, 5, face_index),
+            [1.0; 4],
+            [1.0; 4],
+            [1.0; 4],
+        );
+    }
+
     fn push_torch(&mut self, x: usize, y: usize, z: usize, block: BlockId) {
         // Build the same post for floor and wall attachments, then rotate its
         // vertices and normals together so the cap follows the shaft.
@@ -531,6 +567,10 @@ fn mesh_chunk_inner(
                 }
                 if is_torch(block) {
                     grass_overlay.push_torch(x, y, z, block);
+                    continue;
+                }
+                if block.is_ladder() {
+                    masked.push_ladder(x, y, z, block);
                     continue;
                 }
                 if is_crossed_plant(block) {
@@ -935,6 +975,7 @@ fn neighbor_hides_face(block: BlockId, neighbor: Option<BlockId>, fancy_graphics
         || neighbor == BlockId::FlowingLava
         || neighbor == BlockId::MobSpawner
         || neighbor.is_chest()
+        || neighbor.is_ladder()
         || is_torch(neighbor)
         || is_crossed_plant(neighbor)
     {

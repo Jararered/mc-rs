@@ -549,6 +549,16 @@ fn integrate_player(
                 motion.y = JUMP_IMPULSE;
             }
 
+            let on_ladder = player_is_on_ladder(aabb, &chunks);
+            if on_ladder {
+                motion.x = motion.x.clamp(-0.15, 0.15);
+                motion.z = motion.z.clamp(-0.15, 0.15);
+                motion.y = motion.y.max(-0.15);
+                if input.sneaking && motion.y < 0.0 {
+                    motion.y = 0.0;
+                }
+            }
+
             let movement = move_entity_with_sneak(
                 aabb,
                 motion,
@@ -561,6 +571,12 @@ fn integrate_player(
             *collision = movement.collision;
 
             cancel_collided_motion(&mut motion, movement.collision);
+
+            if (movement.collision.collided_x || movement.collision.collided_z)
+                && player_is_on_ladder(movement.aabb, &chunks)
+            {
+                motion.y = 0.2;
+            }
 
             motion.y = ((motion.y - GRAVITY_PER_TICK) * VERTICAL_DRAG)
                 .max(-TERMINAL_VELOCITY * TICK_SECONDS);
@@ -577,6 +593,15 @@ fn integrate_player(
 
         velocity.0 = motion / TICK_SECONDS;
     }
+}
+
+fn player_is_on_ladder(aabb: Aabb, chunks: &WorldChunks) -> bool {
+    let x = ((aabb.min.x + aabb.max.x) * 0.5).floor() as i32;
+    let y = aabb.min.y.floor() as i32;
+    let z = ((aabb.min.z + aabb.max.z) * 0.5).floor() as i32;
+    chunks
+        .block_at(x, y, z)
+        .is_some_and(|block| block.is_ladder())
 }
 
 fn block_under_player(

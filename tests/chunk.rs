@@ -27,6 +27,7 @@ use game::world::meshing::mesh_chunk_with_neighbors;
 use game::world::meshing::mesh_chunk_with_settings;
 use game::world::meshing::mesh_chunk_with_settings_and_smooth_lighting;
 use game::world::textures::atlas_tile_uvs;
+use game::world::textures::block_tile;
 
 #[test]
 fn mesh_snapshot_keeps_old_blocks_after_world_edit() {
@@ -597,6 +598,14 @@ fn set_block_updates_the_column_heightmap() {
 }
 
 #[test]
+fn ladders_transmit_light_and_do_not_raise_the_surface_heightmap() {
+    let mut chunk = Chunk::new();
+    chunk.set(3, 20, 4, BlockId::LadderWest);
+    assert_eq!(light_opacity(BlockId::LadderWest), 0);
+    assert_eq!(Heightmap::from_chunk(&chunk).get(3, 4), 0);
+}
+
+#[test]
 fn remesh_includes_the_neighbour_when_an_edge_block_changes() {
     assert_eq!(remesh_chunks_touching(8, 8), vec![ChunkPos::ZERO]);
     assert_eq!(
@@ -667,6 +676,34 @@ fn torch_mesh_uses_a_narrow_shape_instead_of_a_cube() {
         assert!((min_v - (v0 + 6.0 * (v1 - v0) / 16.0)).abs() < 1e-6);
         assert!((max_v - v1).abs() < 1e-6);
     }
+}
+
+#[test]
+fn ladder_mesh_uses_beta_tile_and_a_wall_plane() {
+    let mut chunk = Chunk::new();
+    chunk.set(3, 5, 7, BlockId::LadderWest);
+    let meshes = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true, false);
+    let positions = match meshes.masked.attribute(Mesh::ATTRIBUTE_POSITION).unwrap() {
+        VertexAttributeValues::Float32x3(values) => values,
+        _ => panic!("ladder mesh should have 3D positions"),
+    };
+    assert_eq!(positions.len(), 4);
+    assert!(
+        positions
+            .iter()
+            .all(|position| (position[0] - 3.125).abs() < 1e-6)
+    );
+    assert_eq!(block_tile(BlockId::LadderWest, 0, false), (3, 5));
+
+    let uvs = match meshes.masked.attribute(Mesh::ATTRIBUTE_UV_0).unwrap() {
+        VertexAttributeValues::Float32x2(values) => values,
+        _ => panic!("ladder mesh should have UV coordinates"),
+    };
+    let (u0, v0, u1, v1) = atlas_tile_uvs(3, 5);
+    assert!(
+        uvs.iter()
+            .all(|uv| uv[0] >= u0 && uv[0] <= u1 && uv[1] >= v0 && uv[1] <= v1)
+    );
 }
 
 #[test]

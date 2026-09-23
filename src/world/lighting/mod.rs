@@ -690,6 +690,7 @@ pub fn light_opacity(block: BlockId) -> u8 {
         BlockId::Water | BlockId::Ice => 3,
         BlockId::Leaves | BlockId::SpruceLeaves | BlockId::BirchLeaves => 1,
         BlockId::SnowLayer | BlockId::Cactus => 0,
+        block if block.is_ladder() => 0,
         block if is_torch(block) || is_crossed_plant(block) => 0,
         _ => 15,
     }

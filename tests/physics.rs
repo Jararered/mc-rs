@@ -17,6 +17,7 @@ use game::player::Player;
 use game::player::PlayerMovementInput;
 use game::world::block::block::BlockId;
 use game::world::block::properties::blocks_movement;
+use game::world::block::properties::collision_bounds;
 use game::world::block::properties::is_breakable;
 use game::world::block::properties::is_replaceable;
 use game::world::block::properties::is_targetable;
@@ -108,6 +109,50 @@ fn air_and_water_do_not_block_movement() {
     assert!(blocks_movement(BlockId::Stone));
     assert!(blocks_movement(BlockId::Leaves));
     assert!(blocks_movement(BlockId::Ice));
+}
+
+#[test]
+fn ladder_collision_is_a_thin_plate_on_the_supporting_wall() {
+    assert_eq!(
+        collision_bounds(BlockId::LadderWest),
+        Some(([0.0, 0.0, 0.0], [0.125, 1.0, 1.0]))
+    );
+    assert_eq!(
+        collision_bounds(BlockId::LadderSouth),
+        Some(([0.0, 0.0, 0.875], [1.0, 1.0, 1.0]))
+    );
+}
+
+#[test]
+fn horizontal_collision_with_a_ladder_starts_a_climb() {
+    let mut chunk = Chunk::new();
+    for y in 65..70 {
+        chunk.set(8, y, 8, BlockId::Stone);
+        chunk.set(9, y, 8, BlockId::LadderWest);
+    }
+    let mut chunks = WorldChunks::default();
+    chunks.insert(ChunkPos::ZERO, generated(chunk));
+
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins)
+        .insert_resource(chunks)
+        .add_plugins(PhysicsPlugin);
+    app.world_mut().spawn((
+        Player,
+        Transform::from_xyz(9.5, 65.0 + EntitySize::PLAYER.y_offset, 8.5),
+        Velocity(Vec3::new(-4.0, 0.0, 0.0)),
+        EntitySize::PLAYER,
+        CollisionState::default(),
+        PlayerMovementInput::default(),
+    ));
+
+    for _ in 0..2 {
+        app.world_mut().resource_mut::<WorldTick>().advance(0.05);
+        app.update();
+    }
+    let mut query = app.world_mut().query::<&Transform>();
+    let transform = query.single(app.world()).unwrap();
+    assert!(transform.translation.y > 65.0 + EntitySize::PLAYER.y_offset);
 }
 
 #[test]

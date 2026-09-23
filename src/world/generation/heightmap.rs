@@ -57,5 +57,8 @@ impl Heightmap {
 /// Blocks that raise the ground surface. Plants and torches stand in the air
 /// cell above that surface.
 fn occupies_column(block: BlockId) -> bool {
-    !matches!(block, BlockId::Air | BlockId::Water) && !is_torch(block) && !is_crossed_plant(block)
+    !matches!(block, BlockId::Air | BlockId::Water)
+        && !block.is_ladder()
+        && !is_torch(block)
+        && !is_crossed_plant(block)
 }

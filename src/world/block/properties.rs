@@ -7,7 +7,7 @@ use super::block::BlockId;
 /// Leaves are treated as non-opaque (the reference's fancy-graphics behaviour),
 /// so canopies stay dense where they overlap.
 pub fn is_opaque_cube(block: BlockId) -> bool {
-    if is_crossed_plant(block) {
+    if is_crossed_plant(block) || block.is_ladder() {
         return false;
     }
     !matches!(
@@ -60,6 +60,14 @@ pub fn collision_bounds(block: BlockId) -> Option<([f32; 3], [f32; 3])> {
     }
     if block == BlockId::SnowLayer {
         Some(([0.0; 3], [1.0, 0.125, 1.0]))
+    } else if block.is_ladder() {
+        match block.ladder_support_offset() {
+            Some([0, 0, -1]) => Some(([0.0, 0.0, 0.0], [1.0, 1.0, 0.125])),
+            Some([0, 0, 1]) => Some(([0.0, 0.0, 0.875], [1.0, 1.0, 1.0])),
+            Some([1, 0, 0]) => Some(([0.875, 0.0, 0.0], [1.0, 1.0, 1.0])),
+            Some([-1, 0, 0]) => Some(([0.0, 0.0, 0.0], [0.125, 1.0, 1.0])),
+            _ => Some(([0.0, 0.0, 0.0], [1.0, 1.0, 1.0])),
+        }
     } else if block == BlockId::Cactus {
         Some(([0.0625, 0.0, 0.0625], [0.9375, 0.9375, 0.9375]))
     } else {
@@ -107,6 +115,9 @@ pub fn sugar_cane_can_stay(below: BlockId, adjacent_water: [bool; 4]) -> bool {
 /// Beta's `Material.isSolid`, used for cactus clearance. Transparent glass and
 /// ice still count as solid materials; fluids and logic/plant blocks do not.
 fn has_solid_material(block: BlockId) -> bool {
+    if block.is_ladder() {
+        return false;
+    }
     !matches!(
         block,
         BlockId::Air
@@ -215,6 +226,10 @@ pub fn selection_bounds(block: BlockId) -> ([f32; 3], [f32; 3]) {
     if block == BlockId::Cactus {
         return ([0.0625, 0.0, 0.0625], [0.9375, 1.0, 0.9375]);
     }
+    if block.is_ladder() {
+        let (min, max) = collision_bounds(block).expect("ladders have collision bounds");
+        return (min, max);
+    }
     if block == BlockId::SugarCane {
         return ([0.125, 0.0, 0.125], [0.875, 1.0, 0.875]);
     }
@@ -311,6 +326,11 @@ pub fn hardness(block: BlockId) -> f32 {
         BlockId::CoalOre => 3.0,
         BlockId::Wood | BlockId::SpruceWood | BlockId::BirchWood => 2.0,
         BlockId::Leaves | BlockId::SpruceLeaves | BlockId::BirchLeaves => 0.2,
+        BlockId::Ladder
+        | BlockId::LadderNorth
+        | BlockId::LadderEast
+        | BlockId::LadderSouth
+        | BlockId::LadderWest => 0.4,
         BlockId::Sponge => 0.6,
         BlockId::LapisOre => 3.0,
         BlockId::LapisBlock => 3.0,
@@ -389,7 +409,6 @@ pub fn hardness(block: BlockId) -> f32 {
         | BlockId::Farmland
         | BlockId::StandingSign
         | BlockId::WoodenDoor
-        | BlockId::Ladder
         | BlockId::Rail
         | BlockId::CobblestoneStairs
         | BlockId::WallSign

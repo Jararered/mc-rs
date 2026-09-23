@@ -62,10 +62,30 @@ pub fn collect_matching_stacks(
     moved
 }
 
-/// Sort stacks by category and keep empty slots at the end. Stack counts and
-/// item data are preserved; identical stacks are not merged.
+/// Sort stacks by category, merge compatible stacks, and keep empty slots at
+/// the end. Any amount over the stack limit remains in additional stacks.
 pub fn sort_container_slots(slots: &mut [Option<ItemStack>]) {
-    slots.sort_by_key(|stack| stack.map_or((u8::MAX, u8::MAX, u16::MAX, u16::MAX), sort_key));
+    let mut stacks: Vec<ItemStack> = slots.iter_mut().filter_map(Option::take).collect();
+    stacks.sort_by_key(|stack| sort_key(*stack));
+
+    let mut compacted: Vec<ItemStack> = Vec::with_capacity(stacks.len());
+    for stack in stacks {
+        if let Some(existing) = compacted.last_mut()
+            && existing.item() == stack.item()
+            && existing.data() == stack.data()
+            && let Some(remainder) = existing.merge(stack)
+        {
+            compacted.push(remainder);
+        } else if compacted.last().is_none_or(|existing| {
+            existing.item() != stack.item() || existing.data() != stack.data()
+        }) {
+            compacted.push(stack);
+        }
+    }
+
+    for (slot, stack) in slots.iter_mut().zip(compacted) {
+        *slot = Some(stack);
+    }
 }
 
 fn sort_key(stack: ItemStack) -> (u8, u8, u16, u16) {

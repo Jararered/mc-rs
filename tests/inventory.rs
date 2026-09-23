@@ -135,6 +135,23 @@ fn sorting_orders_variants_preserves_stacks_and_moves_empty_slots_last() {
 }
 
 #[test]
+fn sorting_merges_matching_stacks_and_keeps_overflow_in_a_new_stack() {
+    let mut slots = [
+        Some(ItemStack::new(ItemId::Coal, 40).unwrap()),
+        Some(ItemStack::new(ItemId::Diamond, 3).unwrap()),
+        Some(ItemStack::new(ItemId::Coal, 30).unwrap()),
+        None,
+    ];
+
+    sort_container_slots(&mut slots);
+
+    assert_eq!(slots[0], Some(ItemStack::new(ItemId::Coal, 64).unwrap()));
+    assert_eq!(slots[1], Some(ItemStack::new(ItemId::Coal, 6).unwrap()));
+    assert_eq!(slots[2], Some(ItemStack::new(ItemId::Diamond, 3).unwrap()));
+    assert_eq!(slots[3], None);
+}
+
+#[test]
 fn sorting_main_inventory_leaves_hotbar_and_cursor_unchanged() {
     use game::inventory::Inventory;
 

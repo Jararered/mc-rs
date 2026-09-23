@@ -20,10 +20,15 @@ use crate::entity::Flying;
 use crate::entity::Gravity;
 use crate::entity::StepHeight;
 use crate::entity::Velocity;
+use crate::player::Player;
+use crate::player::PlayerMovementInput;
 use crate::world::block::properties::collision_bounds;
+use crate::world::block::properties::slipperiness;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::ChunkPos;
 use crate::world::chunk::WorldChunks;
+use crate::world::tick::TICK_SECONDS;
+use crate::world::tick::WorldTick;
 
 /// Fall speed cap, from Beta's `(v - 0.08) * 0.98` terminal velocity.
 const TERMINAL_VELOCITY: f32 = 78.4;
@@ -43,10 +48,11 @@ pub struct PhysicsPlugin;
 
 impl Plugin for PhysicsPlugin {
     fn build(&self, app: &mut App) {
-        app.configure_sets(Update, PhysicsSet::Integrate.after(PhysicsSet::ApplyInput))
+        app.init_resource::<WorldTick>()
+            .configure_sets(Update, PhysicsSet::Integrate.after(PhysicsSet::ApplyInput))
             .add_systems(
                 Update,
-                integrate_bodies
+                (integrate_bodies, integrate_player)
                     .in_set(PhysicsSet::Integrate)
                     .run_if(physics_should_run),
             );
@@ -232,14 +238,32 @@ pub struct Movement {
 /// then X, then Z, then a half-block step-up if the body was blocked while
 /// standing on the ground — the Beta `Entity.moveEntity` order.
 pub fn move_entity(
-    mut aabb: Aabb,
-    mut delta: Vec3,
+    aabb: Aabb,
+    delta: Vec3,
     step_height: f32,
     was_on_ground: bool,
     chunks: &WorldChunks,
 ) -> Movement {
+    move_entity_with_sneak(aabb, delta, step_height, was_on_ground, false, chunks)
+}
+
+/// Beta `Entity.moveEntity`, including sneak edge braking before collision resolution.
+pub fn move_entity_with_sneak(
+    mut aabb: Aabb,
+    mut delta: Vec3,
+    step_height: f32,
+    was_on_ground: bool,
+    sneaking: bool,
+    chunks: &WorldChunks,
+) -> Movement {
     let original = delta;
     let before = aabb;
+    let sneak_edge = was_on_ground && sneaking;
+    if sneak_edge {
+        (delta.x, _) = clip_sneak_edge(aabb, delta.x, 0.0, chunks);
+        (_, delta.z) = clip_sneak_edge(aabb, 0.0, delta.z, chunks);
+    }
+    let requested = delta;
     let colliders = colliding_aabbs(chunks, aabb.expand(delta));
 
     for collider in &colliders {
@@ -257,10 +281,10 @@ pub fn move_entity(
     }
     aabb = aabb.offset(Vec3::new(0.0, 0.0, delta.z));
 
-    let blocked_horizontally = original.x != delta.x || original.z != delta.z;
+    let blocked_horizontally = requested.x != delta.x || requested.z != delta.z;
     let landed = original.y != delta.y && original.y < 0.0;
     if step_height > 0.0 && (was_on_ground || landed) && blocked_horizontally {
-        let stepped = try_step(before, original, step_height, chunks);
+        let stepped = try_step(before, requested, step_height, chunks);
         let stepped_h = stepped.displacement.x.hypot(stepped.displacement.z);
         let current_h = delta.x.hypot(delta.z);
         if stepped_h > current_h {
@@ -274,11 +298,29 @@ pub fn move_entity(
         displacement: delta,
         collision: CollisionState {
             on_ground: original.y != delta.y && original.y < 0.0,
-            collided_x: original.x != delta.x,
+            collided_x: requested.x != delta.x,
             collided_y: original.y != delta.y,
-            collided_z: original.z != delta.z,
+            collided_z: requested.z != delta.z,
         },
     }
+}
+
+fn clip_sneak_edge(aabb: Aabb, mut x: f32, mut z: f32, chunks: &WorldChunks) -> (f32, f32) {
+    while x != 0.0 && colliding_aabbs(chunks, aabb.offset(Vec3::new(x, -1.0, 0.0))).is_empty() {
+        if x.abs() <= 0.05 {
+            x = 0.0;
+        } else {
+            x -= x.signum() * 0.05;
+        }
+    }
+    while z != 0.0 && colliding_aabbs(chunks, aabb.offset(Vec3::new(0.0, -1.0, z))).is_empty() {
+        if z.abs() <= 0.05 {
+            z = 0.0;
+        } else {
+            z -= z.signum() * 0.05;
+        }
+    }
+    (x, z)
 }
 
 fn try_step(start: Aabb, original: Vec3, step_height: f32, chunks: &WorldChunks) -> Movement {
@@ -352,6 +394,158 @@ pub fn colliding_aabbs(chunks: &WorldChunks, area: Aabb) -> Vec<Aabb> {
     boxes
 }
 
+/// Run Beta's living-entity ground movement for each emitted world tick.
+/// `Velocity` remains expressed in blocks per second elsewhere in the game;
+/// this system converts to and from Beta's blocks-per-tick motion values.
+fn integrate_player(
+    tick: Res<WorldTick>,
+    time: Res<Time>,
+    chunks: Res<WorldChunks>,
+    mut players: Query<
+        (
+            &mut Transform,
+            &mut Velocity,
+            &EntitySize,
+            &mut CollisionState,
+            &StepHeight,
+            &mut PlayerMovementInput,
+            Option<&Flying>,
+        ),
+        With<Player>,
+    >,
+) {
+    const DEFAULT_AIR_DRAG: f32 = 0.91;
+    const WALK_ACCELERATION: f32 = 0.1;
+    const AIR_ACCELERATION: f32 = 0.02;
+    const MOVE_FLYING_FRICTION: f32 = 0.162_771_36;
+    const GRAVITY_PER_TICK: f32 = 0.08;
+    const VERTICAL_DRAG: f32 = 0.98;
+    const JUMP_IMPULSE: f32 = 0.419_999_99;
+
+    for (mut transform, mut velocity, size, mut collision, step_height, input, flying) in
+        &mut players
+    {
+        if !chunks.contains(ChunkPos::from_world(
+            transform.translation.x,
+            transform.translation.z,
+        )) {
+            continue;
+        }
+
+        if flying.is_some() {
+            transform.translation += velocity.0 * time.delta_secs().min(MAX_STEP_SECS);
+            *collision = CollisionState::default();
+            continue;
+        }
+        if tick.ticks_this_frame() == 0 {
+            continue;
+        }
+
+        // Bevy's camera looks along local -Z; Beta's yaw 0 points along +Z.
+        let (bevy_yaw, _, _) = transform.rotation.to_euler(EulerRot::YXZ);
+        let yaw = std::f32::consts::PI - bevy_yaw;
+        let (sin_yaw, cos_yaw) = yaw.sin_cos();
+        let mut motion = velocity.0 * TICK_SECONDS;
+
+        for _ in 0..tick.ticks_this_frame() {
+            let support = block_under_player(&chunks, size.aabb(transform.translation));
+            let mut drag = DEFAULT_AIR_DRAG;
+            if collision.on_ground {
+                drag = support.map_or(0.6, slipperiness) * DEFAULT_AIR_DRAG;
+            }
+
+            let acceleration = if collision.on_ground {
+                WALK_ACCELERATION * MOVE_FLYING_FRICTION / drag.powi(3)
+            } else {
+                AIR_ACCELERATION
+            };
+            accelerate_player(
+                &mut motion,
+                input.strafe,
+                input.forward,
+                sin_yaw,
+                cos_yaw,
+                acceleration
+                    * if input.sprinting {
+                        crate::player::SPRINT_ACCELERATION_MULTIPLIER
+                    } else {
+                        1.0
+                    },
+            );
+
+            if input.jumping && collision.on_ground {
+                motion.y = JUMP_IMPULSE;
+            }
+
+            let movement = move_entity_with_sneak(
+                size.aabb(transform.translation),
+                motion,
+                step_height.0,
+                collision.on_ground,
+                input.sneaking,
+                &chunks,
+            );
+            transform.translation = size.position_from_aabb(movement.aabb);
+            *collision = movement.collision;
+
+            if collision.collided_x {
+                motion.x = 0.0;
+            }
+            if collision.collided_y {
+                motion.y = 0.0;
+            }
+            if collision.collided_z {
+                motion.z = 0.0;
+            }
+
+            motion.y = ((motion.y - GRAVITY_PER_TICK) * VERTICAL_DRAG)
+                .max(-TERMINAL_VELOCITY * TICK_SECONDS);
+            let post_move_drag = if collision.on_ground {
+                block_under_player(&chunks, size.aabb(transform.translation))
+                    .map_or(0.6, slipperiness)
+                    * DEFAULT_AIR_DRAG
+            } else {
+                DEFAULT_AIR_DRAG
+            };
+            motion.x *= post_move_drag;
+            motion.z *= post_move_drag;
+        }
+
+        velocity.0 = motion / TICK_SECONDS;
+    }
+}
+
+fn block_under_player(
+    chunks: &WorldChunks,
+    aabb: Aabb,
+) -> Option<crate::world::block::block::BlockId> {
+    let x = ((aabb.min.x + aabb.max.x) * 0.5).floor() as i32;
+    let y = aabb.min.y.floor() as i32 - 1;
+    let z = ((aabb.min.z + aabb.max.z) * 0.5).floor() as i32;
+    chunks.block_at(x, y, z)
+}
+
+fn accelerate_player(
+    motion: &mut Vec3,
+    strafe: f32,
+    forward: f32,
+    sin_yaw: f32,
+    cos_yaw: f32,
+    acceleration: f32,
+) {
+    let strafe = strafe * 0.98;
+    let forward = forward * 0.98;
+    let magnitude = strafe.hypot(forward);
+    if magnitude < 0.01 {
+        return;
+    }
+    let scale = acceleration / magnitude.max(1.0);
+    let strafe = strafe * scale;
+    let forward = forward * scale;
+    motion.x += strafe * cos_yaw - forward * sin_yaw;
+    motion.z += forward * cos_yaw + strafe * sin_yaw;
+}
+
 fn integrate_bodies(
     time: Res<Time>,
     chunks: Res<WorldChunks>,
@@ -365,7 +559,7 @@ fn integrate_bodies(
             Option<&Gravity>,
             Option<&Flying>,
         ),
-        Without<DroppedItem>,
+        (Without<DroppedItem>, Without<Player>),
     >,
 ) {
     let dt = time.delta_secs().min(MAX_STEP_SECS);

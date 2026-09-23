@@ -98,9 +98,20 @@ impl Plugin for PlayerPlugin {
     Gravity,
     EntitySize = EntitySize::PLAYER,
     StepHeight = StepHeight::PLAYER,
-    FlySpeed
+    FlySpeed,
+    PlayerMovementInput
 )]
 pub struct Player;
+
+/// Frame-sampled controls consumed by the tick-based player physics system.
+#[derive(Component, Default, Clone, Copy, Debug)]
+pub struct PlayerMovementInput {
+    pub strafe: f32,
+    pub forward: f32,
+    pub sneaking: bool,
+    pub sprinting: bool,
+    pub jumping: bool,
+}
 
 /// How fast the player moves while flying. Multiplied by [`FLY_SPEED`].
 #[derive(Component, Clone, Copy, Debug)]
@@ -169,9 +180,7 @@ impl PlayerHealth {
 /// Horizontal movement speeds in blocks per second.
 const WALK_SPEED: f32 = 4.317;
 const SPRINT_SPEED: f32 = 5.612;
-const SNEAK_SPEED: f32 = 1.295;
-const SPRINT_JUMP_SPEED: f32 = 7.1;
-const JUMP_SPEED: f32 = 8.4;
+pub(crate) const SPRINT_ACCELERATION_MULTIPLIER: f32 = SPRINT_SPEED / WALK_SPEED;
 const MOUSE_SENSITIVITY: f32 = 0.002;
 
 /// Flying mode base speed in blocks per second.
@@ -419,11 +428,14 @@ fn apply_player_input(
             &CollisionState,
             Option<&Flying>,
             &FlySpeed,
+            &mut PlayerMovementInput,
         ),
         With<Player>,
     >,
 ) {
-    let Ok((transform, mut velocity, collision, flying, fly_speed)) = player.single_mut() else {
+    let Ok((transform, mut velocity, _collision, flying, fly_speed, mut movement_input)) =
+        player.single_mut()
+    else {
         return;
     };
     let locked = windows
@@ -461,49 +473,29 @@ fn apply_player_input(
         return;
     }
 
-    // Walking mode (existing behavior)
-    let mut direction = Vec3::ZERO;
-    if locked {
-        let mut forward = *transform.forward();
-        forward.y = 0.0;
-        let forward = forward.normalize_or_zero();
-        let mut right = *transform.right();
-        right.y = 0.0;
-        let right = right.normalize_or_zero();
-
-        if keys.pressed(KeyCode::KeyW) {
-            direction += forward;
-        }
-        if keys.pressed(KeyCode::KeyS) {
-            direction -= forward;
-        }
-        if keys.pressed(KeyCode::KeyD) {
-            direction += right;
-        }
-        if keys.pressed(KeyCode::KeyA) {
-            direction -= right;
-        }
-    }
-
     let sneaking = locked && sneak_pressed(&keys);
     let sprinting = locked && keys.pressed(KeyCode::ShiftLeft) && !sneaking;
-    let jumping = locked && keys.pressed(KeyCode::Space);
-    let speed = if sneaking {
-        SNEAK_SPEED
-    } else if sprinting && jumping {
-        SPRINT_JUMP_SPEED
-    } else if sprinting {
-        SPRINT_SPEED
+    movement_input.strafe = if locked {
+        axis(keys.pressed(KeyCode::KeyA), keys.pressed(KeyCode::KeyD))
     } else {
-        WALK_SPEED
+        0.0
     };
-    let horizontal = direction.normalize_or_zero() * speed;
-    velocity.0.x = horizontal.x;
-    velocity.0.z = horizontal.z;
-
-    if locked && keys.pressed(KeyCode::Space) && collision.on_ground {
-        velocity.0.y = JUMP_SPEED;
+    movement_input.forward = if locked {
+        axis(keys.pressed(KeyCode::KeyW), keys.pressed(KeyCode::KeyS))
+    } else {
+        0.0
+    };
+    movement_input.sneaking = sneaking;
+    movement_input.sprinting = sprinting;
+    movement_input.jumping = locked && keys.pressed(KeyCode::Space);
+    if sneaking {
+        movement_input.strafe *= 0.3;
+        movement_input.forward *= 0.3;
     }
+}
+
+fn axis(positive: bool, negative: bool) -> f32 {
+    f32::from(u8::from(positive)) - f32::from(u8::from(negative))
 }
 
 #[cfg(target_os = "macos")]

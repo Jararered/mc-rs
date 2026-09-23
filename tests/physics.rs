@@ -11,8 +11,10 @@ use game::physics::BLOCK_REACH;
 use game::physics::BlockFace;
 use game::physics::PhysicsPlugin;
 use game::physics::move_entity;
+use game::physics::move_entity_with_sneak;
 use game::physics::raycast_blocks;
 use game::player::Player;
+use game::player::PlayerMovementInput;
 use game::world::block::block::BlockId;
 use game::world::block::properties::blocks_movement;
 use game::world::block::properties::is_breakable;
@@ -28,6 +30,7 @@ use game::world::generation::BiomeMap;
 use game::world::generation::Climate;
 use game::world::generation::GeneratedChunk;
 use game::world::generation::Heightmap;
+use game::world::tick::WorldTick;
 
 fn plains() -> BiomeMap {
     BiomeMap::from_cells(
@@ -244,6 +247,7 @@ fn physics_plugin_applies_gravity_until_the_player_lands() {
 
     let mut landed_y = None;
     for _ in 0..40 {
+        app.world_mut().resource_mut::<WorldTick>().advance(0.05);
         app.update();
         let mut query = app
             .world_mut()
@@ -251,13 +255,259 @@ fn physics_plugin_applies_gravity_until_the_player_lands() {
         let (transform, collision, velocity) = query.single(app.world()).unwrap();
         if collision.on_ground {
             landed_y = Some(transform.translation.y);
-            assert_eq!(velocity.0.y, 0.0);
+            assert!(velocity.0.y <= 0.0);
             break;
         }
     }
 
     let y = landed_y.expect("player should land on the stone floor");
     assert!((y - (65.0 + EntitySize::PLAYER.y_offset)).abs() < 0.05);
+}
+
+#[test]
+fn player_accelerates_from_rest_instead_of_receiving_instant_speed() {
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins)
+        .insert_resource(floor_world(64))
+        .add_plugins(PhysicsPlugin);
+    app.world_mut().spawn((
+        Player,
+        Transform::from_xyz(8.5, 65.0 + EntitySize::PLAYER.y_offset, 8.5),
+        Velocity::default(),
+        EntitySize::PLAYER,
+        CollisionState {
+            on_ground: true,
+            ..default()
+        },
+        PlayerMovementInput {
+            forward: 1.0,
+            ..default()
+        },
+    ));
+
+    app.world_mut().resource_mut::<WorldTick>().advance(0.05);
+    app.update();
+
+    let mut query = app.world_mut().query::<&Velocity>();
+    let speed = query.single(app.world()).unwrap().0.length();
+    assert!(speed > 0.0);
+    assert!(speed < 4.317);
+}
+
+#[test]
+fn held_jump_uses_beta_impulse_and_gravity_per_tick() {
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins)
+        .insert_resource(floor_world(64))
+        .add_plugins(PhysicsPlugin);
+    app.world_mut().spawn((
+        Player,
+        Transform::from_xyz(8.5, 65.0 + EntitySize::PLAYER.y_offset, 8.5),
+        Velocity::default(),
+        EntitySize::PLAYER,
+        CollisionState {
+            on_ground: true,
+            ..default()
+        },
+        PlayerMovementInput {
+            jumping: true,
+            ..default()
+        },
+    ));
+
+    app.world_mut().resource_mut::<WorldTick>().advance(0.05);
+    app.update();
+
+    let mut query = app
+        .world_mut()
+        .query::<(&Transform, &Velocity, &CollisionState)>();
+    let (transform, velocity, collision) = query.single(app.world()).unwrap();
+    assert!((transform.translation.y - (65.0 + EntitySize::PLAYER.y_offset + 0.42)).abs() < 1e-4);
+    assert!((velocity.0.y - ((0.42 - 0.08) * 0.98 * 20.0)).abs() < 1e-3);
+    assert!(!collision.on_ground);
+}
+
+#[test]
+fn holding_jump_repeats_after_landing() {
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins)
+        .insert_resource(floor_world(64))
+        .add_plugins(PhysicsPlugin);
+    app.world_mut().spawn((
+        Player,
+        Transform::from_xyz(8.5, 65.0 + EntitySize::PLAYER.y_offset, 8.5),
+        Velocity::default(),
+        EntitySize::PLAYER,
+        CollisionState {
+            on_ground: true,
+            ..default()
+        },
+        PlayerMovementInput {
+            jumping: true,
+            ..default()
+        },
+    ));
+
+    for _ in 0..15 {
+        app.world_mut().resource_mut::<WorldTick>().advance(0.05);
+        app.update();
+    }
+
+    let mut query = app.world_mut().query::<(&Transform, &CollisionState)>();
+    let (transform, collision) = query.single(app.world()).unwrap();
+    assert!(transform.translation.y > 65.0 + EntitySize::PLAYER.y_offset + 0.2);
+    assert!(!collision.on_ground);
+}
+
+#[test]
+fn ground_friction_depends_on_surface_slipperiness() {
+    fn final_horizontal_speed(surface: BlockId) -> f32 {
+        let mut chunk = Chunk::new();
+        for z in 0..CHUNK_SIZE {
+            for x in 0..CHUNK_SIZE {
+                chunk.set(x, 64, z, BlockId::Stone);
+            }
+        }
+        chunk.set(8, 64, 8, surface);
+        let mut chunks = WorldChunks::default();
+        chunks.insert(ChunkPos::ZERO, generated(chunk));
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .insert_resource(chunks)
+            .add_plugins(PhysicsPlugin);
+        app.world_mut().spawn((
+            Player,
+            Transform::from_xyz(8.5, 65.0 + EntitySize::PLAYER.y_offset, 8.5),
+            Velocity(Vec3::new(2.0, -0.2, 0.0)),
+            EntitySize::PLAYER,
+            CollisionState {
+                on_ground: true,
+                ..default()
+            },
+        ));
+        app.world_mut().resource_mut::<WorldTick>().advance(0.05);
+        app.update();
+        let mut query = app.world_mut().query::<&Velocity>();
+        query.single(app.world()).unwrap().0.x
+    }
+
+    let stone_speed = final_horizontal_speed(BlockId::Stone);
+    let ice_speed = final_horizontal_speed(BlockId::Ice);
+    assert!(ice_speed > stone_speed * 1.5);
+}
+
+#[test]
+fn sprint_accelerates_toward_its_faster_target_without_a_velocity_jump() {
+    fn first_tick_speed(sprinting: bool) -> f32 {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .insert_resource(floor_world(64))
+            .add_plugins(PhysicsPlugin);
+        app.world_mut().spawn((
+            Player,
+            Transform::from_xyz(8.5, 65.0 + EntitySize::PLAYER.y_offset, 8.5),
+            Velocity::default(),
+            EntitySize::PLAYER,
+            CollisionState {
+                on_ground: true,
+                ..default()
+            },
+            PlayerMovementInput {
+                forward: 1.0,
+                sprinting,
+                ..default()
+            },
+        ));
+        app.world_mut().resource_mut::<WorldTick>().advance(0.05);
+        app.update();
+        let mut query = app.world_mut().query::<&Velocity>();
+        query.single(app.world()).unwrap().0.xz().length()
+    }
+
+    let walking_speed = first_tick_speed(false);
+    let sprint_speed = first_tick_speed(true);
+    assert!(sprint_speed > walking_speed);
+    assert!(sprint_speed < 5.612);
+}
+
+#[test]
+fn player_has_air_control_and_momentum_decays_without_input() {
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins)
+        .insert_resource(floor_world(64))
+        .add_plugins(PhysicsPlugin);
+    let player = app
+        .world_mut()
+        .spawn((
+            Player,
+            Transform::from_xyz(8.5, 70.0, 8.5),
+            Velocity::default(),
+            EntitySize::PLAYER,
+            CollisionState::default(),
+            PlayerMovementInput {
+                forward: 1.0,
+                ..default()
+            },
+        ))
+        .id();
+
+    app.world_mut().resource_mut::<WorldTick>().advance(0.05);
+    app.update();
+    let first_speed = {
+        let mut query = app.world_mut().query::<&Velocity>();
+        query.single(app.world()).unwrap().0.xz().length()
+    };
+    assert!(first_speed > 0.0 && first_speed < 0.5);
+    app.world_mut()
+        .entity_mut(player)
+        .get_mut::<PlayerMovementInput>()
+        .unwrap()
+        .forward = 0.0;
+
+    app.world_mut().resource_mut::<WorldTick>().advance(0.05);
+    app.update();
+    let mut query = app.world_mut().query::<&Velocity>();
+    let velocity = query.single(app.world()).unwrap();
+    assert!(velocity.0.xz().length() < first_speed);
+}
+
+#[test]
+fn player_steps_onto_low_obstacles_but_not_full_blocks() {
+    fn move_over(obstacle: BlockId) -> game::physics::Movement {
+        let mut chunk = Chunk::new();
+        for z in 0..CHUNK_SIZE {
+            for x in 0..CHUNK_SIZE {
+                chunk.set(x, 64, z, BlockId::Stone);
+            }
+        }
+        chunk.set(9, 65, 8, obstacle);
+        let mut chunks = WorldChunks::default();
+        chunks.insert(ChunkPos::ZERO, generated(chunk));
+        let aabb = EntitySize::PLAYER.aabb(Vec3::new(8.5, 65.0 + EntitySize::PLAYER.y_offset, 8.5));
+        move_entity(aabb, Vec3::new(0.5, 0.0, 0.0), 0.5, true, &chunks)
+    }
+
+    let snow_step = move_over(BlockId::SnowLayer);
+    assert!(snow_step.displacement.x > 0.2);
+    assert!((snow_step.aabb.min.y - 65.125).abs() < 1e-4);
+
+    let full_block = move_over(BlockId::Stone);
+    assert!(full_block.displacement.x <= 0.2 + 1e-4);
+}
+
+#[test]
+fn sneaking_brakes_at_the_edge_of_supported_ground() {
+    let mut chunk = Chunk::new();
+    chunk.set(8, 64, 8, BlockId::Stone);
+    let chunks = generated(chunk);
+    let mut world = WorldChunks::default();
+    world.insert(ChunkPos::ZERO, chunks);
+    let aabb = EntitySize::PLAYER.aabb(Vec3::new(8.5, 65.0 + EntitySize::PLAYER.y_offset, 8.5));
+
+    let movement = move_entity_with_sneak(aabb, Vec3::new(0.9, 0.0, 0.0), 0.5, true, true, &world);
+    assert!(movement.displacement.x > 0.0);
+    assert!(movement.displacement.x < 0.9);
+    assert!(!movement.collision.collided_x);
 }
 
 #[test]

@@ -48,6 +48,11 @@ pub fn blocks_movement(block: BlockId) -> bool {
         && !is_crossed_plant(block)
 }
 
+/// Surface slipperiness used by Beta's living-entity ground acceleration and drag.
+pub fn slipperiness(block: BlockId) -> f32 {
+    if block == BlockId::Ice { 0.98 } else { 0.6 }
+}
+
 /// Local collision bounds for a block, if it collides with entities.
 pub fn collision_bounds(block: BlockId) -> Option<([f32; 3], [f32; 3])> {
     if !blocks_movement(block) {

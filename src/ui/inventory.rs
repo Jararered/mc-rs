@@ -38,6 +38,8 @@ use crate::inventory::preview_drag_place;
 use crate::inventory::shift_click_chest_slot;
 use crate::inventory::shift_click_slot;
 use crate::inventory::slot_accepts_drag;
+use crate::inventory::sort_container_slots;
+use crate::inventory::sort_main_inventory;
 use crate::item::ItemData;
 use crate::item::ItemStack;
 use crate::player::Player;
@@ -985,6 +987,12 @@ fn handle_slots(
     let hovered = slots
         .iter()
         .find_map(|(cursor, slot)| cursor.cursor_over().then_some(*slot));
+    if keys.just_pressed(KeyCode::KeyS) && drag.button.is_none() {
+        if matches!(hovered, Some(Slot::Main(_))) {
+            sort_main_inventory(&mut inventory);
+        }
+        return;
+    }
     let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
     if screen.furnace {
         let Some(position) = screen.furnace_position else {
@@ -1220,6 +1228,19 @@ fn handle_chest_slots(
                 mark_chest_dirty(persistence, group);
             }
         }
+    }
+    if keys.just_pressed(KeyCode::KeyS) && drag.button.is_none() {
+        match hovered {
+            Some(Slot::Chest(_)) => {
+                let mut chest_slots = read_chest_group_slots(chunks, group);
+                sort_container_slots(&mut chest_slots);
+                write_chest_group_slots(chunks, group, &chest_slots);
+                mark_chest_dirty(persistence, group);
+            }
+            Some(Slot::Main(_)) => sort_main_inventory(inventory),
+            _ => {}
+        }
+        return;
     }
     if drag.button.is_none() {
         let left = mouse.just_pressed(MouseButton::Left);

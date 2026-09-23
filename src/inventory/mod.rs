@@ -19,6 +19,8 @@ pub use transfer::preview_drag_place;
 pub use transfer::shift_click_chest_slot;
 pub use transfer::shift_click_slot;
 pub use transfer::slot_accepts_drag;
+pub use transfer::sort_container_slots;
+pub use transfer::sort_main_inventory;
 
 /// Number of hotbar slots shown on the in-game HUD.
 pub const HOTBAR_SLOTS: usize = 9;

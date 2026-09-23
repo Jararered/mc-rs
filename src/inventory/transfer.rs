@@ -12,7 +12,10 @@
 
 use crate::crafting::CraftingGrid;
 use crate::crafting::beta_recipe_book;
+use crate::item::ItemData;
+use crate::item::ItemId;
 use crate::item::ItemStack;
+use crate::world::block::block::BlockId;
 
 use super::HOTBAR_SLOTS;
 use super::Hotbar;
@@ -57,6 +60,128 @@ pub fn collect_matching_stacks(
     }
     *carried = Some(cursor);
     moved
+}
+
+/// Sort stacks by category and keep empty slots at the end. Stack counts and
+/// item data are preserved; identical stacks are not merged.
+pub fn sort_container_slots(slots: &mut [Option<ItemStack>]) {
+    slots.sort_by_key(|stack| stack.map_or((u8::MAX, u8::MAX, u16::MAX, u16::MAX), sort_key));
+}
+
+fn sort_key(stack: ItemStack) -> (u8, u8, u16, u16) {
+    let item = stack.item();
+    let definition = stack.definition();
+    let (group, family) = if let Some(block) = definition.block {
+        (0, block_material_family(block))
+    } else {
+        match item {
+            ItemId::Bow => (2, 0),
+            ItemId::LeatherHelmet
+            | ItemId::LeatherChestplate
+            | ItemId::LeatherLeggings
+            | ItemId::LeatherBoots
+            | ItemId::ChainmailHelmet
+            | ItemId::ChainmailChestplate
+            | ItemId::ChainmailLeggings
+            | ItemId::ChainmailBoots
+            | ItemId::IronHelmet
+            | ItemId::IronChestplate
+            | ItemId::IronLeggings
+            | ItemId::IronBoots
+            | ItemId::DiamondHelmet
+            | ItemId::DiamondChestplate
+            | ItemId::DiamondLeggings
+            | ItemId::DiamondBoots
+            | ItemId::GoldHelmet
+            | ItemId::GoldChestplate
+            | ItemId::GoldLeggings
+            | ItemId::GoldBoots => (3, 0),
+            _ if matches!(definition.data, ItemData::Durability(_)) => (2, 0),
+            _ => (1, 0),
+        }
+    };
+    let id = definition
+        .block
+        .map_or(item.as_u16(), |block| u16::from(block.as_u8()));
+    (group, family, id, stack.data())
+}
+
+/// Material-family order for block items: stone/mineral masonry, soft terrain,
+/// wood and wood products, wool/textiles, then all remaining blocks.
+fn block_material_family(block: BlockId) -> u8 {
+    match block {
+        BlockId::Stone
+        | BlockId::Cobblestone
+        | BlockId::Bedrock
+        | BlockId::GoldOre
+        | BlockId::IronOre
+        | BlockId::CoalOre
+        | BlockId::LapisOre
+        | BlockId::LapisBlock
+        | BlockId::Dispenser
+        | BlockId::StickyPiston
+        | BlockId::Piston
+        | BlockId::PistonHead
+        | BlockId::GoldBlock
+        | BlockId::IronBlock
+        | BlockId::DoubleStoneSlab
+        | BlockId::StoneSlab
+        | BlockId::Bricks
+        | BlockId::MossyCobblestone
+        | BlockId::Obsidian
+        | BlockId::MobSpawner
+        | BlockId::CobblestoneStairs
+        | BlockId::DiamondOre
+        | BlockId::DiamondBlock
+        | BlockId::Furnace
+        | BlockId::LitFurnace
+        | BlockId::IronDoor
+        | BlockId::StonePressurePlate
+        | BlockId::RedstoneOre
+        | BlockId::LitRedstoneOre
+        | BlockId::StoneButton
+        | BlockId::Netherrack => 0,
+        BlockId::Grass
+        | BlockId::Dirt
+        | BlockId::Sand
+        | BlockId::Gravel
+        | BlockId::Farmland
+        | BlockId::SnowLayer
+        | BlockId::Ice
+        | BlockId::Snow
+        | BlockId::Cactus
+        | BlockId::Clay
+        | BlockId::SugarCane
+        | BlockId::SoulSand => 1,
+        BlockId::WoodenPlanks
+        | BlockId::Wood
+        | BlockId::Leaves
+        | BlockId::Bookshelf
+        | BlockId::WoodenStairs
+        | BlockId::Chest
+        | BlockId::CraftingTable
+        | BlockId::StandingSign
+        | BlockId::WoodenDoor
+        | BlockId::Ladder
+        | BlockId::WallSign
+        | BlockId::WoodenPressurePlate
+        | BlockId::Jukebox
+        | BlockId::Fence
+        | BlockId::Trapdoor
+        | BlockId::SpruceLeaves
+        | BlockId::BirchLeaves
+        | BlockId::SpruceWood
+        | BlockId::BirchWood
+        | BlockId::SprucePlanks
+        | BlockId::BirchPlanks => 2,
+        BlockId::Wool | BlockId::Bed => 3,
+        _ => 4,
+    }
+}
+
+/// Sort the 27 main inventory slots without touching the hotbar or equipment.
+pub fn sort_main_inventory(inventory: &mut Inventory) {
+    sort_container_slots(&mut inventory.main);
 }
 
 /// Shift-click between a chest inventory and player storage.

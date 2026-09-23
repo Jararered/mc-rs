@@ -1,8 +1,11 @@
 use game::inventory::HOTBAR_SLOTS;
 use game::inventory::Hotbar;
 use game::inventory::collect_matching_stacks;
+use game::inventory::sort_container_slots;
+use game::inventory::sort_main_inventory;
 use game::item::ItemId;
 use game::item::ItemStack;
+use game::world::block::block::BlockId;
 
 #[test]
 fn hotbar_starts_empty_on_slot_zero() {
@@ -73,6 +76,89 @@ fn double_click_collection_requires_stack_compatible_item_data() {
         Some(ItemStack::with_data(ItemId::Coal, 3, 1).unwrap())
     );
     assert_eq!(slots[1], None);
+}
+
+#[test]
+fn sorting_uses_material_families_then_items_tools_and_armor() {
+    let mut slots = [
+        Some(ItemStack::new(ItemId::IronBoots, 1).unwrap()),
+        Some(ItemStack::from_block(BlockId::Torch, 4).unwrap()),
+        Some(ItemStack::new(ItemId::WoodenPickaxe, 1).unwrap()),
+        Some(ItemStack::from_block(BlockId::Wool, 2).unwrap()),
+        Some(ItemStack::new(ItemId::Diamond, 3).unwrap()),
+        Some(ItemStack::from_block(BlockId::WoodenPlanks, 6).unwrap()),
+        Some(ItemStack::from_block(BlockId::Dirt, 5).unwrap()),
+        Some(ItemStack::from_block(BlockId::Stone, 7).unwrap()),
+        Some(ItemStack::new(ItemId::SugarCane, 2).unwrap()),
+        Some(ItemStack::new(ItemId::Bow, 1).unwrap()),
+    ];
+
+    sort_container_slots(&mut slots);
+
+    let items: Vec<_> = slots
+        .iter()
+        .filter_map(|stack| stack.map(ItemStack::item))
+        .collect();
+    assert_eq!(
+        items,
+        vec![
+            ItemId::Block(BlockId::Stone),
+            ItemId::Block(BlockId::Dirt),
+            ItemId::SugarCane,
+            ItemId::Block(BlockId::WoodenPlanks),
+            ItemId::Block(BlockId::Wool),
+            ItemId::Block(BlockId::Torch),
+            ItemId::Diamond,
+            ItemId::Bow,
+            ItemId::WoodenPickaxe,
+            ItemId::IronBoots,
+        ]
+    );
+}
+
+#[test]
+fn sorting_orders_variants_preserves_stacks_and_moves_empty_slots_last() {
+    let mut slots = [
+        Some(ItemStack::with_data(ItemId::Coal, 9, 1).unwrap()),
+        None,
+        Some(ItemStack::new(ItemId::Coal, 4).unwrap()),
+    ];
+
+    sort_container_slots(&mut slots);
+
+    assert_eq!(slots[0], Some(ItemStack::new(ItemId::Coal, 4).unwrap()));
+    assert_eq!(
+        slots[1],
+        Some(ItemStack::with_data(ItemId::Coal, 9, 1).unwrap())
+    );
+    assert_eq!(slots[2], None);
+}
+
+#[test]
+fn sorting_main_inventory_leaves_hotbar_and_cursor_unchanged() {
+    use game::inventory::Inventory;
+
+    let mut inventory = Inventory::default();
+    inventory.main[0] = Some(ItemStack::new(ItemId::WoodenPickaxe, 1).unwrap());
+    inventory.main[1] = Some(ItemStack::from_block(BlockId::Stone, 3).unwrap());
+    inventory.carried = Some(ItemStack::new(ItemId::Diamond, 2).unwrap());
+    let mut hotbar = Hotbar::default();
+    hotbar.slots[0] = Some(ItemStack::new(ItemId::IronAxe, 1).unwrap());
+    let hotbar_before = hotbar.slots;
+    let carried_before = inventory.carried;
+
+    sort_main_inventory(&mut inventory);
+
+    assert_eq!(
+        inventory.main[0],
+        Some(ItemStack::from_block(BlockId::Stone, 3).unwrap())
+    );
+    assert_eq!(
+        inventory.main[1],
+        Some(ItemStack::new(ItemId::WoodenPickaxe, 1).unwrap())
+    );
+    assert_eq!(hotbar.slots, hotbar_before);
+    assert_eq!(inventory.carried, carried_before);
 }
 
 #[test]

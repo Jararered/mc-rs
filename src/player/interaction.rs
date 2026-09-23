@@ -173,6 +173,7 @@ pub(super) fn interact_blocks(
         inventory_screen.furnace_position = Some((hit.x, hit.y, hit.z));
         inventory_screen.chest = false;
         inventory_screen.chest_position = None;
+        inventory_screen.chest_group = None;
         if let Ok((_, mut cursor)) = windows.single_mut() {
             cursor.visible = true;
             cursor.grab_mode = CursorGrabMode::None;
@@ -183,10 +184,16 @@ pub(super) fn interact_blocks(
     }
     if right_click && !inventory_screen.open && hit.is_some_and(|hit| hit.block.is_chest()) {
         let hit = hit.expect("checked above");
-        if chunks
-            .block_at(hit.x, hit.y + 1, hit.z)
-            .is_some_and(is_opaque_cube)
-        {
+        let Some(group) = chunks.chest_group_at(hit.x, hit.y, hit.z) else {
+            state.mining.reset();
+            *focus = BlockFocus::default();
+            return;
+        };
+        let blocked = [Some(group.first), group.second]
+            .into_iter()
+            .flatten()
+            .any(|(x, y, z)| chunks.block_at(x, y + 1, z).is_some_and(is_opaque_cube));
+        if blocked {
             state.mining.reset();
             *focus = BlockFocus::default();
             return;
@@ -205,6 +212,7 @@ pub(super) fn interact_blocks(
         inventory_screen.furnace_position = None;
         inventory_screen.chest = true;
         inventory_screen.chest_position = Some((hit.x, hit.y, hit.z));
+        inventory_screen.chest_group = Some(group);
         if let Ok((_, mut cursor)) = windows.single_mut() {
             cursor.visible = true;
             cursor.grab_mode = CursorGrabMode::None;
@@ -235,6 +243,7 @@ pub(super) fn interact_blocks(
         inventory_screen.furnace_position = None;
         inventory_screen.chest = false;
         inventory_screen.chest_position = None;
+        inventory_screen.chest_group = None;
         workbench.position = Some((hit.x, hit.y, hit.z));
         if let Ok((_, mut cursor)) = windows.single_mut() {
             cursor.visible = true;
@@ -539,19 +548,13 @@ fn chest_can_place_at(chunks: &WorldChunks, x: i32, y: i32, z: i32) -> bool {
         .into_iter()
         .filter(|&(nx, ny, nz)| chunks.block_at(nx, ny, nz).is_some_and(BlockId::is_chest))
         .collect::<Vec<_>>();
-    if chests.len() > 1 {
-        return false;
+    match chests.as_slice() {
+        [] => true,
+        [neighbor] => chunks
+            .chest_group_at(neighbor.0, neighbor.1, neighbor.2)
+            .is_some_and(|group| !group.is_double()),
+        _ => false,
     }
-    chests.into_iter().all(|(cx, cy, cz)| {
-        [
-            (cx - 1, cy, cz),
-            (cx + 1, cy, cz),
-            (cx, cy, cz - 1),
-            (cx, cy, cz + 1),
-        ]
-        .into_iter()
-        .all(|(nx, ny, nz)| !chunks.block_at(nx, ny, nz).is_some_and(BlockId::is_chest))
-    })
 }
 
 fn furnace_facing_toward_player(player_forward: Vec3) -> FurnaceFacing {

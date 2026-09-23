@@ -13,7 +13,6 @@
 use crate::crafting::CraftingGrid;
 use crate::crafting::beta_recipe_book;
 use crate::item::ItemStack;
-use crate::world::chest::Chest;
 
 use super::HOTBAR_SLOTS;
 use super::Hotbar;
@@ -32,21 +31,21 @@ pub enum SlotId {
     Armor(usize),
 }
 
-/// Shift-click between a single chest and player storage.
+/// Shift-click between a chest inventory and player storage.
 pub fn shift_click_chest_slot(
     inventory: &mut Inventory,
     hotbar: &mut Hotbar,
-    chest: &mut Chest,
+    chest: &mut [Option<ItemStack>],
     slot: SlotId,
 ) -> bool {
     match slot {
-        SlotId::Chest(index) if index < chest.slots.len() => {
-            let Some(stack) = chest.slots[index].take() else {
+        SlotId::Chest(index) if index < chest.len() => {
+            let Some(stack) = chest[index].take() else {
                 return false;
             };
             let before = stack.count();
-            chest.slots[index] = place_stack(inventory, hotbar, stack, &player_slots_forward());
-            chest.slots[index].is_none_or(|rest| rest.count() != before)
+            chest[index] = place_stack(inventory, hotbar, stack, &player_slots_forward());
+            chest[index].is_none_or(|rest| rest.count() != before)
         }
         SlotId::Main(index) if index < inventory.main.len() => {
             let Some(stack) = inventory.main[index].take() else {
@@ -76,7 +75,7 @@ pub fn shift_click_chest_slot(
 pub fn hotbar_key_swap_chest(
     inventory: &mut Inventory,
     hotbar: &mut Hotbar,
-    chest: &mut Chest,
+    chest: &mut [Option<ItemStack>],
     slot: SlotId,
     hotbar_index: usize,
 ) -> bool {
@@ -86,7 +85,7 @@ pub fn hotbar_key_swap_chest(
         return false;
     }
     match slot {
-        SlotId::Chest(index) => chest.slots.get_mut(index).is_some_and(|source| {
+        SlotId::Chest(index) => chest.get_mut(index).is_some_and(|source| {
             std::mem::swap(source, &mut hotbar.slots[hotbar_index]);
             true
         }),
@@ -106,12 +105,12 @@ pub fn hotbar_key_swap_chest(
 pub fn chest_slot_accepts_drag(
     inventory: &Inventory,
     hotbar: &Hotbar,
-    chest: &Chest,
+    chest: &[Option<ItemStack>],
     slot: SlotId,
     carried: ItemStack,
 ) -> bool {
     let existing = match slot {
-        SlotId::Chest(index) => chest.slots.get(index).copied().flatten(),
+        SlotId::Chest(index) => chest.get(index).copied().flatten(),
         SlotId::Main(index) => inventory.main.get(index).copied().flatten(),
         SlotId::Hotbar(index) => hotbar.slots.get(index).copied().flatten(),
         _ => return false,
@@ -123,7 +122,7 @@ pub fn chest_slot_accepts_drag(
 pub fn preview_chest_drag_place(
     inventory: &Inventory,
     hotbar: &Hotbar,
-    chest: &Chest,
+    chest: &[Option<ItemStack>],
     slots: &[SlotId],
     mode: DragPlace,
 ) -> Vec<(SlotId, ItemStack)> {
@@ -168,7 +167,7 @@ pub fn preview_chest_drag_place(
 pub fn chest_drag_place(
     inventory: &mut Inventory,
     hotbar: &mut Hotbar,
-    chest: &mut Chest,
+    chest: &mut [Option<ItemStack>],
     slots: &[SlotId],
     mode: DragPlace,
 ) -> bool {
@@ -209,11 +208,11 @@ fn accepts_stack(existing: Option<ItemStack>, carried: ItemStack) -> bool {
 fn read_chest_slot(
     inventory: &Inventory,
     hotbar: &Hotbar,
-    chest: &Chest,
+    chest: &[Option<ItemStack>],
     slot: SlotId,
 ) -> Option<Option<ItemStack>> {
     match slot {
-        SlotId::Chest(index) => chest.slots.get(index).copied(),
+        SlotId::Chest(index) => chest.get(index).copied(),
         SlotId::Main(index) => inventory.main.get(index).copied(),
         SlotId::Hotbar(index) => hotbar.slots.get(index).copied(),
         _ => None,
@@ -223,13 +222,13 @@ fn read_chest_slot(
 fn write_chest_slot(
     inventory: &mut Inventory,
     hotbar: &mut Hotbar,
-    chest: &mut Chest,
+    chest: &mut [Option<ItemStack>],
     slot: SlotId,
     stack: Option<ItemStack>,
 ) {
     match slot {
         SlotId::Chest(index) => {
-            if let Some(target) = chest.slots.get_mut(index) {
+            if let Some(target) = chest.get_mut(index) {
                 *target = stack;
             }
         }
@@ -247,13 +246,13 @@ fn write_chest_slot(
     }
 }
 
-fn place_in_chest(chest: &mut Chest, mut stack: ItemStack) -> Option<ItemStack> {
+fn place_in_chest(chest: &mut [Option<ItemStack>], mut stack: ItemStack) -> Option<ItemStack> {
     if stack.definition().max_stack_size > 1 {
-        for existing in chest.slots.iter_mut().flatten() {
+        for existing in chest.iter_mut().flatten() {
             stack = existing.merge(stack)?;
         }
     }
-    for slot in &mut chest.slots {
+    for slot in chest {
         if slot.is_none() {
             *slot = Some(stack);
             return None;

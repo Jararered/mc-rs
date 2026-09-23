@@ -14,6 +14,23 @@ use super::ChunkPos;
 pub const CHUNK_SIZE: usize = 16;
 pub const CHUNK_HEIGHT: usize = 128;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ChestGroup {
+    /// First half in stable world order: west-to-east or north-to-south.
+    pub first: (i32, i32, i32),
+    pub second: Option<(i32, i32, i32)>,
+}
+
+impl ChestGroup {
+    pub const fn is_double(self) -> bool {
+        self.second.is_some()
+    }
+
+    pub const fn slot_count(self) -> usize {
+        if self.is_double() { 54 } else { 27 }
+    }
+}
+
 #[derive(Clone)]
 pub struct Chunk {
     // Meshing snapshots the center chunk and eight neighbors. Sharing their
@@ -256,6 +273,56 @@ impl WorldChunks {
             }
         }
         positions
+    }
+
+    /// Resolve one chest or a valid adjacent pair in stable inventory order.
+    /// Invalid clusters never become a multi-chest inventory view.
+    pub fn chest_group_at(&self, x: i32, y: i32, z: i32) -> Option<ChestGroup> {
+        if !self.block_at(x, y, z).is_some_and(BlockId::is_chest) {
+            return None;
+        }
+        let adjacent = [(x - 1, y, z), (x + 1, y, z), (x, y, z - 1), (x, y, z + 1)]
+            .into_iter()
+            .filter(|&(nx, ny, nz)| self.block_at(nx, ny, nz).is_some_and(BlockId::is_chest))
+            .collect::<Vec<_>>();
+        let [neighbor] = adjacent.as_slice() else {
+            return adjacent.is_empty().then_some(ChestGroup {
+                first: (x, y, z),
+                second: None,
+            });
+        };
+
+        let pair = [(x, y, z), *neighbor];
+        for position in pair {
+            let (px, py, pz) = position;
+            for other in [
+                (px - 1, py, pz),
+                (px + 1, py, pz),
+                (px, py, pz - 1),
+                (px, py, pz + 1),
+            ] {
+                if other != pair[0]
+                    && other != pair[1]
+                    && self
+                        .block_at(other.0, other.1, other.2)
+                        .is_some_and(BlockId::is_chest)
+                {
+                    return None;
+                }
+            }
+        }
+        let [mut first, mut second] = pair;
+        if first.0 == second.0 {
+            if first.2 > second.2 {
+                std::mem::swap(&mut first, &mut second);
+            }
+        } else if first.0 > second.0 {
+            std::mem::swap(&mut first, &mut second);
+        }
+        Some(ChestGroup {
+            first,
+            second: Some(second),
+        })
     }
 
     /// Replace a loaded block and refresh that column's heightmap.

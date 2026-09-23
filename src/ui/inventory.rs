@@ -42,7 +42,7 @@ use crate::item::ItemStack;
 use crate::player::Player;
 use crate::random::ItemRng;
 use crate::world::block::block::BlockId;
-use crate::world::chest::Chest;
+use crate::world::chunk::ChestGroup;
 use crate::world::chunk::ChunkPos;
 use crate::world::chunk::WorldChunks;
 use crate::world::persistence::WorldPersistence;
@@ -50,6 +50,8 @@ use crate::world::persistence::WorldPersistence;
 const SCALE: f32 = GUI_SCALE;
 const SLOT_SIZE: f32 = 16.0;
 const SLOT_STEP: f32 = 18.0;
+const CHEST_HALF_SLOTS: usize = 27;
+const DOUBLE_CHEST_SLOTS: usize = CHEST_HALF_SLOTS * 2;
 
 pub struct InventoryGuiPlugin;
 
@@ -197,12 +199,13 @@ fn validate_chest(
         return;
     };
     let delta = transform.translation - Vec3::new(x as f32 + 0.5, y as f32 + 0.5, z as f32 + 0.5);
-    if chunks.chest_at(x, y, z).is_some() && delta.length_squared() <= 64.0 {
+    if chunks.chest_group_at(x, y, z) == screen.chest_group && delta.length_squared() <= 64.0 {
         return;
     }
     screen.open = false;
     screen.chest = false;
     screen.chest_position = None;
+    screen.chest_group = None;
     if let Ok((player_transform, mut hotbar, mut inventory)) = player.single_mut() {
         close_crafting_interface(
             &mut commands,
@@ -230,6 +233,7 @@ pub(crate) struct InventoryScreen {
     pub furnace_position: Option<(i32, i32, i32)>,
     pub chest: bool,
     pub chest_position: Option<(i32, i32, i32)>,
+    pub chest_group: Option<ChestGroup>,
 }
 #[derive(Resource)]
 pub(crate) struct WorkbenchUiSession {
@@ -337,7 +341,10 @@ fn toggle(
             &font.minecraft,
             screen.workbench,
             screen.furnace,
-            screen.chest,
+            screen
+                .chest_group
+                .map_or(0, ChestGroup::slot_count)
+                .div_ceil(9),
             &texture.container,
         );
         if let Ok((_, mut cursor)) = windows.single_mut() {
@@ -366,6 +373,7 @@ fn toggle(
         screen.furnace_position = None;
         screen.chest = false;
         screen.chest_position = None;
+        screen.chest_group = None;
     }
     if let Ok((window, mut cursor)) = windows.single_mut() {
         cursor.visible = screen.open;
@@ -392,7 +400,10 @@ fn toggle(
             &font.minecraft,
             screen.workbench,
             screen.furnace,
-            screen.chest,
+            screen
+                .chest_group
+                .map_or(0, ChestGroup::slot_count)
+                .div_ceil(9),
             &texture.container,
         );
     } else {
@@ -426,6 +437,7 @@ fn close(
     screen.furnace_position = None;
     screen.chest = false;
     screen.chest_position = None;
+    screen.chest_group = None;
     for root in &roots {
         commands.entity(root).despawn();
     }
@@ -477,10 +489,15 @@ fn spawn(
     font: &Handle<Font>,
     workbench: bool,
     furnace: bool,
-    chest: bool,
+    chest_rows: usize,
     container: &Handle<Image>,
 ) {
-    let panel_height = if chest { 168.0 } else { 166.0 };
+    let chest = chest_rows > 0;
+    let panel_height = if chest {
+        114.0 + chest_rows as f32 * 18.0
+    } else {
+        166.0
+    };
     commands
         .spawn((
             InventoryRoot,
@@ -506,16 +523,23 @@ fn spawn(
             ))
             .with_children(|panel| {
                 if chest {
+                    let chest_top_height = chest_rows as f32 * 18.0 + 17.0;
+                    let player_top = 18.0 + chest_rows as f32 * 18.0 + 13.0;
+                    let hotbar_top = player_top + 58.0;
                     panel.spawn((
-                        ImageNode::new(container.clone())
-                            .with_rect(Rect::new(0.0, 0.0, 176.0, 71.0)),
+                        ImageNode::new(container.clone()).with_rect(Rect::new(
+                            0.0,
+                            0.0,
+                            176.0,
+                            chest_top_height,
+                        )),
                         Pickable::IGNORE,
                         Node {
                             position_type: PositionType::Absolute,
                             left: px(0.0),
                             top: px(0.0),
                             width: px(176.0 * SCALE),
-                            height: px(71.0 * SCALE),
+                            height: px(chest_top_height * SCALE),
                             ..default()
                         },
                     ));
@@ -526,27 +550,37 @@ fn spawn(
                         Node {
                             position_type: PositionType::Absolute,
                             left: px(0.0),
-                            top: px(71.0 * SCALE),
+                            top: px(chest_top_height * SCALE),
                             width: px(176.0 * SCALE),
                             height: px(96.0 * SCALE),
                             ..default()
                         },
                     ));
-                    chest_panel_label(panel, font, "Chest", 8.0, 6.0);
-                    chest_panel_label(panel, font, "Inventory", 8.0, 74.0);
-                    for index in 0..27 {
+                    chest_panel_label(
+                        panel,
+                        font,
+                        if chest_rows == 3 {
+                            "Chest"
+                        } else {
+                            "Large chest"
+                        },
+                        8.0,
+                        6.0,
+                    );
+                    chest_panel_label(panel, font, "Inventory", 8.0, chest_top_height + 3.0);
+                    for index in 0..chest_rows * 9 {
                         let x = 8.0 + (index % 9) as f32 * SLOT_STEP;
                         let y = 18.0 + (index / 9) as f32 * SLOT_STEP;
                         slot(panel, icons, font, Slot::Chest(index), x, y);
                     }
                     for index in 0..27 {
                         let x = 8.0 + (index % 9) as f32 * SLOT_STEP;
-                        let y = 85.0 + (index / 9) as f32 * SLOT_STEP;
+                        let y = player_top + (index / 9) as f32 * SLOT_STEP;
                         slot(panel, icons, font, Slot::Main(index), x, y);
                     }
                     for index in 0..9 {
                         let x = 8.0 + index as f32 * SLOT_STEP;
-                        slot(panel, icons, font, Slot::Hotbar(index), x, 143.0);
+                        slot(panel, icons, font, Slot::Hotbar(index), x, hotbar_top);
                     }
                 } else {
                     panel.spawn((
@@ -1086,7 +1120,7 @@ fn handle_chest_slots(
     persistence: &mut Option<ResMut<WorldPersistence>>,
     drag: &mut SlotDrag,
 ) {
-    let Some(position) = screen.chest_position else {
+    let Some(group) = screen.chest_group else {
         return;
     };
     let hovered = slots
@@ -1095,12 +1129,18 @@ fn handle_chest_slots(
     let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
     if let Some(slot) = hovered {
         for (index, key) in HOTBAR_KEYS.iter().enumerate() {
-            if keys.just_pressed(*key)
-                && let Some(chest) = chunks.chest_at_mut(position.0, position.1, position.2)
-            {
+            if keys.just_pressed(*key) {
                 *drag = SlotDrag::default();
-                let _ = hotbar_key_swap_chest(inventory, hotbar, chest, to_slot_id(slot), index);
-                mark_chest_dirty(persistence, position);
+                let mut chest_slots = read_chest_group_slots(chunks, group);
+                let _ = hotbar_key_swap_chest(
+                    inventory,
+                    hotbar,
+                    &mut chest_slots,
+                    to_slot_id(slot),
+                    index,
+                );
+                write_chest_group_slots(chunks, group, &chest_slots);
+                mark_chest_dirty(persistence, group);
             }
         }
     }
@@ -1115,15 +1155,15 @@ fn handle_chest_slots(
         };
         let right = right && !left;
         if shift {
-            if let Some(chest) = chunks.chest_at_mut(position.0, position.1, position.2) {
-                let _ = shift_click_chest_slot(inventory, hotbar, chest, to_slot_id(slot));
-            }
-            mark_chest_dirty(persistence, position);
+            let mut chest_slots = read_chest_group_slots(chunks, group);
+            let _ = shift_click_chest_slot(inventory, hotbar, &mut chest_slots, to_slot_id(slot));
+            write_chest_group_slots(chunks, group, &chest_slots);
+            mark_chest_dirty(persistence, group);
             return;
         }
         if inventory.carried.is_none() {
-            apply_chest_click(slot, right, position, chunks, hotbar, inventory, workbench);
-            mark_chest_dirty(persistence, position);
+            apply_chest_click(slot, right, group, chunks, hotbar, inventory, workbench);
+            mark_chest_dirty(persistence, group);
             return;
         }
         drag.button = Some(if right {
@@ -1137,10 +1177,9 @@ fn handle_chest_slots(
     let Some(button) = drag.button else {
         return;
     };
-    if let Some(slot) = hovered
-        && let Some(chest) = chunks.chest_at(position.0, position.1, position.2)
-    {
-        remember_chest_drag_slot(drag, slot, inventory, hotbar, chest);
+    if let Some(slot) = hovered {
+        let chest_slots = read_chest_group_slots(chunks, group);
+        remember_chest_drag_slot(drag, slot, inventory, hotbar, &chest_slots);
     }
     if mouse.pressed(button) {
         return;
@@ -1155,9 +1194,9 @@ fn handle_chest_slots(
     *drag = SlotDrag::default();
     if painted.len() >= 2 {
         let ids: Vec<SlotId> = painted.into_iter().map(to_slot_id).collect();
-        if let Some(chest) = chunks.chest_at_mut(position.0, position.1, position.2) {
-            let _ = chest_drag_place(inventory, hotbar, chest, &ids, mode);
-        }
+        let mut chest_slots = read_chest_group_slots(chunks, group);
+        let _ = chest_drag_place(inventory, hotbar, &mut chest_slots, &ids, mode);
+        write_chest_group_slots(chunks, group, &chest_slots);
     } else if let Some(slot) = hovered.or(if painted.len() == 1 {
         painted.first().copied()
     } else {
@@ -1166,14 +1205,14 @@ fn handle_chest_slots(
         apply_chest_click(
             slot,
             mode == DragPlace::OneEach,
-            position,
+            group,
             chunks,
             hotbar,
             inventory,
             workbench,
         );
     }
-    mark_chest_dirty(persistence, position);
+    mark_chest_dirty(persistence, group);
 }
 
 fn remember_chest_drag_slot(
@@ -1181,7 +1220,7 @@ fn remember_chest_drag_slot(
     slot: Slot,
     inventory: &Inventory,
     hotbar: &Hotbar,
-    chest: &Chest,
+    chest: &[Option<ItemStack>],
 ) {
     let Some(carried) = inventory.carried else {
         return;
@@ -1197,27 +1236,60 @@ fn remember_chest_drag_slot(
 fn apply_chest_click(
     slot: Slot,
     right: bool,
-    position: (i32, i32, i32),
+    group: ChestGroup,
     chunks: &mut WorldChunks,
     hotbar: &mut Hotbar,
     inventory: &mut Inventory,
     workbench: &mut WorkbenchUiSession,
 ) {
     if let Slot::Chest(index) = slot {
-        if let Some(stack) = chunks
-            .chest_at_mut(position.0, position.1, position.2)
-            .and_then(|chest| chest.slots.get_mut(index))
-        {
+        let mut chest_slots = read_chest_group_slots(chunks, group);
+        if let Some(stack) = chest_slots.get_mut(index) {
             click_slot(stack, &mut inventory.carried, right);
         }
+        write_chest_group_slots(chunks, group, &chest_slots);
     } else {
         apply_click(slot, right, false, hotbar, inventory, workbench);
     }
 }
 
-fn mark_chest_dirty(persistence: &mut Option<ResMut<WorldPersistence>>, position: (i32, i32, i32)) {
+fn read_chest_group_slots(
+    chunks: &WorldChunks,
+    group: ChestGroup,
+) -> [Option<ItemStack>; DOUBLE_CHEST_SLOTS] {
+    let mut slots = [None; DOUBLE_CHEST_SLOTS];
+    if let Some(chest) = chunks.chest_at(group.first.0, group.first.1, group.first.2) {
+        slots[..CHEST_HALF_SLOTS].copy_from_slice(&chest.slots);
+    }
+    if let Some((x, y, z)) = group.second
+        && let Some(chest) = chunks.chest_at(x, y, z)
+    {
+        slots[CHEST_HALF_SLOTS..].copy_from_slice(&chest.slots);
+    }
+    slots
+}
+
+fn write_chest_group_slots(
+    chunks: &mut WorldChunks,
+    group: ChestGroup,
+    slots: &[Option<ItemStack>; DOUBLE_CHEST_SLOTS],
+) {
+    if let Some(chest) = chunks.chest_at_mut(group.first.0, group.first.1, group.first.2) {
+        chest.slots.copy_from_slice(&slots[..CHEST_HALF_SLOTS]);
+    }
+    if let Some((x, y, z)) = group.second
+        && let Some(chest) = chunks.chest_at_mut(x, y, z)
+    {
+        chest.slots.copy_from_slice(&slots[CHEST_HALF_SLOTS..]);
+    }
+}
+
+fn mark_chest_dirty(persistence: &mut Option<ResMut<WorldPersistence>>, group: ChestGroup) {
     if let Some(persistence) = persistence.as_deref_mut() {
-        persistence.mark_dirty(ChunkPos::from_block(position.0, position.2));
+        persistence.mark_dirty(ChunkPos::from_block(group.first.0, group.first.2));
+        if let Some((x, _, z)) = group.second {
+            persistence.mark_dirty(ChunkPos::from_block(x, z));
+        }
     }
 }
 
@@ -1574,10 +1646,10 @@ fn refresh(
         };
         if screen.chest {
             screen
-                .chest_position
-                .and_then(|(x, y, z)| chunks.chest_at(x, y, z))
+                .chest_group
+                .map(|group| read_chest_group_slots(&chunks, group))
                 .map_or_else(Vec::new, |chest| {
-                    preview_chest_drag_place(inventory, hotbar, chest, &preview_slots, mode)
+                    preview_chest_drag_place(inventory, hotbar, &chest, &preview_slots, mode)
                 })
         } else {
             preview_drag_place(
@@ -1599,7 +1671,7 @@ fn refresh(
             &workbench,
             screen.workbench,
             screen.furnace_position,
-            screen.chest_position,
+            screen.chest_group,
             &chunks,
             &preview,
         );
@@ -1633,7 +1705,7 @@ fn refresh(
             &workbench,
             screen.workbench,
             screen.furnace_position,
-            screen.chest_position,
+            screen.chest_group,
             &chunks,
             &preview,
         );
@@ -1659,7 +1731,7 @@ fn refresh(
             &workbench,
             screen.workbench,
             screen.furnace_position,
-            screen.chest_position,
+            screen.chest_group,
             &chunks,
             &preview,
         );
@@ -1710,7 +1782,16 @@ fn refresh(
             (
                 pos.x - (window.width() - 176.0 * SCALE) / 2.0 - 8.0 * SCALE,
                 pos.y
-                    - (window.height() - (if screen.chest { 168.0 } else { 166.0 }) * SCALE) / 2.0
+                    - (window.height()
+                        - (if screen.chest {
+                            114.0
+                                + screen.chest_group.map_or(3, |group| group.slot_count() / 9)
+                                    as f32
+                                    * 18.0
+                        } else {
+                            166.0
+                        }) * SCALE)
+                        / 2.0
                     - 8.0 * SCALE,
             )
         })
@@ -1770,7 +1851,7 @@ fn displayed_stack(
     workbench: &WorkbenchUiSession,
     workbench_open: bool,
     furnace_position: Option<(i32, i32, i32)>,
-    chest_position: Option<(i32, i32, i32)>,
+    chest_group: Option<ChestGroup>,
     chunks: &WorldChunks,
     preview: &[(SlotId, ItemStack)],
 ) -> Option<ItemStack> {
@@ -1785,7 +1866,7 @@ fn displayed_stack(
                 workbench,
                 workbench_open,
                 furnace_position,
-                chest_position,
+                chest_group,
                 chunks,
             )
         })
@@ -1798,7 +1879,7 @@ fn slot_stack(
     workbench: &WorkbenchUiSession,
     workbench_open: bool,
     furnace_position: Option<(i32, i32, i32)>,
-    chest_position: Option<(i32, i32, i32)>,
+    chest_group: Option<ChestGroup>,
     chunks: &WorldChunks,
 ) -> Option<ItemStack> {
     match slot {
@@ -1808,9 +1889,9 @@ fn slot_stack(
         Slot::CraftResult if workbench_open => beta_recipe_book().find(&workbench.grid),
         Slot::CraftResult => inventory.crafting_result(),
         Slot::Workbench(i) => workbench.grid.get(i % 3, i / 3),
-        Slot::Chest(i) => chest_position
-            .and_then(|(x, y, z)| chunks.chest_at(x, y, z))
-            .and_then(|chest| chest.slots.get(i).copied().flatten()),
+        Slot::Chest(i) => chest_group
+            .map(|group| read_chest_group_slots(chunks, group))
+            .and_then(|slots| slots.get(i).copied().flatten()),
         Slot::Furnace(i) => furnace_position
             .and_then(|(x, y, z)| chunks.furnace_at(x, y, z))
             .and_then(|furnace| furnace.slots.get(i).copied().flatten()),

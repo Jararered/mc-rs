@@ -26,7 +26,11 @@ pub(crate) mod geometry;
 
 use self::geometry::BlockFaceGeometry;
 use self::geometry::FACE_BOTTOM;
+use self::geometry::FACE_EAST;
+use self::geometry::FACE_NORTH;
+use self::geometry::FACE_SOUTH;
 use self::geometry::FACE_TOP;
+use self::geometry::FACE_WEST;
 use self::geometry::FaceGeometry;
 
 struct Face {
@@ -408,8 +412,12 @@ impl MeshBuffers {
         block: BlockId,
         fancy_graphics: bool,
         y_drop: f32,
+        tile_override: Option<(u8, u8)>,
     ) {
-        let uvs = face_uvs(block, face_index, fancy_graphics);
+        let uvs = tile_override.map_or_else(
+            || face_uvs(block, face_index, fancy_graphics),
+            |(tile_x, tile_y)| face_uvs_for_tile(tile_x, tile_y, face_index),
+        );
         let shape_height = if block == BlockId::SnowLayer {
             0.125
         } else {
@@ -542,9 +550,21 @@ fn mesh_chunk_inner(
                     continue;
                 }
 
-                let block_geometry = BlockFaceGeometry::for_block(block);
+                let chest_pair = if block.is_chest() {
+                    chest_pair_direction(chunk, neighbors, x, y, z)
+                } else {
+                    None
+                };
+                let block_geometry = if block.is_chest() {
+                    chest_geometry(chest_pair)
+                } else {
+                    BlockFaceGeometry::for_block(block)
+                };
                 for (face_index, face) in FACES.iter().enumerate() {
                     let face_geometry = block_geometry.face(face_index);
+                    if chest_pair == Some(face.neighbor) {
+                        continue;
+                    }
                     if is_surface_liquid(block) && face_index != FACE_TOP {
                         continue;
                     }
@@ -597,6 +617,8 @@ fn mesh_chunk_inner(
                         BlockId::Lava | BlockId::FlowingLava => LAVA_SURFACE_DROP,
                         _ => 0.0,
                     };
+                    let chest_tile =
+                        chest_pair.map(|direction| double_chest_tile(block, direction, face_index));
                     let corner_ao = if smooth_lighting {
                         face_corner_ao(chunk, neighbors, x, y, z, face, face_geometry)
                     } else {
@@ -636,6 +658,7 @@ fn mesh_chunk_inner(
                         block,
                         fancy_graphics,
                         y_drop,
+                        chest_tile,
                     );
                     if grass_side && fancy_graphics {
                         let overlay_color = [grass_tint[0], grass_tint[1], grass_tint[2], 1.0];
@@ -806,6 +829,93 @@ fn same_surface_liquid(block: BlockId, neighbor: BlockId) -> bool {
                 BlockId::Lava | BlockId::FlowingLava
             )
         )
+}
+
+/// Return the sole, reciprocal chest neighbor for a valid pair.
+fn chest_pair_direction(
+    chunk: &Chunk,
+    neighbors: &ChunkNeighbors<'_>,
+    x: usize,
+    y: usize,
+    z: usize,
+) -> Option<[i32; 3]> {
+    let position = [x as i32, y as i32, z as i32];
+    let directions = [[-1, 0, 0], [1, 0, 0], [0, 0, -1], [0, 0, 1]];
+    let adjacent = directions
+        .into_iter()
+        .filter(|direction| {
+            neighbors
+                .get(
+                    chunk,
+                    position[0] + direction[0],
+                    position[1],
+                    position[2] + direction[2],
+                )
+                .is_some_and(BlockId::is_chest)
+        })
+        .collect::<Vec<_>>();
+    let [direction] = adjacent.as_slice() else {
+        return None;
+    };
+    let partner = [
+        position[0] + direction[0],
+        position[1],
+        position[2] + direction[2],
+    ];
+    let reciprocal_neighbors = directions
+        .into_iter()
+        .filter(|other| {
+            let neighbor = [partner[0] + other[0], partner[1], partner[2] + other[2]];
+            neighbor != position
+                && neighbors
+                    .get(chunk, neighbor[0], neighbor[1], neighbor[2])
+                    .is_some_and(BlockId::is_chest)
+        })
+        .count();
+    (reciprocal_neighbors == 0).then_some(*direction)
+}
+
+fn chest_geometry(pair_direction: Option<[i32; 3]>) -> BlockFaceGeometry {
+    let inset = 1.0 / 16.0;
+    let mut bounds = [inset, 0.0, inset, 1.0 - inset, 14.0 / 16.0, 1.0 - inset];
+    match pair_direction {
+        Some([-1, 0, 0]) => bounds[0] = 0.0,
+        Some([1, 0, 0]) => bounds[3] = 1.0,
+        Some([0, 0, -1]) => bounds[2] = 0.0,
+        Some([0, 0, 1]) => bounds[5] = 1.0,
+        _ => {}
+    }
+    BlockFaceGeometry::from_bounds(bounds)
+}
+
+fn double_chest_tile(block: BlockId, pair_direction: [i32; 3], face: usize) -> (u8, u8) {
+    if face == FACE_TOP || face == FACE_BOTTOM {
+        return (9, 1);
+    }
+    let facing = block.chest_facing().unwrap_or_default();
+    let front = facing.face_index();
+    let back = match front {
+        FACE_EAST => FACE_WEST,
+        FACE_WEST => FACE_EAST,
+        FACE_SOUTH => FACE_NORTH,
+        _ => FACE_SOUTH,
+    };
+    if face != front && face != back {
+        return (10, 1);
+    }
+
+    // The atlas stores each long double-chest face as two adjacent tiles.
+    // Keep the halves in the same left-to-right order when viewed from front.
+    let first_half = pair_direction[0] > 0 || pair_direction[2] > 0;
+    let first_is_left = matches!(
+        facing,
+        crate::world::block::block::FurnaceFacing::North
+            | crate::world::block::block::FurnaceFacing::East
+    );
+    let left_half = first_half == first_is_left;
+    let tile_x = if left_half { 9 } else { 10 };
+    let tile_y = if face == front { 2 } else { 3 };
+    (tile_x, tile_y)
 }
 
 /// Fast leaves hide every non-air neighbour, like any solid cube. Fancy leaves

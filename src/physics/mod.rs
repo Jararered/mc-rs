@@ -460,7 +460,67 @@ fn integrate_player(
 
         for _ in 0..tick.ticks_this_frame() {
             interpolation.previous_position = transform.translation;
-            let support = block_under_player(&chunks, size.aabb(transform.translation));
+            let aabb = size.aabb(transform.translation);
+            let (in_water, water_flow) = water_state(aabb, &chunks);
+            let in_lava = !in_water && lava_contains(aabb, &chunks);
+            if in_water {
+                motion += water_flow * 0.014;
+            }
+
+            if in_water || in_lava {
+                const LIQUID_ACCELERATION: f32 = 0.02;
+                const LIQUID_JUMP_ACCELERATION: f32 = 0.04;
+                let old_y = transform.translation.y;
+                accelerate_player(
+                    &mut motion,
+                    input.strafe,
+                    input.forward,
+                    sin_yaw,
+                    cos_yaw,
+                    LIQUID_ACCELERATION
+                        * if input.sprinting {
+                            crate::player::SPRINT_ACCELERATION_MULTIPLIER
+                        } else {
+                            1.0
+                        },
+                );
+                if input.jumping {
+                    motion.y += LIQUID_JUMP_ACCELERATION;
+                }
+
+                let movement = move_entity_with_sneak(
+                    aabb,
+                    motion,
+                    step_height.0,
+                    collision.on_ground,
+                    input.sneaking,
+                    &chunks,
+                );
+                transform.translation = size.position_from_aabb(movement.aabb);
+                *collision = movement.collision;
+                cancel_collided_motion(&mut motion, movement.collision);
+
+                let drag = if in_water { 0.8 } else { 0.5 };
+                motion *= drag;
+                motion.y -= 0.02;
+
+                if movement.collision.collided_x || movement.collision.collided_z {
+                    let escape_offset = Vec3::new(
+                        motion.x,
+                        motion.y + 0.6 + old_y - transform.translation.y,
+                        motion.z,
+                    );
+                    let escape_box = movement.aabb.offset(escape_offset);
+                    if colliding_aabbs(&chunks, escape_box).is_empty()
+                        && !intersects_liquid(escape_box, &chunks)
+                    {
+                        motion.y = 0.3;
+                    }
+                }
+                continue;
+            }
+
+            let support = block_under_player(&chunks, aabb);
             let mut drag = DEFAULT_AIR_DRAG;
             if collision.on_ground {
                 drag = support.map_or(0.6, slipperiness) * DEFAULT_AIR_DRAG;
@@ -490,7 +550,7 @@ fn integrate_player(
             }
 
             let movement = move_entity_with_sneak(
-                size.aabb(transform.translation),
+                aabb,
                 motion,
                 step_height.0,
                 collision.on_ground,
@@ -500,15 +560,7 @@ fn integrate_player(
             transform.translation = size.position_from_aabb(movement.aabb);
             *collision = movement.collision;
 
-            if collision.collided_x {
-                motion.x = 0.0;
-            }
-            if collision.collided_y {
-                motion.y = 0.0;
-            }
-            if collision.collided_z {
-                motion.z = 0.0;
-            }
+            cancel_collided_motion(&mut motion, movement.collision);
 
             motion.y = ((motion.y - GRAVITY_PER_TICK) * VERTICAL_DRAG)
                 .max(-TERMINAL_VELOCITY * TICK_SECONDS);
@@ -556,6 +608,155 @@ fn accelerate_player(
     let forward = forward * scale;
     motion.x += strafe * cos_yaw - forward * sin_yaw;
     motion.z += forward * cos_yaw + strafe * sin_yaw;
+}
+
+fn cancel_collided_motion(motion: &mut Vec3, collision: CollisionState) {
+    if collision.collided_x {
+        motion.x = 0.0;
+    }
+    if collision.collided_y {
+        motion.y = 0.0;
+    }
+    if collision.collided_z {
+        motion.z = 0.0;
+    }
+}
+
+fn is_water(block: crate::world::block::block::BlockId) -> bool {
+    matches!(
+        block,
+        crate::world::block::block::BlockId::Water
+            | crate::world::block::block::BlockId::FlowingWater
+    )
+}
+
+fn is_lava(block: crate::world::block::block::BlockId) -> bool {
+    matches!(
+        block,
+        crate::world::block::block::BlockId::Lava
+            | crate::world::block::block::BlockId::FlowingLava
+    )
+}
+
+/// Water immersion and flow over the player's central body band. The compact
+/// world currently lacks fluid metadata, so fluid surfaces use Beta's source
+/// height and flowing variants use a single representative decay level.
+fn water_state(aabb: Aabb, chunks: &WorldChunks) -> (bool, Vec3) {
+    let area = Aabb::new(
+        aabb.min + Vec3::new(0.001, 0.401, 0.001),
+        aabb.max - Vec3::new(0.001, 0.401, 0.001),
+    );
+    let (min_x, max_x, min_y, max_y, min_z, max_z) = block_range(area);
+    let mut immersed = false;
+    let mut flow = Vec3::ZERO;
+
+    for x in min_x..max_x {
+        for y in min_y..max_y {
+            for z in min_z..max_z {
+                let Some(block) = chunks.block_at(x, y, z).filter(|block| is_water(*block)) else {
+                    continue;
+                };
+                let surface = liquid_surface_y(block, y);
+                if area.max.y < surface || area.min.y >= y as f32 + 1.0 {
+                    continue;
+                }
+                immersed = true;
+                flow += water_flow_vector(x, y, z, block, chunks);
+            }
+        }
+    }
+
+    (immersed, flow.normalize_or_zero())
+}
+
+fn water_flow_vector(
+    x: i32,
+    y: i32,
+    z: i32,
+    block: crate::world::block::block::BlockId,
+    chunks: &WorldChunks,
+) -> Vec3 {
+    use crate::world::block::block::BlockId;
+
+    let level = fluid_decay(block);
+    let neighbors = [
+        (x - 1, z, Vec3::NEG_X),
+        (x, z - 1, Vec3::NEG_Z),
+        (x + 1, z, Vec3::X),
+        (x, z + 1, Vec3::Z),
+    ];
+    let mut flow = Vec3::ZERO;
+
+    for (nx, nz, direction) in neighbors {
+        let neighbor = chunks.block_at(nx, y, nz).unwrap_or(BlockId::Air);
+        if is_water(neighbor) {
+            flow += direction * (fluid_decay(neighbor) - level) as f32;
+        } else if !crate::world::block::properties::blocks_movement(neighbor)
+            && let Some(below) = chunks
+                .block_at(nx, y - 1, nz)
+                .filter(|block| is_water(*block))
+        {
+            let drop = fluid_decay(below) - (level - 8);
+            flow += direction * drop as f32;
+        }
+    }
+
+    flow.normalize_or_zero()
+}
+
+fn fluid_decay(block: crate::world::block::block::BlockId) -> i32 {
+    use crate::world::block::block::BlockId;
+
+    match block {
+        BlockId::FlowingWater | BlockId::FlowingLava => 1,
+        BlockId::Water | BlockId::Lava => 0,
+        _ => 0,
+    }
+}
+
+fn liquid_surface_y(block: crate::world::block::block::BlockId, y: i32) -> f32 {
+    y as f32 + 1.0 - (fluid_decay(block) as f32 + 1.0) / 9.0
+}
+
+fn lava_contains(aabb: Aabb, chunks: &WorldChunks) -> bool {
+    let area = Aabb::new(
+        aabb.min + Vec3::new(0.1, 0.4, 0.1),
+        aabb.max - Vec3::new(0.1, 0.4, 0.1),
+    );
+    contains_liquid_material(area, chunks, is_lava)
+}
+
+fn intersects_liquid(aabb: Aabb, chunks: &WorldChunks) -> bool {
+    contains_liquid_material(aabb, chunks, |block| is_water(block) || is_lava(block))
+}
+
+fn contains_liquid_material(
+    area: Aabb,
+    chunks: &WorldChunks,
+    matches: impl Fn(crate::world::block::block::BlockId) -> bool,
+) -> bool {
+    let (min_x, max_x, min_y, max_y, min_z, max_z) = block_range(area);
+    for x in min_x..max_x {
+        for y in min_y..max_y {
+            for z in min_z..max_z {
+                if chunks.block_at(x, y, z).is_some_and(&matches) {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+fn block_range(area: Aabb) -> (i32, i32, i32, i32, i32, i32) {
+    (
+        area.min.x.floor() as i32,
+        area.max.x.floor() as i32 + 1,
+        area.min.y.floor() as i32,
+        area.max.y.floor() as i32 + 1,
+        area.min.z.floor() as i32,
+        area.max.z.floor() as i32 + 1,
+    )
 }
 
 fn integrate_bodies(

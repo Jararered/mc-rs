@@ -63,6 +63,44 @@ fn floor_world(floor_y: usize) -> WorldChunks {
     chunks
 }
 
+fn fluid_world(fluid: BlockId) -> WorldChunks {
+    let mut chunk = Chunk::new();
+    for z in 0..CHUNK_SIZE {
+        for x in 0..CHUNK_SIZE {
+            chunk.set(x, 64, z, BlockId::Stone);
+            for y in 65..69 {
+                chunk.set(x, y, z, fluid);
+            }
+        }
+    }
+    let mut chunks = WorldChunks::default();
+    chunks.insert(ChunkPos::ZERO, generated(chunk));
+    chunks
+}
+
+fn player_fluid_tick(fluid: BlockId, velocity: Vec3, jumping: bool) -> (Vec3, Vec3) {
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins)
+        .insert_resource(fluid_world(fluid))
+        .add_plugins(PhysicsPlugin);
+    app.world_mut().spawn((
+        Player,
+        Transform::from_xyz(8.5, 65.0 + EntitySize::PLAYER.y_offset, 8.5),
+        Velocity(velocity),
+        EntitySize::PLAYER,
+        CollisionState::default(),
+        PlayerMovementInput {
+            jumping,
+            ..default()
+        },
+    ));
+    app.world_mut().resource_mut::<WorldTick>().advance(0.05);
+    app.update();
+    let mut query = app.world_mut().query::<(&Transform, &Velocity)>();
+    let (transform, velocity) = query.single(app.world()).unwrap();
+    (transform.translation, velocity.0)
+}
+
 #[test]
 fn air_and_water_do_not_block_movement() {
     assert!(!blocks_movement(BlockId::Air));
@@ -325,6 +363,21 @@ fn held_jump_uses_beta_impulse_and_gravity_per_tick() {
     assert!((transform.translation.y - (65.0 + EntitySize::PLAYER.y_offset + 0.42)).abs() < 1e-4);
     assert!((velocity.0.y - ((0.42 - 0.08) * 0.98 * 20.0)).abs() < 1e-3);
     assert!(!collision.on_ground);
+}
+
+#[test]
+fn water_and_lava_apply_their_beta_drag_and_swimming_jump() {
+    let (_, water_motion) = player_fluid_tick(BlockId::Water, Vec3::new(2.0, 0.0, 0.0), false);
+    let (_, lava_motion) = player_fluid_tick(BlockId::Lava, Vec3::new(2.0, 0.0, 0.0), false);
+    assert!((water_motion.x - 1.6).abs() < 1e-4);
+    assert!((lava_motion.x - 1.0).abs() < 1e-4);
+
+    let (water_position, water_jump) = player_fluid_tick(BlockId::Water, Vec3::ZERO, true);
+    let (lava_position, lava_jump) = player_fluid_tick(BlockId::Lava, Vec3::ZERO, true);
+    assert!(water_position.y > 65.0 + EntitySize::PLAYER.y_offset);
+    assert!(lava_position.y > 65.0 + EntitySize::PLAYER.y_offset);
+    assert!((water_jump.y - 0.24).abs() < 1e-4);
+    assert!(lava_jump.y.abs() < 1e-4);
 }
 
 #[test]

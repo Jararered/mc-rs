@@ -39,6 +39,7 @@ use crate::physics::PhysicsSet;
 use crate::world::chunk::ChunkPos;
 use crate::world::chunk::WorldChunks;
 use crate::world::persistence::WorldPersistence;
+use crate::world::tick::WorldTick;
 
 /// Full player health in half-hearts. Ten hearts on the HUD.
 pub const MAX_PLAYER_HEALTH: u8 = 20;
@@ -99,7 +100,8 @@ impl Plugin for PlayerPlugin {
     EntitySize = EntitySize::PLAYER,
     StepHeight = StepHeight::PLAYER,
     FlySpeed,
-    PlayerMovementInput
+    PlayerMovementInput,
+    PlayerInterpolation
 )]
 pub struct Player;
 
@@ -111,6 +113,12 @@ pub struct PlayerMovementInput {
     pub sneaking: bool,
     pub sprinting: bool,
     pub jumping: bool,
+}
+
+/// Previous fixed-tick position used to smooth the rendered first-person view.
+#[derive(Component, Default, Clone, Copy, Debug)]
+pub(crate) struct PlayerInterpolation {
+    pub previous_position: Vec3,
 }
 
 /// How fast the player moves while flying. Multiplied by [`FLY_SPEED`].
@@ -210,6 +218,9 @@ fn spawn_player(
         .unwrap_or_default();
     let flying = saved.as_ref().map(|p| p.flying).unwrap_or(false);
     let fly_speed = saved.as_ref().map(|p| p.fly_speed).unwrap_or(1.0);
+    let interpolation = PlayerInterpolation {
+        previous_position: transform.translation,
+    };
     let mut entity = commands.spawn((
         Name::new("Player"),
         Player,
@@ -218,6 +229,7 @@ fn spawn_player(
         inventory,
         CameraBobbing::default(),
         FlySpeed(fly_speed),
+        interpolation,
         transform,
     ));
     if flying {
@@ -258,9 +270,17 @@ fn apply_camera_fov(
 /// control the bob's amplitude.
 fn update_camera_bobbing(
     time: Res<Time>,
+    tick: Res<WorldTick>,
     mut players: Query<
-        (&Velocity, &CollisionState, &mut CameraBobbing, &Children),
-        (With<Player>, Without<Flying>),
+        (
+            &Transform,
+            &PlayerInterpolation,
+            &Velocity,
+            &CollisionState,
+            &mut CameraBobbing,
+            &Children,
+        ),
+        (With<Player>, Without<PlayerCamera>, Without<Flying>),
     >,
     mut cameras: Query<&mut Transform, With<PlayerCamera>>,
 ) {
@@ -269,7 +289,7 @@ fn update_camera_bobbing(
         return;
     }
 
-    for (velocity, collision, mut bob, children) in &mut players {
+    for (transform, interpolation, velocity, collision, mut bob, children) in &mut players {
         let horizontal_motion = velocity.0.xz().length() * dt;
         bob.distance_walked += horizontal_motion * 0.6;
 
@@ -286,10 +306,17 @@ fn update_camera_bobbing(
         };
         bob.camera_yaw += (target_yaw - bob.camera_yaw) * 0.4;
         bob.camera_pitch += (target_pitch - bob.camera_pitch) * 0.8;
+        let current = transform.translation;
+        let interpolated = interpolation
+            .previous_position
+            .lerp(current, tick.partial().clamp(0.0, 1.0));
+        let render_offset = transform.rotation.inverse() * (interpolated - current);
 
         for child in children {
             if let Ok(mut camera) = cameras.get_mut(*child) {
-                *camera = Transform::from_matrix(camera_bob_pose(&bob));
+                *camera = Transform::from_matrix(
+                    Mat4::from_translation(render_offset) * camera_bob_pose(&bob),
+                );
             }
         }
     }

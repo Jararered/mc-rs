@@ -21,6 +21,7 @@ use crate::entity::Gravity;
 use crate::entity::StepHeight;
 use crate::entity::Velocity;
 use crate::player::Player;
+use crate::player::PlayerInterpolation;
 use crate::player::PlayerMovementInput;
 use crate::world::block::properties::collision_bounds;
 use crate::world::block::properties::slipperiness;
@@ -409,6 +410,7 @@ fn integrate_player(
             &mut CollisionState,
             &StepHeight,
             &mut PlayerMovementInput,
+            &mut PlayerInterpolation,
             Option<&Flying>,
         ),
         With<Player>,
@@ -422,8 +424,16 @@ fn integrate_player(
     const VERTICAL_DRAG: f32 = 0.98;
     const JUMP_IMPULSE: f32 = 0.419_999_99;
 
-    for (mut transform, mut velocity, size, mut collision, step_height, input, flying) in
-        &mut players
+    for (
+        mut transform,
+        mut velocity,
+        size,
+        mut collision,
+        step_height,
+        input,
+        mut interpolation,
+        flying,
+    ) in &mut players
     {
         if !chunks.contains(ChunkPos::from_world(
             transform.translation.x,
@@ -434,6 +444,7 @@ fn integrate_player(
 
         if flying.is_some() {
             transform.translation += velocity.0 * time.delta_secs().min(MAX_STEP_SECS);
+            interpolation.previous_position = transform.translation;
             *collision = CollisionState::default();
             continue;
         }
@@ -448,6 +459,7 @@ fn integrate_player(
         let mut motion = velocity.0 * TICK_SECONDS;
 
         for _ in 0..tick.ticks_this_frame() {
+            interpolation.previous_position = transform.translation;
             let support = block_under_player(&chunks, size.aabb(transform.translation));
             let mut drag = DEFAULT_AIR_DRAG;
             if collision.on_ground {

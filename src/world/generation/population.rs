@@ -1,6 +1,7 @@
 //! Beta `ChunkProviderGenerate.populate` underground passes.
 use crate::random::JavaRandom;
 use crate::world::block::block::BlockId;
+use crate::world::chest::Chest;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::Chunk;
@@ -64,6 +65,25 @@ impl WorldView<'_> {
                 block,
             );
         }
+    }
+
+    fn set_chest(&mut self, x: i32, y: i32, z: i32, chest: Chest) {
+        if !(0..CHUNK_HEIGHT as i32).contains(&y) {
+            return;
+        }
+        let pos = ChunkPos {
+            x: x.div_euclid(16),
+            z: z.div_euclid(16),
+        };
+        if pos != self.target {
+            return;
+        }
+        let local_x = x.rem_euclid(16) as usize;
+        let local_y = y as usize;
+        let local_z = z.rem_euclid(16) as usize;
+        self.chunk.set(local_x, local_y, local_z, BlockId::Chest);
+        self.chunk
+            .insert_chest(Chunk::index(local_x, local_y, local_z), chest);
     }
 }
 
@@ -389,39 +409,8 @@ fn dungeon(world: &mut WorldView<'_>, random: &mut JavaRandom, x: i32, y: i32, z
                 world.get(bx, y, bz + 1),
             ];
             if neighbors.into_iter().filter(|b| solid(*b)).count() == 1 {
-                world.set(bx, y, bz, BlockId::Chest);
-                // Chest loot is deferred, but preserve the Java RNG draws that choose it.
-                for _ in 0..8 {
-                    let loot = random.next_int(11);
-                    let item = match loot {
-                        1 | 3 | 4 | 5 => {
-                            let _ = random.next_int(4);
-                            true
-                        }
-                        7 => random.next_int(100) == 0,
-                        8 => {
-                            if random.next_int(2) == 0 {
-                                let _ = random.next_int(4);
-                                true
-                            } else {
-                                false
-                            }
-                        }
-                        9 => {
-                            if random.next_int(10) == 0 {
-                                let _ = random.next_int(2);
-                                true
-                            } else {
-                                false
-                            }
-                        }
-                        0 | 2 | 6 | 10 => true,
-                        _ => false,
-                    };
-                    if item {
-                        let _ = random.next_int(27);
-                    }
-                }
+                let chest = super::dungeon_loot::generate_dungeon_chest(random);
+                world.set_chest(bx, y, bz, chest);
                 break;
             }
         }

@@ -1,6 +1,7 @@
 mod biome;
 mod cactus;
 mod caves;
+mod dungeon_loot;
 mod generator;
 mod heightmap;
 mod noise;
@@ -16,6 +17,7 @@ mod trees;
 pub use biome::Biome;
 pub use biome::BiomeMap;
 pub use biome::Climate;
+pub use dungeon_loot::generate_dungeon_chest;
 pub use generator::ChunkDroppedItem;
 pub use generator::GeneratedChunk;
 pub use generator::WorldGenerator;

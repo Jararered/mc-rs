@@ -15,10 +15,29 @@ fn underground_generation_is_deterministic_and_order_independent() {
     ];
     let forward: Vec<_> = positions
         .iter()
-        .map(|&pos| first.generate(pos).chunk.blocks().to_vec())
+        .map(|&pos| {
+            let generated = first.generate(pos);
+            let mut chests = generated
+                .chunk
+                .chests()
+                .map(|(index, chest)| (index, chest.slots))
+                .collect::<Vec<_>>();
+            chests.sort_unstable_by_key(|(index, _)| *index);
+            (generated.chunk.blocks().to_vec(), chests)
+        })
         .collect();
-    for (pos, expected) in positions.into_iter().rev().zip(forward.into_iter().rev()) {
-        assert_eq!(second.generate(pos).chunk.blocks(), expected);
+    for (pos, (expected_blocks, expected_chests)) in
+        positions.into_iter().rev().zip(forward.into_iter().rev())
+    {
+        let generated = second.generate(pos);
+        let mut chests = generated
+            .chunk
+            .chests()
+            .map(|(index, chest)| (index, chest.slots))
+            .collect::<Vec<_>>();
+        chests.sort_unstable_by_key(|(index, _)| *index);
+        assert_eq!(generated.chunk.blocks(), expected_blocks);
+        assert_eq!(chests, expected_chests);
     }
 }
 
@@ -60,6 +79,9 @@ fn population_places_clay_and_dungeon_blocks() {
     let mut lake_lava = 0;
     let mut cave_lava = 0;
     let mut rare_ores = [0; 5];
+    let mut stored_chests = 0;
+    let mut looted_chests = 0;
+    let mut dungeon_loot_stacks = 0;
     for z in -8..8 {
         for x in -8..8 {
             let generated = generator.generate(ChunkPos { x, z });
@@ -78,11 +100,25 @@ fn population_places_clay_and_dungeon_blocks() {
                     _ => {}
                 }
             }
+            for (_, chest) in generated.chunk.chests() {
+                stored_chests += 1;
+                let items = chest.slots.iter().flatten().count();
+                if items > 0 {
+                    looted_chests += 1;
+                    dungeon_loot_stacks += items;
+                }
+            }
         }
     }
     assert!(clay > 0, "expected underwater clay patches");
     assert!(spawners > 0, "expected generated dungeon rooms");
     assert!(chests > 0, "expected generated dungeon chests");
+    assert_eq!(
+        stored_chests, chests,
+        "every chest needs block-local storage"
+    );
+    assert!(looted_chests > 0, "expected generated dungeon chest loot");
+    assert!(dungeon_loot_stacks > 0);
     assert!(lake_lava > 0, "expected a lava lake");
     assert!(cave_lava > 0, "expected low cave lava");
     assert!(

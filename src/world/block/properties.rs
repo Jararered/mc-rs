@@ -21,6 +21,7 @@ pub fn is_opaque_cube(block: BlockId) -> bool {
             | BlockId::Ice
             | BlockId::SnowLayer
             | BlockId::Cactus
+            | BlockId::Farmland
             | BlockId::Leaves
             | BlockId::SpruceLeaves
             | BlockId::BirchLeaves
@@ -223,6 +224,9 @@ pub fn selection_bounds(block: BlockId) -> ([f32; 3], [f32; 3]) {
     if block == BlockId::SnowLayer {
         return ([0.0; 3], [1.0, 0.125, 1.0]);
     }
+    if block == BlockId::Farmland {
+        return ([0.0; 3], [1.0, 15.0 / 16.0, 1.0]);
+    }
     if block == BlockId::Cactus {
         return ([0.0625, 0.0, 0.0625], [0.9375, 1.0, 0.9375]);
     }
@@ -315,6 +319,7 @@ pub fn hardness(block: BlockId) -> f32 {
         BlockId::Stone => 1.5,
         BlockId::Grass => 0.6,
         BlockId::Dirt => 0.5,
+        BlockId::Farmland => 0.6,
         BlockId::Cobblestone => 2.0,
         BlockId::WoodenPlanks | BlockId::SprucePlanks | BlockId::BirchPlanks => 2.0,
         BlockId::Bedrock => -1.0,
@@ -406,7 +411,6 @@ pub fn hardness(block: BlockId) -> f32 {
         | BlockId::WoodenStairs
         | BlockId::RedstoneWire
         | BlockId::Crops
-        | BlockId::Farmland
         | BlockId::StandingSign
         | BlockId::WoodenDoor
         | BlockId::Rail

@@ -21,6 +21,7 @@ use crate::world::textures::FoliageColors;
 use crate::world::textures::GrassColors;
 use crate::world::textures::atlas_tile_uvs;
 use crate::world::textures::block_tile;
+use crate::world::textures::farmland_top_tile;
 
 pub(crate) mod geometry;
 
@@ -454,10 +455,10 @@ impl MeshBuffers {
             || face_uvs(block, face_index, fancy_graphics),
             |(tile_x, tile_y)| face_uvs_for_tile(tile_x, tile_y, face_index),
         );
-        let shape_height = if block == BlockId::SnowLayer {
-            0.125
-        } else {
-            1.0
+        let shape_height = match block {
+            BlockId::SnowLayer => 0.125,
+            BlockId::Farmland => 15.0 / 16.0,
+            _ => 1.0,
         };
         let corners = geometry
             .corners
@@ -659,6 +660,12 @@ fn mesh_chunk_inner(
                     };
                     let chest_tile =
                         chest_pair.map(|direction| double_chest_tile(block, direction, face_index));
+                    let wet_farmland_top = block == BlockId::Farmland
+                        && face_index == FACE_TOP
+                        && farmland_has_nearby_water(chunk, neighbors, x, y, z);
+                    let tile_override = wet_farmland_top
+                        .then(|| farmland_top_tile(true))
+                        .or(chest_tile);
                     let corner_ao = if smooth_lighting {
                         face_corner_ao(chunk, neighbors, x, y, z, face, face_geometry)
                     } else {
@@ -698,7 +705,7 @@ fn mesh_chunk_inner(
                         block,
                         fancy_graphics,
                         y_drop,
-                        chest_tile,
+                        tile_override,
                     );
                     if grass_side && fancy_graphics {
                         let overlay_color = [grass_tint[0], grass_tint[1], grass_tint[2], 1.0];
@@ -958,6 +965,28 @@ fn double_chest_tile(block: BlockId, pair_direction: [i32; 3], face: usize) -> (
     (tile_x, tile_y)
 }
 
+fn farmland_has_nearby_water(
+    chunk: &Chunk,
+    neighbors: &ChunkNeighbors<'_>,
+    x: usize,
+    y: usize,
+    z: usize,
+) -> bool {
+    for dy in 0..=1 {
+        for dz in -4..=4 {
+            for dx in -4..=4 {
+                if neighbors
+                    .get(chunk, x as i32 + dx, y as i32 + dy, z as i32 + dz)
+                    .is_some_and(|block| matches!(block, BlockId::Water | BlockId::FlowingWater))
+                {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
 /// Fast leaves hide every non-air neighbour, like any solid cube. Fancy leaves
 /// are cutout, so leaf-to-leaf faces stay visible and solid faces towards a
 /// canopy are not covered. Water never hides a neighbour, so lake beds and
@@ -969,6 +998,7 @@ fn neighbor_hides_face(block: BlockId, neighbor: Option<BlockId>, fancy_graphics
     if neighbor == BlockId::Air
         || neighbor == BlockId::SnowLayer
         || neighbor == BlockId::Cactus
+        || neighbor == BlockId::Farmland
         || neighbor == BlockId::Water
         || neighbor == BlockId::FlowingWater
         || neighbor == BlockId::Lava

@@ -84,6 +84,11 @@ fn kind(id: ItemId) -> Option<Kind> {
     })
 }
 
+/// Whether an item is one of Beta's hoes.
+pub fn is_hoe(id: ItemId) -> bool {
+    matches!(kind(id), Some(Kind::Hoe(_)))
+}
+
 fn is_log(block: BlockId) -> bool {
     matches!(
         block,
@@ -146,6 +151,7 @@ fn shovel_effective(block: BlockId) -> bool {
             | BlockId::Sand
             | BlockId::Gravel
             | BlockId::Snow
+            | BlockId::Farmland
             | BlockId::Clay
     )
 }

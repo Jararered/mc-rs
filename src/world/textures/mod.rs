@@ -350,6 +350,8 @@ pub fn block_tile(
         BlockId::Grass => (3, 0),
         BlockId::Stone => (1, 0),
         BlockId::Dirt => (2, 0),
+        BlockId::Farmland if face == 0 => farmland_top_tile(false),
+        BlockId::Farmland => (2, 0),
         BlockId::Cobblestone => (0, 1),
         BlockId::WoodenPlanks | BlockId::SprucePlanks | BlockId::BirchPlanks => (4, 0),
         // Beta BlockWorkbench: top 43, plank bottom 4, and two alternating
@@ -479,4 +481,9 @@ pub fn block_tile(
         BlockId::Ice => (3, 4),
         _ => (1, 0),
     }
+}
+
+/// Atlas tile for Beta farmland's dry or hydrated top face.
+pub fn farmland_top_tile(wet: bool) -> (u8, u8) {
+    if wet { (6, 5) } else { (7, 5) }
 }

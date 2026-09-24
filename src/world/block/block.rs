@@ -333,6 +333,7 @@ impl BlockId {
                 | Self::Stone
                 | Self::Grass
                 | Self::Dirt
+                | Self::Farmland
                 | Self::Cobblestone
                 | Self::WoodenPlanks
                 | Self::Bedrock

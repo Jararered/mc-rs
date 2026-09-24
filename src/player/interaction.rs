@@ -20,6 +20,7 @@ use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
 use crate::item::ItemStack;
 use crate::item::tools::break_durability;
+use crate::item::tools::is_hoe;
 use crate::physics::Aabb;
 use crate::physics::BLOCK_REACH;
 use crate::physics::BlockFace;
@@ -304,25 +305,70 @@ pub(super) fn interact_blocks(
         state.place_delay = PLACE_DELAY_TICKS;
         if let Some(hit) = hit
             && let Some(stack) = hotbar.selected_stack()
-            && let Some(block) = stack.runtime_block()
-            && place_selected_block_facing(
-                &mut chunks,
-                hit,
-                size.aabb(transform.translation),
-                block,
-                furnace_facing_toward_player(transform.rotation * Vec3::NEG_Z),
-            )
         {
-            let selected = hotbar.selected;
-            hotbar.slots[selected] =
-                ItemStack::with_data(stack.item(), stack.count() - 1, stack.data()).ok();
-            let (x, _, z) = hit.face.neighbor(hit.x, hit.y, hit.z);
-            notify_edit(&mut streaming, &mut persistence, x, z, true);
+            let placed = stack.runtime_block().is_some_and(|block| {
+                place_selected_block_facing(
+                    &mut chunks,
+                    hit,
+                    size.aabb(transform.translation),
+                    block,
+                    furnace_facing_toward_player(transform.rotation * Vec3::NEG_Z),
+                )
+            });
+            if placed {
+                let selected = hotbar.selected;
+                hotbar.slots[selected] =
+                    ItemStack::with_data(stack.item(), stack.count() - 1, stack.data()).ok();
+                let (x, _, z) = hit.face.neighbor(hit.x, hit.y, hit.z);
+                notify_edit(&mut streaming, &mut persistence, x, z, true);
+            } else if till_with_selected_hoe(&mut chunks, &mut hotbar, hit) {
+                notify_edit(&mut streaming, &mut persistence, hit.x, hit.z, false);
+            }
         }
     }
 
     focus.hit = hit;
     focus.mining_damage = state.mining.damage();
+}
+
+pub fn till_with_selected_hoe(
+    chunks: &mut WorldChunks,
+    hotbar: &mut Hotbar,
+    hit: BlockHit,
+) -> bool {
+    if !hotbar
+        .selected_stack()
+        .is_some_and(|stack| is_hoe(stack.item()))
+    {
+        return false;
+    }
+    if !till_block(chunks, hit) {
+        return false;
+    }
+    hotbar.damage_selected(1);
+    true
+}
+
+pub fn till_block(chunks: &mut WorldChunks, hit: BlockHit) -> bool {
+    if chunks.block_at(hit.x, hit.y, hit.z) != Some(hit.block) {
+        return false;
+    }
+    let can_till = match hit.block {
+        BlockId::Dirt => true,
+        BlockId::Grass => {
+            hit.face != BlockFace::Down
+                && chunks
+                    .block_at(hit.x, hit.y + 1, hit.z)
+                    .is_none_or(|block| block == BlockId::Air)
+        }
+        _ => false,
+    };
+    if !can_till {
+        return false;
+    }
+    chunks
+        .set_block(hit.x, hit.y, hit.z, BlockId::Farmland)
+        .is_some_and(|previous| previous == hit.block)
 }
 
 fn apply_break(

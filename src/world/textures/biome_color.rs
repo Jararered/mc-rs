@@ -12,6 +12,7 @@ use bevy::prelude::Resource;
 use crate::world::generation::Climate;
 
 pub const PALETTE_SIZE: usize = 256;
+pub(crate) const DEFAULT_GRASS_COLOR: [f32; 3] = [0.55, 0.8, 0.4];
 
 /// A 256×256 climate palette, as used by `grasscolor.png` and `foliagecolor.png`.
 #[derive(Clone, Default)]
@@ -82,7 +83,13 @@ impl GrassColors {
     }
 
     pub fn sample(&self, climate: Climate) -> [f32; 3] {
-        self.0.sample(climate, [0.55, 0.8, 0.4])
+        self.0.sample(climate, DEFAULT_GRASS_COLOR)
+    }
+
+    /// Sample the climate palette, using the standard grass tint when the
+    /// column climate is unavailable.
+    pub fn sample_optional(&self, climate: Option<Climate>) -> [f32; 3] {
+        climate.map_or(DEFAULT_GRASS_COLOR, |climate| self.sample(climate))
     }
 }
 

@@ -17,10 +17,10 @@ use crate::physics::PhysicsSet;
 use crate::player::PlayerCamera;
 use crate::world::block::block::BlockId;
 use crate::world::block::properties::blocks_movement;
-use crate::world::chunk::CHUNK_SIZE;
-use crate::world::chunk::ChunkPos;
 use crate::world::chunk::WorldChunks;
+use crate::world::generation::Climate;
 use crate::world::textures::FoliageColors;
+use crate::world::textures::GrassColors;
 use crate::world::textures::TerrainMaterial;
 use crate::world::textures::atlas_tile_uvs;
 use crate::world::textures::block_tile;
@@ -101,12 +101,17 @@ impl BlockParticles {
         self.active.push_back(particle);
     }
 
-    fn spawn_pending(&mut self, chunks: &WorldChunks, foliage: Option<&FoliageColors>) {
+    fn spawn_pending(
+        &mut self,
+        chunks: &WorldChunks,
+        foliage: Option<&FoliageColors>,
+        grass: Option<&GrassColors>,
+    ) {
         let requests = std::mem::take(&mut self.requests);
         for request in requests {
             match request {
-                ParticleRequest::Break(hit) => self.spawn_break(hit, chunks, foliage),
-                ParticleRequest::Hit(hit) => self.spawn_hit(hit, chunks, foliage),
+                ParticleRequest::Break(hit) => self.spawn_break(hit, chunks, foliage, grass),
+                ParticleRequest::Hit(hit) => self.spawn_hit(hit, chunks, foliage, grass),
             }
         }
     }
@@ -116,7 +121,9 @@ impl BlockParticles {
         hit: BlockHit,
         chunks: &WorldChunks,
         foliage: Option<&FoliageColors>,
+        grass: Option<&GrassColors>,
     ) {
+        let climate = chunks.climate_at(hit.x, hit.z);
         for x in 0..BURST_SIDE {
             for y in 0..BURST_SIDE {
                 for z in 0..BURST_SIDE {
@@ -124,15 +131,22 @@ impl BlockParticles {
                         / BURST_SIDE as f32;
                     let position = Vec3::new(hit.x as f32, hit.y as f32, hit.z as f32) + offset;
                     let outward = offset - Vec3::splat(0.5);
-                    let particle =
-                        self.new_particle(position, outward, hit.block, chunks, foliage, 1.0);
+                    let particle = self
+                        .new_particle(position, outward, hit.block, climate, foliage, grass, 1.0);
                     self.push(particle);
                 }
             }
         }
     }
 
-    fn spawn_hit(&mut self, hit: BlockHit, chunks: &WorldChunks, foliage: Option<&FoliageColors>) {
+    fn spawn_hit(
+        &mut self,
+        hit: BlockHit,
+        chunks: &WorldChunks,
+        foliage: Option<&FoliageColors>,
+        grass: Option<&GrassColors>,
+    ) {
+        let climate = chunks.climate_at(hit.x, hit.z);
         let mut offset = Vec3::new(
             0.1 + self.random() * 0.8,
             0.1 + self.random() * 0.8,
@@ -147,7 +161,15 @@ impl BlockParticles {
             BlockFace::East => offset.x = 1.1,
         }
         let position = Vec3::new(hit.x as f32, hit.y as f32, hit.z as f32) + offset;
-        let mut particle = self.new_particle(position, Vec3::ZERO, hit.block, chunks, foliage, 0.6);
+        let mut particle = self.new_particle(
+            position,
+            Vec3::ZERO,
+            hit.block,
+            climate,
+            foliage,
+            grass,
+            0.6,
+        );
         particle.velocity.x *= 0.2;
         particle.velocity.z *= 0.2;
         particle.velocity.y = (particle.velocity.y - 0.1) * 0.2 + 0.1;
@@ -159,8 +181,9 @@ impl BlockParticles {
         position: Vec3,
         outward: Vec3,
         block: BlockId,
-        chunks: &WorldChunks,
+        climate: Option<Climate>,
         foliage: Option<&FoliageColors>,
+        grass: Option<&GrassColors>,
         scale: f32,
     ) -> Particle {
         let direction = outward
@@ -179,23 +202,17 @@ impl BlockParticles {
         let tile_size = Vec2::new(u1 - u0, v1 - v0);
         let patch_min = Vec2::new(u0, v0) + jitter * tile_size * 0.25;
         let patch_max = patch_min + tile_size * 0.24975;
-        let foliage_tint = match block {
+        let block_tint = match block {
+            BlockId::TallGrass | BlockId::Fern => Some(grass.map_or_else(
+                || GrassColors::default().sample_optional(climate),
+                |colors| colors.sample_optional(climate),
+            )),
             BlockId::Leaves | BlockId::SpruceLeaves | BlockId::BirchLeaves => {
-                let chunk = chunks.get(ChunkPos::from_block(
-                    position.x.floor() as i32,
-                    position.z.floor() as i32,
-                ));
-                let climate = chunk.map(|chunk| {
-                    chunk.biomes.get(
-                        (position.x.floor() as i32).rem_euclid(CHUNK_SIZE as i32) as usize,
-                        (position.z.floor() as i32).rem_euclid(CHUNK_SIZE as i32) as usize,
-                    )
-                });
                 climate.map(|climate| foliage.map_or([0.28, 0.71, 0.09], |f| f.sample(climate)))
             }
             _ => None,
         };
-        let tint = foliage_tint.unwrap_or([1.0; 3]);
+        let tint = block_tint.unwrap_or([1.0; 3]);
         Particle {
             position,
             previous_position: position,
@@ -332,13 +349,14 @@ fn update_particles(
     tick: Res<WorldTick>,
     chunks: Res<WorldChunks>,
     foliage: Option<Res<FoliageColors>>,
+    grass: Option<Res<GrassColors>>,
     camera: Query<&GlobalTransform, With<PlayerCamera>>,
     mut particles: ResMut<BlockParticles>,
     mut renderer: ResMut<ParticleRenderer>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut visibility: Query<&mut Visibility>,
 ) {
-    particles.spawn_pending(&chunks, foliage.as_deref());
+    particles.spawn_pending(&chunks, foliage.as_deref(), grass.as_deref());
     for _ in 0..tick.ticks_this_frame() {
         particles
             .active

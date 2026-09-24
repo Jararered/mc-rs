@@ -13,7 +13,16 @@ use game::entity::particles::BlockParticles;
 use game::physics::BlockFace;
 use game::physics::BlockHit;
 use game::world::block::block::BlockId;
+use game::world::chunk::Chunk;
 use game::world::chunk::WorldChunks;
+use game::world::generation::Biome;
+use game::world::generation::BiomeMap;
+use game::world::generation::Climate;
+use game::world::generation::GeneratedChunk;
+use game::world::generation::Heightmap;
+use game::world::textures::FoliageColors;
+use game::world::textures::GrassColors;
+use game::world::textures::PALETTE_SIZE;
 use game::world::textures::atlas_tile_uvs;
 use game::world::tick::WorldTick;
 use game::world::tick::advance_world_tick;
@@ -85,6 +94,131 @@ fn stone_hit() -> BlockHit {
         face: BlockFace::Up,
         block: BlockId::Stone,
     }
+}
+
+fn palette(rgb: [u8; 3]) -> Vec<u8> {
+    [rgb[0], rgb[1], rgb[2], 255].repeat(PALETTE_SIZE * PALETTE_SIZE)
+}
+
+fn add_climate_chunk(app: &mut App) {
+    let chunk = Chunk::new();
+    let climate = Climate {
+        temperature: 0.5,
+        humidity: 0.5,
+        biome: Biome::Forest,
+    };
+    app.world_mut().resource_mut::<WorldChunks>().insert(
+        game::world::chunk::ChunkPos::ZERO,
+        GeneratedChunk {
+            heightmap: Heightmap::from_chunk(&chunk),
+            chunk,
+            biomes: BiomeMap::from_cells([climate; 16 * 16]),
+            items: Vec::new(),
+        },
+    );
+}
+
+fn particle_colors(app: &mut App) -> Vec<[f32; 4]> {
+    let mut renderers = app.world_mut().query::<(&Name, &Mesh3d)>();
+    let (_, handle) = renderers
+        .iter(app.world())
+        .find(|(name, _)| name.as_str() == "Block particles")
+        .unwrap();
+    let mesh = app
+        .world()
+        .resource::<Assets<Mesh>>()
+        .get(&handle.0)
+        .unwrap();
+    let bevy::mesh::VertexAttributeValues::Float32x4(colors) =
+        mesh.attribute(Mesh::ATTRIBUTE_COLOR).unwrap()
+    else {
+        panic!("particle colors should be float RGBA values");
+    };
+    colors.clone()
+}
+
+#[test]
+fn tall_grass_and_fern_break_and_hit_particles_use_biome_grass_tint() {
+    for block in [BlockId::TallGrass, BlockId::Fern] {
+        for breaking in [true, false] {
+            let mut app = test_app();
+            add_climate_chunk(&mut app);
+            app.insert_resource(GrassColors::from_rgba(palette([255, 0, 0])));
+            let hit = BlockHit {
+                block,
+                ..stone_hit()
+            };
+            if breaking {
+                app.world_mut()
+                    .resource_mut::<BlockParticles>()
+                    .emit_break(hit);
+            } else {
+                app.world_mut()
+                    .resource_mut::<BlockParticles>()
+                    .emit_hit(hit);
+            }
+            app.update();
+
+            let colors = particle_colors(&mut app);
+            assert!(!colors.is_empty());
+            assert!(
+                colors
+                    .iter()
+                    .all(|color| { *color == [0.6, 0.0, 0.0, 1.0] })
+            );
+        }
+    }
+}
+
+#[test]
+fn non_grass_particles_keep_neutral_or_foliage_tint() {
+    let mut app = test_app();
+    add_climate_chunk(&mut app);
+    app.insert_resource(GrassColors::from_rgba(palette([255, 0, 0])));
+    app.insert_resource(FoliageColors::from_rgba(palette([0, 0, 255])));
+
+    app.world_mut()
+        .resource_mut::<BlockParticles>()
+        .emit_hit(stone_hit());
+    app.update();
+    assert!(
+        particle_colors(&mut app)
+            .iter()
+            .all(|color| *color == [0.6, 0.6, 0.6, 1.0])
+    );
+
+    app.world_mut()
+        .resource_mut::<BlockParticles>()
+        .emit_hit(BlockHit {
+            block: BlockId::Leaves,
+            ..stone_hit()
+        });
+    app.update();
+    let colors = particle_colors(&mut app);
+    assert!(
+        colors[4..]
+            .iter()
+            .all(|color| *color == [0.0, 0.0, 0.6, 1.0])
+    );
+}
+
+#[test]
+fn grass_particles_use_standard_tint_when_climate_and_palette_are_unavailable() {
+    let mut app = test_app();
+    app.world_mut()
+        .resource_mut::<BlockParticles>()
+        .emit_hit(BlockHit {
+            block: BlockId::TallGrass,
+            ..stone_hit()
+        });
+    app.update();
+
+    let colors = particle_colors(&mut app);
+    assert!(
+        colors
+            .iter()
+            .all(|color| *color == [0.55 * 0.6, 0.8 * 0.6, 0.4 * 0.6, 1.0])
+    );
 }
 
 #[test]

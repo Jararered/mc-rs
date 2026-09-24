@@ -213,7 +213,8 @@ struct ColumnTints {
     foliage: [[f32; 3]; CHUNK_SIZE * CHUNK_SIZE],
 }
 
-pub(crate) fn mesh_chunk_with_biomes(
+/// Mesh a chunk with its per-column climate colors applied to grass and plants.
+pub fn mesh_chunk_with_biomes(
     chunk: &Chunk,
     neighbors: &ChunkNeighbors<'_>,
     skylight: &Skylight,

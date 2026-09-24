@@ -182,6 +182,110 @@ fn pumpkin_patches_generate_facing_pumpkins_on_grass() {
     panic!("seeded terrain should eventually generate pumpkins");
 }
 
+fn assert_wood_components_do_not_merge_trunks(chunk: &Chunk, chunk_pos: ChunkPos, wood: BlockId) {
+    let mut visited = [[[false; CHUNK_SIZE]; CHUNK_SIZE]; CHUNK_HEIGHT];
+    for y in 0..CHUNK_HEIGHT {
+        for z in 0..CHUNK_SIZE {
+            for x in 0..CHUNK_SIZE {
+                if visited[y][z][x] || chunk.get(x, y, z) != Some(wood) {
+                    continue;
+                }
+                let mut pending = vec![(x, y, z)];
+                visited[y][z][x] = true;
+                let mut grounded_trunks = Vec::new();
+                while let Some((x, y, z)) = pending.pop() {
+                    if y > 0
+                        && y + 2 < CHUNK_HEIGHT
+                        && matches!(chunk.get(x, y - 1, z), Some(BlockId::Dirt | BlockId::Grass))
+                        && chunk.get(x, y + 1, z) == Some(wood)
+                        && chunk.get(x, y + 2, z) == Some(wood)
+                    {
+                        grounded_trunks.push((x, y, z));
+                    }
+                    for (nx, ny, nz) in [
+                        (x.wrapping_sub(1), y, z),
+                        (x + 1, y, z),
+                        (x, y.wrapping_sub(1), z),
+                        (x, y + 1, z),
+                        (x, y, z.wrapping_sub(1)),
+                        (x, y, z + 1),
+                    ] {
+                        if nx < CHUNK_SIZE
+                            && nz < CHUNK_SIZE
+                            && ny < CHUNK_HEIGHT
+                            && !visited[ny][nz][nx]
+                            && chunk.get(nx, ny, nz) == Some(wood)
+                        {
+                            visited[ny][nz][nx] = true;
+                            pending.push((nx, ny, nz));
+                        }
+                    }
+                }
+                assert!(
+                    grounded_trunks.len() <= 1,
+                    "{wood:?} component in chunk ({}, {}) contains trunks at {grounded_trunks:?}",
+                    chunk_pos.x,
+                    chunk_pos.z
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn tree_wood_components_do_not_merge_trunks() {
+    let mut sampled = false;
+    for seed in 0..8 {
+        let generator = WorldGenerator::new(seed);
+        for z in -1..=1 {
+            for x in -1..=1 {
+                let position = ChunkPos { x, z };
+                let generated = generator.generate(position);
+                for wood in [BlockId::BirchWood, BlockId::SpruceWood] {
+                    if count(&generated.chunk, wood) == 0 {
+                        continue;
+                    }
+                    sampled = true;
+                    assert_wood_components_do_not_merge_trunks(&generated.chunk, position, wood);
+                }
+            }
+        }
+    }
+    assert!(
+        sampled,
+        "expected birch or spruce trees in the sampled forests"
+    );
+}
+
+#[test]
+fn tree_trunks_replace_existing_leaves() {
+    let generated = WorldGenerator::new(0).generate(ChunkPos { x: 0, z: 1 });
+    let chunk = &generated.chunk;
+    let mut found_birch = false;
+    for z in 0..CHUNK_SIZE {
+        for x in 0..CHUNK_SIZE {
+            for y in 1..CHUNK_HEIGHT - 1 {
+                if chunk.get(x, y, z) != Some(BlockId::BirchWood)
+                    || chunk.get(x, y + 1, z) != Some(BlockId::BirchWood)
+                    || chunk.get(x, y - 1, z) == Some(BlockId::BirchWood)
+                {
+                    continue;
+                }
+                found_birch = true;
+                let mut below = y;
+                while below > 0 && is_leaf(chunk.get(x, below - 1, z).unwrap()) {
+                    below -= 1;
+                }
+                assert_eq!(
+                    below, y,
+                    "birch trunk at ({x}, {y}, {z}) starts below leaves"
+                );
+            }
+        }
+    }
+    assert!(found_birch, "seed zero should contain a birch trunk");
+}
+
 #[test]
 fn dry_biomes_have_no_trees() {
     // Seed 1 puts the tree biome at the chunk's far corner in the desert, which

@@ -10,13 +10,12 @@
 //! rasterises the results into itself. A tree is therefore written by every chunk
 //! it overlaps, and canopies stay seamless across chunk borders.
 //!
-//! Occupancy checks that read the chunk being filled cannot be used: each chunk
-//! sees different blocks, so the same tree would plant in one chunk and fail in
-//! its neighbour, slicing the canopy at the seam. Placement only consults the
-//! ground under the trunk. Writes outside the chunk are dropped. Out-of-chunk
-//! origins use the same surface query as [`super::surface::apply_surface`], so a
-//! sand column is sand in every neighbour and does not grow a canopy without a
-//! trunk.
+//! Occupancy checks read the tree blocks replayed so far in a shared 3×3
+//! neighborhood. Writes outside the target chunk remain in the shared tree view
+//! so neighboring trees see the same occupied blocks without slicing canopies at
+//! chunk seams. Out-of-chunk origins use the same surface query as
+//! [`super::surface::apply_surface`], so a sand column is sand in every neighbour
+//! and does not grow a canopy without a trunk.
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -58,12 +57,16 @@ enum TreeKind {
 /// The world view the tree generators read and write through.
 ///
 /// Coordinates are chunk-local and may fall outside `0..CHUNK_SIZE`. Reads
-/// outside the chunk report air, except the block directly below the current
-/// tree's origin, which reports the ground block found by decoration.
+/// outside the target consult the neighboring base chunks and shared tree
+/// overrides; the block directly below the current tree's origin reports the
+/// ground block found by decoration.
 struct TreeWorld<'a> {
+    target: ChunkPos,
     chunk: &'a mut Chunk,
     origin: [i32; 3],
     ground: BlockId,
+    remote_chunks: &'a HashMap<ChunkPos, Chunk>,
+    overrides: &'a mut HashMap<(i32, i32, i32), BlockId>,
 }
 
 impl TreeWorld<'_> {
@@ -74,49 +77,95 @@ impl TreeWorld<'_> {
     }
 
     fn get(&self, x: i32, y: i32, z: i32) -> BlockId {
-        if x == self.origin[0] && z == self.origin[2] && y == self.origin[1] - 1 {
-            self.ground
+        let current = if let Some(block) = self.overrides.get(&(x, y, z)) {
+            *block
         } else if Self::in_bounds(x, y, z) {
             self.chunk.get(x as usize, y as usize, z as usize).unwrap()
-        } else {
+        } else if !(0..CHUNK_HEIGHT as i32).contains(&y) {
             BlockId::Air
+        } else {
+            let world_x = self.target.x * CHUNK_SIZE as i32 + x;
+            let world_z = self.target.z * CHUNK_SIZE as i32 + z;
+            let position = ChunkPos::from_block(world_x, world_z);
+            self.remote_chunks
+                .get(&position)
+                .and_then(|chunk| {
+                    chunk.get(
+                        world_x.rem_euclid(CHUNK_SIZE as i32) as usize,
+                        y as usize,
+                        world_z.rem_euclid(CHUNK_SIZE as i32) as usize,
+                    )
+                })
+                .unwrap_or(BlockId::Air)
+        };
+        if x == self.origin[0] && z == self.origin[2] && y == self.origin[1] - 1 {
+            if is_log(current) || is_leaf(current) {
+                current
+            } else {
+                self.ground
+            }
+        } else {
+            current
         }
     }
 
     fn set(&mut self, x: i32, y: i32, z: i32, block: BlockId) {
-        if Self::in_bounds(x, y, z) {
-            if matches!(
-                block,
-                BlockId::Wood | BlockId::BirchWood | BlockId::SpruceWood
-            ) {
-                let below = (0..y as usize).rev().find_map(|by| {
-                    let found = self.chunk.get(x as usize, by, z as usize)?;
-                    if matches!(
-                        found,
-                        BlockId::Wood
-                            | BlockId::BirchWood
-                            | BlockId::SpruceWood
-                            | BlockId::Leaves
-                            | BlockId::BirchLeaves
-                            | BlockId::SpruceLeaves
-                            | BlockId::Air
-                    ) {
-                        None
-                    } else {
-                        Some(found)
-                    }
-                });
-                if below == Some(BlockId::Sand) {
-                    return;
-                }
+        let current = self.get(x, y, z);
+        if is_log(block) {
+            if is_log(current) {
+                return;
             }
+            let below = (0..y.max(0)).rev().find_map(|by| {
+                let found = self.get(x, by, z);
+                if matches!(
+                    found,
+                    BlockId::Wood
+                        | BlockId::BirchWood
+                        | BlockId::SpruceWood
+                        | BlockId::Leaves
+                        | BlockId::BirchLeaves
+                        | BlockId::SpruceLeaves
+                        | BlockId::Air
+                ) {
+                    None
+                } else {
+                    Some(found)
+                }
+            });
+            if below == Some(BlockId::Sand) {
+                return;
+            }
+        } else if is_leaf(block) && is_opaque_cube(current) {
+            return;
+        }
+        if Self::in_bounds(x, y, z) {
             self.chunk.set(x as usize, y as usize, z as usize, block);
+        } else if (0..CHUNK_HEIGHT as i32).contains(&y) {
+            self.overrides.insert((x, y, z), block);
         }
     }
 
     fn is_opaque(&self, x: i32, y: i32, z: i32) -> bool {
         is_opaque_cube(self.get(x, y, z))
     }
+}
+
+fn is_log(block: BlockId) -> bool {
+    matches!(
+        block,
+        BlockId::Wood | BlockId::BirchWood | BlockId::SpruceWood
+    )
+}
+
+fn is_leaf(block: BlockId) -> bool {
+    matches!(
+        block,
+        BlockId::Leaves | BlockId::BirchLeaves | BlockId::SpruceLeaves
+    )
+}
+
+fn is_tree_space(block: BlockId) -> bool {
+    matches!(block, BlockId::Air) || is_leaf(block)
 }
 
 /// Replay the reference placement loop for every chunk overlapping `position`
@@ -145,6 +194,7 @@ pub(super) fn decorate(
 
     let mut remote_ground = HashMap::new();
     let mut remote_chunks = HashMap::new();
+    let mut tree_overrides = HashMap::new();
     let mut cactus_positions = HashSet::new();
     let mut reed_positions = HashSet::new();
     let mut pumpkin_positions = HashSet::new();
@@ -162,6 +212,7 @@ pub(super) fn decorate(
                 &grounds,
                 &mut remote_ground,
                 &mut remote_chunks,
+                &mut tree_overrides,
                 &mut cactus_positions,
                 &mut reed_positions,
                 &mut pumpkin_positions,
@@ -185,6 +236,7 @@ fn populate(
     grounds: &[[BlockId; CHUNK_SIZE]; CHUNK_SIZE],
     remote_ground: &mut HashMap<(i32, i32), (i32, BlockId)>,
     remote_chunks: &mut HashMap<ChunkPos, Chunk>,
+    tree_overrides: &mut HashMap<(i32, i32, i32), BlockId>,
     cactus_positions: &mut HashSet<(i32, i32, i32)>,
     reed_positions: &mut HashSet<(i32, i32, i32)>,
     pumpkin_positions: &mut HashSet<(i32, i32, i32)>,
@@ -220,53 +272,73 @@ fn populate(
     let offset_x = (source.x - target.x) * CHUNK_SIZE as i32;
     let offset_z = (source.z - target.z) * CHUNK_SIZE as i32;
 
-    let mut world = TreeWorld {
-        chunk,
-        origin: [0, 0, 0],
-        ground: BlockId::Air,
-    };
-    for _ in 0..count {
-        let local_x = rand.next_int(CHUNK_SIZE as u32) as i32 + 8;
-        let local_z = rand.next_int(CHUNK_SIZE as u32) as i32 + 8;
-        let kind = select_tree(biome, &mut rand);
-        let world_x = source.x * CHUNK_SIZE as i32 + local_x;
-        let world_z = source.z * CHUNK_SIZE as i32 + local_z;
-        let origin_x = local_x + offset_x;
-        let origin_z = local_z + offset_z;
-        // A tree's private RNG cannot affect later placements. Keep its seed
-        // draw, but avoid looking up remote ground if no branch can reach us.
-        let tree_seed = rand.next_long() as u64;
-        if origin_x + MAX_TREE_RADIUS < 0
-            || origin_x - MAX_TREE_RADIUS >= CHUNK_SIZE as i32
-            || origin_z + MAX_TREE_RADIUS < 0
-            || origin_z - MAX_TREE_RADIUS >= CHUNK_SIZE as i32
-        {
-            continue;
+    for remote_z in -1..=1 {
+        for remote_x in -1..=1 {
+            let position = ChunkPos {
+                x: target.x + remote_x,
+                z: target.z + remote_z,
+            };
+            if position != target {
+                remote_chunks
+                    .entry(position)
+                    .or_insert_with(|| remote_chunk(position));
+            }
         }
-        let (height, ground) = ground_at(
-            target,
-            heights,
-            grounds,
-            remote_ground,
-            remote_chunks,
-            remote_chunk,
-            world_x,
-            world_z,
-        );
+    }
+    let tree_chunks = remote_chunks.clone();
 
-        let origin = [origin_x, height, origin_z];
-        world.origin = origin;
-        world.ground = ground;
-        // A private RNG per tree so a failed ground check in one chunk cannot
-        // desynchronise later trees when the neighbour does plant it.
-        let mut tree_rand = JavaRandom::new(tree_seed);
-        generate(kind, &mut world, &mut tree_rand, origin);
+    {
+        let mut world = TreeWorld {
+            target,
+            chunk,
+            origin: [0, 0, 0],
+            ground: BlockId::Air,
+            remote_chunks: &tree_chunks,
+            overrides: tree_overrides,
+        };
+        for _ in 0..count {
+            let local_x = rand.next_int(CHUNK_SIZE as u32) as i32 + 8;
+            let local_z = rand.next_int(CHUNK_SIZE as u32) as i32 + 8;
+            let kind = select_tree(biome, &mut rand);
+            let world_x = source.x * CHUNK_SIZE as i32 + local_x;
+            let world_z = source.z * CHUNK_SIZE as i32 + local_z;
+            let origin_x = local_x + offset_x;
+            let origin_z = local_z + offset_z;
+            // A tree's private RNG cannot affect later placements. Keep its seed
+            // draw, but avoid looking up remote ground if no branch can reach us.
+            let tree_seed = rand.next_long() as u64;
+            if origin_x + MAX_TREE_RADIUS < 0
+                || origin_x - MAX_TREE_RADIUS >= CHUNK_SIZE as i32
+                || origin_z + MAX_TREE_RADIUS < 0
+                || origin_z - MAX_TREE_RADIUS >= CHUNK_SIZE as i32
+            {
+                continue;
+            }
+            let (height, ground) = ground_at(
+                target,
+                heights,
+                grounds,
+                remote_ground,
+                remote_chunks,
+                remote_chunk,
+                world_x,
+                world_z,
+            );
+
+            let origin = [origin_x, height, origin_z];
+            world.origin = origin;
+            world.ground = ground;
+            // A private RNG per tree so a failed ground check in one chunk cannot
+            // desynchronise later trees when the neighbour does plant it.
+            let mut tree_rand = JavaRandom::new(tree_seed);
+            generate(kind, &mut world, &mut tree_rand, origin);
+        }
     }
 
     // Flowers and tall grass follow trees on this same random sequence.
     // Drawing them earlier would move every tree.
     place_plants(
-        world.chunk,
+        chunk,
         target,
         source,
         &mut rand,
@@ -286,7 +358,7 @@ fn populate(
         },
     );
     place_dead_bushes(
-        world.chunk,
+        chunk,
         target,
         source,
         &mut rand,
@@ -294,9 +366,9 @@ fn populate(
         remote_chunks,
         remote_chunk,
     );
-    place_plant_extras(world.chunk, target, source, &mut rand);
+    place_plant_extras(chunk, target, source, &mut rand);
     place_reeds(
-        world.chunk,
+        chunk,
         target,
         source,
         &mut rand,
@@ -305,7 +377,7 @@ fn populate(
         remote_chunk,
     );
     place_pumpkins(
-        world.chunk,
+        chunk,
         target,
         source,
         &mut rand,
@@ -314,7 +386,7 @@ fn populate(
         remote_chunk,
     );
     place_cacti(
-        world.chunk,
+        chunk,
         target,
         source,
         &mut rand,
@@ -442,6 +514,48 @@ fn top_non_air(chunk: &Chunk, x: usize, z: usize) -> usize {
         .map_or(0, |y| y + 1)
 }
 
+fn standard_space_is_clear(world: &TreeWorld, x: i32, y: i32, z: i32, height: i32) -> bool {
+    for level in y..=y + 1 + height {
+        let radius = if level == y {
+            0
+        } else if level >= y + height - 1 {
+            2
+        } else {
+            1
+        };
+        for lx in x - radius..=x + radius {
+            for lz in z - radius..=z + radius {
+                if !is_tree_space(world.get(lx, level, lz)) {
+                    return false;
+                }
+            }
+        }
+    }
+    true
+}
+
+fn taiga_space_is_clear(
+    world: &TreeWorld,
+    x: i32,
+    y: i32,
+    z: i32,
+    height: i32,
+    trunk: i32,
+    max_radius: i32,
+) -> bool {
+    for level in y..=y + 1 + height {
+        let radius = if level - y < trunk { 0 } else { max_radius };
+        for lx in x - radius..=x + radius {
+            for lz in z - radius..=z + radius {
+                if !is_tree_space(world.get(lx, level, lz)) {
+                    return false;
+                }
+            }
+        }
+    }
+    true
+}
+
 /// `WorldGenTrees` and `WorldGenForest`, which differ only in trunk height and
 /// the wood/leaf species.
 #[allow(clippy::too_many_arguments)]
@@ -456,7 +570,8 @@ fn generate_standard(
     base_height: i32,
 ) -> bool {
     let height = rand.next_int(3) as i32 + base_height;
-    if y >= 1 && y + height < CHUNK_HEIGHT as i32 {
+    if y >= 1 && y + height < CHUNK_HEIGHT as i32 && standard_space_is_clear(world, x, y, z, height)
+    {
         let below = world.get(x, y - 1, z);
         if (below == BlockId::Grass || below == BlockId::Dirt)
             && y < CHUNK_HEIGHT as i32 - height - 1
@@ -481,7 +596,7 @@ fn generate_standard(
             }
             for level in 0..height {
                 let block = world.get(x, y + level, z);
-                if block == BlockId::Air || block == leaves {
+                if block == BlockId::Air || is_leaf(block) {
                     world.set(x, y + level, z, wood);
                 }
             }
@@ -500,7 +615,10 @@ fn generate_taiga1(world: &mut TreeWorld, rand: &mut JavaRandom, x: i32, y: i32,
     let trunk = height - rand.next_int(2) as i32 - 3;
     let span = height - trunk;
     let max_radius = 1 + rand.next_int((span + 1) as u32) as i32;
-    if y >= 1 && y + height < CHUNK_HEIGHT as i32 {
+    if y >= 1
+        && y + height < CHUNK_HEIGHT as i32
+        && taiga_space_is_clear(world, x, y, z, height, trunk, max_radius)
+    {
         let below = world.get(x, y - 1, z);
         if (below == BlockId::Grass || below == BlockId::Dirt)
             && y < CHUNK_HEIGHT as i32 - height - 1
@@ -529,7 +647,7 @@ fn generate_taiga1(world: &mut TreeWorld, rand: &mut JavaRandom, x: i32, y: i32,
             }
             for level in 0..height - 1 {
                 let block = world.get(x, y + level, z);
-                if block == BlockId::Air || block == BlockId::SpruceLeaves {
+                if block == BlockId::Air || is_leaf(block) {
                     world.set(x, y + level, z, BlockId::SpruceWood);
                 }
             }
@@ -548,7 +666,10 @@ fn generate_taiga2(world: &mut TreeWorld, rand: &mut JavaRandom, x: i32, y: i32,
     let trunk = 1 + rand.next_int(2) as i32;
     let span = height - trunk;
     let max_radius = 2 + rand.next_int(2) as i32;
-    if y >= 1 && y + height < CHUNK_HEIGHT as i32 {
+    if y >= 1
+        && y + height < CHUNK_HEIGHT as i32
+        && taiga_space_is_clear(world, x, y, z, height, trunk, max_radius)
+    {
         let below = world.get(x, y - 1, z);
         if (below == BlockId::Grass || below == BlockId::Dirt)
             && y < CHUNK_HEIGHT as i32 - height - 1
@@ -584,7 +705,7 @@ fn generate_taiga2(world: &mut TreeWorld, rand: &mut JavaRandom, x: i32, y: i32,
             let trunk_height = rand.next_int(3) as i32;
             for level in 0..height - trunk_height {
                 let block = world.get(x, y + level, z);
-                if block == BlockId::Air || block == BlockId::SpruceLeaves {
+                if block == BlockId::Air || is_leaf(block) {
                     world.set(x, y + level, z, BlockId::SpruceWood);
                 }
             }
@@ -674,12 +795,35 @@ impl BigTree {
         }
     }
 
-    /// `func_524_a`: distance to the first obstruction along a line, or -1 if clear.
-    ///
-    /// Space is treated as empty. Each chunk only contains its own blocks, so a
-    /// real occupancy walk would accept a tree in one chunk and reject it in the
-    /// neighbour, cutting branches at the seam.
-    fn line_clearance(&self, _world: &TreeWorld, _from: [i32; 3], _to: [i32; 3]) -> i32 {
+    fn line_clearance(&self, world: &TreeWorld, from: [i32; 3], to: [i32; 3]) -> i32 {
+        let mut delta = [0i32; 3];
+        let mut axis = 0usize;
+        for i in 0..3 {
+            delta[i] = to[i] - from[i];
+            if delta[i].abs() > delta[axis].abs() {
+                axis = i;
+            }
+        }
+        if delta[axis] == 0 {
+            return -1;
+        }
+        let a = AXIS_ORDER[axis];
+        let b = AXIS_ORDER[axis + 3];
+        let step = if delta[axis] > 0 { 1 } else { -1 };
+        let slope_a = delta[a] as f64 / delta[axis] as f64;
+        let slope_b = delta[b] as f64 / delta[axis] as f64;
+        let mut pos = [0i32; 3];
+        let mut offset = 0i32;
+        let end = delta[axis] + step;
+        while offset != end {
+            pos[axis] = (from[axis] as f64 + offset as f64 + 0.5).floor() as i32;
+            pos[a] = (from[a] as f64 + offset as f64 * slope_a + 0.5).floor() as i32;
+            pos[b] = (from[b] as f64 + offset as f64 * slope_b + 0.5).floor() as i32;
+            if !is_tree_space(world.get(pos[0], pos[1], pos[2])) {
+                return offset.abs();
+            }
+            offset += step;
+        }
         -1
     }
 

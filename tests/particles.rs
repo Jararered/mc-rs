@@ -8,9 +8,9 @@ use bevy::time::TimeUpdateStrategy;
 
 use game::app::state::AppScreen;
 use game::block::block::BlockId;
-use game::entity::particle_registry::ParticleSprite;
-use game::entity::particles::BlockParticlePlugin;
-use game::entity::particles::BlockParticles;
+use game::entity::particles::block::BlockParticlePlugin;
+use game::entity::particles::block::BlockParticles;
+use game::entity::particles::registry::ParticleSprite;
 use game::physics::BlockFace;
 use game::physics::BlockHit;
 use game::world::chunk::Chunk;

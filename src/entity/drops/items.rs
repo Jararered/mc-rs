@@ -19,7 +19,7 @@ use crate::block::properties::is_torch;
 use crate::entity::CollisionState;
 use crate::entity::DroppedItem;
 use crate::entity::EntitySize;
-use crate::entity::block_drops::DropRoll;
+use crate::entity::drops::blocks::DropRoll;
 use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
 use crate::item::ItemStack;

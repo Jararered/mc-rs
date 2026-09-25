@@ -18,7 +18,7 @@ use crate::app::state::AppScreen;
 use crate::entity::CollisionState;
 use crate::entity::EntitySize;
 use crate::entity::Flying;
-use crate::entity::dropped_items::hotbar_icon_scale;
+use crate::entity::drops::items::hotbar_icon_scale;
 use crate::inventory::HOTBAR_SLOTS;
 use crate::inventory::Hotbar;
 use crate::item::ItemStack;

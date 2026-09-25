@@ -7,9 +7,7 @@ use bevy::prelude::*;
 
 use crate::item::ItemStack;
 
-pub mod block_drops;
-pub mod dropped_items;
-pub mod particle_registry;
+pub mod drops;
 pub mod particles;
 
 /// An independently simulated inventory stack lying in the world.

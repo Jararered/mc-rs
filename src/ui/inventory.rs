@@ -23,7 +23,7 @@ use crate::app::state::AppScreen;
 use crate::block::block::BlockId;
 use crate::crafting::CraftingGrid;
 use crate::crafting::beta_recipe_book;
-use crate::entity::dropped_items::spawn_thrown_item;
+use crate::entity::drops::items::spawn_thrown_item;
 use crate::inventory::DragPlace;
 use crate::inventory::Hotbar;
 use crate::inventory::Inventory;

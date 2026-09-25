@@ -10,7 +10,7 @@ use crate::item::ItemId;
 use crate::item::ItemStack;
 use crate::item::tools::can_harvest;
 
-/// `java.util.Random.nextInt`. Tests pass scripted values; the game uses [`crate::entity::dropped_items::ItemRng`].
+/// `java.util.Random.nextInt`. Tests pass scripted values; the game uses [`crate::entity::drops::items::ItemRng`].
 pub trait DropRoll {
     fn next_int(&mut self, bound: u32) -> u32;
 }

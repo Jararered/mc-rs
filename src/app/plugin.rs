@@ -1,8 +1,8 @@
 use bevy::prelude::*;
 
-use crate::entity::dropped_items::DroppedItemPlugin;
-use crate::entity::particle_registry::ParticleRegistryPlugin;
-use crate::entity::particles::BlockParticlePlugin;
+use crate::entity::drops::items::DroppedItemPlugin;
+use crate::entity::particles::block::BlockParticlePlugin;
+use crate::entity::particles::registry::ParticleRegistryPlugin;
 use crate::physics::PhysicsPlugin;
 use crate::player::PlayerPlugin;
 use crate::ui::HudPlugin;

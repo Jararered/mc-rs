@@ -981,10 +981,10 @@ fn flush_persistence(
         (
             &Transform,
             &crate::entity::DroppedItem,
-            &crate::entity::dropped_items::ItemMotion,
-            &crate::entity::dropped_items::DroppedItemState,
+            &crate::entity::drops::items::ItemMotion,
+            &crate::entity::drops::items::DroppedItemState,
         ),
-        Without<crate::entity::dropped_items::PickupAnimation>,
+        Without<crate::entity::drops::items::PickupAnimation>,
     >,
     time: Res<Time>,
     tick: Option<Res<crate::world::tick::WorldTick>>,
@@ -1007,7 +1007,7 @@ fn flush_persistence(
             saved
                 .entry(position)
                 .or_default()
-                .push(crate::entity::dropped_items::chunk_record(
+                .push(crate::entity::drops::items::chunk_record(
                     dropped.0,
                     transform.translation,
                     motion.0,

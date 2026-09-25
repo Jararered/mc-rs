@@ -14,11 +14,11 @@ use bevy::tasks::futures::check_ready;
 use crate::app::settings::GameSettings;
 use crate::app::state::AppScreen;
 use crate::entity::DroppedItem;
-use crate::entity::dropped_items::DroppedItemState;
-use crate::entity::dropped_items::ItemMotion;
-use crate::entity::dropped_items::PickupAnimation;
-use crate::entity::dropped_items::chunk_record;
-use crate::entity::dropped_items::spawn_saved_item;
+use crate::entity::drops::items::DroppedItemState;
+use crate::entity::drops::items::ItemMotion;
+use crate::entity::drops::items::PickupAnimation;
+use crate::entity::drops::items::chunk_record;
+use crate::entity::drops::items::spawn_saved_item;
 use crate::player::Player;
 use crate::world::persistence::WorldPersistence;
 

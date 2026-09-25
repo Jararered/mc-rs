@@ -1,8 +1,7 @@
 use std::collections::VecDeque;
 
 use crate::block::block::BlockId;
-use crate::block::properties::is_crossed_plant;
-use crate::block::properties::is_torch;
+use crate::block::definition::BlockProperties;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::Chunk;
@@ -71,6 +70,7 @@ impl Skylight {
                 .get(x % CHUNK_SIZE, y, z % CHUNK_SIZE)
                 .unwrap()
         };
+        let light_table = crate::block::definition::properties_table();
         let mut sky = vec![0u8; CELLS];
         let mut block = vec![0u8; CELLS];
         let mut sky_queue = VecDeque::new();
@@ -79,7 +79,7 @@ impl Skylight {
             for x in 0..WIDTH {
                 let mut incoming = MAX_LIGHT;
                 for y in (0..CHUNK_HEIGHT).rev() {
-                    let opacity = light_opacity(block_at(x, y, z));
+                    let opacity = light_opacity_from_table(light_table, block_at(x, y, z));
                     let level = if incoming == MAX_LIGHT && opacity == 0 {
                         MAX_LIGHT
                     } else {
@@ -91,7 +91,7 @@ impl Skylight {
                         sky_queue.push_back((x, y, z));
                     }
                     incoming = level;
-                    let emission = light_emission(block_at(x, y, z));
+                    let emission = light_emission_from_table(light_table, block_at(x, y, z));
                     if emission > 0 {
                         block[i] = emission;
                         block_queue.push_back((x, y, z));
@@ -126,7 +126,8 @@ impl Skylight {
                         continue;
                     }
                     let (nx, ny, nz) = (nx as usize, ny as usize, nz as usize);
-                    let attenuation = light_opacity(block_at(nx, ny, nz)).max(1);
+                    let attenuation =
+                        light_opacity_from_table(light_table, block_at(nx, ny, nz)).max(1);
                     let candidate = source.saturating_sub(attenuation);
                     let i = index(nx, ny, nz);
                     if candidate > light[i] {
@@ -226,6 +227,7 @@ impl Skylight {
         let mut block = vec![0; LIGHT_CELLS].into_boxed_slice();
         let mut sky_queue = VecDeque::new();
         let mut block_queue = VecDeque::new();
+        let light_table = crate::block::definition::properties_table();
 
         // Seed direct sunlight from above. Open chunk edges are also seeded so
         // caves and overhangs do not get an artificial black streaming seam.
@@ -233,7 +235,8 @@ impl Skylight {
             for x in 0..CHUNK_SIZE {
                 let mut incoming = MAX_LIGHT;
                 for y in (0..CHUNK_HEIGHT).rev() {
-                    let opacity = light_opacity(chunk.get(x, y, z).unwrap());
+                    let opacity =
+                        light_opacity_from_table(light_table, chunk.get(x, y, z).unwrap());
                     let level = if incoming == MAX_LIGHT && opacity == 0 {
                         MAX_LIGHT
                     } else {
@@ -251,22 +254,38 @@ impl Skylight {
         for y in 0..CHUNK_HEIGHT {
             if west.is_none() && suppressed_edge != Some(0) {
                 for z in 0..CHUNK_SIZE {
-                    seed_sky_edge(chunk, &mut sky, &mut sky_queue, 0, y, z);
+                    seed_sky_edge(chunk, light_table, &mut sky, &mut sky_queue, 0, y, z);
                 }
             }
             if east.is_none() && suppressed_edge != Some(1) {
                 for z in 0..CHUNK_SIZE {
-                    seed_sky_edge(chunk, &mut sky, &mut sky_queue, CHUNK_SIZE - 1, y, z);
+                    seed_sky_edge(
+                        chunk,
+                        light_table,
+                        &mut sky,
+                        &mut sky_queue,
+                        CHUNK_SIZE - 1,
+                        y,
+                        z,
+                    );
                 }
             }
             if north.is_none() && suppressed_edge != Some(2) {
                 for x in 0..CHUNK_SIZE {
-                    seed_sky_edge(chunk, &mut sky, &mut sky_queue, x, y, 0);
+                    seed_sky_edge(chunk, light_table, &mut sky, &mut sky_queue, x, y, 0);
                 }
             }
             if south.is_none() && suppressed_edge != Some(3) {
                 for x in 0..CHUNK_SIZE {
-                    seed_sky_edge(chunk, &mut sky, &mut sky_queue, x, y, CHUNK_SIZE - 1);
+                    seed_sky_edge(
+                        chunk,
+                        light_table,
+                        &mut sky,
+                        &mut sky_queue,
+                        x,
+                        y,
+                        CHUNK_SIZE - 1,
+                    );
                 }
             }
         }
@@ -275,7 +294,7 @@ impl Skylight {
         for y in 0..CHUNK_HEIGHT {
             for z in 0..CHUNK_SIZE {
                 for x in 0..CHUNK_SIZE {
-                    let level = light_emission(chunk.get(x, y, z).unwrap());
+                    let level = light_emission_from_table(light_table, chunk.get(x, y, z).unwrap());
                     if level > 0 {
                         let index = Chunk::index(x, y, z);
                         block[index] = level;
@@ -285,8 +304,8 @@ impl Skylight {
             }
         }
 
-        propagate(chunk, &mut sky, &mut sky_queue);
-        propagate(chunk, &mut block, &mut block_queue);
+        propagate(chunk, light_table, &mut sky, &mut sky_queue);
+        propagate(chunk, light_table, &mut block, &mut block_queue);
 
         let mut border_sky =
             std::array::from_fn(|_| vec![MAX_LIGHT; LIGHT_CELLS].into_boxed_slice());
@@ -368,9 +387,19 @@ impl Skylight {
                             let index = Chunk::index(0, y, z);
                             border_sky[0][index] = sky_level;
                             border_block[0][index] = block_level;
-                            seed_from_neighbor(chunk, &mut sky, &mut sky_queue, 0, y, z, sky_level);
                             seed_from_neighbor(
                                 chunk,
+                                light_table,
+                                &mut sky,
+                                &mut sky_queue,
+                                0,
+                                y,
+                                z,
+                                sky_level,
+                            );
+                            seed_from_neighbor(
+                                chunk,
+                                light_table,
                                 &mut block,
                                 &mut block_queue,
                                 0,
@@ -391,6 +420,7 @@ impl Skylight {
                             border_block[1][index] = block_level;
                             seed_from_neighbor(
                                 chunk,
+                                light_table,
                                 &mut sky,
                                 &mut sky_queue,
                                 CHUNK_SIZE - 1,
@@ -400,6 +430,7 @@ impl Skylight {
                             );
                             seed_from_neighbor(
                                 chunk,
+                                light_table,
                                 &mut block,
                                 &mut block_queue,
                                 CHUNK_SIZE - 1,
@@ -418,9 +449,19 @@ impl Skylight {
                             let index = Chunk::index(x, y, 0);
                             border_sky[2][index] = sky_level;
                             border_block[2][index] = block_level;
-                            seed_from_neighbor(chunk, &mut sky, &mut sky_queue, x, y, 0, sky_level);
                             seed_from_neighbor(
                                 chunk,
+                                light_table,
+                                &mut sky,
+                                &mut sky_queue,
+                                x,
+                                y,
+                                0,
+                                sky_level,
+                            );
+                            seed_from_neighbor(
+                                chunk,
+                                light_table,
                                 &mut block,
                                 &mut block_queue,
                                 x,
@@ -441,6 +482,7 @@ impl Skylight {
                             border_block[3][index] = block_level;
                             seed_from_neighbor(
                                 chunk,
+                                light_table,
                                 &mut sky,
                                 &mut sky_queue,
                                 x,
@@ -450,6 +492,7 @@ impl Skylight {
                             );
                             seed_from_neighbor(
                                 chunk,
+                                light_table,
                                 &mut block,
                                 &mut block_queue,
                                 x,
@@ -490,8 +533,8 @@ impl Skylight {
                 corner_block[corner_index][y] = block_level;
             }
         }
-        propagate(chunk, &mut sky, &mut sky_queue);
-        propagate(chunk, &mut block, &mut block_queue);
+        propagate(chunk, light_table, &mut sky, &mut sky_queue);
+        propagate(chunk, light_table, &mut block, &mut block_queue);
 
         Self {
             sky,
@@ -610,13 +653,14 @@ pub fn beta_brightness(level: u8) -> f32 {
 
 fn seed_sky_edge(
     chunk: &Chunk,
+    light_table: &[BlockProperties; 256],
     sky: &mut [u8],
     queue: &mut VecDeque<(usize, usize, usize)>,
     x: usize,
     y: usize,
     z: usize,
 ) {
-    if light_opacity(chunk.get(x, y, z).unwrap()) == 0 {
+    if light_opacity_from_table(light_table, chunk.get(x, y, z).unwrap()) == 0 {
         let index = Chunk::index(x, y, z);
         if sky[index] < MAX_LIGHT {
             sky[index] = MAX_LIGHT;
@@ -627,6 +671,7 @@ fn seed_sky_edge(
 
 fn seed_from_neighbor(
     chunk: &Chunk,
+    light_table: &[BlockProperties; 256],
     sky: &mut [u8],
     queue: &mut VecDeque<(usize, usize, usize)>,
     x: usize,
@@ -634,7 +679,8 @@ fn seed_from_neighbor(
     z: usize,
     neighbor_level: u8,
 ) {
-    let level = neighbor_level.saturating_sub(light_opacity(chunk.get(x, y, z).unwrap()).max(1));
+    let level = neighbor_level
+        .saturating_sub(light_opacity_from_table(light_table, chunk.get(x, y, z).unwrap()).max(1));
     let index = Chunk::index(x, y, z);
     if level > sky[index] {
         sky[index] = level;
@@ -642,7 +688,12 @@ fn seed_from_neighbor(
     }
 }
 
-fn propagate(chunk: &Chunk, light: &mut [u8], queue: &mut VecDeque<(usize, usize, usize)>) {
+fn propagate(
+    chunk: &Chunk,
+    light_table: &[BlockProperties; 256],
+    light: &mut [u8],
+    queue: &mut VecDeque<(usize, usize, usize)>,
+) {
     const DIRECTIONS: [[i32; 3]; 6] = [
         [1, 0, 0],
         [-1, 0, 0],
@@ -671,7 +722,8 @@ fn propagate(chunk: &Chunk, light: &mut [u8], queue: &mut VecDeque<(usize, usize
                 continue;
             }
             let (nx, ny, nz) = (nx as usize, ny as usize, nz as usize);
-            let attenuation = light_opacity(chunk.get(nx, ny, nz).unwrap()).max(1);
+            let attenuation =
+                light_opacity_from_table(light_table, chunk.get(nx, ny, nz).unwrap()).max(1);
             let candidate = source.saturating_sub(attenuation);
             let index = Chunk::index(nx, ny, nz);
             if candidate > light[index] {
@@ -685,24 +737,25 @@ fn propagate(chunk: &Chunk, light: &mut [u8], queue: &mut VecDeque<(usize, usize
 /// Beta `Block.lightOpacity`, expressed in light levels rather than its old
 /// internal 0..255 table.
 pub fn light_opacity(block: BlockId) -> u8 {
-    match block {
-        BlockId::Air => 0,
-        BlockId::Water | BlockId::Ice => 3,
-        BlockId::Leaves | BlockId::SpruceLeaves | BlockId::BirchLeaves => 1,
-        BlockId::SnowLayer | BlockId::Cactus => 0,
-        block if block.is_ladder() => 0,
-        block if is_torch(block) || is_crossed_plant(block) => 0,
-        _ => 15,
-    }
+    crate::block::definition::light_opacity(block)
 }
 
 pub fn light_emission(block: BlockId) -> u8 {
+    crate::block::definition::light_emission(block)
+}
+
+#[inline]
+fn light_opacity_from_table(table: &[BlockProperties; 256], block: BlockId) -> u8 {
     match block {
-        BlockId::Glowstone | BlockId::JackOLantern => 15,
-        BlockId::Lava | BlockId::FlowingLava => 15,
-        block if is_torch(block) => 15,
-        block if block.is_lit_furnace() => 13,
-        BlockId::LitRedstoneOre => 9,
-        _ => 0,
+        BlockId::Unknown(_) => 15,
+        _ => table[block.as_u8() as usize].light_opacity,
+    }
+}
+
+#[inline]
+fn light_emission_from_table(table: &[BlockProperties; 256], block: BlockId) -> u8 {
+    match block {
+        BlockId::Unknown(_) => 0,
+        _ => table[block.as_u8() as usize].light_emission,
     }
 }

@@ -6,7 +6,7 @@ use crate::block::block::BlockId;
 use crate::item::ItemId;
 use crate::item::ItemStack;
 
-use super::crafting_grid::CraftingGrid;
+use super::grid::CraftingGrid;
 use super::ingredient::Ingredient;
 
 #[derive(Clone, Debug, PartialEq, Eq)]

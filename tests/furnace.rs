@@ -3,9 +3,9 @@ use std::fs;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
+use game::block::block::BlockId;
 use game::item::ItemId;
 use game::item::ItemStack;
-use game::world::block::block::BlockId;
 use game::world::chunk::ChunkPos;
 use game::world::chunk::WorldChunks;
 use game::world::furnace::Furnace;

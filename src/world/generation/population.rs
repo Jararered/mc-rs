@@ -1,6 +1,6 @@
 //! Beta `ChunkProviderGenerate.populate` underground passes.
+use crate::block::block::BlockId;
 use crate::random::JavaRandom;
-use crate::world::block::block::BlockId;
 use crate::world::chest::Chest;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;

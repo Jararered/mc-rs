@@ -1,6 +1,7 @@
 use bevy::mesh::Mesh;
 use bevy::mesh::VertexAttributeValues;
 use bevy::prelude::Vec3;
+use game::block::block::BlockId;
 use game::entity::EntitySize;
 use game::entity::block_drops::DropRoll;
 use game::entity::block_drops::natural_drops;
@@ -26,7 +27,6 @@ use game::inventory::Inventory;
 use game::inventory::MAIN_SLOTS;
 use game::item::ItemId;
 use game::item::ItemStack;
-use game::world::block::block::BlockId;
 use game::world::meshing::dropped_block_meshes;
 
 struct Rolls<'a> {

@@ -1,10 +1,10 @@
+use game::block::block::BlockId;
 use game::crafting::CraftingGrid;
 use game::crafting::Ingredient;
 use game::crafting::IngredientData;
 use game::crafting::Recipe;
 use game::item::ItemId;
 use game::item::ItemStack;
-use game::world::block::block::BlockId;
 
 use super::block;
 use super::stack;

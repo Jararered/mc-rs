@@ -1,6 +1,6 @@
+use game::block::block::BlockId;
 use game::ui::block_icons::ICON_SIZE;
 use game::ui::block_icons::rasterize_icon;
-use game::world::block::block::BlockId;
 
 fn pixel(image: &[u8], x: usize, y: usize) -> [u8; 4] {
     let offset = (y * ICON_SIZE as usize + x) * 4;

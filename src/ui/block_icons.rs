@@ -15,10 +15,10 @@ use super::icon_appearance::Appearance;
 use super::icon_appearance::Shape;
 use super::icon_appearance::block_appearance;
 use super::icon_appearance::item_tile;
+use crate::block::block::BlockId;
 use crate::item::ItemData;
 use crate::item::ItemRegistry;
 use crate::item::ItemStack;
-use crate::world::block::block::BlockId;
 use crate::world::meshing::geometry::BlockFaceGeometry;
 
 pub const ICON_SIZE: u32 = 32;

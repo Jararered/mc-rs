@@ -40,12 +40,12 @@ use bevy::prelude::*;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::block::block::BlockId;
 use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
 use crate::item::ItemId;
 use crate::item::ItemStack;
 use crate::player::Player;
-use crate::world::block::block::BlockId;
 use crate::world::chest::CHEST_SLOTS;
 use crate::world::chest::Chest;
 use crate::world::chunk::CHUNK_HEIGHT;

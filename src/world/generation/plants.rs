@@ -5,8 +5,8 @@
 //! from the same random sequence the tree pass just finished, and only cells
 //! inside the chunk being filled are written.
 
-use crate::world::block::block::BlockId;
-use crate::world::block::properties::plant_grows_on;
+use crate::block::block::BlockId;
+use crate::block::properties::plant_grows_on;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::Chunk;
@@ -224,7 +224,7 @@ fn try_mushroom(chunk: &mut Chunk, target: ChunkPos, x: i32, y: i32, z: i32, blo
         })
         || !chunk
             .get(local_x, y - 1, local_z)
-            .is_some_and(crate::world::block::properties::is_opaque_cube)
+            .is_some_and(crate::block::properties::is_opaque_cube)
     {
         return;
     }

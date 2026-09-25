@@ -1,4 +1,4 @@
-use game::world::block::block::BlockId;
+use game::block::block::BlockId;
 use game::world::textures::block_tile;
 
 #[test]

@@ -4,12 +4,12 @@ use bevy::prelude::Color;
 use bevy::prelude::Mesh;
 use bevy::render::render_resource::PrimitiveTopology;
 
-use crate::world::block::block::BlockId;
-use crate::world::block::properties::is_crossed_plant;
-use crate::world::block::properties::is_opaque_cube;
-use crate::world::block::properties::is_torch;
-use crate::world::block::properties::torch_normal;
-use crate::world::block::properties::torch_point;
+use crate::block::block::BlockId;
+use crate::block::properties::is_crossed_plant;
+use crate::block::properties::is_opaque_cube;
+use crate::block::properties::is_torch;
+use crate::block::properties::torch_normal;
+use crate::block::properties::torch_point;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::Chunk;
@@ -957,8 +957,7 @@ fn double_chest_tile(block: BlockId, pair_direction: [i32; 3], face: usize) -> (
     let first_half = pair_direction[0] > 0 || pair_direction[2] > 0;
     let first_is_left = matches!(
         facing,
-        crate::world::block::block::FurnaceFacing::North
-            | crate::world::block::block::FurnaceFacing::East
+        crate::block::block::FurnaceFacing::North | crate::block::block::FurnaceFacing::East
     );
     let left_half = first_half == first_is_left;
     let tile_x = if left_half { 9 } else { 10 };

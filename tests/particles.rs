@@ -7,12 +7,12 @@ use bevy::state::app::StatesPlugin;
 use bevy::time::TimeUpdateStrategy;
 
 use game::app::state::AppScreen;
+use game::block::block::BlockId;
 use game::entity::particle_registry::ParticleSprite;
 use game::entity::particles::BlockParticlePlugin;
 use game::entity::particles::BlockParticles;
 use game::physics::BlockFace;
 use game::physics::BlockHit;
-use game::world::block::block::BlockId;
 use game::world::chunk::Chunk;
 use game::world::chunk::WorldChunks;
 use game::world::generation::Biome;

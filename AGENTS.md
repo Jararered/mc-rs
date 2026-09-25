@@ -23,7 +23,7 @@ Compatibility with original Minecraft Beta 1.7.3 worlds and servers is a **secon
 Organize code by gameplay and engine subsystem, not broad `components/` and `systems/` directories. Add modules as their behavior is implemented; the planned layout below is a guide, not a request to create empty files.
 
 - `src/app/`: application assembly, game states, and loading. The top-level plugin should compose subsystem plugins.
-- `src/world/block/`: compact block values, definitions, properties, materials, and registry.
+- `src/block/`: compact block values, definitions, properties, materials, and registry.
 - `src/world/chunk/`: chunk coordinates, compact block storage, management, and lifecycle.
 - `src/world/generation/`: staged terrain generation, including noise, biomes, caves, ores, and structures.
 - `src/world/meshing/`: visible faces, mesh construction, lighting data for meshes, and background mesh jobs.

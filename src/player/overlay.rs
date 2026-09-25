@@ -6,9 +6,9 @@ use bevy::prelude::*;
 use bevy::render::render_resource::PrimitiveTopology;
 
 use crate::app::state::AppScreen;
+use crate::block::properties::selection_bounds;
 use crate::physics::BlockHit;
 use crate::physics::PhysicsSet;
-use crate::world::block::properties::selection_bounds;
 use crate::world::textures::TerrainMaterial;
 use crate::world::textures::atlas_tile_uvs;
 

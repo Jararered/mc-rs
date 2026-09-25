@@ -2,10 +2,10 @@
 
 use bevy::prelude::Vec3;
 
-use crate::world::block::block::BlockId;
-use crate::world::block::properties::is_targetable;
-use crate::world::block::properties::is_torch;
-use crate::world::block::properties::selection_bounds;
+use crate::block::block::BlockId;
+use crate::block::properties::is_targetable;
+use crate::block::properties::is_torch;
+use crate::block::properties::selection_bounds;
 use crate::world::chunk::WorldChunks;
 
 /// Survival-style block reach. Creative in Beta used 5; this matches the default

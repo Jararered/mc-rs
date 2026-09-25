@@ -1,3 +1,5 @@
+pub mod block;
+
 pub mod app;
 pub mod crafting;
 pub mod entity;

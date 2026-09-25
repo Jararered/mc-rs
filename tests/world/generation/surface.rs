@@ -1,4 +1,4 @@
-use game::world::block::block::BlockId;
+use game::block::block::BlockId;
 use game::world::chunk::CHUNK_HEIGHT;
 use game::world::chunk::CHUNK_SIZE;
 use game::world::chunk::ChunkPos;

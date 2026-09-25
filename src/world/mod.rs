@@ -1,4 +1,3 @@
-pub mod block;
 pub mod chest;
 pub mod chunk;
 pub mod clouds;

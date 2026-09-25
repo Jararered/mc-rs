@@ -1,10 +1,10 @@
 use bevy::mesh::VertexAttributeValues;
 use bevy::prelude::Mesh;
-use game::world::block::block::BlockId;
-use game::world::block::properties::collision_bounds;
-use game::world::block::properties::is_crossed_plant;
-use game::world::block::properties::is_opaque_cube;
-use game::world::block::properties::selection_bounds;
+use game::block::block::BlockId;
+use game::block::properties::collision_bounds;
+use game::block::properties::is_crossed_plant;
+use game::block::properties::is_opaque_cube;
+use game::block::properties::selection_bounds;
 use game::world::chunk::Chunk;
 use game::world::lighting::Skylight;
 use game::world::meshing::mesh_chunk_with_settings;

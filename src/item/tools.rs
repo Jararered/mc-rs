@@ -6,10 +6,10 @@
 
 use super::ItemId;
 use super::ItemStack;
-use crate::world::block::block::BlockId;
-use crate::world::block::properties::harvestable_by_hand;
-use crate::world::block::properties::is_breakable;
-use crate::world::block::properties::mine_progress_per_tick;
+use crate::block::block::BlockId;
+use crate::block::properties::harvestable_by_hand;
+use crate::block::properties::is_breakable;
+use crate::block::properties::mine_progress_per_tick;
 
 /// `EnumToolMaterial` harvest level and `efficiencyOnProperMaterial`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

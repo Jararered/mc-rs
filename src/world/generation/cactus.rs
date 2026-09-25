@@ -3,9 +3,9 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 
+use crate::block::block::BlockId;
+use crate::block::properties::cactus_can_stay;
 use crate::random::JavaRandom;
-use crate::world::block::block::BlockId;
-use crate::world::block::properties::cactus_can_stay;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::Chunk;

@@ -1,10 +1,10 @@
 //! Inventory stack sorting and its Beta item category order.
 
+use crate::block::block::BlockId;
 use crate::inventory::Inventory;
 use crate::item::ItemData;
 use crate::item::ItemId;
 use crate::item::ItemStack;
-use crate::world::block::block::BlockId;
 
 /// Sort stacks by category, merge compatible stacks, and keep empty slots at
 /// the end. Any amount over the stack limit remains in additional stacks.

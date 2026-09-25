@@ -1,7 +1,7 @@
+use game::block::block::BlockId;
 use game::inventory::Hotbar;
 use game::inventory::Inventory;
 use game::item::ItemId;
-use game::world::block::block::BlockId;
 
 use super::block;
 use super::stack;

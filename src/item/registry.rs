@@ -1,6 +1,6 @@
 //! Inventory identities and Beta stack rules. Definitions do not imply that
 //! an item's use, crafting recipe, or rendering has been implemented.
-use crate::world::block::block::BlockId;
+use crate::block::block::BlockId;
 use num_enum::FromPrimitive;
 use num_enum::IntoPrimitive;
 

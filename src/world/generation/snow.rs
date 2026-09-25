@@ -1,9 +1,9 @@
 //! Beta-style post-population snow cover.
 
-use crate::world::block::block::BlockId;
-use crate::world::block::properties::blocks_movement;
-use crate::world::block::properties::is_crossed_plant;
-use crate::world::block::properties::is_torch;
+use crate::block::block::BlockId;
+use crate::block::properties::blocks_movement;
+use crate::block::properties::is_crossed_plant;
+use crate::block::properties::is_torch;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::Chunk;

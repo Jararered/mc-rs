@@ -1,6 +1,6 @@
 //! Beta 1.7.3 `MapGenBase` and `MapGenCaves`.
+use crate::block::block::BlockId;
 use crate::random::JavaRandom;
-use crate::world::block::block::BlockId;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::Chunk;
 use crate::world::chunk::ChunkPos;

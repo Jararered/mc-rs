@@ -3,12 +3,12 @@
 //! The held stack is sampled every tick. Switching tools changes the rate and
 //! does not reset progress. Looking at a different block does.
 
+use crate::block::block::BlockId;
+use crate::block::properties::is_breakable;
 use crate::item::ItemStack;
 use crate::item::tools::mine_step;
 use crate::item::tools::ticks_to_break;
 use crate::physics::BlockHit;
-use crate::world::block::block::BlockId;
-use crate::world::block::properties::is_breakable;
 
 /// Ticks after a break before mining can start again (`blockHitWait`).
 const BLOCK_HIT_WAIT_TICKS: i32 = 5;

@@ -5,10 +5,10 @@
 //! for a block that pops without a player, such as a torch whose support broke.
 //! Each stack has count 1, matching one `EntityItem` per rolled drop.
 
+use crate::block::block::BlockId;
 use crate::item::ItemId;
 use crate::item::ItemStack;
 use crate::item::tools::can_harvest;
-use crate::world::block::block::BlockId;
 
 /// `java.util.Random.nextInt`. Tests pass scripted values; the game uses [`crate::entity::dropped_items::ItemRng`].
 pub trait DropRoll {

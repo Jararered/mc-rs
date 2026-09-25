@@ -1,7 +1,7 @@
 //! Item identities, definitions, and validated inventory stacks.
 pub mod registry;
 pub mod tools;
-use crate::world::block::block::BlockId;
+use crate::block::block::BlockId;
 pub use registry::ItemData;
 pub use registry::ItemDefinition;
 pub use registry::ItemId;

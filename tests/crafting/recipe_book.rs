@@ -1,8 +1,8 @@
+use game::block::block::BlockId;
 use game::crafting::CraftingGrid;
 use game::crafting::beta_recipe_book;
 use game::item::ItemId;
 use game::item::ItemStack;
-use game::world::block::block::BlockId;
 
 use super::block;
 use super::stack;

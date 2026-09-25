@@ -298,11 +298,11 @@ fn apply_water_quality(material: &mut StandardMaterial, graphics: GraphicsQualit
 
 // The original terrain.png is a 16 by 16 grid of 16-pixel tiles.
 pub fn block_tile(
-    block: super::block::block::BlockId,
+    block: crate::block::block::BlockId,
     face: usize,
     fancy_graphics: bool,
 ) -> (u8, u8) {
-    use super::block::block::BlockId;
+    use crate::block::block::BlockId;
 
     match block {
         BlockId::Ladder

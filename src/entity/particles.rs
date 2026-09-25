@@ -11,12 +11,12 @@ use bevy::prelude::*;
 use bevy::render::render_resource::PrimitiveTopology;
 
 use crate::app::state::AppScreen;
+use crate::block::block::BlockId;
+use crate::block::properties::blocks_movement;
 use crate::physics::BlockFace;
 use crate::physics::BlockHit;
 use crate::physics::PhysicsSet;
 use crate::player::PlayerCamera;
-use crate::world::block::block::BlockId;
-use crate::world::block::properties::blocks_movement;
 use crate::world::chunk::WorldChunks;
 use crate::world::generation::Climate;
 use crate::world::textures::FoliageColors;

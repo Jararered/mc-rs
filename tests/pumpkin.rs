@@ -1,5 +1,5 @@
-use game::world::block::block::BlockId;
-use game::world::block::block::FurnaceFacing;
+use game::block::block::BlockId;
+use game::block::block::FurnaceFacing;
 use game::world::textures::block_tile;
 
 #[test]

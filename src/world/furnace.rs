@@ -3,9 +3,9 @@
 use bevy::prelude::Res;
 use bevy::prelude::ResMut;
 
+use crate::block::block::BlockId;
 use crate::item::ItemId;
 use crate::item::ItemStack;
-use crate::world::block::block::BlockId;
 use crate::world::chunk::ChunkPos;
 use crate::world::chunk::WorldChunks;
 use crate::world::persistence::WorldPersistence;

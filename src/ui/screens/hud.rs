@@ -6,14 +6,7 @@ use bevy::text::FontSize;
 use bevy::text::FontSource;
 use bevy::text::LineHeight;
 
-use super::block_icons::BlockIcons;
 use super::inventory::durability_bar;
-use super::stack_overlay::GUI_SCALE;
-use super::stack_overlay::UiFont;
-use super::stack_overlay::count_label;
-use super::stack_overlay::durability_track;
-use super::stack_overlay::icon_size;
-use super::stack_overlay::place_stack_label;
 use crate::app::state::AppScreen;
 use crate::entity::CollisionState;
 use crate::entity::EntitySize;
@@ -28,6 +21,13 @@ use crate::player::HeartFill;
 use crate::player::Player;
 use crate::player::PlayerCamera;
 use crate::player::PlayerHealth;
+use crate::ui::icons::blocks::BlockIcons;
+use crate::ui::icons::overlay::GUI_SCALE;
+use crate::ui::icons::overlay::UiFont;
+use crate::ui::icons::overlay::count_label;
+use crate::ui::icons::overlay::durability_track;
+use crate::ui::icons::overlay::icon_size;
+use crate::ui::icons::overlay::place_stack_label;
 use crate::world::chunk::ChunkPos;
 use crate::world::chunk::WorldChunks;
 use crate::world::tick::WorldTick;
@@ -95,7 +95,7 @@ struct HotbarBlockIcon(usize);
 struct HotbarDurability(usize, bool);
 
 fn load_hud_textures(mut commands: Commands, asset_server: Res<AssetServer>) {
-    super::stack_overlay::load_ui_font(&mut commands, &asset_server);
+    crate::ui::icons::overlay::load_ui_font(&mut commands, &asset_server);
     let load = |path| asset_server.load(path);
     commands.insert_resource(HudTextures {
         widgets: load("gui/gui.png"),

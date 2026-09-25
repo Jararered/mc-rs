@@ -8,17 +8,6 @@ use bevy::window::CursorGrabMode;
 use bevy::window::CursorOptions;
 use bevy::window::PrimaryWindow;
 
-use super::block_icons::BlockIcons;
-use super::stack_overlay::GUI_SCALE;
-use super::stack_overlay::UiFont;
-use super::stack_overlay::count_frame;
-use super::stack_overlay::count_label;
-use super::stack_overlay::count_line_height;
-use super::stack_overlay::count_shadow;
-use super::stack_overlay::count_text_font;
-use super::stack_overlay::durability_track;
-use super::stack_overlay::icon_size;
-use super::stack_overlay::place_stack_label;
 use crate::app::state::AppScreen;
 use crate::block::block::BlockId;
 use crate::crafting::CraftingGrid;
@@ -47,6 +36,17 @@ use crate::item::ItemData;
 use crate::item::ItemStack;
 use crate::player::Player;
 use crate::random::ItemRng;
+use crate::ui::icons::blocks::BlockIcons;
+use crate::ui::icons::overlay::GUI_SCALE;
+use crate::ui::icons::overlay::UiFont;
+use crate::ui::icons::overlay::count_frame;
+use crate::ui::icons::overlay::count_label;
+use crate::ui::icons::overlay::count_line_height;
+use crate::ui::icons::overlay::count_shadow;
+use crate::ui::icons::overlay::count_text_font;
+use crate::ui::icons::overlay::durability_track;
+use crate::ui::icons::overlay::icon_size;
+use crate::ui::icons::overlay::place_stack_label;
 use crate::world::chunk::ChestGroup;
 use crate::world::chunk::ChunkPos;
 use crate::world::chunk::WorldChunks;
@@ -66,8 +66,8 @@ impl Plugin for InventoryGuiPlugin {
             .init_resource::<WorkbenchUiSession>()
             .init_resource::<SlotDrag>()
             .init_resource::<LastInventoryClick>()
-            .add_systems(PreStartup, (load_texture, super::block_icons::setup))
-            .add_systems(Update, super::block_icons::build.before(refresh))
+            .add_systems(PreStartup, (load_texture, crate::ui::icons::blocks::setup))
+            .add_systems(Update, crate::ui::icons::blocks::build.before(refresh))
             .add_systems(
                 Update,
                 (

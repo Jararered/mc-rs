@@ -1,8 +1,8 @@
 use game::block::block::BlockId;
 use game::block::block::FurnaceFacing;
-use game::ui::icon_appearance::Shape;
-use game::ui::icon_appearance::block_appearance;
-use game::ui::icon_appearance::item_tile;
+use game::ui::icons::appearance::Shape;
+use game::ui::icons::appearance::block_appearance;
+use game::ui::icons::appearance::item_tile;
 use game::world::textures::block_tile;
 
 #[test]

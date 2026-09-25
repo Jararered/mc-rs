@@ -1,7 +1,7 @@
-use game::ui::stack_overlay::GUI_SCALE;
-use game::ui::stack_overlay::count_frame;
-use game::ui::stack_overlay::count_origin;
-use game::ui::stack_overlay::durability_track;
+use game::ui::icons::overlay::GUI_SCALE;
+use game::ui::icons::overlay::count_frame;
+use game::ui::icons::overlay::count_origin;
+use game::ui::icons::overlay::durability_track;
 
 #[test]
 fn count_digits_share_the_slot_bottom_right() {

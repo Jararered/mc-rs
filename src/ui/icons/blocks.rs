@@ -11,10 +11,10 @@ use bevy::render::render_resource::Extent3d;
 use bevy::render::render_resource::TextureDimension;
 use bevy::render::render_resource::TextureFormat;
 
-use super::icon_appearance::Appearance;
-use super::icon_appearance::Shape;
-use super::icon_appearance::block_appearance;
-use super::icon_appearance::item_tile;
+use super::appearance::Appearance;
+use super::appearance::Shape;
+use super::appearance::block_appearance;
+use super::appearance::item_tile;
 use crate::block::block::BlockId;
 use crate::item::ItemData;
 use crate::item::ItemRegistry;

@@ -4,8 +4,8 @@ use bevy::mesh::Indices;
 use bevy::prelude::*;
 use bevy::render::render_resource::PrimitiveTopology;
 
-use crate::ui::icon_appearance::Appearance;
-use crate::ui::icon_appearance::Shape;
+use crate::ui::icons::appearance::Appearance;
+use crate::ui::icons::appearance::Shape;
 use crate::world::meshing::geometry::BlockFaceGeometry;
 use crate::world::textures::atlas_tile_uvs;
 

@@ -28,7 +28,7 @@ use crate::physics::move_entity;
 use crate::player::Player;
 use crate::random::ItemRng;
 use crate::random::JavaRandom;
-use crate::ui::block_icons::BlockIcons;
+use crate::ui::icons::blocks::BlockIcons;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::ChunkPos;
 use crate::world::chunk::WorldChunks;

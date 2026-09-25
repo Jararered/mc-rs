@@ -200,7 +200,7 @@ pub fn block_appearance(id: u8, data: u16) -> Appearance {
 /// The Item.java static registrations assign these tiles in gui/items.png.
 /// Subtype-specific dye tiles follow ItemDye.getIconFromDamage.
 pub fn item_tile(id: u16, data: u16) -> Option<u8> {
-    use super::item_icon_data::ITEM_TILES;
+    use super::data::ITEM_TILES;
     match id {
         256..=359 => {
             let (x, y) = ITEM_TILES[(id - 256) as usize];

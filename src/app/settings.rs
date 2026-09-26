@@ -17,7 +17,7 @@ pub const MAX_BRIGHTNESS: f32 = 1000.0;
 pub const AMBIENT_ONLY_SCALE: f32 = 10.0;
 pub const MIN_FOV: f32 = 30.0;
 pub const MAX_FOV: f32 = 110.0;
-pub const DEFAULT_FOV: f32 = 70.0;
+pub const DEFAULT_FOV: f32 = 80.0;
 pub const DEFAULT_WIGGLE_LEAVES: bool = true;
 
 /// Client options file, relative to the working directory.

@@ -40,7 +40,7 @@ use bevy::prelude::*;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::block::block::BlockId;
+use crate::block::id::BlockId;
 use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
 use crate::item::ItemId;

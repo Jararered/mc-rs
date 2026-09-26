@@ -1,7 +1,7 @@
 use bevy::mesh::Mesh;
 use bevy::mesh::VertexAttributeValues;
 use bevy::prelude::Vec3;
-use game::block::block::BlockId;
+use game::block::id::BlockId;
 use game::entity::EntitySize;
 use game::entity::drops::blocks::DropRoll;
 use game::entity::drops::blocks::natural_drops;

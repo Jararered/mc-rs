@@ -1,4 +1,4 @@
-use game::block::block::BlockId;
+use game::block::id::BlockId;
 use game::crafting::CraftingGrid;
 use game::crafting::Ingredient;
 use game::crafting::IngredientData;

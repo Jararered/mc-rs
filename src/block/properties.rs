@@ -3,7 +3,7 @@
 //! Block-specific values live in the block family definitions; this module keeps the
 //! established query API and the shared calculations used by callers.
 
-use super::block::BlockId;
+use super::id::BlockId;
 use super::definition;
 
 /// Whether a block fully occludes its neighbours, mirroring the reference's

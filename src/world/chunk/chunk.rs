@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use bevy::prelude::Resource;
 
-use crate::block::block::BlockId;
+use crate::block::id::BlockId;
 use crate::world::chest::Chest;
 use crate::world::furnace::Furnace;
 use crate::world::generation::Climate;

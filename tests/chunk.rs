@@ -1,7 +1,7 @@
 use bevy::mesh::Mesh;
 use bevy::mesh::VertexAttributeValues;
 
-use game::block::block::BlockId;
+use game::block::id::BlockId;
 use game::block::properties::selection_bounds;
 use game::world::chunk::CHUNK_HEIGHT;
 use game::world::chunk::CHUNK_SIZE;

@@ -5,7 +5,7 @@
 //! provides the gameplay properties consumed by physics, mining, picking, and
 //! lighting.
 
-use super::block::BlockId;
+use super::id::BlockId;
 use std::sync::LazyLock;
 
 pub type BlockBounds = ([f32; 3], [f32; 3]);

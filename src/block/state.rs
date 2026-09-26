@@ -2,7 +2,7 @@
 
 use crate::item::registry::ItemData;
 
-use super::block::BlockId;
+use super::id::BlockId;
 
 /// Horizontal face presented as the front of an oriented block.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]

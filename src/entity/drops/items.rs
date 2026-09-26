@@ -12,7 +12,7 @@ use bevy::render::render_resource::PrimitiveTopology;
 
 use crate::app::settings::GameSettings;
 use crate::app::state::AppScreen;
-use crate::block::block::BlockId;
+use crate::block::id::BlockId;
 use crate::block::properties::is_crossed_plant;
 use crate::block::properties::is_opaque_cube;
 use crate::block::properties::is_torch;

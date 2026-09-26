@@ -9,7 +9,7 @@ use bevy::window::CursorOptions;
 use bevy::window::PrimaryWindow;
 
 use crate::app::state::AppScreen;
-use crate::block::block::BlockId;
+use crate::block::id::BlockId;
 use crate::crafting::CraftingGrid;
 use crate::crafting::beta_recipe_book;
 use crate::entity::drops::items::spawn_thrown_item;

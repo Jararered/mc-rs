@@ -1,4 +1,4 @@
-use crate::block::block::BlockId;
+use crate::block::id::BlockId;
 use crate::block::properties::is_crossed_plant;
 use crate::block::properties::is_torch;
 use crate::world::chunk::CHUNK_HEIGHT;

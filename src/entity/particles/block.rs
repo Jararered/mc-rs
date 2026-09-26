@@ -11,7 +11,7 @@ use bevy::prelude::*;
 use bevy::render::render_resource::PrimitiveTopology;
 
 use crate::app::state::AppScreen;
-use crate::block::block::BlockId;
+use crate::block::id::BlockId;
 use crate::block::properties::blocks_movement;
 use crate::physics::BlockFace;
 use crate::physics::BlockHit;

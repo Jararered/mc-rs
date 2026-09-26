@@ -3,7 +3,7 @@
 //! A block's faces own independent corner arrays, so moving one face does not
 //! require deforming the neighboring face's shared vertices.
 
-use crate::block::block::BlockId;
+use crate::block::id::BlockId;
 
 pub(crate) const FACE_TOP: usize = 0;
 pub(crate) const FACE_BOTTOM: usize = 1;

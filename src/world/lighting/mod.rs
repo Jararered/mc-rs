@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use crate::block::block::BlockId;
+use crate::block::id::BlockId;
 use crate::block::definition::BlockProperties;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;

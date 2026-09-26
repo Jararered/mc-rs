@@ -3,7 +3,7 @@ mod recipe_book;
 mod recipe_matching;
 mod transfer;
 
-use game::block::block::BlockId;
+use game::block::id::BlockId;
 use game::item::ItemId;
 use game::item::ItemStack;
 

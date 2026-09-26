@@ -10,7 +10,7 @@ use std::time::UNIX_EPOCH;
 use bevy::asset::AssetPlugin;
 use bevy::mesh::MeshPlugin;
 use bevy::prelude::*;
-use game::block::block::BlockId;
+use game::block::id::BlockId;
 use game::item::ItemStack;
 use game::player::Player;
 use game::world::chunk::CHUNK_HEIGHT;

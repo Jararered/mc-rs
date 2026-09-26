@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 
-use crate::block::block::BlockId;
+use crate::block::id::BlockId;
 use crate::block::properties::sugar_cane_can_stay;
 use crate::random::JavaRandom;
 use crate::world::chunk::CHUNK_HEIGHT;

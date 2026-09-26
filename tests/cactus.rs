@@ -1,7 +1,7 @@
 use bevy::mesh::Mesh;
 use bevy::mesh::VertexAttributeValues;
 use bevy::prelude::Vec3;
-use game::block::block::BlockId;
+use game::block::id::BlockId;
 use game::block::properties::blocks_movement;
 use game::block::properties::collision_bounds;
 use game::block::properties::hardness;

@@ -5,7 +5,7 @@
 //! from the same random sequence the tree pass just finished, and only cells
 //! inside the chunk being filled are written.
 
-use crate::block::block::BlockId;
+use crate::block::id::BlockId;
 use crate::block::properties::plant_grows_on;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;

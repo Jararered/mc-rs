@@ -1,4 +1,4 @@
-use game::block::block::BlockId;
+use game::block::id::BlockId;
 use game::crafting::CraftingGrid;
 use game::crafting::beta_recipe_book;
 use game::item::ItemId;

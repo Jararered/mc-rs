@@ -1,4 +1,4 @@
-use game::block::block::BlockId;
+use game::block::id::BlockId;
 use game::inventory::Hotbar;
 use game::item::ItemData;
 use game::item::ItemId;

@@ -1,6 +1,6 @@
 //! Inventory stack sorting and its Beta item category order.
 
-use crate::block::block::BlockId;
+use crate::block::id::BlockId;
 use crate::inventory::Inventory;
 use crate::item::ItemData;
 use crate::item::ItemId;

@@ -7,7 +7,7 @@ use bevy::state::app::StatesPlugin;
 use bevy::time::TimeUpdateStrategy;
 
 use game::app::state::AppScreen;
-use game::block::block::BlockId;
+use game::block::id::BlockId;
 use game::entity::particles::block::BlockParticlePlugin;
 use game::entity::particles::block::BlockParticles;
 use game::entity::particles::registry::ParticleSprite;

@@ -26,7 +26,7 @@ use bevy::render::render_resource::PrimitiveTopology;
 
 use crate::app::settings::GameSettings;
 use crate::app::state::AppScreen;
-use crate::block::block::BlockId;
+use crate::block::id::BlockId;
 use crate::player::Player;
 use crate::player::PlayerCamera;
 use crate::random::JavaRandom;

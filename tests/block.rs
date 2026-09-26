@@ -8,7 +8,7 @@ use bevy::asset::AssetPlugin;
 use bevy::mesh::MeshPlugin;
 use bevy::prelude::*;
 
-use game::block::block::BlockId;
+use game::block::id::BlockId;
 use game::block::definition::BlockProperties;
 use game::block::definition::{self};
 

@@ -6,7 +6,7 @@
 
 use super::ItemId;
 use super::ItemStack;
-use crate::block::block::BlockId;
+use crate::block::id::BlockId;
 use crate::block::properties::harvestable_by_hand;
 use crate::block::properties::is_breakable;
 use crate::block::properties::mine_progress_per_tick;

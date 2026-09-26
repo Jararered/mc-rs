@@ -1,4 +1,4 @@
-use crate::block::block::BlockId;
+use crate::block::id::BlockId;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::Chunk;

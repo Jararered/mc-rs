@@ -1,8 +1,8 @@
 use bevy::mesh::VertexAttributeValues;
 use bevy::prelude::Mesh;
 use bevy::prelude::Vec3;
-use game::block::block::BlockId;
-use game::block::block::FurnaceFacing;
+use game::block::id::BlockId;
+use game::block::id::FurnaceFacing;
 use game::block::properties::hand_mine_progress_per_tick;
 use game::block::properties::hardness;
 use game::block::properties::harvestable_by_hand;

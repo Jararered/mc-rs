@@ -1,6 +1,6 @@
 //! Beta-style post-population snow cover.
 
-use crate::block::block::BlockId;
+use crate::block::id::BlockId;
 use crate::block::properties::blocks_movement;
 use crate::block::properties::is_crossed_plant;
 use crate::block::properties::is_torch;

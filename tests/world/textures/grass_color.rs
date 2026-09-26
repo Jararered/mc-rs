@@ -1,5 +1,5 @@
 use bevy::prelude::Mesh;
-use game::block::block::BlockId;
+use game::block::id::BlockId;
 use game::world::chunk::Chunk;
 use game::world::chunk::ChunkPos;
 use game::world::generation::Biome;

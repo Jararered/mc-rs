@@ -8,7 +8,7 @@ use bevy::camera::visibility::NoAutoAabb;
 use bevy::camera::visibility::NoFrustumCulling;
 use bevy::mesh::MeshPlugin;
 use bevy::prelude::*;
-use game::block::block::BlockId;
+use game::block::id::BlockId;
 use game::player::Player;
 use game::world::chunk::CHUNK_HEIGHT;
 use game::world::chunk::CHUNK_SIZE;

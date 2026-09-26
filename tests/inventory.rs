@@ -1,4 +1,4 @@
-use game::block::block::BlockId;
+use game::block::id::BlockId;
 use game::inventory::HOTBAR_SLOTS;
 use game::inventory::Hotbar;
 use game::inventory::collect_matching_stacks;
@@ -313,7 +313,7 @@ fn stack(item: ItemId, count: u8) -> ItemStack {
     ItemStack::new(item, count).unwrap()
 }
 
-fn block(block: game::block::block::BlockId) -> ItemId {
+fn block(block: game::block::id::BlockId) -> ItemId {
     ItemId::from_block(block).unwrap()
 }
 
@@ -514,7 +514,7 @@ fn quick_move_drag_moves_only_what_fits_and_leaves_full_destinations_untouched()
 
 #[test]
 fn quick_move_drag_respects_furnace_slot_eligibility_and_empty_slots() {
-    use game::block::block::BlockId;
+    use game::block::id::BlockId;
     use game::inventory::SlotId;
     use game::inventory::quick_move_drag_slot;
     let mut inventory = game::inventory::Inventory::default();
@@ -619,7 +619,7 @@ fn shift_click_returns_crafting_inputs_to_main_storage_first() {
 
 #[test]
 fn shift_click_crafting_result_repeats_and_fills_the_hotbar_from_the_right() {
-    use game::block::block::BlockId;
+    use game::block::id::BlockId;
     use game::inventory::SlotId;
     use game::inventory::shift_click_slot;
     let mut inventory = game::inventory::Inventory::default();
@@ -642,7 +642,7 @@ fn shift_click_crafting_result_repeats_and_fills_the_hotbar_from_the_right() {
 
 #[test]
 fn shift_click_crafting_stops_when_the_next_output_does_not_fit() {
-    use game::block::block::BlockId;
+    use game::block::id::BlockId;
     use game::inventory::SlotId;
     use game::inventory::shift_click_slot;
     let mut inventory = game::inventory::Inventory::default();
@@ -667,7 +667,7 @@ fn shift_click_crafting_stops_when_the_next_output_does_not_fit() {
 
 #[test]
 fn shift_click_workbench_result_uses_the_three_by_three_grid() {
-    use game::block::block::BlockId;
+    use game::block::id::BlockId;
     use game::crafting::CraftingGrid;
     use game::inventory::SlotId;
     use game::inventory::shift_click_slot;
@@ -845,7 +845,7 @@ fn hotbar_number_key_swaps_the_hovered_stack_into_that_slot() {
 
 #[test]
 fn hotbar_number_key_crafts_into_an_empty_slot_only() {
-    use game::block::block::BlockId;
+    use game::block::id::BlockId;
     use game::inventory::SlotId;
     use game::inventory::hotbar_key_swap;
     let mut inventory = game::inventory::Inventory::default();

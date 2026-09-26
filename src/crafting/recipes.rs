@@ -2,7 +2,7 @@
 
 use std::sync::OnceLock;
 
-use crate::block::block::BlockId;
+use crate::block::id::BlockId;
 use crate::item::ItemId;
 use crate::item::ItemStack;
 

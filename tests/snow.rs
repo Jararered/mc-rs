@@ -1,6 +1,6 @@
 use bevy::mesh::VertexAttributeValues;
 use bevy::prelude::*;
-use game::block::block::BlockId;
+use game::block::id::BlockId;
 use game::block::properties::collision_bounds;
 use game::block::properties::is_opaque_cube;
 use game::block::properties::selection_bounds;

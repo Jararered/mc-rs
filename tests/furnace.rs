@@ -3,7 +3,7 @@ use std::fs;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
-use game::block::block::BlockId;
+use game::block::id::BlockId;
 use game::item::ItemId;
 use game::item::ItemStack;
 use game::world::chunk::ChunkPos;

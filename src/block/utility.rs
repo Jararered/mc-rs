@@ -1,4 +1,4 @@
-use crate::block::block::BlockId;
+use crate::block::id::BlockId;
 use crate::block::definition::BlockDefinition;
 use crate::block::definition::BlockProperties;
 

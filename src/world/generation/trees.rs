@@ -20,7 +20,7 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 
-use crate::block::block::BlockId;
+use crate::block::id::BlockId;
 use crate::block::properties::is_opaque_cube;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;

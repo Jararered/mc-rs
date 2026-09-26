@@ -15,7 +15,7 @@ use super::appearance::Appearance;
 use super::appearance::Shape;
 use super::appearance::block_appearance;
 use super::appearance::item_tile;
-use crate::block::block::BlockId;
+use crate::block::id::BlockId;
 use crate::item::ItemData;
 use crate::item::ItemRegistry;
 use crate::item::ItemStack;

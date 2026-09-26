@@ -5,7 +5,7 @@
 //! for a block that pops without a player, such as a torch whose support broke.
 //! Each stack has count 1, matching one `EntityItem` per rolled drop.
 
-use crate::block::block::BlockId;
+use crate::block::id::BlockId;
 use crate::item::ItemId;
 use crate::item::ItemStack;
 use crate::item::tools::can_harvest;

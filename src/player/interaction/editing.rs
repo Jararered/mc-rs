@@ -8,8 +8,8 @@ use bevy::window::CursorGrabMode;
 use bevy::window::CursorOptions;
 use bevy::window::PrimaryWindow;
 
-use crate::block::block::BlockId;
-use crate::block::block::FurnaceFacing;
+use crate::block::id::BlockId;
+use crate::block::id::FurnaceFacing;
 use crate::block::properties::cactus_can_stay;
 use crate::block::properties::is_breakable;
 use crate::block::properties::is_crossed_plant;

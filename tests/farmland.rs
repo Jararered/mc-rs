@@ -6,7 +6,7 @@ use std::time::UNIX_EPOCH;
 use bevy::mesh::VertexAttributeValues;
 use bevy::prelude::Mesh;
 use bevy::prelude::Vec3;
-use game::block::block::BlockId;
+use game::block::id::BlockId;
 use game::block::properties::collision_bounds;
 use game::block::properties::hardness;
 use game::block::properties::is_opaque_cube;

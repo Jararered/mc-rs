@@ -1,6 +1,6 @@
-use crate::block::block::BlockId;
 use crate::block::definition::BlockDefinition;
 use crate::block::definition::BlockProperties;
+use crate::block::id::BlockId;
 
 pub(super) struct Definition;
 pub(super) static DEFINITION: Definition = Definition;

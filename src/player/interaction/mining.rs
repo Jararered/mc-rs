@@ -3,7 +3,7 @@
 //! The held stack is sampled every tick. Switching tools changes the rate and
 //! does not reset progress. Looking at a different block does.
 
-use crate::block::block::BlockId;
+use crate::block::id::BlockId;
 use crate::block::properties::is_breakable;
 use crate::item::ItemStack;
 use crate::item::tools::mine_step;

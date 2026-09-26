@@ -1,4 +1,4 @@
-use game::block::block::BlockId;
+use game::block::id::BlockId;
 use game::ui::icons::blocks::ICON_SIZE;
 use game::ui::icons::blocks::rasterize_icon;
 

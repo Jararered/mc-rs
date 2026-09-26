@@ -6,27 +6,27 @@ pub(super) struct Definition;
 pub(super) static DEFINITION: Definition = Definition;
 
 impl BlockDefinition for Definition {
-    fn in_world(&self, state: Id) -> bool {
+    fn in_world(&self, id: Id) -> bool {
         matches!(
-            state,
+            id,
             Id::FlowingWater | Id::Water | Id::FlowingLava | Id::Lava
         )
     }
 
-    fn properties(&self, state: Id) -> BlockProperties {
-        properties(state)
+    fn properties(&self, id: Id) -> BlockProperties {
+        properties(id)
     }
 
-    fn opaque_cube(&self, _state: Id) -> bool {
+    fn opaque_cube(&self, _id: Id) -> bool {
         false
     }
 
-    fn light_opacity(&self, state: Id) -> u8 {
-        if state == Id::Water { 3 } else { 15 }
+    fn light_opacity(&self, id: Id) -> u8 {
+        if id == Id::Water { 3 } else { 15 }
     }
 
-    fn light_emission(&self, state: Id) -> u8 {
-        if matches!(state, Id::FlowingLava | Id::Lava) {
+    fn light_emission(&self, id: Id) -> u8 {
+        if matches!(id, Id::FlowingLava | Id::Lava) {
             15
         } else {
             0
@@ -34,8 +34,8 @@ impl BlockDefinition for Definition {
     }
 }
 
-fn properties(state: Id) -> BlockProperties {
-    match state {
+fn properties(id: Id) -> BlockProperties {
+    match id {
         Id::FlowingWater => BlockProperties {
             light_opacity: 15,
             ..BlockProperties::fluid(0.0)

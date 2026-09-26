@@ -145,10 +145,10 @@ const fn build_definition_table() -> [&'static dyn BlockDefinition; 256] {
 
 static DEFINITIONS: [&dyn BlockDefinition; 256] = build_definition_table();
 
-pub(crate) fn definition(state: Id) -> &'static dyn BlockDefinition {
-    if matches!(state, Id::Unknown(_)) {
+pub(crate) fn definition(id: Id) -> &'static dyn BlockDefinition {
+    if matches!(id, Id::Unknown(_)) {
         &utility::DEFINITION
     } else {
-        DEFINITIONS[state.as_u8() as usize]
+        DEFINITIONS[id.as_u8() as usize]
     }
 }

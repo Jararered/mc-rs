@@ -6,9 +6,9 @@ pub(super) struct Definition;
 pub(super) static DEFINITION: Definition = Definition;
 
 impl BlockDefinition for Definition {
-    fn in_world(&self, state: Id) -> bool {
+    fn in_world(&self, id: Id) -> bool {
         matches!(
-            state,
+            id,
             Id::Wood
                 | Id::Leaves
                 | Id::TallGrass
@@ -29,13 +29,13 @@ impl BlockDefinition for Definition {
         )
     }
 
-    fn properties(&self, state: Id) -> BlockProperties {
-        properties(state)
+    fn properties(&self, id: Id) -> BlockProperties {
+        properties(id)
     }
 
-    fn opaque_cube(&self, state: Id) -> bool {
+    fn opaque_cube(&self, id: Id) -> bool {
         !matches!(
-            state,
+            id,
             Id::Leaves
                 | Id::SpruceLeaves
                 | Id::BirchLeaves
@@ -51,8 +51,8 @@ impl BlockDefinition for Definition {
         )
     }
 
-    fn light_opacity(&self, state: Id) -> u8 {
-        match state {
+    fn light_opacity(&self, id: Id) -> u8 {
+        match id {
             Id::Leaves | Id::SpruceLeaves | Id::BirchLeaves => 1,
             Id::Cactus
             | Id::DeadBush
@@ -67,9 +67,9 @@ impl BlockDefinition for Definition {
         }
     }
 
-    fn crossed_plant(&self, state: Id) -> bool {
+    fn crossed_plant(&self, id: Id) -> bool {
         matches!(
-            state,
+            id,
             Id::DeadBush
                 | Id::Dandelion
                 | Id::Rose
@@ -82,8 +82,8 @@ impl BlockDefinition for Definition {
     }
 }
 
-fn properties(state: Id) -> BlockProperties {
-    match state {
+fn properties(id: Id) -> BlockProperties {
+    match id {
         Id::Sapling => BlockProperties::solid(0.0),
         Id::Wood | Id::SpruceWood | Id::BirchWood => BlockProperties::solid(2.0),
         Id::SprucePlanks | Id::BirchPlanks => BlockProperties::solid(2.0),

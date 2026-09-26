@@ -6,9 +6,9 @@ pub(super) struct Definition;
 pub(super) static DEFINITION: Definition = Definition;
 
 impl BlockDefinition for Definition {
-    fn in_world(&self, state: Id) -> bool {
+    fn in_world(&self, id: Id) -> bool {
         matches!(
-            state,
+            id,
             Id::Torch
                 | Id::Glowstone
                 | Id::JackOLantern
@@ -19,38 +19,38 @@ impl BlockDefinition for Definition {
         )
     }
 
-    fn properties(&self, state: Id) -> BlockProperties {
-        properties(state)
+    fn properties(&self, id: Id) -> BlockProperties {
+        properties(id)
     }
 
-    fn opaque_cube(&self, state: Id) -> bool {
-        !is_torch(state)
+    fn opaque_cube(&self, id: Id) -> bool {
+        !is_torch(id)
     }
 
-    fn light_opacity(&self, state: Id) -> u8 {
-        if is_torch(state) { 0 } else { 15 }
+    fn light_opacity(&self, id: Id) -> u8 {
+        if is_torch(id) { 0 } else { 15 }
     }
 
-    fn light_emission(&self, state: Id) -> u8 {
-        if matches!(state, Id::Glowstone | Id::JackOLantern) || is_torch(state) {
+    fn light_emission(&self, id: Id) -> u8 {
+        if matches!(id, Id::Glowstone | Id::JackOLantern) || is_torch(id) {
             15
         } else {
             0
         }
     }
 
-    fn torch(&self, state: Id) -> bool {
-        is_torch(state)
+    fn torch(&self, id: Id) -> bool {
+        is_torch(id)
     }
 }
 
-fn properties(state: Id) -> BlockProperties {
-    match state {
+fn properties(id: Id) -> BlockProperties {
+    match id {
         Id::Torch | Id::TorchWest | Id::TorchEast | Id::TorchNorth | Id::TorchSouth => {
             BlockProperties {
                 torch: true,
                 light_emission: 15,
-                selection_bounds: crate::block::properties::torch_selection_bounds(state),
+                selection_bounds: crate::block::properties::torch_selection_bounds(id),
                 ..BlockProperties::non_colliding(0.0)
             }
         }
@@ -71,9 +71,9 @@ fn properties(state: Id) -> BlockProperties {
     }
 }
 
-fn is_torch(state: Id) -> bool {
+fn is_torch(id: Id) -> bool {
     matches!(
-        state,
+        id,
         Id::Torch | Id::TorchWest | Id::TorchEast | Id::TorchNorth | Id::TorchSouth
     )
 }

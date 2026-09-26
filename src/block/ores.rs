@@ -6,9 +6,9 @@ pub(super) struct Definition;
 pub(super) static DEFINITION: Definition = Definition;
 
 impl BlockDefinition for Definition {
-    fn in_world(&self, state: Id) -> bool {
+    fn in_world(&self, id: Id) -> bool {
         matches!(
-            state,
+            id,
             Id::GoldOre
                 | Id::IronOre
                 | Id::CoalOre
@@ -20,17 +20,17 @@ impl BlockDefinition for Definition {
         )
     }
 
-    fn properties(&self, state: Id) -> BlockProperties {
-        properties(state)
+    fn properties(&self, id: Id) -> BlockProperties {
+        properties(id)
     }
 
-    fn light_emission(&self, state: Id) -> u8 {
-        if state == Id::LitRedstoneOre { 9 } else { 0 }
+    fn light_emission(&self, id: Id) -> u8 {
+        if id == Id::LitRedstoneOre { 9 } else { 0 }
     }
 }
 
-fn properties(state: Id) -> BlockProperties {
-    match state {
+fn properties(id: Id) -> BlockProperties {
+    match id {
         Id::GoldOre
         | Id::IronOre
         | Id::CoalOre

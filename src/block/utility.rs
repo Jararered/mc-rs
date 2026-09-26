@@ -6,17 +6,17 @@ pub(super) struct Definition;
 pub(super) static DEFINITION: Definition = Definition;
 
 impl BlockDefinition for Definition {
-    fn in_world(&self, state: Id) -> bool {
-        matches!(state, Id::Dispenser)
+    fn in_world(&self, id: Id) -> bool {
+        matches!(id, Id::Dispenser)
     }
 
-    fn properties(&self, state: Id) -> BlockProperties {
-        properties(state)
+    fn properties(&self, id: Id) -> BlockProperties {
+        properties(id)
     }
 }
 
-fn properties(state: Id) -> BlockProperties {
-    match state {
+fn properties(id: Id) -> BlockProperties {
+    match id {
         Id::Bed => BlockProperties::solid(0.0),
         Id::Cobweb => BlockProperties {
             harvestable_by_hand: false,

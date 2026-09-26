@@ -6,9 +6,9 @@ pub(super) struct Definition;
 pub(super) static DEFINITION: Definition = Definition;
 
 impl BlockDefinition for Definition {
-    fn in_world(&self, state: Id) -> bool {
+    fn in_world(&self, id: Id) -> bool {
         matches!(
-            state,
+            id,
             Id::Chest
                 | Id::ChestNorth
                 | Id::ChestEast
@@ -37,13 +37,13 @@ impl BlockDefinition for Definition {
         )
     }
 
-    fn properties(&self, state: Id) -> BlockProperties {
-        properties(state)
+    fn properties(&self, id: Id) -> BlockProperties {
+        properties(id)
     }
 
-    fn opaque_cube(&self, state: Id) -> bool {
+    fn opaque_cube(&self, id: Id) -> bool {
         !matches!(
-            state,
+            id,
             Id::Chest
                 | Id::ChestNorth
                 | Id::ChestEast
@@ -57,17 +57,17 @@ impl BlockDefinition for Definition {
         )
     }
 
-    fn light_opacity(&self, state: Id) -> u8 {
-        if state.is_ladder() { 0 } else { 15 }
+    fn light_opacity(&self, id: Id) -> u8 {
+        if id.is_ladder() { 0 } else { 15 }
     }
 
-    fn light_emission(&self, state: Id) -> u8 {
-        if state.is_lit_furnace() { 13 } else { 0 }
+    fn light_emission(&self, id: Id) -> u8 {
+        if id.is_lit_furnace() { 13 } else { 0 }
     }
 }
 
-fn properties(state: Id) -> BlockProperties {
-    match state {
+fn properties(id: Id) -> BlockProperties {
+    match id {
         Id::Chest | Id::ChestNorth | Id::ChestEast | Id::ChestSouth | Id::ChestWest => {
             BlockProperties {
                 opaque_cube: false,
@@ -75,7 +75,7 @@ fn properties(state: Id) -> BlockProperties {
             }
         }
         Id::Ladder | Id::LadderNorth | Id::LadderEast | Id::LadderSouth | Id::LadderWest => {
-            let bounds = match state.ladder_support_offset() {
+            let bounds = match id.ladder_support_offset() {
                 Some([0, 0, -1]) => ([0.0, 0.0, 0.0], [1.0, 1.0, 0.125]),
                 Some([0, 0, 1]) => ([0.0, 0.0, 0.875], [1.0, 1.0, 1.0]),
                 Some([1, 0, 0]) => ([0.875, 0.0, 0.0], [1.0, 1.0, 1.0]),
@@ -101,7 +101,7 @@ fn properties(state: Id) -> BlockProperties {
         | Id::LitFurnaceSouth
         | Id::LitFurnaceWest => BlockProperties {
             harvestable_by_hand: false,
-            light_emission: if state.is_lit_furnace() { 13 } else { 0 },
+            light_emission: if id.is_lit_furnace() { 13 } else { 0 },
             ..BlockProperties::solid(3.5)
         },
         Id::Pumpkin | Id::PumpkinNorth | Id::PumpkinEast | Id::PumpkinSouth | Id::PumpkinWest => {

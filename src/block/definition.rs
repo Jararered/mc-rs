@@ -79,37 +79,37 @@ impl BlockProperties {
 /// variants can share an implementation while preserving their distinct
 /// behavior.
 pub trait BlockDefinition: Sync {
-    fn in_world(&self, state: Id) -> bool;
-    fn properties(&self, state: Id) -> BlockProperties;
+    fn in_world(&self, id: Id) -> bool;
+    fn properties(&self, id: Id) -> BlockProperties;
 
     /// Hot-path scalar queries have defaults for ordinary full opaque cubes.
     /// Special families override them so lighting and meshing do not build a
     /// complete property record for each sampled voxel.
-    fn opaque_cube(&self, _state: Id) -> bool {
+    fn opaque_cube(&self, _id: Id) -> bool {
         true
     }
 
-    fn light_opacity(&self, _state: Id) -> u8 {
+    fn light_opacity(&self, _id: Id) -> u8 {
         15
     }
 
-    fn light_emission(&self, _state: Id) -> u8 {
+    fn light_emission(&self, _id: Id) -> u8 {
         0
     }
 
-    fn crossed_plant(&self, _state: Id) -> bool {
+    fn crossed_plant(&self, _id: Id) -> bool {
         false
     }
 
-    fn torch(&self, _state: Id) -> bool {
+    fn torch(&self, _id: Id) -> bool {
         false
     }
 }
 
 /// Resolve a compact block value to its static family definition.
 #[inline]
-pub fn definition(state: Id) -> &'static dyn BlockDefinition {
-    super::registry::definition(state)
+pub fn definition(id: Id) -> &'static dyn BlockDefinition {
+    super::registry::definition(id)
 }
 
 /// Cached block properties for hot voxel queries. The table is initialized
@@ -127,19 +127,19 @@ pub fn properties_table() -> &'static [BlockProperties; 256] {
 }
 
 #[inline]
-pub fn properties(state: Id) -> BlockProperties {
-    match state {
+pub fn properties(id: Id) -> BlockProperties {
+    match id {
         Id::Unknown(_) => BlockProperties::unknown(),
-        _ => properties_table()[state.as_u8() as usize],
+        _ => properties_table()[id.as_u8() as usize],
     }
 }
 
 #[inline]
-pub fn light_opacity(state: Id) -> u8 {
-    properties(state).light_opacity
+pub fn light_opacity(id: Id) -> u8 {
+    properties(id).light_opacity
 }
 
 #[inline]
-pub fn light_emission(state: Id) -> u8 {
-    properties(state).light_emission
+pub fn light_emission(id: Id) -> u8 {
+    properties(id).light_emission
 }

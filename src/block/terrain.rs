@@ -6,9 +6,9 @@ pub(super) struct Definition;
 pub(super) static DEFINITION: Definition = Definition;
 
 impl BlockDefinition for Definition {
-    fn in_world(&self, state: Id) -> bool {
+    fn in_world(&self, id: Id) -> bool {
         matches!(
-            state,
+            id,
             Id::Air
                 | Id::Stone
                 | Id::Grass
@@ -42,19 +42,19 @@ impl BlockDefinition for Definition {
         )
     }
 
-    fn properties(&self, state: Id) -> BlockProperties {
-        properties(state)
+    fn properties(&self, id: Id) -> BlockProperties {
+        properties(id)
     }
 
-    fn opaque_cube(&self, state: Id) -> bool {
+    fn opaque_cube(&self, id: Id) -> bool {
         !matches!(
-            state,
+            id,
             Id::Air | Id::MobSpawner | Id::Ice | Id::SnowLayer | Id::Farmland
         )
     }
 
-    fn light_opacity(&self, state: Id) -> u8 {
-        match state {
+    fn light_opacity(&self, id: Id) -> u8 {
+        match id {
             Id::Air | Id::SnowLayer => 0,
             Id::Ice => 3,
             _ => 15,
@@ -62,8 +62,8 @@ impl BlockDefinition for Definition {
     }
 }
 
-fn properties(state: Id) -> BlockProperties {
-    match state {
+fn properties(id: Id) -> BlockProperties {
+    match id {
         Id::Air => BlockProperties::fluid(0.0),
         Id::Stone => BlockProperties {
             harvestable_by_hand: false,

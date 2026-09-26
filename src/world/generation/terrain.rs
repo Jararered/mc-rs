@@ -2,7 +2,7 @@ use crate::block::id::Id;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::Chunk;
-use crate::world::chunk::ChunkPos;
+use crate::world::chunk::ChunkPosition;
 
 use super::biome::BiomeMap;
 use super::biome::Climate;
@@ -51,7 +51,7 @@ impl TerrainGenerator {
         }
     }
 
-    pub fn generate_base(&self, position: ChunkPos, biomes: &BiomeMap) -> Chunk {
+    pub fn generate_base(&self, position: ChunkPosition, biomes: &BiomeMap) -> Chunk {
         let mut density = [0.0; GRID * GRID * VERTICAL_GRID];
         for gx in 0..GRID {
             for gz in 0..GRID {

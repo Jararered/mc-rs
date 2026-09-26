@@ -30,7 +30,7 @@ use crate::random::ItemRng;
 use crate::random::JavaRandom;
 use crate::ui::icons::blocks::BlockIcons;
 use crate::world::chunk::CHUNK_SIZE;
-use crate::world::chunk::ChunkPos;
+use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
 use crate::world::meshing::dropped_block_meshes;
 use crate::world::persistence::WorldPersistence;
@@ -132,7 +132,7 @@ pub struct PickupAnimation {
 }
 
 #[derive(Component)]
-struct ItemChunkHome(ChunkPos);
+struct ItemChunkHome(ChunkPosition);
 
 #[derive(Component)]
 struct ItemVisual {
@@ -258,7 +258,7 @@ pub fn spawn_saved_item(commands: &mut Commands, item: crate::world::generation:
         ItemMotion(Vec3::from_array(item.motion)),
         CollisionState::default(),
         EntitySize::DROPPED_ITEM,
-        ItemChunkHome(ChunkPos::from_block(
+        ItemChunkHome(ChunkPosition::from_block(
             item.position[0].floor() as i32,
             item.position[2].floor() as i32,
         )),
@@ -528,7 +528,7 @@ fn tick_dropped_items(
 
     for (entity, mut transform, mut motion, mut collision, size, mut state, mut home) in &mut items
     {
-        if !chunks.contains(ChunkPos::from_world(
+        if !chunks.contains(ChunkPosition::from_world(
             transform.translation.x,
             transform.translation.z,
         )) {
@@ -571,7 +571,7 @@ fn tick_dropped_items(
                 slip,
             );
         }
-        let now = ChunkPos::from_block(
+        let now = ChunkPosition::from_block(
             transform.translation.x.floor() as i32,
             transform.translation.z.floor() as i32,
         );
@@ -593,11 +593,11 @@ fn tick_dropped_items(
 fn mark_chunk(persistence: &mut Option<ResMut<WorldPersistence>>, position: Vec3) {
     mark_chunk_pos(
         persistence,
-        ChunkPos::from_block(position.x.floor() as i32, position.z.floor() as i32),
+        ChunkPosition::from_block(position.x.floor() as i32, position.z.floor() as i32),
     );
 }
 
-fn mark_chunk_pos(persistence: &mut Option<ResMut<WorldPersistence>>, position: ChunkPos) {
+fn mark_chunk_pos(persistence: &mut Option<ResMut<WorldPersistence>>, position: ChunkPosition) {
     if let Some(persistence) = persistence.as_deref_mut() {
         persistence.mark_dirty(position);
     }
@@ -936,7 +936,7 @@ fn climate_tints(
     position: Vec3,
 ) -> ([f32; 3], [f32; 3]) {
     let climate = chunks
-        .get(ChunkPos::from_block(
+        .get(ChunkPosition::from_block(
             position.x.floor() as i32,
             position.z.floor() as i32,
         ))

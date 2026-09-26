@@ -6,7 +6,7 @@ use std::time::UNIX_EPOCH;
 use game::block::id::Id;
 use game::item::ItemId;
 use game::item::ItemStack;
-use game::world::chunk::ChunkPos;
+use game::world::chunk::ChunkPosition;
 use game::world::chunk::WorldChunks;
 use game::world::furnace::Furnace;
 use game::world::furnace::SMELT_TICKS;
@@ -121,7 +121,7 @@ fn furnace_world_system_uses_world_ticks_and_switches_the_block_light_state() {
     app.init_resource::<WorldChunks>()
         .init_resource::<WorldTick>()
         .add_systems(Update, tick_furnaces);
-    let position = ChunkPos::ZERO;
+    let position = ChunkPosition::ZERO;
     let mut generated = WorldGenerator::new(1).generate(position);
     generated.chunk.set(2, 40, 3, Id::Furnace);
     app.world_mut()
@@ -153,10 +153,10 @@ fn furnace_world_system_uses_world_ticks_and_switches_the_block_light_state() {
 
 #[test]
 fn removing_a_furnace_block_removes_its_block_local_inventory() {
-    let mut generated = WorldGenerator::new(2).generate(ChunkPos::ZERO);
+    let mut generated = WorldGenerator::new(2).generate(ChunkPosition::ZERO);
     generated.chunk.set(2, 40, 3, Id::Furnace);
     let mut chunks = WorldChunks::default();
-    chunks.insert(ChunkPos::ZERO, generated);
+    chunks.insert(ChunkPosition::ZERO, generated);
     chunks.furnace_at_mut(2, 40, 3).unwrap().slots[0] = Some(block(Id::IronOre));
 
     chunks.set_block(2, 40, 3, Id::Air);
@@ -193,7 +193,7 @@ fn furnace_waits_when_output_is_full_and_keeps_progress_without_fuel() {
 fn furnace_inventory_and_progress_round_trip_and_old_chunks_still_load() {
     let saves = temp_saves();
     let storage = WorldStorage::create(&saves, 99, "Furnace persistence").unwrap();
-    let position = ChunkPos { x: -1, z: 2 };
+    let position = ChunkPosition { x: -1, z: 2 };
     let mut generated = WorldGenerator::new(99).generate(position);
     generated.chunk.set(3, 32, 7, Id::Furnace);
     let index = (32 * 16 + 7) * 16 + 3;

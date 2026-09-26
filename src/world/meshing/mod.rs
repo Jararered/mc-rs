@@ -13,7 +13,7 @@ use crate::block::properties::torch_point;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::Chunk;
-use crate::world::chunk::ChunkPos;
+use crate::world::chunk::ChunkPosition;
 use crate::world::generation::BiomeMap;
 use crate::world::lighting::Skylight;
 use crate::world::lighting::beta_brightness;
@@ -225,7 +225,7 @@ pub fn mesh_chunk_with_biomes(
     smooth_lighting: bool,
     fancy_graphics: bool,
     skylight_subtracted: u8,
-    position: ChunkPos,
+    position: ChunkPosition,
 ) -> ChunkMeshes {
     let tints = ColumnTints {
         grass: std::array::from_fn(|index| {

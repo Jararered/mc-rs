@@ -16,7 +16,7 @@ use game::player::Player;
 use game::world::chunk::CHUNK_HEIGHT;
 use game::world::chunk::CHUNK_SIZE;
 use game::world::chunk::Chunk;
-use game::world::chunk::ChunkPos;
+use game::world::chunk::ChunkPosition;
 use game::world::chunk::WorldChunks;
 use game::world::generation::ChunkDroppedItem;
 use game::world::generation::WorldGenerator;
@@ -119,7 +119,7 @@ fn manifest_records_the_seed_and_name() {
 fn chunk_round_trips_through_a_chunk_file() {
     let saves = temp_saves("roundtrip");
     let storage = WorldStorage::create(&saves, 0, "Roundtrip").unwrap();
-    let position = ChunkPos { x: -1, z: 2 };
+    let position = ChunkPosition { x: -1, z: 2 };
     let mut generated = WorldGenerator::new(0).generate(position);
     for (x, facing) in [
         (1, Id::PumpkinNorth),
@@ -157,7 +157,7 @@ fn legacy_species_bytes_stay_spruce_while_cake_uses_the_same_number() {
     assert!(!Id::Cake.in_world());
     let saves = temp_saves("legacy-spruce");
     let storage = WorldStorage::create(&saves, 0, "Legacy").unwrap();
-    let position = ChunkPos::ZERO;
+    let position = ChunkPosition::ZERO;
     let generated = WorldGenerator::new(0).generate(position);
     storage.save_chunk(position, &generated).unwrap();
 
@@ -189,7 +189,7 @@ fn legacy_species_bytes_stay_spruce_while_cake_uses_the_same_number() {
 fn dropped_items_round_trip_inside_their_chunk() {
     let saves = temp_saves("items");
     let storage = WorldStorage::create(&saves, 0, "Items").unwrap();
-    let position = ChunkPos { x: 1, z: -1 };
+    let position = ChunkPosition { x: 1, z: -1 };
     let mut generated = WorldGenerator::new(0).generate(position);
     generated.items.push(ChunkDroppedItem {
         stack: ItemStack::from_block(Id::Cobblestone, 3).unwrap(),
@@ -231,12 +231,12 @@ fn region_folders_group_sixteen_by_sixteen_chunks() {
     let storage = WorldStorage::create(&saves, 0, "Regions").unwrap();
     let generator = WorldGenerator::new(0);
     let positions = [
-        ChunkPos { x: 0, z: 0 },
-        ChunkPos { x: 15, z: 15 },
-        ChunkPos { x: 16, z: 0 },
-        ChunkPos { x: -1, z: -1 },
-        ChunkPos { x: -16, z: -16 },
-        ChunkPos { x: -17, z: 0 },
+        ChunkPosition { x: 0, z: 0 },
+        ChunkPosition { x: 15, z: 15 },
+        ChunkPosition { x: 16, z: 0 },
+        ChunkPosition { x: -1, z: -1 },
+        ChunkPosition { x: -16, z: -16 },
+        ChunkPosition { x: -17, z: 0 },
     ];
     for position in positions {
         storage
@@ -245,10 +245,10 @@ fn region_folders_group_sixteen_by_sixteen_chunks() {
     }
 
     assert_eq!(REGION_SIZE, 16);
-    assert_eq!(region_of(ChunkPos { x: 15, z: 15 }), (0, 0));
-    assert_eq!(region_of(ChunkPos { x: 16, z: 0 }), (1, 0));
-    assert_eq!(region_of(ChunkPos { x: -1, z: -1 }), (-1, -1));
-    assert_eq!(region_of(ChunkPos { x: -17, z: 0 }), (-2, 0));
+    assert_eq!(region_of(ChunkPosition { x: 15, z: 15 }), (0, 0));
+    assert_eq!(region_of(ChunkPosition { x: 16, z: 0 }), (1, 0));
+    assert_eq!(region_of(ChunkPosition { x: -1, z: -1 }), (-1, -1));
+    assert_eq!(region_of(ChunkPosition { x: -17, z: 0 }), (-2, 0));
 
     for position in positions {
         let path = storage
@@ -264,8 +264,8 @@ fn saving_one_chunk_keeps_the_others_in_its_region() {
     let saves = temp_saves("merge");
     let storage = WorldStorage::create(&saves, 0, "Merge").unwrap();
     let generator = WorldGenerator::new(0);
-    let first = ChunkPos { x: 1, z: 1 };
-    let second = ChunkPos { x: 2, z: 2 };
+    let first = ChunkPosition { x: 1, z: 1 };
+    let second = ChunkPosition { x: 2, z: 2 };
     storage
         .save_chunk(first, &generator.generate(first))
         .unwrap();
@@ -292,9 +292,9 @@ fn save_chunks_writes_every_chunk_once() {
     let storage = WorldStorage::create(&saves, 0, "Batch").unwrap();
     let generator = WorldGenerator::new(0);
     let positions = [
-        ChunkPos { x: 0, z: 0 },
-        ChunkPos { x: 1, z: 0 },
-        ChunkPos { x: 16, z: 0 },
+        ChunkPosition { x: 0, z: 0 },
+        ChunkPosition { x: 1, z: 0 },
+        ChunkPosition { x: 16, z: 0 },
     ];
     let chunks: Vec<_> = positions
         .iter()
@@ -315,7 +315,7 @@ fn save_chunks_writes_every_chunk_once() {
 fn missing_chunks_load_as_none() {
     let saves = temp_saves("missing");
     let storage = WorldStorage::create(&saves, 0, "Missing").unwrap();
-    assert!(storage.load_chunk(ChunkPos { x: 3, z: 3 }).is_none());
+    assert!(storage.load_chunk(ChunkPosition { x: 3, z: 3 }).is_none());
 }
 
 #[test]
@@ -386,7 +386,7 @@ fn the_world_is_saved_and_resumed_across_runs() {
     assert!(run_until(&mut first, Duration::from_secs(5), |app| {
         app.world()
             .resource::<WorldChunks>()
-            .get(ChunkPos::ZERO)
+            .get(ChunkPosition::ZERO)
             .is_some()
     }));
 
@@ -403,7 +403,7 @@ fn the_world_is_saved_and_resumed_across_runs() {
     first.update();
     let chunk = root
         .join(region_dir_name((0, 0)))
-        .join(chunk_file_name(ChunkPos::ZERO));
+        .join(chunk_file_name(ChunkPosition::ZERO));
     assert!(chunk.is_file(), "missing {}", chunk.display());
     assert!(
         root.join("player.json").is_file(),
@@ -420,7 +420,7 @@ fn the_world_is_saved_and_resumed_across_runs() {
         .storage()
         .expect("persistence should be enabled");
     assert_eq!(storage.root(), root.as_path());
-    assert!(storage.load_chunk(ChunkPos::ZERO).is_some());
+    assert!(storage.load_chunk(ChunkPosition::ZERO).is_some());
     let player = storage.load_player().expect("player should load");
     assert!((player.x - 48.0).abs() < 0.001);
     assert!((player.y - 72.0).abs() < 0.001);

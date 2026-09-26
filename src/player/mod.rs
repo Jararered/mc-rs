@@ -35,7 +35,7 @@ pub use interaction::overlay::selection_outline_mesh;
 pub use model::arm::interpolated_swing;
 
 use crate::physics::PhysicsSet;
-use crate::world::chunk::ChunkPos;
+use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
 use crate::world::persistence::WorldPersistence;
 use crate::world::tick::WorldTick;
@@ -334,7 +334,7 @@ fn camera_bob_pose(bob: &CameraBobbing) -> Mat4 {
 
 fn default_spawn_transform(chunks: &WorldChunks) -> Transform {
     let surface = chunks
-        .get(ChunkPos::ZERO)
+        .get(ChunkPosition::ZERO)
         .map_or(64.0, |generated| generated.heightmap.get(8, 8) as f32);
     let eye = surface + EntitySize::PLAYER.y_offset;
     Transform::from_xyz(8.5, eye, 8.5).looking_at(Vec3::new(8.5, eye, 16.5), Vec3::Y)

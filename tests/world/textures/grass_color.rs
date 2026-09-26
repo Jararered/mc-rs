@@ -1,7 +1,7 @@
 use bevy::prelude::Mesh;
 use game::block::id::Id;
 use game::world::chunk::Chunk;
-use game::world::chunk::ChunkPos;
+use game::world::chunk::ChunkPosition;
 use game::world::generation::Biome;
 use game::world::generation::BiomeMap;
 use game::world::generation::Climate;
@@ -80,7 +80,7 @@ fn crossed_grass_mesh_uses_each_column_biome_grass_color() {
         true,
         false,
         0,
-        ChunkPos::ZERO,
+        ChunkPosition::ZERO,
     );
     let bevy::mesh::VertexAttributeValues::Float32x4(colors) = meshes
         .masked

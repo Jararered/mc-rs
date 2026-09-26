@@ -26,7 +26,7 @@ use game::player::till_block;
 use game::player::till_with_selected_hoe;
 use game::world::chunk::CHUNK_SIZE;
 use game::world::chunk::Chunk;
-use game::world::chunk::ChunkPos;
+use game::world::chunk::ChunkPosition;
 use game::world::chunk::WorldChunks;
 use game::world::generation::Biome;
 use game::world::generation::BiomeMap;
@@ -66,7 +66,7 @@ fn generated(chunk: Chunk) -> GeneratedChunk {
 
 fn world_with(chunk: Chunk) -> WorldChunks {
     let mut chunks = WorldChunks::default();
-    chunks.insert(ChunkPos::ZERO, generated(chunk));
+    chunks.insert(ChunkPosition::ZERO, generated(chunk));
     chunks
 }
 
@@ -351,7 +351,7 @@ fn farmland_round_trips_through_persistence() {
     let saves = PathBuf::from(std::env::temp_dir()).join(format!("farmland-{unique}"));
     fs::create_dir_all(&saves).unwrap();
     let storage = WorldStorage::create(&saves, 0, "Farmland").unwrap();
-    let position = ChunkPos::ZERO;
+    let position = ChunkPosition::ZERO;
     let mut generated = generated(Chunk::new());
     generated.chunk.set(8, 64, 8, Id::Farmland);
     generated.heightmap = Heightmap::from_chunk(&generated.chunk);

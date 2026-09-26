@@ -48,7 +48,7 @@ use crate::ui::icons::overlay::durability_track;
 use crate::ui::icons::overlay::icon_size;
 use crate::ui::icons::overlay::place_stack_label;
 use crate::world::chunk::ChestGroup;
-use crate::world::chunk::ChunkPos;
+use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
 use crate::world::persistence::WorldPersistence;
 
@@ -1054,7 +1054,7 @@ fn handle_slots(
                     false
                 };
                 if moved && let Some(persistence) = persistence.as_deref_mut() {
-                    persistence.mark_dirty(ChunkPos::from_block(position.0, position.2));
+                    persistence.mark_dirty(ChunkPosition::from_block(position.0, position.2));
                 }
             }
             if mouse.pressed(MouseButton::Left) {
@@ -1083,7 +1083,7 @@ fn handle_slots(
                 if matches!(slot, Slot::Furnace(_))
                     && let Some(persistence) = persistence.as_deref_mut()
                 {
-                    persistence.mark_dirty(ChunkPos::from_block(position.0, position.2));
+                    persistence.mark_dirty(ChunkPosition::from_block(position.0, position.2));
                 }
                 *drag = SlotDrag::default();
                 return;
@@ -1105,11 +1105,11 @@ fn handle_slots(
                 );
             }
             if let Some(persistence) = persistence.as_deref_mut() {
-                persistence.mark_dirty(ChunkPos::from_block(position.0, position.2));
+                persistence.mark_dirty(ChunkPosition::from_block(position.0, position.2));
             }
         } else if hovered.is_some() && HOTBAR_KEYS.iter().any(|key| keys.just_pressed(*key)) {
             if let Some(persistence) = persistence.as_deref_mut() {
-                persistence.mark_dirty(ChunkPos::from_block(position.0, position.2));
+                persistence.mark_dirty(ChunkPosition::from_block(position.0, position.2));
             }
         }
         *drag = SlotDrag::default();
@@ -1550,9 +1550,9 @@ fn write_chest_group_slots(
 
 fn mark_chest_dirty(persistence: &mut Option<ResMut<WorldPersistence>>, group: ChestGroup) {
     if let Some(persistence) = persistence.as_deref_mut() {
-        persistence.mark_dirty(ChunkPos::from_block(group.first.0, group.first.2));
+        persistence.mark_dirty(ChunkPosition::from_block(group.first.0, group.first.2));
         if let Some((x, _, z)) = group.second {
-            persistence.mark_dirty(ChunkPos::from_block(x, z));
+            persistence.mark_dirty(ChunkPosition::from_block(x, z));
         }
     }
 }

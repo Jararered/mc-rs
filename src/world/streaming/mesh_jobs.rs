@@ -3,7 +3,7 @@ use std::time::Instant;
 use bevy::tasks::AsyncComputeTaskPool;
 
 use super::WorldStreaming;
-use crate::world::chunk::ChunkPos;
+use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
 use crate::world::lighting::Skylight;
 use crate::world::meshing::ChunkNeighbors;
@@ -14,7 +14,7 @@ use crate::world::meshing::mesh_chunk_with_biomes;
 pub(super) fn spawn_mesh_job(
     streaming: &mut WorldStreaming,
     chunks: &WorldChunks,
-    position: ChunkPos,
+    position: ChunkPosition,
 ) -> bool {
     if streaming.meshing.contains_key(&position) || !mesh_neighborhood_ready(chunks, position) {
         return false;
@@ -35,7 +35,7 @@ pub(super) fn spawn_mesh_job(
             .x
             .checked_add(dx)
             .zip(position.z.checked_add(dz))
-            .and_then(|(x, z)| chunks.get(ChunkPos { x, z }))
+            .and_then(|(x, z)| chunks.get(ChunkPosition { x, z }))
             .map(|generated| generated.chunk.clone())
     };
     let west = neighbor(-1, 0);
@@ -91,14 +91,14 @@ pub(super) fn spawn_mesh_job(
 /// Lighting and ambient occlusion sample across both faces and corners. Do
 /// not bake fallback edge light into a chunk's first mesh while any of its
 /// surrounding block data is still being generated or loaded.
-pub(super) fn mesh_neighborhood_ready(chunks: &WorldChunks, position: ChunkPos) -> bool {
+pub(super) fn mesh_neighborhood_ready(chunks: &WorldChunks, position: ChunkPosition) -> bool {
     (-1..=1).all(|dx| {
         (-1..=1).all(|dz| {
             position
                 .x
                 .checked_add(dx)
                 .zip(position.z.checked_add(dz))
-                .is_some_and(|(x, z)| chunks.contains(ChunkPos { x, z }))
+                .is_some_and(|(x, z)| chunks.contains(ChunkPosition { x, z }))
         })
     })
 }

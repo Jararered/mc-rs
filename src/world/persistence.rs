@@ -51,7 +51,7 @@ use crate::world::chest::Chest;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::Chunk;
-use crate::world::chunk::ChunkPos;
+use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
 use crate::world::furnace::FURNACE_SLOTS;
 use crate::world::furnace::Furnace;
@@ -220,7 +220,7 @@ pub struct WorldManifest {
 }
 
 /// The region a chunk belongs to, as `(region_x, region_z)`.
-pub fn region_of(position: ChunkPos) -> (i32, i32) {
+pub fn region_of(position: ChunkPosition) -> (i32, i32) {
     (
         position.x.div_euclid(REGION_SIZE),
         position.z.div_euclid(REGION_SIZE),
@@ -233,7 +233,7 @@ pub fn region_dir_name(region: (i32, i32)) -> String {
 }
 
 /// File name for a chunk, for example `chunk0,0.bin`.
-pub fn chunk_file_name(position: ChunkPos) -> String {
+pub fn chunk_file_name(position: ChunkPosition) -> String {
     format!("chunk{},{}.bin", position.x, position.z)
 }
 
@@ -341,7 +341,7 @@ impl WorldStorage {
     }
 
     /// Load a stored chunk, or `None` if it was never saved.
-    pub fn load_chunk(&self, position: ChunkPos) -> Option<GeneratedChunk> {
+    pub fn load_chunk(&self, position: ChunkPosition) -> Option<GeneratedChunk> {
         let path = self.chunk_path(position);
         match fs::read(&path) {
             Ok(bytes) => match serde_json::from_slice::<StoredChunk>(&bytes) {
@@ -360,16 +360,16 @@ impl WorldStorage {
     }
 
     /// Save one chunk to its region folder.
-    pub fn save_chunk(&self, position: ChunkPos, chunk: &GeneratedChunk) -> io::Result<()> {
+    pub fn save_chunk(&self, position: ChunkPosition, chunk: &GeneratedChunk) -> io::Result<()> {
         self.save_chunks([(position, chunk)]).map(|_| ())
     }
 
     /// Save many chunks, creating each region folder as needed.
     pub fn save_chunks<'a>(
         &self,
-        chunks: impl IntoIterator<Item = (ChunkPos, &'a GeneratedChunk)>,
+        chunks: impl IntoIterator<Item = (ChunkPosition, &'a GeneratedChunk)>,
     ) -> io::Result<usize> {
-        let mut by_region: HashMap<(i32, i32), Vec<(ChunkPos, &'a GeneratedChunk)>> =
+        let mut by_region: HashMap<(i32, i32), Vec<(ChunkPosition, &'a GeneratedChunk)>> =
             HashMap::new();
         for (position, chunk) in chunks {
             by_region
@@ -398,7 +398,7 @@ impl WorldStorage {
         self.root.join(region_dir_name(region))
     }
 
-    fn chunk_path(&self, position: ChunkPos) -> PathBuf {
+    fn chunk_path(&self, position: ChunkPosition) -> PathBuf {
         self.region_path(region_of(position))
             .join(chunk_file_name(position))
     }
@@ -821,9 +821,9 @@ impl Plugin for PersistencePlugin {
 pub struct WorldPersistence {
     storage: Option<Arc<WorldStorage>>,
     /// Chunks that changed since the last save and are still loaded.
-    dirty: HashSet<ChunkPos>,
+    dirty: HashSet<ChunkPosition>,
     /// Dirty chunks that were unloaded before a save could reach them.
-    pending: Vec<(ChunkPos, GeneratedChunk)>,
+    pending: Vec<(ChunkPosition, GeneratedChunk)>,
     /// Set by the F4 regeneration key so the next generation pass ignores disk.
     regenerating: bool,
     timer: Timer,
@@ -859,13 +859,13 @@ impl WorldPersistence {
     }
 
     /// Record that a chunk's data changed and should be written on the next save.
-    pub fn mark_dirty(&mut self, position: ChunkPos) {
+    pub fn mark_dirty(&mut self, position: ChunkPosition) {
         self.dirty.insert(position);
     }
 
     /// Keep an unloaded chunk's data around until the next save, but only if it
     /// actually changed. Unmodified chunks are regenerated identically instead.
-    pub fn queue_unload(&mut self, position: ChunkPos, chunk: GeneratedChunk) {
+    pub fn queue_unload(&mut self, position: ChunkPosition, chunk: GeneratedChunk) {
         if self.dirty.remove(&position) {
             self.pending.push((position, chunk));
         }
@@ -889,7 +889,7 @@ impl WorldPersistence {
         &mut self,
         chunks: &mut WorldChunks,
         player: Option<(&Transform, Option<&Hotbar>, Option<&Inventory>, bool, f32)>,
-        items: &std::collections::HashMap<ChunkPos, Vec<ChunkDroppedItem>>,
+        items: &std::collections::HashMap<ChunkPosition, Vec<ChunkDroppedItem>>,
     ) {
         let Some(storage) = self.storage.clone() else {
             return;
@@ -902,7 +902,7 @@ impl WorldPersistence {
                 chunk.items = items.get(position).cloned().unwrap_or_default();
             }
         }
-        let mut batch: Vec<(ChunkPos, &GeneratedChunk)> =
+        let mut batch: Vec<(ChunkPosition, &GeneratedChunk)> =
             Vec::with_capacity(pending.len() + dirty.len());
         for (position, chunk) in &pending {
             batch.push((*position, chunk));
@@ -998,9 +998,9 @@ fn flush_persistence(
         {
             storage.set_world_time(tick.world_time());
         }
-        let mut saved = std::collections::HashMap::<ChunkPos, Vec<ChunkDroppedItem>>::new();
+        let mut saved = std::collections::HashMap::<ChunkPosition, Vec<ChunkDroppedItem>>::new();
         for (transform, dropped, motion, state) in &items {
-            let position = ChunkPos::from_block(
+            let position = ChunkPosition::from_block(
                 transform.translation.x.floor() as i32,
                 transform.translation.z.floor() as i32,
             );

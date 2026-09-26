@@ -15,7 +15,7 @@ use game::player::place_selected_block;
 use game::world::chunk::CHUNK_HEIGHT;
 use game::world::chunk::CHUNK_SIZE;
 use game::world::chunk::Chunk;
-use game::world::chunk::ChunkPos;
+use game::world::chunk::ChunkPosition;
 use game::world::chunk::WorldChunks;
 use game::world::generation::Biome;
 use game::world::generation::BiomeMap;
@@ -34,7 +34,7 @@ fn world_with(chunk: Chunk) -> WorldChunks {
     let heightmap = Heightmap::from_chunk(&chunk);
     let mut chunks = WorldChunks::default();
     chunks.insert(
-        ChunkPos::ZERO,
+        ChunkPosition::ZERO,
         GeneratedChunk {
             chunk,
             heightmap,
@@ -241,7 +241,7 @@ fn cactus_placement_requires_sand_support_and_clear_sides() {
 fn desert_chunks_generate_repeatable_cactus_columns() {
     for seed in 0..128 {
         let generator = WorldGenerator::new(seed);
-        let generated = generator.generate(ChunkPos::ZERO);
+        let generated = generator.generate(ChunkPosition::ZERO);
         let cactus_count = generated
             .chunk
             .blocks()
@@ -275,7 +275,7 @@ fn desert_chunks_generate_repeatable_cactus_columns() {
                     }
                 }
             }
-            let again = WorldGenerator::new(seed).generate(ChunkPos::ZERO);
+            let again = WorldGenerator::new(seed).generate(ChunkPosition::ZERO);
             assert_eq!(generated.chunk.blocks(), again.chunk.blocks());
             assert!(
                 generated

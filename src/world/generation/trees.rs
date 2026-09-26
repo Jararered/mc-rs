@@ -25,7 +25,7 @@ use crate::block::properties::is_opaque_cube;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::Chunk;
-use crate::world::chunk::ChunkPos;
+use crate::world::chunk::ChunkPosition;
 
 use super::biome::Biome;
 use super::biome::Climate;
@@ -61,11 +61,11 @@ enum TreeKind {
 /// overrides; the block directly below the current tree's origin reports the
 /// ground block found by decoration.
 struct TreeWorld<'a> {
-    target: ChunkPos,
+    target: ChunkPosition,
     chunk: &'a mut Chunk,
     origin: [i32; 3],
     ground: Id,
-    remote_chunks: &'a HashMap<ChunkPos, Chunk>,
+    remote_chunks: &'a HashMap<ChunkPosition, Chunk>,
     overrides: &'a mut HashMap<(i32, i32, i32), Id>,
 }
 
@@ -86,7 +86,7 @@ impl TreeWorld<'_> {
         } else {
             let world_x = self.target.x * CHUNK_SIZE as i32 + x;
             let world_z = self.target.z * CHUNK_SIZE as i32 + z;
-            let position = ChunkPos::from_block(world_x, world_z);
+            let position = ChunkPosition::from_block(world_x, world_z);
             self.remote_chunks
                 .get(&position)
                 .and_then(|chunk| {
@@ -166,11 +166,11 @@ fn is_tree_space(block: Id) -> bool {
 /// and write the resulting trees into `chunk`.
 pub(super) fn decorate(
     chunk: &mut Chunk,
-    position: ChunkPos,
+    position: ChunkPosition,
     terrain: &TerrainGenerator,
-    population_rng: &HashMap<ChunkPos, JavaRandom>,
+    population_rng: &HashMap<ChunkPosition, JavaRandom>,
     climate_at: impl Fn(f64, f64) -> Climate,
-    remote_chunk: impl Fn(ChunkPos) -> Chunk,
+    remote_chunk: impl Fn(ChunkPosition) -> Chunk,
 ) {
     // Ground heights and surface blocks are captured before any tree is placed
     // so placement sees the terrain rather than earlier trees.
@@ -192,7 +192,7 @@ pub(super) fn decorate(
     let mut pumpkin_positions = HashSet::new();
     for source_z in -1..=1 {
         for source_x in -1..=1 {
-            let source = ChunkPos {
+            let source = ChunkPosition {
                 x: position.x + source_x,
                 z: position.z + source_z,
             };
@@ -222,20 +222,20 @@ pub(super) fn decorate(
 #[allow(clippy::too_many_arguments)]
 fn populate(
     chunk: &mut Chunk,
-    target: ChunkPos,
-    source: ChunkPos,
+    target: ChunkPosition,
+    source: ChunkPosition,
     heights: &[[u8; CHUNK_SIZE]; CHUNK_SIZE],
     grounds: &[[Id; CHUNK_SIZE]; CHUNK_SIZE],
     remote_ground: &mut HashMap<(i32, i32), (i32, Id)>,
-    remote_chunks: &mut HashMap<ChunkPos, Chunk>,
+    remote_chunks: &mut HashMap<ChunkPosition, Chunk>,
     tree_overrides: &mut HashMap<(i32, i32, i32), Id>,
     cactus_positions: &mut HashSet<(i32, i32, i32)>,
     reed_positions: &mut HashSet<(i32, i32, i32)>,
     pumpkin_positions: &mut HashSet<(i32, i32, i32)>,
     terrain: &TerrainGenerator,
-    population_rng: &HashMap<ChunkPos, JavaRandom>,
+    population_rng: &HashMap<ChunkPosition, JavaRandom>,
     climate_at: &impl Fn(f64, f64) -> Climate,
-    remote_chunk: &impl Fn(ChunkPos) -> Chunk,
+    remote_chunk: &impl Fn(ChunkPosition) -> Chunk,
 ) {
     let mut rand = population_rng[&source].clone();
 
@@ -266,7 +266,7 @@ fn populate(
 
     for remote_z in -1..=1 {
         for remote_x in -1..=1 {
-            let position = ChunkPos {
+            let position = ChunkPosition {
                 x: target.x + remote_x,
                 z: target.z + remote_z,
             };
@@ -450,12 +450,12 @@ fn generate(kind: TreeKind, world: &mut TreeWorld, rand: &mut JavaRandom, origin
 /// Columns inside the target chunk use the pre-decoration heightmap; columns
 /// outside use the same undecorated generation as the neighbour chunk.
 fn ground_at(
-    target: ChunkPos,
+    target: ChunkPosition,
     heights: &[[u8; CHUNK_SIZE]; CHUNK_SIZE],
     grounds: &[[Id; CHUNK_SIZE]; CHUNK_SIZE],
     remote_ground: &mut HashMap<(i32, i32), (i32, Id)>,
-    remote_chunks: &mut HashMap<ChunkPos, Chunk>,
-    remote_chunk: &impl Fn(ChunkPos) -> Chunk,
+    remote_chunks: &mut HashMap<ChunkPosition, Chunk>,
+    remote_chunk: &impl Fn(ChunkPosition) -> Chunk,
     world_x: i32,
     world_z: i32,
 ) -> (i32, Id) {
@@ -469,7 +469,7 @@ fn ground_at(
     } else if let Some(&column) = remote_ground.get(&(world_x, world_z)) {
         column
     } else {
-        let pos = ChunkPos {
+        let pos = ChunkPosition {
             x: world_x.div_euclid(CHUNK_SIZE as i32),
             z: world_z.div_euclid(CHUNK_SIZE as i32),
         };

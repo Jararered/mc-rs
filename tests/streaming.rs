@@ -13,7 +13,7 @@ use game::player::Player;
 use game::world::chunk::CHUNK_HEIGHT;
 use game::world::chunk::CHUNK_SIZE;
 use game::world::chunk::Chunk;
-use game::world::chunk::ChunkPos;
+use game::world::chunk::ChunkPosition;
 use game::world::chunk::WorldChunks;
 use game::world::plugin::WorldPlugin;
 use game::world::streaming::GENERATE_MARGIN;
@@ -49,12 +49,12 @@ fn run_until(
     }
 }
 
-fn rendered_positions(app: &mut App) -> Vec<ChunkPos> {
-    let mut query = app.world_mut().query::<&ChunkPos>();
+fn rendered_positions(app: &mut App) -> Vec<ChunkPosition> {
+    let mut query = app.world_mut().query::<&ChunkPosition>();
     query.iter(app.world()).copied().collect()
 }
 
-fn block_at(app: &App, position: ChunkPos, x: usize, y: usize, z: usize) -> Option<Id> {
+fn block_at(app: &App, position: ChunkPosition, x: usize, y: usize, z: usize) -> Option<Id> {
     app.world()
         .resource::<WorldChunks>()
         .get(position)
@@ -85,7 +85,7 @@ fn distant_chunks_release_world_data_entities_and_meshes() {
     assert!(
         app.world()
             .resource::<WorldChunks>()
-            .get(ChunkPos::ZERO)
+            .get(ChunkPosition::ZERO)
             .is_none()
     );
     assert_eq!(
@@ -96,7 +96,7 @@ fn distant_chunks_release_world_data_entities_and_meshes() {
     );
     assert_eq!(rendered_positions(&mut app).len(), 0);
 
-    let destination = ChunkPos { x: 8, z: 0 };
+    let destination = ChunkPosition { x: 8, z: 0 };
     // Generation and meshing are separate stages, so wait for the rendered
     // entity rather than just the stored chunk data.
     assert!(run_until(&mut app, Duration::from_secs(3), |app| {
@@ -118,7 +118,7 @@ fn generation_runs_one_ring_ahead_of_meshing() {
 
     // A chunk on the generation ring is stored but never rendered, because it
     // sits outside the render distance.
-    let ring = ChunkPos {
+    let ring = ChunkPosition {
         x: LOAD_RADIUS + GENERATE_MARGIN,
         z: 0,
     };
@@ -127,7 +127,7 @@ fn generation_runs_one_ring_ahead_of_meshing() {
     }));
     assert!(!rendered_positions(&mut app).contains(&ring));
 
-    let edge = ChunkPos {
+    let edge = ChunkPosition {
         x: LOAD_RADIUS,
         z: 0,
     };
@@ -138,7 +138,7 @@ fn generation_runs_one_ring_ahead_of_meshing() {
     for dx in -1..=1 {
         for dz in -1..=1 {
             assert!(
-                chunks.contains(ChunkPos {
+                chunks.contains(ChunkPosition {
                     x: edge.x + dx,
                     z: edge.z + dz,
                 }),
@@ -156,11 +156,11 @@ fn spawn_chunk_waits_for_all_neighbor_block_data_before_its_first_mesh() {
 
     app.update();
     assert!(
-        !rendered_positions(&mut app).contains(&ChunkPos::ZERO),
+        !rendered_positions(&mut app).contains(&ChunkPosition::ZERO),
         "the spawn chunk must not mesh before its neighbors are loaded"
     );
     assert!(run_until(&mut app, Duration::from_secs(5), |app| {
-        rendered_positions(app).contains(&ChunkPos::ZERO)
+        rendered_positions(app).contains(&ChunkPosition::ZERO)
     }));
     let mut layers = app.world_mut().query::<(Entity, &Mesh3d, &Name)>();
     let layer_entities: Vec<_> = layers
@@ -187,7 +187,7 @@ fn spawn_chunk_waits_for_all_neighbor_block_data_before_its_first_mesh() {
     for dx in -1..=1 {
         for dz in -1..=1 {
             assert!(
-                chunks.contains(ChunkPos { x: dx, z: dz }),
+                chunks.contains(ChunkPosition { x: dx, z: dz }),
                 "missing neighbor ({dx}, {dz}) when the spawn chunk was meshed"
             );
         }
@@ -200,9 +200,9 @@ fn repeated_remesh_request_promotes_chunk_without_duplicates() {
     app.world_mut()
         .spawn((Player, Transform::from_xyz(8.0, 80.0, 8.0)));
 
-    let first = ChunkPos::ZERO;
-    let second = ChunkPos { x: 1, z: 0 };
-    let third = ChunkPos { x: 0, z: 1 };
+    let first = ChunkPosition::ZERO;
+    let second = ChunkPosition { x: 1, z: 0 };
+    let third = ChunkPosition { x: 0, z: 1 };
     assert!(run_until(&mut app, Duration::from_secs(10), |app| {
         let rendered = rendered_positions(app);
         [first, second, third]
@@ -242,7 +242,7 @@ fn edited_chunk_remesh_is_dispatched_without_main_thread_meshing() {
     let mut app = test_app();
     app.world_mut()
         .spawn((Player, Transform::from_xyz(8.0, 80.0, 8.0)));
-    let origin = ChunkPos::ZERO;
+    let origin = ChunkPosition::ZERO;
     assert!(run_until(&mut app, Duration::from_secs(5), |app| {
         rendered_positions(app).contains(&origin)
     }));
@@ -285,7 +285,7 @@ fn pressing_f4_regenerates_loaded_chunks_from_scratch() {
     app.world_mut()
         .spawn((Player, Transform::from_xyz(8.0, 80.0, 8.0)));
 
-    let origin = ChunkPos::ZERO;
+    let origin = ChunkPosition::ZERO;
     assert!(run_until(&mut app, Duration::from_secs(3), |app| {
         rendered_positions(app).contains(&origin)
     }));
@@ -319,7 +319,7 @@ fn pressing_f4_regenerates_loaded_chunks_from_scratch() {
 
 #[test]
 fn generation_radius_is_one_ring_beyond_the_render_distance() {
-    let center = ChunkPos { x: 3, z: -2 };
+    let center = ChunkPosition { x: 3, z: -2 };
     let generated = positions_in_radius(center, LOAD_RADIUS + GENERATE_MARGIN);
     let rendered = positions_in_radius(center, LOAD_RADIUS);
     assert_eq!(GENERATE_MARGIN, 1);

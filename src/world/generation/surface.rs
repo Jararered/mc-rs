@@ -2,7 +2,7 @@ use crate::block::id::Id;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::Chunk;
-use crate::world::chunk::ChunkPos;
+use crate::world::chunk::ChunkPosition;
 
 use super::biome::Biome;
 use super::biome::BiomeMap;
@@ -11,7 +11,7 @@ use crate::random::JavaRandom;
 
 const SEA_LEVEL: usize = 64;
 
-fn surface_chunk_seed(position: ChunkPos) -> u64 {
+fn surface_chunk_seed(position: ChunkPosition) -> u64 {
     (position.x as i64 as u64)
         .wrapping_mul(0x4f9939f508)
         .wrapping_add((position.z as i64 as u64).wrapping_mul(0x1ef1565bd5))
@@ -20,7 +20,7 @@ fn surface_chunk_seed(position: ChunkPos) -> u64 {
 /// Replace exposed stone with Beta-style topsoil, beaches, and bedrock.
 pub(super) fn apply_surface(
     chunk: &mut Chunk,
-    position: ChunkPos,
+    position: ChunkPosition,
     biomes: &BiomeMap,
     terrain: &TerrainGenerator,
 ) {

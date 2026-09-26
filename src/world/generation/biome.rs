@@ -1,5 +1,5 @@
 use crate::world::chunk::CHUNK_SIZE;
-use crate::world::chunk::ChunkPos;
+use crate::world::chunk::ChunkPosition;
 use num_enum::FromPrimitive;
 use num_enum::IntoPrimitive;
 
@@ -81,7 +81,7 @@ impl BiomeGenerator {
         }
     }
 
-    pub fn generate(&self, position: ChunkPos) -> BiomeMap {
+    pub fn generate(&self, position: ChunkPosition) -> BiomeMap {
         BiomeMap {
             cells: std::array::from_fn(|index| {
                 let x = index / CHUNK_SIZE;

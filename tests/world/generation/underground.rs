@@ -1,7 +1,7 @@
 use game::block::id::Id;
 use game::world::chunk::CHUNK_HEIGHT;
 use game::world::chunk::CHUNK_SIZE;
-use game::world::chunk::ChunkPos;
+use game::world::chunk::ChunkPosition;
 use game::world::generation::WorldGenerator;
 
 #[test]
@@ -9,9 +9,9 @@ fn underground_generation_is_deterministic_and_order_independent() {
     let first = WorldGenerator::new(2147381);
     let second = WorldGenerator::new(2147381);
     let positions = [
-        ChunkPos { x: -1, z: 0 },
-        ChunkPos { x: 0, z: 0 },
-        ChunkPos { x: 0, z: 1 },
+        ChunkPosition { x: -1, z: 0 },
+        ChunkPosition { x: 0, z: 0 },
+        ChunkPosition { x: 0, z: 1 },
     ];
     let forward: Vec<_> = positions
         .iter()
@@ -47,10 +47,10 @@ fn common_ores_generate_and_cave_lava_stays_below_y10() {
     let mut coal = 0;
     let mut iron = 0;
     for pos in [
-        ChunkPos { x: 0, z: 0 },
-        ChunkPos { x: 1, z: 0 },
-        ChunkPos { x: 0, z: 1 },
-        ChunkPos { x: 1, z: 1 },
+        ChunkPosition { x: 0, z: 0 },
+        ChunkPosition { x: 1, z: 0 },
+        ChunkPosition { x: 0, z: 1 },
+        ChunkPosition { x: 1, z: 1 },
     ] {
         let generated = generator.generate(pos);
         for y in 0..CHUNK_HEIGHT {
@@ -84,7 +84,7 @@ fn population_places_clay_and_dungeon_blocks() {
     let mut dungeon_loot_stacks = 0;
     for z in -8..8 {
         for x in -8..8 {
-            let generated = generator.generate(ChunkPos { x, z });
+            let generated = generator.generate(ChunkPosition { x, z });
             for block in generated.chunk.blocks() {
                 match block {
                     Id::Clay => clay += 1,

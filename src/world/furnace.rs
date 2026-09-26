@@ -6,7 +6,7 @@ use bevy::prelude::ResMut;
 use crate::block::id::Id;
 use crate::item::ItemId;
 use crate::item::ItemStack;
-use crate::world::chunk::ChunkPos;
+use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
 use crate::world::persistence::WorldPersistence;
 use crate::world::streaming::WorldStreaming;
@@ -191,10 +191,10 @@ pub fn tick_furnaces(
             let next = block.with_furnace_lit(burning);
             chunks.set_block(x, y, z, next);
             if let Some(streaming) = streaming.as_deref_mut() {
-                let center = ChunkPos::from_block(x, z);
+                let center = ChunkPosition::from_block(x, z);
                 for dz in -1..=1 {
                     for dx in -1..=1 {
-                        streaming.request_remesh(ChunkPos {
+                        streaming.request_remesh(ChunkPosition {
                             x: center.x + dx,
                             z: center.z + dz,
                         });
@@ -203,7 +203,7 @@ pub fn tick_furnaces(
             }
         }
         if changed && let Some(persistence) = persistence.as_deref_mut() {
-            persistence.mark_dirty(ChunkPos::from_block(x, z));
+            persistence.mark_dirty(ChunkPosition::from_block(x, z));
         }
     }
 }

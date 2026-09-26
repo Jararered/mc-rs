@@ -2,7 +2,7 @@ use game::block::id::Id;
 use game::block::properties::blocks_movement;
 use game::world::chunk::CHUNK_HEIGHT;
 use game::world::chunk::CHUNK_SIZE;
-use game::world::chunk::ChunkPos;
+use game::world::chunk::ChunkPosition;
 use game::world::generation::Biome;
 use game::world::generation::WorldGenerator;
 
@@ -15,7 +15,7 @@ fn snow_layers_are_generated_only_on_cold_exposed_snow_biome_surfaces() {
         let generator = WorldGenerator::new(seed);
         for z in (-4..=4).step_by(2) {
             for x in (-4..=4).step_by(2) {
-                let generated = generator.generate(ChunkPos { x, z });
+                let generated = generator.generate(ChunkPosition { x, z });
                 for local_z in 0..CHUNK_SIZE {
                     for local_x in 0..CHUNK_SIZE {
                         for y in 0..CHUNK_HEIGHT {

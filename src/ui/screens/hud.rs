@@ -28,7 +28,7 @@ use crate::ui::icons::overlay::count_label;
 use crate::ui::icons::overlay::durability_track;
 use crate::ui::icons::overlay::icon_size;
 use crate::ui::icons::overlay::place_stack_label;
-use crate::world::chunk::ChunkPos;
+use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
 use crate::world::tick::WorldTick;
 
@@ -190,7 +190,7 @@ fn update_debug_overlay(
     let below = chunks
         .block_at(bx, (feet_y - 0.01).floor() as i32, bz)
         .map_or_else(|| "unloaded".to_string(), |block| format!("{block:?}"));
-    let chunk = ChunkPos::from_block(bx, bz);
+    let chunk = ChunkPosition::from_block(bx, bz);
     let target = camera
         .single()
         .ok()

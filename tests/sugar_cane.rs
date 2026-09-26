@@ -13,7 +13,7 @@ use game::physics::BlockHit;
 use game::player::place_selected_block;
 use game::world::chunk::CHUNK_SIZE;
 use game::world::chunk::Chunk;
-use game::world::chunk::ChunkPos;
+use game::world::chunk::ChunkPosition;
 use game::world::chunk::WorldChunks;
 use game::world::generation::Biome;
 use game::world::generation::BiomeMap;
@@ -29,7 +29,7 @@ fn world_with(chunk: Chunk) -> WorldChunks {
     let heightmap = Heightmap::from_chunk(&chunk);
     let mut chunks = WorldChunks::default();
     chunks.insert(
-        ChunkPos::ZERO,
+        ChunkPosition::ZERO,
         GeneratedChunk {
             chunk,
             heightmap,
@@ -150,7 +150,7 @@ fn world_generation_places_sugar_cane_near_water() {
     let generator = WorldGenerator::new(0);
     for z in -16..=16 {
         for x in -16..=16 {
-            let generated = generator.generate(ChunkPos { x, z });
+            let generated = generator.generate(ChunkPosition { x, z });
             if generated.chunk.blocks().contains(&Id::SugarCane) {
                 return;
             }

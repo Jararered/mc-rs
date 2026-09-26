@@ -10,7 +10,7 @@ use crate::block::properties::plant_grows_on;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::Chunk;
-use crate::world::chunk::ChunkPos;
+use crate::world::chunk::ChunkPosition;
 use std::collections::HashMap;
 
 use super::biome::Biome;
@@ -18,8 +18,8 @@ use crate::random::JavaRandom;
 
 pub(super) fn place_plants(
     chunk: &mut Chunk,
-    target: ChunkPos,
-    source: ChunkPos,
+    target: ChunkPosition,
+    source: ChunkPosition,
     rand: &mut JavaRandom,
     biome: Biome,
     mut surface_air_y: impl FnMut(i32, i32) -> i32,
@@ -53,8 +53,8 @@ pub(super) fn place_plants(
 
 pub(super) fn place_plant_extras(
     chunk: &mut Chunk,
-    target: ChunkPos,
-    source: ChunkPos,
+    target: ChunkPosition,
+    source: ChunkPosition,
     rand: &mut JavaRandom,
 ) {
     if rand.next_int(2) == 0 {
@@ -80,12 +80,12 @@ pub(super) fn place_plant_extras(
 /// through air and leaves, and bushes can only stay on sand.
 pub(super) fn place_dead_bushes(
     chunk: &mut Chunk,
-    target: ChunkPos,
-    source: ChunkPos,
+    target: ChunkPosition,
+    source: ChunkPosition,
     rand: &mut JavaRandom,
     biome: Biome,
-    remote_chunks: &mut HashMap<ChunkPos, Chunk>,
-    remote_chunk: &impl Fn(ChunkPos) -> Chunk,
+    remote_chunks: &mut HashMap<ChunkPosition, Chunk>,
+    remote_chunk: &impl Fn(ChunkPosition) -> Chunk,
 ) {
     if biome != Biome::Desert {
         return;
@@ -132,17 +132,17 @@ pub(super) fn place_dead_bushes(
 
 fn block_at(
     chunk: &Chunk,
-    target: ChunkPos,
+    target: ChunkPosition,
     x: i32,
     y: i32,
     z: i32,
-    remote_chunks: &mut HashMap<ChunkPos, Chunk>,
-    remote_chunk: &impl Fn(ChunkPos) -> Chunk,
+    remote_chunks: &mut HashMap<ChunkPosition, Chunk>,
+    remote_chunk: &impl Fn(ChunkPosition) -> Chunk,
 ) -> Id {
     if !(0..CHUNK_HEIGHT as i32).contains(&y) {
         return Id::Air;
     }
-    let pos = ChunkPos {
+    let pos = ChunkPosition {
         x: x.div_euclid(CHUNK_SIZE as i32),
         z: z.div_euclid(CHUNK_SIZE as i32),
     };
@@ -159,7 +159,7 @@ fn block_at(
     }
 }
 
-fn local_column(target: ChunkPos, x: i32, z: i32) -> Option<(usize, usize)> {
+fn local_column(target: ChunkPosition, x: i32, z: i32) -> Option<(usize, usize)> {
     let local_x = x - target.x * CHUNK_SIZE as i32;
     let local_z = z - target.z * CHUNK_SIZE as i32;
     ((0..CHUNK_SIZE as i32).contains(&local_x) && (0..CHUNK_SIZE as i32).contains(&local_z))
@@ -168,8 +168,8 @@ fn local_column(target: ChunkPos, x: i32, z: i32) -> Option<(usize, usize)> {
 
 fn flower_patch(
     chunk: &mut Chunk,
-    target: ChunkPos,
-    source: ChunkPos,
+    target: ChunkPosition,
+    source: ChunkPosition,
     rand: &mut JavaRandom,
     block: Id,
 ) {
@@ -186,8 +186,8 @@ fn flower_patch(
 
 fn mushroom_patch(
     chunk: &mut Chunk,
-    target: ChunkPos,
-    source: ChunkPos,
+    target: ChunkPosition,
+    source: ChunkPosition,
     rand: &mut JavaRandom,
     block: Id,
 ) {
@@ -202,7 +202,7 @@ fn mushroom_patch(
     }
 }
 
-fn try_mushroom(chunk: &mut Chunk, target: ChunkPos, x: i32, y: i32, z: i32, block: Id) {
+fn try_mushroom(chunk: &mut Chunk, target: ChunkPosition, x: i32, y: i32, z: i32, block: Id) {
     let local_x = x - target.x * CHUNK_SIZE as i32;
     let local_z = z - target.z * CHUNK_SIZE as i32;
     if !(0..CHUNK_SIZE as i32).contains(&local_x)
@@ -230,8 +230,8 @@ fn try_mushroom(chunk: &mut Chunk, target: ChunkPos, x: i32, y: i32, z: i32, blo
 
 fn tall_grass_patch(
     chunk: &mut Chunk,
-    target: ChunkPos,
-    source: ChunkPos,
+    target: ChunkPosition,
+    source: ChunkPosition,
     rand: &mut JavaRandom,
     biome: Biome,
     surface_air_y: &mut impl FnMut(i32, i32) -> i32,
@@ -270,7 +270,7 @@ fn tall_grass_patch(
     }
 }
 
-fn try_plant(chunk: &mut Chunk, target: ChunkPos, x: i32, y: i32, z: i32, block: Id) {
+fn try_plant(chunk: &mut Chunk, target: ChunkPosition, x: i32, y: i32, z: i32, block: Id) {
     let local_x = x - target.x * CHUNK_SIZE as i32;
     let local_z = z - target.z * CHUNK_SIZE as i32;
     if !(0..CHUNK_SIZE as i32).contains(&local_x)

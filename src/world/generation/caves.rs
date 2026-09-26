@@ -3,11 +3,11 @@ use crate::block::id::Id;
 use crate::random::JavaRandom;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::Chunk;
-use crate::world::chunk::ChunkPos;
+use crate::world::chunk::ChunkPosition;
 
 const PI: f32 = 3.1415927;
 
-pub(super) fn carve(chunk: &mut Chunk, target: ChunkPos, seed: u64) {
+pub(super) fn carve(chunk: &mut Chunk, target: ChunkPosition, seed: u64) {
     let mut random = JavaRandom::new(seed);
     let salt_x = random.next_long() / 2 * 2 + 1;
     let salt_z = random.next_long() / 2 * 2 + 1;
@@ -69,7 +69,7 @@ pub(super) fn carve(chunk: &mut Chunk, target: ChunkPos, seed: u64) {
 #[allow(clippy::too_many_arguments)]
 fn node(
     chunk: &mut Chunk,
-    target: ChunkPos,
+    target: ChunkPosition,
     parent: &mut JavaRandom,
     mut p: [f64; 3],
     radius: f32,

@@ -7,4 +7,4 @@ pub use chunk::ChestGroup;
 pub use chunk::Chunk;
 pub use chunk::WorldChunks;
 pub use chunk::remesh_chunks_touching;
-pub use position::ChunkPos;
+pub use position::ChunkPosition;

@@ -2,7 +2,7 @@ use bevy::camera::primitives::MeshAabb;
 use bevy::camera::visibility::NoAutoAabb;
 use bevy::prelude::*;
 
-use crate::world::chunk::ChunkPos;
+use crate::world::chunk::ChunkPosition;
 use crate::world::meshing::ChunkMeshes;
 use crate::world::textures::LEAF_WIGGLE_AMPLITUDE;
 use crate::world::textures::LeafCutoutMaterial;
@@ -24,7 +24,7 @@ struct MeshLayer {
 pub(super) fn spawn_chunk(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
-    position: ChunkPos,
+    position: ChunkPosition,
     layers: ChunkMeshes,
     material: &Handle<StandardMaterial>,
     grass_overlay_material: &Handle<StandardMaterial>,

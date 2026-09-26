@@ -26,7 +26,7 @@ use crate::player::Player;
 use crate::player::PlayerInterpolation;
 use crate::player::PlayerMovementInput;
 use crate::world::chunk::CHUNK_HEIGHT;
-use crate::world::chunk::ChunkPos;
+use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
 use crate::world::tick::TICK_SECONDS;
 use crate::world::tick::WorldTick;
@@ -435,7 +435,7 @@ fn integrate_player(
         flying,
     ) in &mut players
     {
-        if !chunks.contains(ChunkPos::from_world(
+        if !chunks.contains(ChunkPosition::from_world(
             transform.translation.x,
             transform.translation.z,
         )) {
@@ -803,7 +803,7 @@ fn integrate_bodies(
     for (mut transform, mut velocity, size, mut collision, step_height, gravity, flying) in
         &mut bodies
     {
-        if !chunks.contains(ChunkPos::from_world(
+        if !chunks.contains(ChunkPosition::from_world(
             transform.translation.x,
             transform.translation.z,
         )) {

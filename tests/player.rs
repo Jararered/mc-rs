@@ -29,7 +29,7 @@ use game::player::punch_nearly_transparent_texels;
 use game::player::selection_outline_mesh;
 use game::world::chunk::CHUNK_SIZE;
 use game::world::chunk::Chunk;
-use game::world::chunk::ChunkPos;
+use game::world::chunk::ChunkPosition;
 use game::world::chunk::WorldChunks;
 use game::world::generation::Biome;
 use game::world::generation::BiomeMap;
@@ -77,7 +77,7 @@ fn plains() -> BiomeMap {
 fn world_with(chunk: Chunk) -> WorldChunks {
     let mut chunks = WorldChunks::default();
     chunks.insert(
-        ChunkPos::ZERO,
+        ChunkPosition::ZERO,
         GeneratedChunk {
             heightmap: Heightmap::from_chunk(&chunk),
             biomes: plains(),
@@ -109,7 +109,7 @@ fn breaking_replaces_a_solid_block_with_air() {
         hit(8, 64, 8, BlockFace::Up, Id::Dirt)
     ));
     assert_eq!(chunks.block_at(8, 64, 8), Some(Id::Air));
-    assert_eq!(chunks.get(ChunkPos::ZERO).unwrap().heightmap.get(8, 8), 0);
+    assert_eq!(chunks.get(ChunkPosition::ZERO).unwrap().heightmap.get(8, 8), 0);
 }
 
 #[test]
@@ -139,7 +139,7 @@ fn placing_puts_torch_against_the_hit_face() {
     ));
     assert_eq!(chunks.block_at(8, 65, 8), Some(PLACED_BLOCK));
     assert_eq!(PLACED_BLOCK, Id::Torch);
-    assert_eq!(chunks.get(ChunkPos::ZERO).unwrap().heightmap.get(8, 8), 65);
+    assert_eq!(chunks.get(ChunkPosition::ZERO).unwrap().heightmap.get(8, 8), 65);
 }
 
 #[test]

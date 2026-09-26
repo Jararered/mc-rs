@@ -41,7 +41,7 @@ use crate::ui::InventoryScreen;
 use crate::ui::WorkbenchUiSession;
 use crate::ui::close_crafting_interface;
 use crate::world::chunk::CHUNK_HEIGHT;
-use crate::world::chunk::ChunkPos;
+use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
 use crate::world::chunk::remesh_chunks_touching;
 use crate::world::persistence::WorldPersistence;
@@ -126,7 +126,7 @@ pub(crate) fn interact_blocks(
             stack,
         );
         if let Some(persistence) = persistence.as_deref_mut() {
-            persistence.mark_dirty(ChunkPos::from_block(
+            persistence.mark_dirty(ChunkPosition::from_block(
                 transform.translation.x.floor() as i32,
                 transform.translation.z.floor() as i32,
             ));
@@ -673,7 +673,7 @@ fn notify_edit(
     light_edit: bool,
 ) {
     if let Some(persistence) = persistence.as_deref_mut() {
-        persistence.mark_dirty(ChunkPos::from_block(x, z));
+        persistence.mark_dirty(ChunkPosition::from_block(x, z));
         if light_edit {
             // A detached wall torch may belong to the neighboring chunk.
             for position in remesh_chunks_touching(x, z) {
@@ -683,10 +683,10 @@ fn notify_edit(
     }
     if let Some(streaming) = streaming.as_deref_mut() {
         if light_edit {
-            let center = ChunkPos::from_block(x, z);
+            let center = ChunkPosition::from_block(x, z);
             for dz in -1..=1 {
                 for dx in -1..=1 {
-                    streaming.request_remesh(ChunkPos {
+                    streaming.request_remesh(ChunkPosition {
                         x: center.x + dx,
                         z: center.z + dz,
                     });

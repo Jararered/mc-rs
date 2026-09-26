@@ -108,7 +108,7 @@ fn add_climate_chunk(app: &mut App) {
         biome: Biome::Forest,
     };
     app.world_mut().resource_mut::<WorldChunks>().insert(
-        game::world::chunk::ChunkPos::ZERO,
+        game::world::chunk::ChunkPosition::ZERO,
         GeneratedChunk {
             heightmap: Heightmap::from_chunk(&chunk),
             chunk,

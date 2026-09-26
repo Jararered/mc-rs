@@ -29,7 +29,7 @@ use super::render::apply_chunk_meshes;
 use super::render::despawn_rendered_chunk;
 use super::render::spawn_chunk;
 use super::within_radius;
-use crate::world::chunk::ChunkPos;
+use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
 use crate::world::generation::WorldGenerator;
 use crate::world::sky::celestial_angle;
@@ -71,7 +71,7 @@ pub(crate) fn setup_streaming(
     let stored = persistence
         .as_ref()
         .and_then(|persistence| persistence.storage())
-        .and_then(|storage| storage.load_chunk(ChunkPos::ZERO));
+        .and_then(|storage| storage.load_chunk(ChunkPosition::ZERO));
     let mut generated = match stored {
         Some(chunk) => {
             perf.load.record(load_start.elapsed());
@@ -79,10 +79,10 @@ pub(crate) fn setup_streaming(
         }
         None => {
             if let Some(persistence) = persistence.as_deref_mut() {
-                persistence.mark_dirty(ChunkPos::ZERO);
+                persistence.mark_dirty(ChunkPosition::ZERO);
             }
             let generate_start = Instant::now();
-            let chunk = generator.generate(ChunkPos::ZERO);
+            let chunk = generator.generate(ChunkPosition::ZERO);
             perf.generate.record(generate_start.elapsed());
             chunk
         }
@@ -93,7 +93,7 @@ pub(crate) fn setup_streaming(
     let mask_material = mask_material.0.clone();
     let grass_overlay_material = grass_overlay_material.0.clone();
     let saved_items = std::mem::take(&mut generated.items);
-    chunks.insert(ChunkPos::ZERO, generated);
+    chunks.insert(ChunkPosition::ZERO, generated);
     for item in saved_items {
         spawn_saved_item(&mut commands, item);
     }
@@ -177,7 +177,7 @@ pub(crate) fn stream_chunks(
     let Ok(player) = player.single() else {
         return;
     };
-    let center = ChunkPos::from_world(player.translation.x, player.translation.z);
+    let center = ChunkPosition::from_world(player.translation.x, player.translation.z);
     let load_radius = settings.render_distance;
     let generate_radius = load_radius + GENERATE_MARGIN;
     let unload_radius = generate_radius;
@@ -236,7 +236,7 @@ pub(crate) fn stream_chunks(
         if let Some(mut chunk) = chunks.remove(position) {
             let mut leaving = Vec::new();
             for (entity, transform, dropped, motion, state) in &dropped {
-                let item_chunk = ChunkPos::from_block(
+                let item_chunk = ChunkPosition::from_block(
                     transform.translation.x.floor() as i32,
                     transform.translation.z.floor() as i32,
                 );
@@ -443,7 +443,7 @@ pub(crate) fn stream_chunks(
     }
 }
 
-fn sort_by_distance(positions: &mut [ChunkPos], center: ChunkPos) {
+fn sort_by_distance(positions: &mut [ChunkPosition], center: ChunkPosition) {
     positions.sort_by_key(|position| {
         let dx = i64::from(position.x) - i64::from(center.x);
         let dz = i64::from(position.z) - i64::from(center.z);

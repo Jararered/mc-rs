@@ -9,7 +9,7 @@ use crate::random::JavaRandom;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::Chunk;
-use crate::world::chunk::ChunkPos;
+use crate::world::chunk::ChunkPosition;
 
 use super::biome::Biome;
 
@@ -18,13 +18,13 @@ use super::biome::Biome;
 /// so the same 3x3 source neighbourhood used by plants covers every overlap.
 pub(super) fn place_cacti(
     chunk: &mut Chunk,
-    target: ChunkPos,
-    source: ChunkPos,
+    target: ChunkPosition,
+    source: ChunkPosition,
     rand: &mut JavaRandom,
     biome: Biome,
     placed: &mut HashSet<(i32, i32, i32)>,
-    remote_chunks: &mut HashMap<ChunkPos, Chunk>,
-    remote_chunk: &impl Fn(ChunkPos) -> Chunk,
+    remote_chunks: &mut HashMap<ChunkPosition, Chunk>,
+    remote_chunk: &impl Fn(ChunkPosition) -> Chunk,
 ) {
     if biome != Biome::Desert {
         return;
@@ -117,13 +117,13 @@ pub(super) fn place_cacti(
 #[allow(clippy::too_many_arguments)]
 fn block_at(
     chunk: &Chunk,
-    target: ChunkPos,
+    target: ChunkPosition,
     x: i32,
     y: i32,
     z: i32,
     placed: &HashSet<(i32, i32, i32)>,
-    remote_chunks: &mut HashMap<ChunkPos, Chunk>,
-    remote_chunk: &impl Fn(ChunkPos) -> Chunk,
+    remote_chunks: &mut HashMap<ChunkPosition, Chunk>,
+    remote_chunk: &impl Fn(ChunkPosition) -> Chunk,
 ) -> Id {
     if !(0..CHUNK_HEIGHT as i32).contains(&y) {
         return Id::Air;
@@ -131,7 +131,7 @@ fn block_at(
     if placed.contains(&(x, y, z)) {
         return Id::Cactus;
     }
-    let pos = ChunkPos {
+    let pos = ChunkPosition {
         x: x.div_euclid(CHUNK_SIZE as i32),
         z: z.div_euclid(CHUNK_SIZE as i32),
     };
@@ -148,7 +148,7 @@ fn block_at(
     }
 }
 
-fn local_column(target: ChunkPos, x: i32, z: i32) -> Option<(usize, usize)> {
+fn local_column(target: ChunkPosition, x: i32, z: i32) -> Option<(usize, usize)> {
     let local_x = x - target.x * CHUNK_SIZE as i32;
     let local_z = z - target.z * CHUNK_SIZE as i32;
     ((0..CHUNK_SIZE as i32).contains(&local_x) && (0..CHUNK_SIZE as i32).contains(&local_z))

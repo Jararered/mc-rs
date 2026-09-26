@@ -1,7 +1,7 @@
 use crate::item::ItemStack;
 use crate::random::JavaRandom;
 use crate::world::chunk::Chunk;
-use crate::world::chunk::ChunkPos;
+use crate::world::chunk::ChunkPosition;
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::sync::Mutex;
@@ -49,8 +49,8 @@ pub struct WorldGenerator {
     terrain: TerrainGenerator,
     /// Population reads unmodified terrain around each target. Keep those
     /// immutable chunks across jobs instead of rebuilding the same neighbors.
-    base_cache: Mutex<VecDeque<(ChunkPos, Chunk, BiomeMap)>>,
-    cache: Mutex<VecDeque<(ChunkPos, Chunk, BiomeMap, HashMap<ChunkPos, JavaRandom>)>>,
+    base_cache: Mutex<VecDeque<(ChunkPosition, Chunk, BiomeMap)>>,
+    cache: Mutex<VecDeque<(ChunkPosition, Chunk, BiomeMap, HashMap<ChunkPosition, JavaRandom>)>>,
 }
 
 const BASE_CACHE_CAPACITY: usize = 256;
@@ -67,7 +67,7 @@ impl WorldGenerator {
         }
     }
 
-    pub fn generate(&self, position: ChunkPos) -> GeneratedChunk {
+    pub fn generate(&self, position: ChunkPosition) -> GeneratedChunk {
         let (mut chunk, biomes, population_rng) = self.generate_undecorated(position);
         // Capture the ground after caves and population, before vegetation.
         let heightmap = Heightmap::from_chunk(&chunk);
@@ -90,8 +90,8 @@ impl WorldGenerator {
 
     fn generate_undecorated(
         &self,
-        position: ChunkPos,
-    ) -> (Chunk, BiomeMap, HashMap<ChunkPos, JavaRandom>) {
+        position: ChunkPosition,
+    ) -> (Chunk, BiomeMap, HashMap<ChunkPosition, JavaRandom>) {
         if let Some((_, chunk, biomes, random)) = self
             .cache
             .lock()
@@ -113,7 +113,7 @@ impl WorldGenerator {
         (chunk, biomes, random)
     }
 
-    fn base_chunk(&self, position: ChunkPos) -> (Chunk, BiomeMap) {
+    fn base_chunk(&self, position: ChunkPosition) -> (Chunk, BiomeMap) {
         if let Some((_, chunk, biomes)) = self
             .base_cache
             .lock()
@@ -152,6 +152,6 @@ impl WorldGenerator {
 }
 
 /// Retain the original one-chunk convenience API with a deterministic seed.
-pub fn generate_chunk(position: ChunkPos) -> Chunk {
+pub fn generate_chunk(position: ChunkPosition) -> Chunk {
     WorldGenerator::new(0).generate(position).chunk
 }

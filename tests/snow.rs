@@ -10,7 +10,7 @@ use game::physics::colliding_aabbs;
 use game::physics::raycast_blocks;
 use game::world::chunk::CHUNK_SIZE;
 use game::world::chunk::Chunk;
-use game::world::chunk::ChunkPos;
+use game::world::chunk::ChunkPosition;
 use game::world::chunk::WorldChunks;
 use game::world::generation::Biome;
 use game::world::generation::BiomeMap;
@@ -119,7 +119,7 @@ fn snow_layer_ray_and_entity_collision_stop_at_its_top() {
     let mut chunk = Chunk::new();
     chunk.set(8, 64, 8, Id::SnowLayer);
     let mut chunks = WorldChunks::default();
-    chunks.insert(ChunkPos::ZERO, generated(chunk));
+    chunks.insert(ChunkPosition::ZERO, generated(chunk));
 
     assert!(
         raycast_blocks(&chunks, Vec3::new(7.0, 64.06, 8.5), Vec3::X, BLOCK_REACH)

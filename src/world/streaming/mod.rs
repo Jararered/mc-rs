@@ -6,7 +6,7 @@ use std::time::Duration;
 use bevy::prelude::*;
 use bevy::tasks::Task;
 
-use super::chunk::ChunkPos;
+use super::chunk::ChunkPosition;
 use super::generation::GeneratedChunk;
 use super::generation::WorldGenerator;
 use super::meshing::ChunkMeshes;
@@ -87,10 +87,10 @@ pub struct WorldStreaming {
     grass_colors: GrassColors,
     foliage_colors: FoliageColors,
     /// Terrain and decoration jobs inside the generation radius.
-    generating: HashMap<ChunkPos, Task<ChunkJob>>,
+    generating: HashMap<ChunkPosition, Task<ChunkJob>>,
     /// Mesh jobs for already generated chunks inside the render distance.
-    meshing: HashMap<ChunkPos, Task<(ChunkMeshes, Duration)>>,
-    rendered: HashMap<ChunkPos, RenderedChunk>,
+    meshing: HashMap<ChunkPosition, Task<(ChunkMeshes, Duration)>>,
+    rendered: HashMap<ChunkPosition, RenderedChunk>,
     material: Handle<StandardMaterial>,
     grass_overlay_material: Handle<StandardMaterial>,
     cutout_material: Handle<LeafCutoutMaterial>,
@@ -102,10 +102,10 @@ pub struct WorldStreaming {
     /// `World.skylightSubtracted`. Meshes bake this into vertex brightness, so
     /// a change rebuilds the loaded chunks the way Beta's `updateAllRenderers` does.
     skylight_subtracted: u8,
-    remesh_queue: VecDeque<ChunkPos>,
-    desired_generation: Vec<ChunkPos>,
-    desired_meshing: Vec<ChunkPos>,
-    desired_center: Option<ChunkPos>,
+    remesh_queue: VecDeque<ChunkPosition>,
+    desired_generation: Vec<ChunkPosition>,
+    desired_meshing: Vec<ChunkPosition>,
+    desired_center: Option<ChunkPosition>,
     desired_radius: i32,
 }
 
@@ -123,7 +123,7 @@ impl WorldStreaming {
     }
 
     /// Chunks waiting to be remeshed, in dispatch order.
-    pub fn queued_remesh_positions(&self) -> impl Iterator<Item = ChunkPos> + '_ {
+    pub fn queued_remesh_positions(&self) -> impl Iterator<Item = ChunkPosition> + '_ {
         self.remesh_queue.iter().copied()
     }
 
@@ -132,7 +132,7 @@ impl WorldStreaming {
     /// Cancels an in-flight first mesh so it cannot apply stale geometry after
     /// an edit. Already-rendered chunks are queued; unrendered ones are meshed
     /// again on the next streaming pass.
-    pub fn request_remesh(&mut self, position: ChunkPos) {
+    pub fn request_remesh(&mut self, position: ChunkPosition) {
         self.meshing.remove(&position);
         if self.rendered.contains_key(&position) {
             self.remesh_queue.retain(|queued| *queued != position);
@@ -141,16 +141,16 @@ impl WorldStreaming {
     }
 }
 
-pub fn within_radius(position: ChunkPos, center: ChunkPos, radius: i32) -> bool {
+pub fn within_radius(position: ChunkPosition, center: ChunkPosition, radius: i32) -> bool {
     (i64::from(position.x) - i64::from(center.x)).abs() <= i64::from(radius)
         && (i64::from(position.z) - i64::from(center.z)).abs() <= i64::from(radius)
 }
 
-pub fn positions_in_radius(center: ChunkPos, radius: i32) -> Vec<ChunkPos> {
+pub fn positions_in_radius(center: ChunkPosition, radius: i32) -> Vec<ChunkPosition> {
     let mut positions = Vec::with_capacity(((radius * 2 + 1) * (radius * 2 + 1)) as usize);
     for z in -radius..=radius {
         for x in -radius..=radius {
-            positions.push(ChunkPos {
+            positions.push(ChunkPosition {
                 x: center.x + x,
                 z: center.z + z,
             });

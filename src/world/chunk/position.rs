@@ -3,12 +3,12 @@ use bevy::prelude::Component;
 use super::CHUNK_SIZE;
 
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ChunkPos {
+pub struct ChunkPosition {
     pub x: i32,
     pub z: i32,
 }
 
-impl ChunkPos {
+impl ChunkPosition {
     pub const ZERO: Self = Self { x: 0, z: 0 };
 
     pub fn from_world(x: f32, z: f32) -> Self {

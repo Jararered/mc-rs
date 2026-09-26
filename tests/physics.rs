@@ -24,7 +24,7 @@ use game::player::Player;
 use game::player::PlayerMovementInput;
 use game::world::chunk::CHUNK_SIZE;
 use game::world::chunk::Chunk;
-use game::world::chunk::ChunkPos;
+use game::world::chunk::ChunkPosition;
 use game::world::chunk::WorldChunks;
 use game::world::generation::Biome;
 use game::world::generation::BiomeMap;
@@ -60,7 +60,7 @@ fn floor_world(floor_y: usize) -> WorldChunks {
         }
     }
     let mut chunks = WorldChunks::default();
-    chunks.insert(ChunkPos::ZERO, generated(chunk));
+    chunks.insert(ChunkPosition::ZERO, generated(chunk));
     chunks
 }
 
@@ -75,7 +75,7 @@ fn fluid_world(fluid: Id) -> WorldChunks {
         }
     }
     let mut chunks = WorldChunks::default();
-    chunks.insert(ChunkPos::ZERO, generated(chunk));
+    chunks.insert(ChunkPosition::ZERO, generated(chunk));
     chunks
 }
 
@@ -131,7 +131,7 @@ fn horizontal_collision_with_a_ladder_starts_a_climb() {
         chunk.set(9, y, 8, Id::LadderWest);
     }
     let mut chunks = WorldChunks::default();
-    chunks.insert(ChunkPos::ZERO, generated(chunk));
+    chunks.insert(ChunkPosition::ZERO, generated(chunk));
 
     let mut app = App::new();
     app.add_plugins(MinimalPlugins)
@@ -175,7 +175,7 @@ fn raycast_only_hits_the_torch_near_its_visible_shaft() {
     let mut chunk = Chunk::new();
     chunk.set(8, 64, 8, Id::Torch);
     let mut chunks = WorldChunks::default();
-    chunks.insert(ChunkPos::ZERO, generated(chunk));
+    chunks.insert(ChunkPosition::ZERO, generated(chunk));
 
     assert_eq!(
         selection_bounds(Id::Torch),
@@ -269,7 +269,7 @@ fn walking_stops_at_a_wall() {
     chunk.set(10, 65, 8, Id::Stone);
     chunk.set(10, 66, 8, Id::Stone);
     let mut chunks = WorldChunks::default();
-    chunks.insert(ChunkPos::ZERO, generated(chunk));
+    chunks.insert(ChunkPosition::ZERO, generated(chunk));
 
     let size = EntitySize::PLAYER;
     let mut aabb = size.aabb(Vec3::new(8.0, 65.0 + size.y_offset, 8.5));
@@ -291,7 +291,7 @@ fn water_does_not_stop_a_falling_body() {
         }
     }
     let mut chunks = WorldChunks::default();
-    chunks.insert(ChunkPos::ZERO, generated(chunk));
+    chunks.insert(ChunkPosition::ZERO, generated(chunk));
 
     let size = EntitySize::PLAYER;
     let mut aabb = size.aabb(Vec3::new(8.0, 64.0, 8.0));
@@ -468,7 +468,7 @@ fn ground_friction_depends_on_surface_slipperiness() {
         }
         chunk.set(8, 64, 8, surface);
         let mut chunks = WorldChunks::default();
-        chunks.insert(ChunkPos::ZERO, generated(chunk));
+        chunks.insert(ChunkPosition::ZERO, generated(chunk));
         let mut app = App::new();
         app.add_plugins(MinimalPlugins)
             .insert_resource(chunks)
@@ -580,7 +580,7 @@ fn player_steps_onto_low_obstacles_but_not_full_blocks() {
         }
         chunk.set(9, 65, 8, obstacle);
         let mut chunks = WorldChunks::default();
-        chunks.insert(ChunkPos::ZERO, generated(chunk));
+        chunks.insert(ChunkPosition::ZERO, generated(chunk));
         let aabb = EntitySize::PLAYER.aabb(Vec3::new(8.5, 65.0 + EntitySize::PLAYER.y_offset, 8.5));
         move_entity(aabb, Vec3::new(0.5, 0.0, 0.0), 0.5, true, &chunks)
     }
@@ -599,7 +599,7 @@ fn sneaking_brakes_at_the_edge_of_supported_ground() {
     chunk.set(8, 64, 8, Id::Stone);
     let chunks = generated(chunk);
     let mut world = WorldChunks::default();
-    world.insert(ChunkPos::ZERO, chunks);
+    world.insert(ChunkPosition::ZERO, chunks);
     let aabb = EntitySize::PLAYER.aabb(Vec3::new(8.5, 65.0 + EntitySize::PLAYER.y_offset, 8.5));
 
     let movement = move_entity_with_sneak(aabb, Vec3::new(0.9, 0.0, 0.0), 0.5, true, true, &world);
@@ -625,7 +625,7 @@ fn raycast_reports_the_face_the_ray_entered() {
     let mut chunk = Chunk::new();
     chunk.set(10, 65, 8, Id::Dirt);
     let mut chunks = WorldChunks::default();
-    chunks.insert(ChunkPos::ZERO, generated(chunk));
+    chunks.insert(ChunkPosition::ZERO, generated(chunk));
 
     let hit = raycast_blocks(&chunks, Vec3::new(8.5, 65.5, 8.5), Vec3::X, BLOCK_REACH)
         .expect("should hit the wall");
@@ -641,7 +641,7 @@ fn raycast_skips_water_and_hits_the_block_behind_it() {
     chunk.set(8, 65, 8, Id::Water);
     chunk.set(8, 66, 8, Id::Water);
     let mut chunks = WorldChunks::default();
-    chunks.insert(ChunkPos::ZERO, generated(chunk));
+    chunks.insert(ChunkPosition::ZERO, generated(chunk));
 
     let hit = raycast_blocks(&chunks, Vec3::new(8.5, 68.0, 8.5), Vec3::NEG_Y, BLOCK_REACH)
         .expect("should pass through water");

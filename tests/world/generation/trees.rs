@@ -2,7 +2,7 @@ use game::block::id::Id;
 use game::world::chunk::CHUNK_HEIGHT;
 use game::world::chunk::CHUNK_SIZE;
 use game::world::chunk::Chunk;
-use game::world::chunk::ChunkPos;
+use game::world::chunk::ChunkPosition;
 use game::world::generation::Biome;
 use game::world::generation::WorldGenerator;
 
@@ -30,7 +30,7 @@ fn is_wood(block: Id) -> bool {
 
 #[test]
 fn forest_chunk_contains_grounded_trees_with_canopies() {
-    let generated = WorldGenerator::new(0).generate(ChunkPos::ZERO);
+    let generated = WorldGenerator::new(0).generate(ChunkPosition::ZERO);
     assert_eq!(generated.biomes.get(8, 8).biome, Biome::Forest);
     let chunk = &generated.chunk;
 
@@ -73,7 +73,7 @@ fn taiga_chunks_generate_spruce_trees() {
         let generator = WorldGenerator::new(seed);
         for z in (-8..=8).step_by(2) {
             for x in (-8..=8).step_by(2) {
-                let generated = generator.generate(ChunkPos { x, z });
+                let generated = generator.generate(ChunkPosition { x, z });
                 let contains_taiga = generated
                     .biomes
                     .cells()
@@ -96,7 +96,7 @@ fn taiga_chunks_generate_spruce_trees() {
 
 #[test]
 fn tree_generation_is_deterministic() {
-    let position = ChunkPos { x: -2, z: 3 };
+    let position = ChunkPosition { x: -2, z: 3 };
     let first = WorldGenerator::new(7).generate(position);
     let second = WorldGenerator::new(7).generate(position);
     for y in 0..CHUNK_HEIGHT {
@@ -111,7 +111,7 @@ fn tree_generation_is_deterministic() {
 #[test]
 fn desert_chunks_generate_dead_bushes_on_sand() {
     for seed in 0..128 {
-        let generated = WorldGenerator::new(seed).generate(ChunkPos::ZERO);
+        let generated = WorldGenerator::new(seed).generate(ChunkPosition::ZERO);
         if !generated
             .biomes
             .cells()
@@ -143,7 +143,7 @@ fn pumpkin_patches_generate_facing_pumpkins_on_grass() {
     let generator = WorldGenerator::new(0);
     for chunk_z in -16..=16 {
         for chunk_x in -16..=16 {
-            let generated = generator.generate(ChunkPos {
+            let generated = generator.generate(ChunkPosition {
                 x: chunk_x,
                 z: chunk_z,
             });
@@ -170,7 +170,7 @@ fn pumpkin_patches_generate_facing_pumpkins_on_grass() {
     panic!("seeded terrain should eventually generate pumpkins");
 }
 
-fn assert_wood_components_do_not_merge_trunks(chunk: &Chunk, chunk_pos: ChunkPos, wood: Id) {
+fn assert_wood_components_do_not_merge_trunks(chunk: &Chunk, chunk_pos: ChunkPosition, wood: Id) {
     let mut visited = [[[false; CHUNK_SIZE]; CHUNK_SIZE]; CHUNK_HEIGHT];
     for y in 0..CHUNK_HEIGHT {
         for z in 0..CHUNK_SIZE {
@@ -227,7 +227,7 @@ fn tree_wood_components_do_not_merge_trunks() {
         let generator = WorldGenerator::new(seed);
         for z in -1..=1 {
             for x in -1..=1 {
-                let position = ChunkPos { x, z };
+                let position = ChunkPosition { x, z };
                 let generated = generator.generate(position);
                 for wood in [Id::BirchWood, Id::SpruceWood] {
                     if count(&generated.chunk, wood) == 0 {
@@ -247,7 +247,7 @@ fn tree_wood_components_do_not_merge_trunks() {
 
 #[test]
 fn tree_trunks_replace_existing_leaves() {
-    let generated = WorldGenerator::new(0).generate(ChunkPos { x: 0, z: 1 });
+    let generated = WorldGenerator::new(0).generate(ChunkPosition { x: 0, z: 1 });
     let chunk = &generated.chunk;
     let mut found_birch = false;
     for z in 0..CHUNK_SIZE {
@@ -278,7 +278,7 @@ fn tree_trunks_replace_existing_leaves() {
 fn dry_biomes_have_no_trees() {
     // Seed 1 puts the tree biome at the chunk's far corner in the desert, which
     // subtracts more trees than the density noise can add.
-    let generated = WorldGenerator::new(1).generate(ChunkPos::ZERO);
+    let generated = WorldGenerator::new(1).generate(ChunkPosition::ZERO);
     assert_eq!(count(&generated.chunk, Id::Wood), 0);
     assert_eq!(count(&generated.chunk, Id::Leaves), 0);
 }
@@ -289,9 +289,9 @@ fn column_top_matches_generated_terrain() {
     // Include a neighbouring chunk: decoration queries columns outside the chunk
     // it is generating, so the query must match that neighbour's terrain too.
     for position in [
-        ChunkPos::ZERO,
-        ChunkPos { x: 1, z: 0 },
-        ChunkPos { x: -1, z: 2 },
+        ChunkPosition::ZERO,
+        ChunkPosition { x: 1, z: 0 },
+        ChunkPosition { x: -1, z: 2 },
     ] {
         let generated = generator.generate(position);
         for z in 0..CHUNK_SIZE {
@@ -355,9 +355,9 @@ fn canopies_continue_across_chunk_boundaries() {
     let mut boundary_trunks = 0;
     for seed in 0..16 {
         let generator = WorldGenerator::new(seed);
-        let west = generator.generate(ChunkPos::ZERO);
-        let east = generator.generate(ChunkPos { x: 1, z: 0 });
-        let north = generator.generate(ChunkPos { x: 0, z: 1 });
+        let west = generator.generate(ChunkPosition::ZERO);
+        let east = generator.generate(ChunkPosition { x: 1, z: 0 });
+        let north = generator.generate(ChunkPosition { x: 0, z: 1 });
 
         for z in 0..CHUNK_SIZE {
             if let Some(base) = grounded_trunk_base(&west.chunk, CHUNK_SIZE - 1, z) {
@@ -423,7 +423,7 @@ fn trees_do_not_plant_on_sand() {
         let generator = WorldGenerator::new(seed);
         for z in -4..4 {
             for x in -4..4 {
-                let generated = generator.generate(ChunkPos { x, z });
+                let generated = generator.generate(ChunkPosition { x, z });
                 for lz in 0..CHUNK_SIZE {
                     for lx in 0..CHUNK_SIZE {
                         let (top, block) = terrain_top(&generated.chunk, lx, lz);
@@ -456,12 +456,12 @@ fn canopies_over_sand_still_have_a_trunk() {
         let mut chunks = Vec::new();
         for z in 0..2 {
             for x in 0..2 {
-                chunks.push((ChunkPos { x, z }, generator.generate(ChunkPos { x, z })));
+                chunks.push((ChunkPosition { x, z }, generator.generate(ChunkPosition { x, z })));
             }
         }
 
         let block_at = |wx: i32, y: usize, wz: i32| -> Option<Id> {
-            let pos = ChunkPos {
+            let pos = ChunkPosition {
                 x: wx.div_euclid(CHUNK_SIZE as i32),
                 z: wz.div_euclid(CHUNK_SIZE as i32),
             };
@@ -524,7 +524,7 @@ fn timing_probe() {
     let mut blocks = 0usize;
     for z in -5..5 {
         for x in -5..5 {
-            let generated = generator.generate(ChunkPos { x, z });
+            let generated = generator.generate(ChunkPosition { x, z });
             blocks += count(&generated.chunk, Id::Leaves);
         }
     }

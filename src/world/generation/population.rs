@@ -5,12 +5,12 @@ use crate::world::chest::Chest;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::Chunk;
-use crate::world::chunk::ChunkPos;
+use crate::world::chunk::ChunkPosition;
 use std::collections::HashMap;
 
 const PI: f32 = 3.1415927;
 
-pub(super) fn source_random(seed: u64, source: ChunkPos) -> JavaRandom {
+pub(super) fn source_random(seed: u64, source: ChunkPosition) -> JavaRandom {
     let mut random = JavaRandom::new(seed);
     let salt_x = random.next_long() / 2 * 2 + 1;
     let salt_z = random.next_long() / 2 * 2 + 1;
@@ -23,9 +23,9 @@ pub(super) fn source_random(seed: u64, source: ChunkPos) -> JavaRandom {
 
 struct WorldView<'a> {
     chunk: &'a mut Chunk,
-    target: ChunkPos,
-    remote_chunk: &'a dyn Fn(ChunkPos) -> Chunk,
-    cached: HashMap<ChunkPos, Chunk>,
+    target: ChunkPosition,
+    remote_chunk: &'a dyn Fn(ChunkPosition) -> Chunk,
+    cached: HashMap<ChunkPosition, Chunk>,
 }
 
 impl WorldView<'_> {
@@ -33,7 +33,7 @@ impl WorldView<'_> {
         if !(0..CHUNK_HEIGHT as i32).contains(&y) {
             return Id::Air;
         }
-        let pos = ChunkPos {
+        let pos = ChunkPosition {
             x: x.div_euclid(16),
             z: z.div_euclid(16),
         };
@@ -53,7 +53,7 @@ impl WorldView<'_> {
         if !(0..CHUNK_HEIGHT as i32).contains(&y) {
             return;
         }
-        let pos = ChunkPos {
+        let pos = ChunkPosition {
             x: x.div_euclid(16),
             z: z.div_euclid(16),
         };
@@ -71,7 +71,7 @@ impl WorldView<'_> {
         if !(0..CHUNK_HEIGHT as i32).contains(&y) {
             return;
         }
-        let pos = ChunkPos {
+        let pos = ChunkPosition {
             x: x.div_euclid(16),
             z: z.div_euclid(16),
         };
@@ -89,10 +89,10 @@ impl WorldView<'_> {
 
 pub(super) fn populate(
     chunk: &mut Chunk,
-    target: ChunkPos,
+    target: ChunkPosition,
     seed: u64,
-    remote_chunk: &dyn Fn(ChunkPos) -> Chunk,
-) -> HashMap<ChunkPos, JavaRandom> {
+    remote_chunk: &dyn Fn(ChunkPosition) -> Chunk,
+) -> HashMap<ChunkPosition, JavaRandom> {
     let mut world = WorldView {
         chunk,
         target,
@@ -102,7 +102,7 @@ pub(super) fn populate(
     let mut after = HashMap::new();
     for sx in target.x - 1..=target.x + 1 {
         for sz in target.z - 1..=target.z + 1 {
-            let source = ChunkPos { x: sx, z: sz };
+            let source = ChunkPosition { x: sx, z: sz };
             let mut random = source_random(seed, source);
             populate_source(&mut world, source, &mut random);
             after.insert(source, random);
@@ -111,7 +111,7 @@ pub(super) fn populate(
     after
 }
 
-fn populate_source(world: &mut WorldView<'_>, source: ChunkPos, random: &mut JavaRandom) {
+fn populate_source(world: &mut WorldView<'_>, source: ChunkPosition, random: &mut JavaRandom) {
     let ox = source.x * CHUNK_SIZE as i32;
     let oz = source.z * CHUNK_SIZE as i32;
     if random.next_int(4) == 0 {

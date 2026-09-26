@@ -6,7 +6,7 @@ use game::block::properties::selection_bounds;
 use game::world::chunk::CHUNK_HEIGHT;
 use game::world::chunk::CHUNK_SIZE;
 use game::world::chunk::Chunk;
-use game::world::chunk::ChunkPos;
+use game::world::chunk::ChunkPosition;
 use game::world::chunk::WorldChunks;
 use game::world::chunk::remesh_chunks_touching;
 use game::world::generation::Biome;
@@ -43,7 +43,7 @@ fn mesh_snapshot_keeps_old_blocks_after_world_edit() {
 
 #[test]
 fn generated_chunk_has_solid_ground_and_sunlit_air() {
-    let generated = WorldGenerator::new(0).generate(ChunkPos::ZERO);
+    let generated = WorldGenerator::new(0).generate(ChunkPosition::ZERO);
     let chunk = &generated.chunk;
     let light = Skylight::from_chunk(chunk);
 
@@ -205,7 +205,7 @@ fn smooth_lighting_toggle_controls_corner_interpolation() {
 
 #[test]
 fn terrain_generation_is_deterministic_at_a_chunk_position() {
-    let position = ChunkPos { x: -2, z: 3 };
+    let position = ChunkPosition { x: -2, z: 3 };
     let first = generate_chunk(position);
     let second = generate_chunk(position);
 
@@ -528,8 +528,8 @@ fn block_light_propagates_from_beta_emitters() {
 #[test]
 fn adjacent_chunk_edges_have_continuous_height() {
     let generator = WorldGenerator::new(0);
-    let left = generator.generate(ChunkPos::ZERO);
-    let right = generator.generate(ChunkPos { x: 1, z: 0 });
+    let left = generator.generate(ChunkPosition::ZERO);
+    let right = generator.generate(ChunkPosition { x: 1, z: 0 });
     for z in 0..CHUNK_SIZE {
         let a = left.heightmap.get(CHUNK_SIZE - 1, z);
         let b = right.heightmap.get(0, z);
@@ -539,7 +539,7 @@ fn adjacent_chunk_edges_have_continuous_height() {
 
 #[test]
 fn climate_matches_the_local_cpp_reference_at_seed_zero() {
-    let generated = WorldGenerator::new(0).generate(ChunkPos::ZERO);
+    let generated = WorldGenerator::new(0).generate(ChunkPosition::ZERO);
     for (x, z, temperature, humidity) in [
         (0, 0, 0.918687, 0.516277),
         (8, 8, 0.930815, 0.604113),
@@ -552,7 +552,7 @@ fn climate_matches_the_local_cpp_reference_at_seed_zero() {
     }
 
     let desert = WorldGenerator::new(12345)
-        .generate(ChunkPos::ZERO)
+        .generate(ChunkPosition::ZERO)
         .biomes
         .get(0, 0);
     assert!((desert.temperature - 0.971755).abs() < 0.00001);
@@ -566,7 +566,7 @@ fn set_block_updates_the_column_heightmap() {
     chunk.set(3, 10, 4, Id::Stone);
     let mut chunks = WorldChunks::default();
     chunks.insert(
-        ChunkPos::ZERO,
+        ChunkPosition::ZERO,
         GeneratedChunk {
             heightmap: Heightmap::from_chunk(&chunk),
             biomes: BiomeMap::from_cells(
@@ -580,14 +580,14 @@ fn set_block_updates_the_column_heightmap() {
             items: Vec::new(),
         },
     );
-    assert_eq!(chunks.get(ChunkPos::ZERO).unwrap().heightmap.get(3, 4), 11);
+    assert_eq!(chunks.get(ChunkPosition::ZERO).unwrap().heightmap.get(3, 4), 11);
 
     assert_eq!(chunks.set_block(3, 20, 4, Id::Dirt), Some(Id::Air));
     assert_eq!(chunks.block_at(3, 20, 4), Some(Id::Dirt));
-    assert_eq!(chunks.get(ChunkPos::ZERO).unwrap().heightmap.get(3, 4), 21);
+    assert_eq!(chunks.get(ChunkPosition::ZERO).unwrap().heightmap.get(3, 4), 21);
 
     assert_eq!(chunks.set_block(3, 20, 4, Id::Air), Some(Id::Dirt));
-    assert_eq!(chunks.get(ChunkPos::ZERO).unwrap().heightmap.get(3, 4), 11);
+    assert_eq!(chunks.get(ChunkPosition::ZERO).unwrap().heightmap.get(3, 4), 11);
 }
 
 #[test]
@@ -600,18 +600,18 @@ fn ladders_transmit_light_and_do_not_raise_the_surface_heightmap() {
 
 #[test]
 fn remesh_includes_the_neighbour_when_an_edge_block_changes() {
-    assert_eq!(remesh_chunks_touching(8, 8), vec![ChunkPos::ZERO]);
+    assert_eq!(remesh_chunks_touching(8, 8), vec![ChunkPosition::ZERO]);
     assert_eq!(
         remesh_chunks_touching(0, 8),
-        vec![ChunkPos::ZERO, ChunkPos { x: -1, z: 0 }]
+        vec![ChunkPosition::ZERO, ChunkPosition { x: -1, z: 0 }]
     );
     assert_eq!(
         remesh_chunks_touching(15, 0),
         vec![
-            ChunkPos::ZERO,
-            ChunkPos { x: 1, z: 0 },
-            ChunkPos { x: 0, z: -1 },
-            ChunkPos { x: 1, z: -1 },
+            ChunkPosition::ZERO,
+            ChunkPosition { x: 1, z: 0 },
+            ChunkPosition { x: 0, z: -1 },
+            ChunkPosition { x: 1, z: -1 },
         ]
     );
 }

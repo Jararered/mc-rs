@@ -1,7 +1,7 @@
 use game::block::id::Id;
 use game::world::chunk::CHUNK_HEIGHT;
 use game::world::chunk::CHUNK_SIZE;
-use game::world::chunk::ChunkPos;
+use game::world::chunk::ChunkPosition;
 use game::world::generation::WorldGenerator;
 
 /// Beta `replaceBlocksForBiome` places filler instead of grass when the first
@@ -13,7 +13,7 @@ fn underwater_surface_is_dirt_not_grass() {
         let generator = WorldGenerator::new(seed);
         for z in -3..3 {
             for x in -3..3 {
-                let generated = generator.generate(ChunkPos { x, z });
+                let generated = generator.generate(ChunkPosition { x, z });
                 for lz in 0..CHUNK_SIZE {
                     for lx in 0..CHUNK_SIZE {
                         for y in 1..CHUNK_HEIGHT {
@@ -46,7 +46,7 @@ fn underwater_surface_is_dirt_not_grass() {
 #[test]
 fn desert_biome_columns_use_sand_as_top_and_filler() {
     let generator = WorldGenerator::new(12345);
-    let generated = generator.generate(ChunkPos::ZERO);
+    let generated = generator.generate(ChunkPosition::ZERO);
     let mut desert_columns = 0;
     let mut sandstone_columns = 0;
     for z in 0..CHUNK_SIZE {
@@ -77,13 +77,13 @@ fn desert_biome_columns_use_sand_as_top_and_filler() {
         sandstone_columns > 0,
         "expected sandstone under some desert sand"
     );
-    let repeated = WorldGenerator::new(12345).generate(ChunkPos::ZERO);
+    let repeated = WorldGenerator::new(12345).generate(ChunkPosition::ZERO);
     assert_eq!(generated.chunk.blocks(), repeated.chunk.blocks());
 }
 
 #[test]
 fn dirt_filler_does_not_transition_to_sandstone() {
-    let generated = WorldGenerator::new(0).generate(ChunkPos::ZERO);
+    let generated = WorldGenerator::new(0).generate(ChunkPosition::ZERO);
     let mut dirt_columns = 0;
     for z in 0..CHUNK_SIZE {
         for x in 0..CHUNK_SIZE {

@@ -9,7 +9,7 @@ use crate::world::furnace::Furnace;
 use crate::world::generation::Climate;
 use crate::world::generation::GeneratedChunk;
 
-use super::ChunkPos;
+use super::ChunkPosition;
 
 pub const CHUNK_SIZE: usize = 16;
 pub const CHUNK_HEIGHT: usize = 128;
@@ -157,23 +157,23 @@ impl Default for Chunk {
 
 #[derive(Resource, Default)]
 pub struct WorldChunks {
-    chunks: HashMap<ChunkPos, GeneratedChunk>,
+    chunks: HashMap<ChunkPosition, GeneratedChunk>,
 }
 
 impl WorldChunks {
-    pub fn insert(&mut self, position: ChunkPos, chunk: GeneratedChunk) {
+    pub fn insert(&mut self, position: ChunkPosition, chunk: GeneratedChunk) {
         self.chunks.insert(position, chunk);
     }
 
-    pub fn get(&self, position: ChunkPos) -> Option<&GeneratedChunk> {
+    pub fn get(&self, position: ChunkPosition) -> Option<&GeneratedChunk> {
         self.chunks.get(&position)
     }
 
-    pub fn get_mut(&mut self, position: ChunkPos) -> Option<&mut GeneratedChunk> {
+    pub fn get_mut(&mut self, position: ChunkPosition) -> Option<&mut GeneratedChunk> {
         self.chunks.get_mut(&position)
     }
 
-    pub fn contains(&self, position: ChunkPos) -> bool {
+    pub fn contains(&self, position: ChunkPosition) -> bool {
         self.chunks.contains_key(&position)
     }
 
@@ -185,7 +185,7 @@ impl WorldChunks {
         self.chunks.is_empty()
     }
 
-    pub fn positions(&self) -> impl Iterator<Item = ChunkPos> + '_ {
+    pub fn positions(&self) -> impl Iterator<Item = ChunkPosition> + '_ {
         self.chunks.keys().copied()
     }
 
@@ -193,7 +193,7 @@ impl WorldChunks {
         self.chunks.clear();
     }
 
-    pub fn remove(&mut self, position: ChunkPos) -> Option<GeneratedChunk> {
+    pub fn remove(&mut self, position: ChunkPosition) -> Option<GeneratedChunk> {
         self.chunks.remove(&position)
     }
 
@@ -201,7 +201,7 @@ impl WorldChunks {
     /// is inside the world height.
     /// Climate stored for the column, when that chunk is loaded.
     pub fn climate_at(&self, x: i32, z: i32) -> Option<Climate> {
-        let generated = self.get(ChunkPos::from_block(x, z))?;
+        let generated = self.get(ChunkPosition::from_block(x, z))?;
         let local_x = x.rem_euclid(CHUNK_SIZE as i32) as usize;
         let local_z = z.rem_euclid(CHUNK_SIZE as i32) as usize;
         Some(generated.biomes.get(local_x, local_z))
@@ -211,20 +211,20 @@ impl WorldChunks {
         if y < 0 || y >= CHUNK_HEIGHT as i32 {
             return None;
         }
-        let chunk = self.get(ChunkPos::from_block(x, z))?;
+        let chunk = self.get(ChunkPosition::from_block(x, z))?;
         let local_x = x.rem_euclid(CHUNK_SIZE as i32) as usize;
         let local_z = z.rem_euclid(CHUNK_SIZE as i32) as usize;
         chunk.chunk.get(local_x, y as usize, local_z)
     }
 
     pub fn furnace_at(&self, x: i32, y: i32, z: i32) -> Option<&Furnace> {
-        let chunk = self.get(ChunkPos::from_block(x, z))?;
+        let chunk = self.get(ChunkPosition::from_block(x, z))?;
         let index = local_index(x, y, z)?;
         chunk.chunk.furnace(index)
     }
 
     pub fn furnace_at_mut(&mut self, x: i32, y: i32, z: i32) -> Option<&mut Furnace> {
-        let chunk = self.get_mut(ChunkPos::from_block(x, z))?;
+        let chunk = self.get_mut(ChunkPosition::from_block(x, z))?;
         let index = local_index(x, y, z)?;
         chunk.chunk.furnace_mut(index)
     }
@@ -247,13 +247,13 @@ impl WorldChunks {
     }
 
     pub fn chest_at(&self, x: i32, y: i32, z: i32) -> Option<&Chest> {
-        let chunk = self.get(ChunkPos::from_block(x, z))?;
+        let chunk = self.get(ChunkPosition::from_block(x, z))?;
         let index = local_index(x, y, z)?;
         chunk.chunk.chest(index)
     }
 
     pub fn chest_at_mut(&mut self, x: i32, y: i32, z: i32) -> Option<&mut Chest> {
-        let chunk = self.get_mut(ChunkPos::from_block(x, z))?;
+        let chunk = self.get_mut(ChunkPosition::from_block(x, z))?;
         let index = local_index(x, y, z)?;
         chunk.chunk.chest_mut(index)
     }
@@ -333,7 +333,7 @@ impl WorldChunks {
         if y < 0 || y >= CHUNK_HEIGHT as i32 {
             return None;
         }
-        let generated = self.get_mut(ChunkPos::from_block(x, z))?;
+        let generated = self.get_mut(ChunkPosition::from_block(x, z))?;
         let local_x = x.rem_euclid(CHUNK_SIZE as i32) as usize;
         let local_z = z.rem_euclid(CHUNK_SIZE as i32) as usize;
         let previous = generated.chunk.get(local_x, y as usize, local_z)?;
@@ -361,8 +361,8 @@ pub(crate) const fn local_index(x: i32, y: i32, z: i32) -> Option<usize> {
 /// The edited chunk is always included. A neighbour is included when the block
 /// sits on that shared face. A corner edit also affects diagonal ambient
 /// occlusion and lighting samples, so the diagonal chunk is included.
-pub fn remesh_chunks_touching(x: i32, z: i32) -> Vec<ChunkPos> {
-    let position = ChunkPos::from_block(x, z);
+pub fn remesh_chunks_touching(x: i32, z: i32) -> Vec<ChunkPosition> {
+    let position = ChunkPosition::from_block(x, z);
     let local_x = x.rem_euclid(CHUNK_SIZE as i32);
     let local_z = z.rem_euclid(CHUNK_SIZE as i32);
     let mut positions = vec![position];
@@ -379,13 +379,13 @@ pub fn remesh_chunks_touching(x: i32, z: i32) -> Vec<ChunkPos> {
         z_neighbor = Some(position.z + 1);
     }
     if let Some(x) = x_neighbor {
-        positions.push(ChunkPos { x, z: position.z });
+        positions.push(ChunkPosition { x, z: position.z });
     }
     if let Some(z) = z_neighbor {
-        positions.push(ChunkPos { x: position.x, z });
+        positions.push(ChunkPosition { x: position.x, z });
     }
     if let (Some(x), Some(z)) = (x_neighbor, z_neighbor) {
-        positions.push(ChunkPos { x, z });
+        positions.push(ChunkPosition { x, z });
     }
     positions
 }

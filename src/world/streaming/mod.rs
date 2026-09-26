@@ -174,6 +174,17 @@ impl WorldStreaming {
         self.meshing.len()
     }
 
+    /// Whether `position` and its eight neighbors are loaded and finished, so
+    /// no population pass will write into it again. Block ticks only run in
+    /// chunks that pass this, the same test a first mesh waits for.
+    pub fn neighborhood_finished(
+        &self,
+        chunks: &crate::world::chunk::WorldChunks,
+        position: ChunkPosition,
+    ) -> bool {
+        mesh_jobs::mesh_neighborhood_ready(chunks, &self.held, position)
+    }
+
     /// Chunks waiting to be remeshed, in dispatch order.
     pub fn queued_remesh_positions(&self) -> impl Iterator<Item = ChunkPosition> + '_ {
         self.remesh_queue.iter().copied()
@@ -192,31 +203,27 @@ impl WorldStreaming {
     /// can reach, and rebuild the sections whose geometry reads that block.
     /// Other sections of those chunks rebuild only if their light changed.
     pub fn request_block_update(&mut self, x: i32, y: i32, z: i32) {
-        let center = ChunkPosition::from_block(x, z);
-        let size = CHUNK_SIZE as i32;
-        for dz in -1..=1 {
-            for dx in -1..=1 {
-                let position = ChunkPosition {
-                    x: center.x + dx,
-                    z: center.z + dz,
-                };
-                let (min_x, min_z) = (position.x * size, position.z * size);
-                // Distance from the block to the chunk's light ring, which
-                // extends one cell past its own columns.
-                let light_distance = axis_distance(x, min_x - 1, min_x + size)
-                    + axis_distance(z, min_z - 1, min_z + size);
-                if light_distance > LIGHT_REACH {
-                    continue;
-                }
-                let touches_columns = axis_distance(x, min_x, min_x + size - 1) <= GEOMETRY_REACH
-                    && axis_distance(z, min_z, min_z + size - 1) <= GEOMETRY_REACH;
-                let sections = if touches_columns {
-                    sections_near(y, GEOMETRY_REACH)
-                } else {
-                    0
-                };
-                self.queue_sections(position, sections);
-            }
+        let mut sections = HashMap::new();
+        affected_sections(x, y, z, true, &mut sections);
+        for (position, mask) in sections {
+            self.queue_sections(position, mask);
+        }
+    }
+
+    /// Queue remeshes for many changed blocks at once, visiting each affected
+    /// chunk once. A change whose `light` flag is `false` kept the block's
+    /// light opacity and emission, so it cannot relight a neighbor chunk and
+    /// only rebuilds the sections whose geometry reads that block.
+    pub fn request_block_changes(
+        &mut self,
+        changes: impl IntoIterator<Item = (i32, i32, i32, bool)>,
+    ) {
+        let mut sections = HashMap::new();
+        for (x, y, z, light) in changes {
+            affected_sections(x, y, z, light, &mut sections);
+        }
+        for (position, mask) in sections {
+            self.queue_sections(position, mask);
         }
     }
 
@@ -246,6 +253,39 @@ impl WorldStreaming {
             .map(|position| (*position, ALL_SECTIONS))
             .collect();
         self.remesh_queue = positions.into();
+    }
+}
+
+/// Chunks a change at `(x, y, z)` must relight or remesh, merged into
+/// `sections`. A chunk mapped to an empty mask only relights.
+fn affected_sections(
+    x: i32,
+    y: i32,
+    z: i32,
+    light: bool,
+    sections: &mut HashMap<ChunkPosition, SectionMask>,
+) {
+    let center = ChunkPosition::from_block(x, z);
+    let size = CHUNK_SIZE as i32;
+    for dz in -1..=1 {
+        for dx in -1..=1 {
+            let position = ChunkPosition {
+                x: center.x + dx,
+                z: center.z + dz,
+            };
+            let (min_x, min_z) = (position.x * size, position.z * size);
+            // Distance from the block to the chunk's light ring, which
+            // extends one cell past its own columns.
+            let light_distance = axis_distance(x, min_x - 1, min_x + size)
+                + axis_distance(z, min_z - 1, min_z + size);
+            let touches_columns = axis_distance(x, min_x, min_x + size - 1) <= GEOMETRY_REACH
+                && axis_distance(z, min_z, min_z + size - 1) <= GEOMETRY_REACH;
+            if touches_columns {
+                *sections.entry(position).or_default() |= sections_near(y, GEOMETRY_REACH);
+            } else if light && light_distance <= LIGHT_REACH {
+                sections.entry(position).or_default();
+            }
+        }
     }
 }
 

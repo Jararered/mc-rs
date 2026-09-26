@@ -16,6 +16,8 @@ use crate::entity::drops::items::PickupAnimation;
 use crate::entity::drops::items::chunk_record;
 use crate::entity::drops::items::spawn_saved_item;
 use crate::player::Player;
+use crate::world::block_ticks::BlockTicks;
+use crate::world::lighting::LightCache;
 use crate::world::persistence::WorldPersistence;
 
 use super::ChunkJob;
@@ -63,6 +65,7 @@ pub(crate) fn setup_streaming(
     mut persistence: Option<ResMut<WorldPersistence>>,
     mut chunks: ResMut<WorldChunks>,
     mut perf: ResMut<StreamingDiagnostics>,
+    mut ticks: Option<ResMut<BlockTicks>>,
 ) {
     let seed = persistence
         .as_ref()
@@ -116,6 +119,9 @@ pub(crate) fn setup_streaming(
             persistence.mark_dirty(position);
         }
         let saved_items = std::mem::take(&mut generated.items);
+        if let Some(ticks) = ticks.as_deref_mut() {
+            ticks.load_chunk(position, &mut generated.chunk);
+        }
         chunks.insert(position, generated);
         for item in saved_items {
             spawn_saved_item(&mut commands, item);
@@ -155,6 +161,8 @@ pub(crate) fn regenerate_loaded_chunks(
     mut streaming: ResMut<WorldStreaming>,
     mut chunks: ResMut<WorldChunks>,
     mut persistence: Option<ResMut<WorldPersistence>>,
+    mut ticks: Option<ResMut<BlockTicks>>,
+    mut light: Option<ResMut<LightCache>>,
 ) {
     if screen.is_some_and(|state| *state.get() != AppScreen::Playing) {
         return;
@@ -166,6 +174,12 @@ pub(crate) fn regenerate_loaded_chunks(
         streaming.held.clear();
         streaming.remesh_everything();
         chunks.clear();
+        if let Some(ticks) = ticks.as_deref_mut() {
+            ticks.clear();
+        }
+        if let Some(light) = light.as_deref_mut() {
+            light.clear();
+        }
         // Saved chunks would otherwise be loaded straight back from disk.
         if let Some(persistence) = persistence.as_deref_mut() {
             persistence.request_regeneration();
@@ -195,6 +209,8 @@ pub(crate) fn stream_chunks(
         Without<PickupAnimation>,
     >,
     mut last_unload_sweep: Local<Option<(ChunkPosition, i32)>>,
+    mut ticks: Option<ResMut<BlockTicks>>,
+    mut light: Option<ResMut<LightCache>>,
 ) {
     let Ok(player) = player.single() else {
         return;
@@ -237,6 +253,11 @@ pub(crate) fn stream_chunks(
             if let Some(rendered) = streaming.rendered.remove(&position) {
                 despawn_rendered_chunk(&mut commands, &mut meshes, rendered);
             }
+            // Nothing relights an unrendered chunk, so its cached light
+            // would go stale.
+            if let Some(light) = light.as_deref_mut() {
+                light.remove(position);
+            }
         }
         streaming.remesh_queue.retain(|position| {
             let keep = within_radius(*position, center, load_radius);
@@ -257,6 +278,18 @@ pub(crate) fn stream_chunks(
             .collect();
         for position in stale {
             if let Some(mut chunk) = chunks.remove(position) {
+                if let Some(ticks) = ticks.as_deref_mut() {
+                    ticks.unload_chunk(position, &mut chunk.chunk);
+                    // Pending ticks only survive in the saved chunk.
+                    if !chunk.chunk.pending_ticks().is_empty()
+                        && let Some(persistence) = persistence.as_deref_mut()
+                    {
+                        persistence.mark_dirty(position);
+                    }
+                }
+                if let Some(light) = light.as_deref_mut() {
+                    light.remove(position);
+                }
                 let mut leaving = Vec::new();
                 for (entity, transform, dropped, motion, state) in &dropped {
                     let item_chunk = ChunkPosition::from_block(
@@ -324,6 +357,9 @@ pub(crate) fn stream_chunks(
                 persistence.mark_dirty(position);
             }
             let saved_items = std::mem::take(&mut job.chunk.items);
+            if let Some(ticks) = ticks.as_deref_mut() {
+                ticks.load_chunk(position, &mut job.chunk.chunk);
+            }
             chunks.insert(position, job.chunk);
             if job.loaded {
                 for item in saved_items {
@@ -353,6 +389,9 @@ pub(crate) fn stream_chunks(
             .entry(position)
             .or_insert_with(|| spawn_chunk(&mut commands, position));
         rendered.fingerprints = job.fingerprints;
+        if let Some(light) = light.as_deref_mut() {
+            light.insert(position, job.light);
+        }
         apply_sections(
             &mut commands,
             &mut meshes,

@@ -8,6 +8,7 @@ use bevy::window::CursorGrabMode;
 use bevy::window::CursorOptions;
 use bevy::window::PrimaryWindow;
 
+use crate::block::fluids::is_water;
 use crate::block::id::FurnaceFacing;
 use crate::block::id::Id;
 use crate::block::properties::cactus_can_stay;
@@ -21,15 +22,17 @@ use crate::block::properties::sugar_cane_can_stay;
 use crate::entity::CollisionState;
 use crate::entity::EntitySize;
 use crate::entity::drops::blocks::natural_drops;
-use crate::entity::drops::blocks::player_break_drops;
+use crate::entity::drops::blocks::player_break_drops_with_metadata;
 use crate::entity::drops::items::spawn_block_drop;
 use crate::entity::drops::items::spawn_chest_drops;
 use crate::entity::drops::items::spawn_thrown_item;
 use crate::entity::particles::block::BlockParticles;
 use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
+use crate::item::ItemId;
 use crate::item::ItemStack;
 use crate::item::tools::break_durability;
+use crate::item::tools::can_harvest;
 use crate::item::tools::is_hoe;
 use crate::physics::Aabb;
 use crate::physics::BLOCK_REACH;
@@ -40,6 +43,10 @@ use crate::random::ItemRng;
 use crate::ui::InventoryScreen;
 use crate::ui::WorkbenchUiSession;
 use crate::ui::close_crafting_interface;
+use crate::world::block_ticks::BlockEvent;
+use crate::world::block_ticks::BlockTicks;
+use crate::world::block_ticks::behaviors::leaves::CHECK_DECAY;
+use crate::world::block_ticks::behaviors::leaves::is_leaves;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
@@ -84,7 +91,10 @@ pub(crate) fn interact_blocks(
     camera: Query<&Transform, With<PlayerCamera>>,
     mut chunks: ResMut<WorldChunks>,
     mut streaming: Option<ResMut<WorldStreaming>>,
-    mut persistence: Option<ResMut<WorldPersistence>>,
+    (mut persistence, mut block_ticks): (
+        Option<ResMut<WorldPersistence>>,
+        Option<ResMut<BlockTicks>>,
+    ),
     mut particles: Option<ResMut<BlockParticles>>,
     mut focus: ResMut<BlockFocus>,
     mut state: Local<BlockInteractState>,
@@ -254,15 +264,24 @@ pub(crate) fn interact_blocks(
         *focus = BlockFocus::default();
         return;
     }
-    let in_water = chunks.block_at(
-        transform.translation.x.floor() as i32,
-        transform.translation.y.floor() as i32,
-        transform.translation.z.floor() as i32,
-    ) == Some(Id::Water);
+    let in_water = chunks
+        .block_at(
+            transform.translation.x.floor() as i32,
+            transform.translation.y.floor() as i32,
+            transform.translation.z.floor() as i32,
+        )
+        .is_some_and(is_water);
     let on_ground = collision.on_ground;
 
     if left_held {
         if left_click && let Some(hit) = hit {
+            // `Block.onBlockClicked`, when the player starts to dig.
+            push_event(
+                &mut block_ticks,
+                BlockEvent::Clicked {
+                    position: IVec3::new(hit.x, hit.y, hit.z),
+                },
+            );
             let tool = hotbar.selected_stack();
             if let Some(broken) = state.mining.try_instant(hit, tool, on_ground, in_water) {
                 apply_break(
@@ -271,6 +290,7 @@ pub(crate) fn interact_blocks(
                     &mut chunks,
                     &mut streaming,
                     &mut persistence,
+                    &mut block_ticks,
                     &mut particles,
                     &mut hotbar,
                     broken,
@@ -287,6 +307,7 @@ pub(crate) fn interact_blocks(
                     &mut chunks,
                     &mut streaming,
                     &mut persistence,
+                    &mut block_ticks,
                     &mut particles,
                     &mut hotbar,
                     broken,
@@ -303,9 +324,21 @@ pub(crate) fn interact_blocks(
     let can_place = right_click || (right_held && state.place_delay <= 0 && !left_held);
     if can_place {
         state.place_delay = PLACE_DELAY_TICKS;
+        if let Some(hit) = hit {
+            // `Block.blockActivated` runs before the held item is used.
+            push_event(
+                &mut block_ticks,
+                BlockEvent::Activated {
+                    position: IVec3::new(hit.x, hit.y, hit.z),
+                },
+            );
+        }
         if let Some(hit) = hit
             && let Some(stack) = hotbar.selected_stack()
         {
+            let target = hit.face.neighbor(hit.x, hit.y, hit.z);
+            let replaced = chunks.block_at(target.0, target.1, target.2);
+            let replaced_metadata = chunks.metadata_at(target.0, target.1, target.2);
             let placed = stack.runtime_block().is_some_and(|block| {
                 place_selected_block_facing(
                     &mut chunks,
@@ -319,9 +352,52 @@ pub(crate) fn interact_blocks(
                 let selected = hotbar.selected;
                 hotbar.slots[selected] =
                     ItemStack::with_data(stack.item(), stack.count() - 1, stack.data()).ok();
-                let (x, y, z) = hit.face.neighbor(hit.x, hit.y, hit.z);
+                let (x, y, z) = target;
+                // `ItemLeaves.getPlacedBlockMetadata`: placed leaves check
+                // for a log on their next random tick.
+                if chunks.block_at(x, y, z).is_some_and(is_leaves) {
+                    chunks.set_metadata(x, y, z, CHECK_DECAY);
+                }
+                if let Some(replaced) = replaced {
+                    push_event(
+                        &mut block_ticks,
+                        BlockEvent::Changed {
+                            position: IVec3::new(x, y, z),
+                            previous: replaced,
+                            metadata: replaced_metadata,
+                        },
+                    );
+                }
                 notify_edit(&mut streaming, &mut persistence, x, y, z, true);
+            } else if stack.item() == ItemId::Seeds && plant_seeds(&mut chunks, hit) {
+                let selected = hotbar.selected;
+                hotbar.slots[selected] =
+                    ItemStack::with_data(stack.item(), stack.count() - 1, stack.data()).ok();
+                push_event(
+                    &mut block_ticks,
+                    BlockEvent::Changed {
+                        position: IVec3::new(hit.x, hit.y + 1, hit.z),
+                        previous: Id::Air,
+                        metadata: 0,
+                    },
+                );
+                notify_edit(
+                    &mut streaming,
+                    &mut persistence,
+                    hit.x,
+                    hit.y + 1,
+                    hit.z,
+                    false,
+                );
             } else if till_with_selected_hoe(&mut chunks, &mut hotbar, hit) {
+                push_event(
+                    &mut block_ticks,
+                    BlockEvent::Changed {
+                        position: IVec3::new(hit.x, hit.y, hit.z),
+                        previous: hit.block,
+                        metadata: 0,
+                    },
+                );
                 notify_edit(&mut streaming, &mut persistence, hit.x, hit.y, hit.z, false);
             }
         }
@@ -349,6 +425,20 @@ pub fn till_with_selected_hoe(
     true
 }
 
+/// `ItemSeeds.onItemUse`: plant crops on the top face of farmland with air
+/// above.
+pub fn plant_seeds(chunks: &mut WorldChunks, hit: BlockHit) -> bool {
+    if hit.face != BlockFace::Up
+        || chunks.block_at(hit.x, hit.y, hit.z) != Some(Id::Farmland)
+        || chunks.block_at(hit.x, hit.y + 1, hit.z) != Some(Id::Air)
+    {
+        return false;
+    }
+    chunks
+        .set_block(hit.x, hit.y + 1, hit.z, Id::Crops)
+        .is_some()
+}
+
 pub fn till_block(chunks: &mut WorldChunks, hit: BlockHit) -> bool {
     if chunks.block_at(hit.x, hit.y, hit.z) != Some(hit.block) {
         return false;
@@ -371,16 +461,25 @@ pub fn till_block(chunks: &mut WorldChunks, hit: BlockHit) -> bool {
         .is_some_and(|previous| previous == hit.block)
 }
 
+/// Queue a block event for the next tick pass.
+fn push_event(ticks: &mut Option<ResMut<BlockTicks>>, event: BlockEvent) {
+    if let Some(ticks) = ticks.as_deref_mut() {
+        ticks.push_event(event);
+    }
+}
+
 fn apply_break(
     commands: &mut Commands,
     rng: &mut ItemRng,
     chunks: &mut WorldChunks,
     streaming: &mut Option<ResMut<WorldStreaming>>,
     persistence: &mut Option<ResMut<WorldPersistence>>,
+    ticks: &mut Option<ResMut<BlockTicks>>,
     particles: &mut Option<ResMut<BlockParticles>>,
     hotbar: &mut Hotbar,
     hit: BlockHit,
 ) {
+    let metadata = chunks.metadata_at(hit.x, hit.y, hit.z);
     let mut attached =
         [
             (0, 1, 0, Id::Torch),
@@ -429,13 +528,40 @@ fn apply_break(
             spawn_block_drop(commands, rng, IVec3::new(hit.x, hit.y, hit.z), stack);
         }
         spawn_chest_drops(commands, rng, IVec3::new(hit.x, hit.y, hit.z), chest_drops);
-        for stack in player_break_drops(hit.block, tool, rng) {
+        for stack in player_break_drops_with_metadata(hit.block, metadata, tool, rng) {
             spawn_block_drop(commands, rng, IVec3::new(hit.x, hit.y, hit.z), stack);
+        }
+        let position = IVec3::new(hit.x, hit.y, hit.z);
+        push_event(
+            ticks,
+            BlockEvent::Changed {
+                position,
+                previous: hit.block,
+                metadata,
+            },
+        );
+        if can_harvest(tool, hit.block) {
+            push_event(
+                ticks,
+                BlockEvent::Harvested {
+                    position,
+                    block: hit.block,
+                    metadata,
+                },
+            );
         }
         for (x, y, z, attached_block) in attached {
             for stack in natural_drops(attached_block, rng) {
                 spawn_block_drop(commands, rng, IVec3::new(x, y, z), stack);
             }
+            push_event(
+                ticks,
+                BlockEvent::Changed {
+                    position: IVec3::new(x, y, z),
+                    previous: attached_block,
+                    metadata: 0,
+                },
+            );
         }
         if let Some(particles) = particles.as_deref_mut() {
             particles.emit_break(hit);

@@ -1,11 +1,13 @@
 //! Beta 1.7.3 furnace recipes, fuels, and block-local smelting state.
 
+use bevy::math::IVec3;
 use bevy::prelude::Res;
 use bevy::prelude::ResMut;
 
 use crate::block::id::Id;
 use crate::item::ItemId;
 use crate::item::ItemStack;
+use crate::world::block_ticks::BlockTicks;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
 use crate::world::persistence::WorldPersistence;
@@ -128,7 +130,7 @@ pub fn fuel_ticks(fuel: ItemStack) -> Option<u16> {
     }
 }
 
-fn is_wood_material(block: Id) -> bool {
+pub(crate) fn is_wood_material(block: Id) -> bool {
     matches!(
         block,
         Id::Wood
@@ -165,6 +167,7 @@ pub fn tick_furnaces(
     mut chunks: ResMut<WorldChunks>,
     mut persistence: Option<ResMut<WorldPersistence>>,
     mut streaming: Option<ResMut<WorldStreaming>>,
+    mut block_ticks: Option<ResMut<BlockTicks>>,
 ) {
     let ticks = tick.ticks_this_frame();
     if ticks == 0 {
@@ -190,6 +193,10 @@ pub fn tick_furnaces(
         {
             let next = block.with_furnace_lit(burning);
             chunks.set_block(x, y, z, next);
+            // `BlockFurnace.updateFurnaceBlockState` swaps with notify.
+            if let Some(block_ticks) = block_ticks.as_deref_mut() {
+                block_ticks.block_changed(IVec3::new(x, y, z), block, 0);
+            }
             if let Some(streaming) = streaming.as_deref_mut() {
                 streaming.request_block_update(x, y, z);
             }

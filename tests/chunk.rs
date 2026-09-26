@@ -313,14 +313,16 @@ fn block_face_uvs_stay_inside_the_padded_tile() {
 }
 
 #[test]
-fn water_renders_as_a_transparent_top_face() {
+fn water_in_a_lake_renders_only_its_surface_at_beta_height() {
     let mut chunk = Chunk::new();
-    chunk.set(1, 1, 1, Id::Water);
+    for x in 0..5 {
+        for z in 0..5 {
+            chunk.set(x, 0, z, Id::Stone);
+            chunk.set(x, 1, z, Id::Water);
+        }
+    }
     let skylight = Skylight::from_chunk(&chunk);
     let meshes = mesh_chunk_with_settings(&chunk, &skylight, true);
-    assert_eq!(meshes.opaque.vertex_count(), 0);
-    assert_eq!(meshes.water.vertex_count(), 4);
-    assert_eq!(meshes.water.index_count(), 6);
 
     // Translucency is the water material's base alpha, not a vertex value.
     assert!((WATER_ALPHA - 0.8).abs() < 0.001);
@@ -333,31 +335,113 @@ fn water_renders_as_a_transparent_top_face() {
         "water keeps Beta's blue tint"
     );
 
+    // Interior cells face only other water and the lake bed, so the middle
+    // column contributes nothing but its top.
     let positions = meshes.water.positions();
-    let surface_y = 1.0 + 1.0 - 2.0 / 16.0;
+    let center_top: Vec<_> = positions
+        .chunks_exact(4)
+        .filter(|quad| {
+            quad.iter().all(|position| {
+                (2.0..=3.0).contains(&position[0]) && (2.0..=3.0).contains(&position[2])
+            }) && quad.iter().all(|position| position[1] > 1.5)
+        })
+        .collect();
+    assert_eq!(
+        center_top.len(),
+        1,
+        "one surface quad above the lake's middle"
+    );
+    // `RenderBlocks` averages the four sources around each corner, leaving
+    // the surface a ninth of a block below the top.
+    let surface_y = 1.0 + 8.0 / 9.0;
     assert!(
-        positions
+        center_top[0]
             .iter()
-            .all(|pos| (pos[1] - surface_y).abs() < 0.001),
-        "water surface should sit two texels below the block top"
+            .all(|position| (position[1] - surface_y).abs() < 0.01),
+        "surrounded source water sits at Beta's 8/9 height: {center_top:?}"
     );
 
+    // The lake bed stays visible under the water.
+    assert!(
+        meshes.opaque.vertex_count() > 0,
+        "water must not hide the lake bed"
+    );
+}
+
+#[test]
+fn isolated_water_renders_every_open_face_below_its_neighbors() {
+    let mut chunk = Chunk::new();
+    chunk.set(1, 1, 1, Id::Water);
+    let meshes = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true);
+    assert_eq!(meshes.opaque.vertex_count(), 0);
+    // Top, bottom, and four sides: nothing covers a lone source.
+    assert_eq!(meshes.water.vertex_count(), 24);
+
+    // Each corner averages the source (weight 11) with three open cells
+    // (weight 1 each).
+    let corner = 1.0 - (11.0 / 9.0 + 3.0) / 14.0;
+    let top = meshes
+        .water
+        .positions()
+        .iter()
+        .map(|position| position[1])
+        .fold(f32::NEG_INFINITY, f32::max);
+    assert!((top - (1.0 + corner)).abs() < 0.01, "top {top}");
+
+    // With water above, the lower block fills its cell and draws no top.
     chunk.set(1, 2, 1, Id::Water);
     let stacked = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true);
+    let heights: Vec<_> = stacked
+        .water
+        .positions()
+        .iter()
+        .map(|position| position[1])
+        .collect();
+    assert!(
+        heights.iter().all(|&y| y <= 2.0 + corner + 0.01),
+        "only the upper block's surface sits below its top"
+    );
+    assert!(
+        heights.iter().any(|&y| (y - 2.0).abs() < 0.01),
+        "the lower block's sides reach its full height"
+    );
     assert_eq!(
         stacked.water.vertex_count(),
-        4,
-        "only the surface of a water column should be meshed"
+        40,
+        "two blocks minus the shared faces"
     );
+}
 
-    chunk.set(1, 0, 1, Id::Stone);
-    let with_bed = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true);
-    // Five faces: water must not hide the bed's top, and the bed sits on the
-    // world floor, whose underside is never drawn.
-    assert_eq!(
-        with_bed.opaque.vertex_count(),
-        20,
-        "water must not hide the lake bed"
+#[test]
+fn flowing_water_slopes_toward_its_lower_levels_and_uses_the_flow_tile() {
+    let mut chunk = Chunk::new();
+    for x in 0..4 {
+        chunk.set(x, 0, 1, Id::Stone);
+    }
+    chunk.set_with_metadata(0, 1, 1, Id::Water, 0);
+    chunk.set_with_metadata(1, 1, 1, Id::FlowingWater, 1);
+    chunk.set_with_metadata(2, 1, 1, Id::FlowingWater, 2);
+    let meshes = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true);
+    let positions = meshes.water.positions();
+    let uvs = meshes.water.uvs();
+    let top_of = |x: f32| {
+        positions
+            .iter()
+            .filter(|position| (position[0] - x).abs() < 0.01 && position[1] > 1.0)
+            .map(|position| position[1])
+            .fold(f32::NEG_INFINITY, f32::max)
+    };
+    assert!(
+        top_of(1.0) > top_of(2.0),
+        "the surface falls with the level"
+    );
+    assert!(top_of(2.0) > top_of(3.0));
+
+    let (u0, v0, u1, v1) = atlas_tile_uvs(14, 12);
+    assert!(
+        uvs.iter()
+            .any(|uv| (u0..=u1).contains(&uv[0]) && (v0..=v1).contains(&uv[1])),
+        "moving water draws the flowing tile"
     );
 }
 

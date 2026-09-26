@@ -520,10 +520,16 @@ pub fn block_tile(block: crate::block::id::Id, face: usize, fancy_graphics: bool
         Id::BrownMushroom => (13, 1),
         Id::TallGrass => (7, 2),
         Id::Fern => (8, 3),
-        Id::Water => water::WATER_STILL_TILE,
+        Id::Water | Id::FlowingWater => water::WATER_STILL_TILE,
+        Id::Crops => crop_tile(7),
         Id::Ice => (3, 4),
         _ => (1, 0),
     }
+}
+
+/// Atlas tile for a crop at growth `stage` (`BlockCrops`: 88 + stage).
+pub fn crop_tile(stage: u8) -> (u8, u8) {
+    (8 + stage.min(7), 5)
 }
 
 /// Atlas tile for Beta farmland's dry or hydrated top face.

@@ -1,3 +1,4 @@
+pub mod block_ticks;
 pub mod chest;
 pub mod chunk;
 pub mod clouds;

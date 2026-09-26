@@ -21,6 +21,17 @@ pub fn player_break_drops(
     tool: Option<ItemStack>,
     rolls: &mut impl DropRoll,
 ) -> Vec<ItemStack> {
+    player_break_drops_with_metadata(block, 0, tool, rolls)
+}
+
+/// [`player_break_drops`] for a block whose metadata changes its drops, such
+/// as a crop's age.
+pub fn player_break_drops_with_metadata(
+    block: Id,
+    metadata: u8,
+    tool: Option<ItemStack>,
+    rolls: &mut impl DropRoll,
+) -> Vec<ItemStack> {
     let mut drops = Vec::new();
     // `BlockTNT.onBlockDestroyedByPlayer` runs even when the harvest drop is empty.
     // There is no primed metadata, so a player break always returns the block.
@@ -28,21 +39,31 @@ pub fn player_break_drops(
         push_block(&mut drops, Id::Tnt, 1);
     }
     if can_harvest(tool, block) {
-        push_harvest(&mut drops, block, tool, rolls);
+        push_harvest(&mut drops, block, metadata, tool, rolls);
     }
     drops
 }
 
 /// `Block.dropBlockAsItem` with chance 1. No shears shortcut and no harvest gate.
 pub fn natural_drops(block: Id, rolls: &mut impl DropRoll) -> Vec<ItemStack> {
+    natural_drops_with_metadata(block, 0, rolls)
+}
+
+/// [`natural_drops`] for a block whose metadata changes its drops.
+pub fn natural_drops_with_metadata(
+    block: Id,
+    metadata: u8,
+    rolls: &mut impl DropRoll,
+) -> Vec<ItemStack> {
     let mut drops = Vec::new();
-    push_natural(&mut drops, block, rolls);
+    push_natural(&mut drops, block, metadata, rolls);
     drops
 }
 
 fn push_harvest(
     drops: &mut Vec<ItemStack>,
     block: Id,
+    metadata: u8,
     tool: Option<ItemStack>,
     rolls: &mut impl DropRoll,
 ) {
@@ -57,10 +78,10 @@ fn push_harvest(
         push_item(drops, ItemId::Snowball, 0, 1);
         return;
     }
-    push_natural(drops, block, rolls);
+    push_natural(drops, block, metadata, rolls);
 }
 
-fn push_natural(drops: &mut Vec<ItemStack>, block: Id, rolls: &mut impl DropRoll) {
+fn push_natural(drops: &mut Vec<ItemStack>, block: Id, metadata: u8, rolls: &mut impl DropRoll) {
     match block {
         Id::Stone => push_block(drops, Id::Cobblestone, 1),
         Id::Grass | Id::Farmland => push_block(drops, Id::Dirt, 1),
@@ -121,11 +142,16 @@ fn push_natural(drops: &mut Vec<ItemStack>, block: Id, rolls: &mut impl DropRoll
                 push_item(drops, ItemId::Seeds, 0, 1);
             }
         }
-        // Crop age is not stored. Age 0 never drops wheat (`idDropped` only at 7).
-        // `dropBlockAsItemWithChance` still rolls seeds three times: `nextInt(15) <= age`.
+        // `BlockCrops`: wheat only at age 7 (`idDropped`), then three seed
+        // rolls in `dropBlockAsItemWithChance`, each kept when
+        // `nextInt(15) <= age`.
         Id::Crops => {
+            let age = u32::from(metadata.min(7));
+            if age == 7 {
+                push_item(drops, ItemId::Wheat, 0, 1);
+            }
             for _ in 0..3 {
-                if rolls.next_int(15) == 0 {
+                if rolls.next_int(15) <= age {
                     push_item(drops, ItemId::Seeds, 0, 1);
                 }
             }

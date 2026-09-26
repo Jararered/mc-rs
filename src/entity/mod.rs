@@ -8,6 +8,7 @@ use bevy::prelude::*;
 use crate::item::ItemStack;
 
 pub mod drops;
+pub mod falling_block;
 pub mod particles;
 pub mod shadow;
 
@@ -100,6 +101,46 @@ impl Gravity {
 impl Default for Gravity {
     fn default() -> Self {
         Self::DEFAULT
+    }
+}
+
+/// Beta `Entity.distanceWalkedModified` and `nextStepDistance`. Every whole
+/// block walked is a step onto the block underfoot, which runs that block's
+/// `onEntityWalking` (trampling farmland, lighting redstone ore).
+#[derive(Component, Clone, Copy, Debug, PartialEq)]
+pub struct StepDistance {
+    pub walked: f32,
+    pub next_step: u32,
+}
+
+impl Default for StepDistance {
+    fn default() -> Self {
+        Self {
+            walked: 0.0,
+            next_step: 1,
+        }
+    }
+}
+
+impl StepDistance {
+    /// Add one move's horizontal displacement, as `Entity.moveEntity` does
+    /// unless the entity is sneaking on the ground. Returns whether the move
+    /// finished a step onto a non-air block.
+    pub fn advance(
+        &mut self,
+        displacement: Vec3,
+        sneaking_on_ground: bool,
+        underfoot_is_air: bool,
+    ) -> bool {
+        if sneaking_on_ground {
+            return false;
+        }
+        self.walked += displacement.x.hypot(displacement.z) * 0.6;
+        if self.walked > self.next_step as f32 && !underfoot_is_air {
+            self.next_step += 1;
+            return true;
+        }
+        false
     }
 }
 

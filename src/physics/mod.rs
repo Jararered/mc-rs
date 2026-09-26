@@ -13,6 +13,11 @@ pub use raycast::raycast_blocks;
 use bevy::prelude::*;
 
 use crate::app::state::AppScreen;
+use crate::block::fluids::Fluid;
+use crate::block::fluids::flow_vector;
+use crate::block::fluids::is_lava;
+use crate::block::fluids::is_water;
+use crate::block::fluids::percent_air;
 use crate::block::properties::collision_bounds;
 use crate::block::properties::slipperiness;
 use crate::entity::CollisionState;
@@ -20,11 +25,14 @@ use crate::entity::DroppedItem;
 use crate::entity::EntitySize;
 use crate::entity::Flying;
 use crate::entity::Gravity;
+use crate::entity::StepDistance;
 use crate::entity::StepHeight;
 use crate::entity::Velocity;
 use crate::player::Player;
 use crate::player::PlayerInterpolation;
 use crate::player::PlayerMovementInput;
+use crate::world::block_ticks::BlockEvent;
+use crate::world::block_ticks::BlockTicks;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
@@ -402,6 +410,7 @@ fn integrate_player(
     tick: Res<WorldTick>,
     time: Res<Time>,
     chunks: Res<WorldChunks>,
+    mut block_ticks: Option<ResMut<BlockTicks>>,
     mut players: Query<
         (
             &mut Transform,
@@ -412,6 +421,7 @@ fn integrate_player(
             &mut PlayerMovementInput,
             &mut PlayerInterpolation,
             Option<&Flying>,
+            Option<&mut StepDistance>,
         ),
         With<Player>,
     >,
@@ -433,6 +443,7 @@ fn integrate_player(
         input,
         mut interpolation,
         flying,
+        mut steps,
     ) in &mut players
     {
         if !chunks.contains(ChunkPosition::from_world(
@@ -488,6 +499,7 @@ fn integrate_player(
                     motion.y += LIQUID_JUMP_ACCELERATION;
                 }
 
+                let sneaking_on_ground = collision.on_ground && input.sneaking;
                 let movement = move_entity_with_sneak(
                     aabb,
                     motion,
@@ -499,6 +511,13 @@ fn integrate_player(
                 transform.translation = size.position_from_aabb(movement.aabb);
                 *collision = movement.collision;
                 cancel_collided_motion(&mut motion, movement.collision);
+                step_on_block(
+                    steps.as_deref_mut(),
+                    block_ticks.as_deref_mut(),
+                    &chunks,
+                    movement,
+                    sneaking_on_ground,
+                );
 
                 let drag = if in_water { 0.8 } else { 0.5 };
                 motion *= drag;
@@ -559,6 +578,7 @@ fn integrate_player(
                 }
             }
 
+            let sneaking_on_ground = collision.on_ground && input.sneaking;
             let movement = move_entity_with_sneak(
                 aabb,
                 motion,
@@ -571,6 +591,13 @@ fn integrate_player(
             *collision = movement.collision;
 
             cancel_collided_motion(&mut motion, movement.collision);
+            step_on_block(
+                steps.as_deref_mut(),
+                block_ticks.as_deref_mut(),
+                &chunks,
+                movement,
+                sneaking_on_ground,
+            );
 
             if (movement.collision.collided_x || movement.collision.collided_z)
                 && player_is_on_ladder(movement.aabb, &chunks)
@@ -592,6 +619,39 @@ fn integrate_player(
         }
 
         velocity.0 = motion / TICK_SECONDS;
+    }
+}
+
+/// `Entity.moveEntity`'s step tracking: a finished step calls
+/// `onEntityWalking` on the block 0.2 below the feet.
+fn step_on_block(
+    steps: Option<&mut StepDistance>,
+    block_ticks: Option<&mut BlockTicks>,
+    chunks: &WorldChunks,
+    movement: Movement,
+    sneaking_on_ground: bool,
+) {
+    let Some(steps) = steps else {
+        return;
+    };
+    let aabb = movement.aabb;
+    let underfoot = IVec3::new(
+        ((aabb.min.x + aabb.max.x) * 0.5).floor() as i32,
+        (aabb.min.y - 0.2).floor() as i32,
+        ((aabb.min.z + aabb.max.z) * 0.5).floor() as i32,
+    );
+    let block = chunks
+        .block_at(underfoot.x, underfoot.y, underfoot.z)
+        .unwrap_or(crate::block::id::Id::Air);
+    let stepped = steps.advance(
+        movement.displacement,
+        sneaking_on_ground,
+        block == crate::block::id::Id::Air,
+    );
+    if stepped && let Some(block_ticks) = block_ticks {
+        block_ticks.push_event(BlockEvent::Walked {
+            position: underfoot,
+        });
     }
 }
 
@@ -644,23 +704,9 @@ fn cancel_collided_motion(motion: &mut Vec3, collision: CollisionState) {
     }
 }
 
-fn is_water(block: crate::block::id::Id) -> bool {
-    matches!(
-        block,
-        crate::block::id::Id::Water | crate::block::id::Id::FlowingWater
-    )
-}
-
-fn is_lava(block: crate::block::id::Id) -> bool {
-    matches!(
-        block,
-        crate::block::id::Id::Lava | crate::block::id::Id::FlowingLava
-    )
-}
-
-/// Water immersion and flow over the player's central body band. The compact
-/// world currently lacks fluid metadata, so fluid surfaces use Beta's source
-/// height and flowing variants use a single representative decay level.
+/// Water immersion and flow over the player's central body band, as
+/// `World.handleMaterialAcceleration` reads it: a cell counts once the band
+/// reaches its fluid surface.
 fn water_state(aabb: Aabb, chunks: &WorldChunks) -> (bool, Vec3) {
     let area = Aabb::new(
         aabb.min + Vec3::new(0.001, 0.401, 0.001),
@@ -673,15 +719,15 @@ fn water_state(aabb: Aabb, chunks: &WorldChunks) -> (bool, Vec3) {
     for x in min_x..max_x {
         for y in min_y..max_y {
             for z in min_z..max_z {
-                let Some(block) = chunks.block_at(x, y, z).filter(|block| is_water(*block)) else {
+                if !chunks.block_at(x, y, z).is_some_and(is_water) {
                     continue;
-                };
-                let surface = liquid_surface_y(block, y);
+                }
+                let surface = liquid_surface_y(chunks.metadata_at(x, y, z), y);
                 if area.max.y < surface || area.min.y >= y as f32 + 1.0 {
                     continue;
                 }
                 immersed = true;
-                flow += water_flow_vector(x, y, z, block, chunks);
+                flow += water_flow_vector(x, y, z, chunks);
             }
         }
     }
@@ -689,53 +735,22 @@ fn water_state(aabb: Aabb, chunks: &WorldChunks) -> (bool, Vec3) {
     (immersed, flow.normalize_or_zero())
 }
 
-fn water_flow_vector(
-    x: i32,
-    y: i32,
-    z: i32,
-    block: crate::block::id::Id,
-    chunks: &WorldChunks,
-) -> Vec3 {
-    use crate::block::id::Id;
-
-    let level = fluid_decay(block);
-    let neighbors = [
-        (x - 1, z, Vec3::NEG_X),
-        (x, z - 1, Vec3::NEG_Z),
-        (x + 1, z, Vec3::X),
-        (x, z + 1, Vec3::Z),
-    ];
-    let mut flow = Vec3::ZERO;
-
-    for (nx, nz, direction) in neighbors {
-        let neighbor = chunks.block_at(nx, y, nz).unwrap_or(Id::Air);
-        if is_water(neighbor) {
-            flow += direction * (fluid_decay(neighbor) - level) as f32;
-        } else if !crate::block::properties::blocks_movement(neighbor)
-            && let Some(below) = chunks
-                .block_at(nx, y - 1, nz)
-                .filter(|block| is_water(*block))
-        {
-            let drop = fluid_decay(below) - (level - 8);
-            flow += direction * drop as f32;
-        }
-    }
-
-    flow.normalize_or_zero()
+/// `BlockFluid.getFlowVector` for water, normalized.
+fn water_flow_vector(x: i32, y: i32, z: i32, chunks: &WorldChunks) -> Vec3 {
+    let [flow_x, flow_z] = flow_vector(Fluid::Water, x, y, z, |x, y, z| {
+        (
+            chunks
+                .block_at(x, y, z)
+                .unwrap_or(crate::block::id::Id::Air),
+            chunks.metadata_at(x, y, z),
+        )
+    });
+    Vec3::new(flow_x, 0.0, flow_z).normalize_or_zero()
 }
 
-fn fluid_decay(block: crate::block::id::Id) -> i32 {
-    use crate::block::id::Id;
-
-    match block {
-        Id::FlowingWater | Id::FlowingLava => 1,
-        Id::Water | Id::Lava => 0,
-        _ => 0,
-    }
-}
-
-fn liquid_surface_y(block: crate::block::id::Id, y: i32) -> f32 {
-    y as f32 + 1.0 - (fluid_decay(block) as f32 + 1.0) / 9.0
+/// The top of the fluid in cell `y`, from its level.
+fn liquid_surface_y(metadata: u8, y: i32) -> f32 {
+    y as f32 + 1.0 - percent_air(metadata)
 }
 
 fn lava_contains(aabb: Aabb, chunks: &WorldChunks) -> bool {

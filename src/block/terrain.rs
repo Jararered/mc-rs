@@ -34,6 +34,7 @@ impl BlockDefinition for Definition {
                 | Id::DiamondBlock
                 | Id::CraftingTable
                 | Id::Farmland
+                | Id::SnowLayer
                 | Id::Ice
                 | Id::Snow
                 | Id::Clay
@@ -135,13 +136,13 @@ fn properties(id: Id) -> BlockProperties {
         },
         Id::CraftingTable => BlockProperties::solid(2.5),
         Id::Farmland => BlockProperties {
-            opaque_cube: false,
+            opaque_cube: true,
             selection_bounds: ([0.0; 3], [1.0, 15.0 / 16.0, 1.0]),
             ..BlockProperties::solid(0.6)
         },
         Id::SnowLayer => BlockProperties {
             opaque_cube: false,
-            collision_bounds: Some(([0.0; 3], [1.0, 0.125, 1.0])),
+            collision_bounds: None,
             selection_bounds: ([0.0; 3], [1.0, 0.125, 1.0]),
             light_opacity: 0,
             harvestable_by_hand: false,

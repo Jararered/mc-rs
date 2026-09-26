@@ -8,6 +8,8 @@ use bevy::prelude::*;
 use crate::app::settings::GameSettings;
 use crate::physics::PhysicsSet;
 
+use super::block_ticks::BlockTickSet;
+use super::block_ticks::BlockTicksPlugin;
 use super::chunk::WorldChunks;
 use super::sky::CelestialCamera;
 use super::sky::SkyCamera;
@@ -25,7 +27,7 @@ impl Plugin for WorldPlugin {
     fn build(&self, app: &mut App) {
         super::sky::plugin(app);
         super::clouds::plugin(app);
-        app.add_plugins(TerrainTexturePlugin)
+        app.add_plugins((TerrainTexturePlugin, BlockTicksPlugin))
             .insert_resource(ClearColor(Color::srgb(0.53, 0.73, 0.95)))
             .init_resource::<GameSettings>()
             .init_resource::<GlobalAmbientLight>()
@@ -42,7 +44,8 @@ impl Plugin for WorldPlugin {
                     super::furnace::tick_furnaces,
                     (regenerate_loaded_chunks, stream_chunks)
                         .chain()
-                        .after(PhysicsSet::ApplyInput),
+                        .after(PhysicsSet::ApplyInput)
+                        .after(BlockTickSet),
                 ),
             );
     }

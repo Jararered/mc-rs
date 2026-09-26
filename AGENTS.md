@@ -10,6 +10,7 @@ Compatibility with original Minecraft Beta 1.7.3 worlds and servers is a **secon
 - `refs/mc_b1.7.3_release` is a nested git repo recorded as a gitlink with no `.gitmodules`, so it may be missing in a fresh clone; `refs/` is otherwise not ignored.
 - `.../1.7.3-LTS/jars/world` (server, seed `-5779659068535663308`) and `.../jars/saves/New World` (client) are worlds the real game generated, in McRegion format. They are the ground truth for generation output; `tests/world/generation/beta_reference.rs` pins chunks from the server world. Both ran briefly after generating, so gravel has fallen and springs have flowed.
 - `docs/PLAN.md` is an aspirational layout sketch; this file and the code are authoritative.
+- `docs/BLOCK_TICKS.md` explains the block tick system and how to give a block update behavior. Read it before adding or changing any block that flows, falls, grows, decays, or reacts to its neighbors.
 - The feature/settings workflow lives in `.grok/skills/implement-feature/SKILL.md` (when a `GameSettings` toggle is warranted, menu wiring, when to remesh, and tests). Read it before adding a graphics option.
 
 # Commands
@@ -32,10 +33,11 @@ Organize code by gameplay and engine subsystem, not broad `components/` and `sys
 - `src/world/textures/`: the terrain atlas plugin, block-face tile mappings, and climate-based grass colors.
 - `src/world/lighting/`: sunlight, block light, and propagation in world data.
 - `src/world/tick.rs`: the shared 20 Hz `WorldTick` clock. Tick-counted simulation reads this instead of keeping a private accumulator.
+- `src/world/block_ticks/`: Beta's block updates — scheduled ticks, random ticks, and neighbor notifications — with one behavior module per block family under `behaviors/`. See `docs/BLOCK_TICKS.md`.
 - `src/world/persistence/`: saving and loading. Add Beta format adapters here when compatibility becomes a priority.
 - `src/player/`: controller, movement, camera, interaction, mining, and placement.
 - `src/physics/`: voxel collision, raycasting, and gravity.
-- `src/entity/`: non-block entities, health, spawning, mobs, and dropped items. Shared body components (`EntitySize`, `Velocity`, `Gravity`, `CollisionState`, `StepHeight`) live here. Dropped items and block particles are implemented; mobs are not yet.
+- `src/entity/`: non-block entities, health, spawning, mobs, and dropped items. Shared body components (`EntitySize`, `Velocity`, `Gravity`, `CollisionState`, `StepHeight`, `StepDistance`) live here. Dropped items, falling sand and gravel (`falling_block.rs`), and block particles are implemented; mobs are not yet.
 - `src/item/` and `src/inventory/`: item definitions, stacks, tools, slots, hotbar, and inventory transfer.
 - `src/crafting/`: crafting grids, shaped and shapeless recipes, and the Beta 1.7.3 recipe book.
 - `src/gameplay/`: weather, damage, respawning, and other game rules. Day time is `WorldTick::world_time` in `src/world/tick.rs`, not a second clock.
@@ -47,7 +49,7 @@ Organize code by gameplay and engine subsystem, not broad `components/` and `sys
 - `tests/`: all tests for this repository, including tests for individual modules and integration behavior. Do not put test modules in `src/`.
 - `benches/`: targeted performance benchmarks.
 
-The current game has a walking, sprinting, sneaking, and jumping player with voxel collision, step height, view bobbing, and a first-person arm; full-height Beta-style generated chunks; skylight and torch block light; chunk meshes with streaming around the player; and terrain atlas rendering with climate-sampled grass and foliage colors. Block interaction raycasts into world data, breaks blocks with per-block stages and tool speed and durability, and places blocks including torches. Items, a nine-slot hotbar, a 27-slot main inventory, a 2×2 crafting grid, a workbench session, dropped item entities, block break and hit particles, a HUD, menus, and settings are implemented. A custom save format under `saves/` persists the world, player, inventory, dropped items, and the world's `world_time`. A shared 20 Hz `WorldTick` advances while a world is being played. `src/main.rs` is the executable entry point, and `src/lib.rs` exposes modules for reuse and tests. The remaining directories describe future responsibilities; add them only as working features require them.
+The current game has a walking, sprinting, sneaking, and jumping player with voxel collision, step height, view bobbing, and a first-person arm; full-height Beta-style generated chunks; skylight and torch block light; chunk meshes with streaming around the player; and terrain atlas rendering with climate-sampled grass and foliage colors. Block interaction raycasts into world data, breaks blocks with per-block stages and tool speed and durability, and places blocks including torches. Items, a nine-slot hotbar, a 27-slot main inventory, a 2×2 crafting grid, a workbench session, dropped item entities, block break and hit particles, a HUD, menus, and settings are implemented. A custom save format under `saves/` persists the world, player, inventory, dropped items, and the world's `world_time`. A shared 20 Hz `WorldTick` advances while a world is being played, and Beta's block ticks run on it: flowing water and lava, falling sand and gravel, grass spread, farmland moisture and trampling, crops planted from seeds, leaf decay, cactus and sugar cane growth, mushroom spread, redstone ore glow, ice and snow melting, freezing water, and torches, ladders, and plants breaking off lost supports. `src/main.rs` is the executable entry point, and `src/lib.rs` exposes modules for reuse and tests. The remaining directories describe future responsibilities; add them only as working features require them.
 
 # Implemented conventions
 
@@ -66,9 +68,19 @@ The current game has a walking, sprinting, sneaking, and jumping player with vox
 - Step simulation with `ticks_this_frame()`. Sample `just_pressed` once per frame, then run held-button work inside the tick loop. Bevy keeps `just_pressed` true for the whole frame, so reading it inside the loop would repeat a click on every catch-up tick.
 - Keep this on `WorldTick` in `First`. A `FixedUpdate` schedule would repeat `just_pressed` the same way, and pausing Bevy's fixed clock would also freeze frame-time systems.
 - `world_time` counts ticks since the world started. `DAY_LENGTH` is 24000. The sky reads it, with `partial()`, for the sun and moon. It is stored on `WorldManifest` with `#[serde(default)]`, so an older `level.json` loads at time 0, and autosave writes it back.
-- Consumers today: block breaking and the place repeat, arm swing and equip, dropped items and the hotbar pop, block particles, and the water atlas. Leaf wiggle and view bob stay on frame time.
-- New tick-driven work (block entities, scheduled block updates, weather) consumes this clock. Do not add another 20 Hz accumulator.
-- All block tick updates (random ticks, scheduled block updates) are deferred for now. No block performs per-tick simulation.
+- Consumers today: block breaking and the place repeat, arm swing and equip, dropped items and the hotbar pop, block particles, the water atlas, block ticks, and falling blocks. Leaf wiggle and view bob stay on frame time.
+- New tick-driven work (block entities, weather) consumes this clock. Do not add another 20 Hz accumulator.
+- Block ticks (`src/world/block_ticks/`) consume this clock: each world tick runs pending block events, due scheduled ticks, and random ticks. Details below and in `docs/BLOCK_TICKS.md`.
+
+## Block ticks
+
+- Block update behavior implements `BlockBehavior` (Beta's `Block` hooks: `updateTick`, `onNeighborBlockChange`, `onBlockAdded`, `onBlockRemoval`, `onEntityWalking`, ...) in a module under `src/world/block_ticks/behaviors/` and is registered by block value in `behaviors::table()`. Behaviors read and write the world only through `TickWorld`, whose methods mirror Beta's `World` (`set_block_notify` is `setBlockWithNotify`, `schedule` is `scheduleBlockUpdate`). Transcribe the reference Java, keeping its order of random draws and notify choices.
+- Code outside the tick pass that writes `WorldChunks` (player editing, falling blocks, furnaces) must report the write with `BlockTicks::block_changed(position, previous, previous_metadata)` so the hooks and neighbor updates still run; player interactions use `BlockEvent`. Such code still requests its own remesh and marks its chunk dirty. Writes inside the tick pass are remeshed, relit, and saved automatically.
+- Behaviors never touch the ECS. Item drops and entity spawns are queued as `TickEffect`s and applied after the pass.
+- Chunks store Beta's 4-bit block metadata (`Chunk::metadata`, `WorldChunks::metadata_at`). It holds simulation state such as fluid levels, crop stages, farmland moisture, and leaf decay flags; species and facings stay in the compact `Id`. Writing a different block resets it to 0. If metadata changes how a block is drawn, update `meshing::same_appearance` along with the mesher.
+- Ticks read light from `LightCache`, which streaming fills from each chunk's mesh job. Random ticks only reach chunks that are finished and lit.
+- Pending scheduled ticks are saved with their chunk and resume with their remaining delay. Scheduled ticks near unloaded chunks wait rather than being dropped.
+- Not yet simulated: fire, weather (rain and snowfall), saplings, redstone, buckets, and world-generation springs.
 
 # Data and performance rules
 
@@ -79,7 +91,7 @@ The current game has a walking, sprinting, sneaking, and jumping player with vox
 - Keep generation, lighting, meshing, and streaming distinct. Run expensive independent work off the main thread where practical, then apply results to Bevy assets and entities on the appropriate thread. Prioritize nearby or visible chunks.
 - Prefer data-oriented storage, bounded allocations, and reusable buffers in hot paths. Profile before adding complex optimizations; use benchmarks for generation, meshing, and streaming changes with meaningful performance risk.
 - Keep deterministic game rules and world representation separate from client rendering where practical. Consider a separate voxel crate or workspace only when the growing codebase or server work gives a concrete reason for that split.
-- Chunks store raw block bytes (`Chunk::raw_blocks`); `Id` itself is two bytes because of its `Unknown(u8)` catch-all.
+- Chunks store raw block bytes (`Chunk::raw_blocks`); `Id` itself is two bytes because of its `Unknown(u8)` catch-all. Block metadata is a separate nibble array allocated only for chunks that hold a nonzero value.
 - Block meshes use one packed 16-byte vertex (`meshing/vertex.rs`, decoded by `textures/block_vertex.wgsl`) and 16-bit indices when they fit. Vertices carry raw sky and block light samples, AO levels, and tints; the `BlockMaterial` uniform applies `skylight_subtracted`, old lighting, and smooth lighting. Time of day and lighting settings must not rebuild meshes; only geometry changes (blocks, fancy leaves) do. Keep `BlockVertex::color` in step with the shader.
 - Chunks render as 16×16×16 sections. Streaming keeps a light fingerprint per section, so an edit (`WorldStreaming::request_block_update`) relights the chunks its light can reach and rebuilds only sections whose blocks or light changed.
 - Avoid mutating assets every frame. Animate with Bevy's `globals.time` in shaders, pass per-entity values through `MeshTag` (see `TintedMaterial`), move entities instead of UVs, and write animated atlas tiles from the render world (`textures/water.rs`) rather than modifying the atlas `Image`.

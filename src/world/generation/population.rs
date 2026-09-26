@@ -6,8 +6,10 @@
 //! reads and writes the live [`PopulationWorld`], so later features see
 //! earlier ones exactly as Beta's do.
 //!
-//! `WorldGenLiquids` springs are not generated: the engine has no flowing
-//! fluid levels to spread them with. They are the last random consumers
+//! `WorldGenLiquids` springs are not generated yet. Beta flows them at once
+//! with `scheduledUpdatesAreImmediate`, across whatever chunks happen to be
+//! loaded; here a spring would start from a pending block tick saved with
+//! its chunk (see `docs/BLOCK_TICKS.md`). They are the last random consumers
 //! before snow, which draws nothing, so the rest of a pass is unchanged.
 //! Their water is missing for later passes, though: clay starts only in
 //! water and dungeons reject it, so a later pass that meets spring water in

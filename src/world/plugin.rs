@@ -56,7 +56,7 @@ fn spawn_sun(mut commands: Commands, settings: Res<GameSettings>) {
             } else {
                 0.0
             },
-            shadow_maps_enabled: settings.directional_lighting,
+            shadow_maps_enabled: settings.sun_shadows(),
             ..default()
         },
         Transform::from_xyz(3.0, 8.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
@@ -82,7 +82,7 @@ pub(super) fn apply_lighting_settings(
         } else {
             0.0
         };
-        light.shadow_maps_enabled = settings.directional_lighting;
+        light.shadow_maps_enabled = settings.sun_shadows();
     }
 }
 

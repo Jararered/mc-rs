@@ -976,8 +976,8 @@ fn spawn_block_pieces(
         return;
     };
     let built = dropped_block_meshes(block, fancy, tints.0, tints.1);
-    let body = meshes.add(built.body);
-    let overlay = built.overlay.map(|mesh| meshes.add(mesh));
+    let body = meshes.add(built.body.into_mesh());
+    let overlay = built.overlay.map(|mesh| meshes.add(mesh.into_mesh()));
     let use_cutout = built.cutout;
     let cutout_handle = cutout.map(|material| material.0.clone());
     let alpha_mask_handle = alpha_mask.map(|material| material.0.clone());

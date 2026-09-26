@@ -1,8 +1,6 @@
-use bevy::asset::RenderAssetUsages;
-use bevy::mesh::Indices;
+use std::ops::Range;
+
 use bevy::prelude::Color;
-use bevy::prelude::Mesh;
-use bevy::render::render_resource::PrimitiveTopology;
 
 use crate::block::id::Id;
 use crate::block::properties::is_crossed_plant;
@@ -14,16 +12,27 @@ use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::Chunk;
 use crate::world::chunk::ChunkPosition;
+use crate::world::chunk::SECTION_HEIGHT;
 use crate::world::generation::BiomeMap;
 use crate::world::lighting::Skylight;
-use crate::world::lighting::beta_brightness;
 use crate::world::textures::FoliageColors;
 use crate::world::textures::GrassColors;
-use crate::world::textures::atlas_tile_uvs;
 use crate::world::textures::block_tile;
 use crate::world::textures::farmland_top_tile;
 
 pub(crate) mod geometry;
+mod vertex;
+
+pub use self::vertex::ATTRIBUTE_BLOCK_VERTEX;
+pub use self::vertex::AtlasTexel;
+pub use self::vertex::BRIGHT_TINT;
+pub use self::vertex::BlockGeometry;
+pub use self::vertex::BlockLighting;
+pub use self::vertex::BlockVertex;
+pub use self::vertex::FULL_BRIGHT;
+pub use self::vertex::PackedFields;
+pub use self::vertex::face_shade;
+pub use self::vertex::unpack_vertex;
 
 use self::geometry::BlockFaceGeometry;
 use self::geometry::FACE_BOTTOM;
@@ -37,50 +46,70 @@ use self::geometry::FaceGeometry;
 struct Face {
     neighbor: [i32; 3],
     normal: [f32; 3],
-    shade: f32,
 }
 
 const FACES: [Face; 6] = [
     Face {
         neighbor: [0, 1, 0],
         normal: [0.0, 1.0, 0.0],
-        shade: 1.0,
     },
     Face {
         neighbor: [0, -1, 0],
         normal: [0.0, -1.0, 0.0],
-        shade: 0.55,
     },
     Face {
         neighbor: [1, 0, 0],
         normal: [1.0, 0.0, 0.0],
-        shade: 0.6,
     },
     Face {
         neighbor: [-1, 0, 0],
         normal: [-1.0, 0.0, 0.0],
-        shade: 0.6,
     },
     Face {
         neighbor: [0, 0, 1],
         normal: [0.0, 0.0, 1.0],
-        shade: 0.8,
     },
     Face {
         neighbor: [0, 0, -1],
         normal: [0.0, 0.0, -1.0],
-        shade: 0.8,
     },
 ];
 
 /// Opaque terrain, cutout leaves, and a separate translucent water surface.
 pub struct ChunkMeshes {
-    pub opaque: Mesh,
-    pub grass_overlay: Mesh,
-    pub cutout: Mesh,
+    pub opaque: BlockGeometry,
+    pub grass_overlay: BlockGeometry,
+    pub cutout: BlockGeometry,
     /// Static alpha-masked geometry such as cactus faces and crossed plants.
-    pub masked: Mesh,
-    pub water: Mesh,
+    pub masked: BlockGeometry,
+    pub water: BlockGeometry,
+}
+
+impl ChunkMeshes {
+    pub fn is_empty(&self) -> bool {
+        self.layers().iter().all(|layer| layer.is_empty())
+    }
+
+    /// Layers in render order: opaque, grass overlay, cutout, water, masked.
+    pub fn layers(&self) -> [&BlockGeometry; 5] {
+        [
+            &self.opaque,
+            &self.grass_overlay,
+            &self.cutout,
+            &self.water,
+            &self.masked,
+        ]
+    }
+
+    pub fn into_layers(self) -> [BlockGeometry; 5] {
+        [
+            self.opaque,
+            self.grass_overlay,
+            self.cutout,
+            self.water,
+            self.masked,
+        ]
+    }
 }
 
 /// Block data surrounding a chunk, used for face culling and ambient
@@ -139,72 +168,38 @@ impl ChunkNeighbors<'_> {
 }
 
 /// Emit only faces touching air. A missing neighbor is treated as air for this isolated chunk.
-pub fn mesh_chunk(chunk: &Chunk, skylight: &Skylight) -> Mesh {
-    mesh_chunk_inner(
-        chunk,
-        &ChunkNeighbors::default(),
-        skylight,
-        None,
-        true,
-        true,
-        false,
-        0,
-        0,
-        0,
-    )
-    .opaque
+pub fn mesh_chunk(chunk: &Chunk, skylight: &Skylight) -> BlockGeometry {
+    mesh_chunk_with_neighbors(chunk, &ChunkNeighbors::default(), skylight)
 }
 
-/// Opaque mesh with neighboring block data available across chunk boundaries.
+/// Opaque geometry with neighboring block data available across chunk boundaries.
 pub fn mesh_chunk_with_neighbors(
     chunk: &Chunk,
     neighbors: &ChunkNeighbors<'_>,
     skylight: &Skylight,
-) -> Mesh {
-    mesh_chunk_inner(chunk, neighbors, skylight, None, true, true, false, 0, 0, 0).opaque
+) -> BlockGeometry {
+    Mesher::new(chunk, neighbors, skylight, None, false, 0, 0)
+        .region(0..CHUNK_HEIGHT, 0)
+        .opaque
 }
 
-/// Like [`mesh_chunk`], with lighting and leaf graphics matching the settings menu.
+/// Like [`mesh_chunk`], with the leaf graphics matching the settings menu.
+/// Lighting settings do not change geometry; see [`BlockLighting`].
 pub fn mesh_chunk_with_settings(
     chunk: &Chunk,
     skylight: &Skylight,
-    old_lighting: bool,
     fancy_graphics: bool,
 ) -> ChunkMeshes {
-    mesh_chunk_inner(
+    Mesher::new(
         chunk,
         &ChunkNeighbors::default(),
         skylight,
         None,
-        old_lighting,
-        true,
         fancy_graphics,
         0,
         0,
-        0,
     )
-}
-
-pub fn mesh_chunk_with_settings_and_smooth_lighting(
-    chunk: &Chunk,
-    skylight: &Skylight,
-    old_lighting: bool,
-    smooth_lighting: bool,
-    fancy_graphics: bool,
-    skylight_subtracted: u8,
-) -> ChunkMeshes {
-    mesh_chunk_inner(
-        chunk,
-        &ChunkNeighbors::default(),
-        skylight,
-        None,
-        old_lighting,
-        smooth_lighting,
-        fancy_graphics,
-        skylight_subtracted,
-        0,
-        0,
-    )
+    .region(0..CHUNK_HEIGHT, 0)
 }
 
 /// Per-column biome tints applied to grass tops and leaves.
@@ -213,7 +208,24 @@ struct ColumnTints {
     foliage: [[f32; 3]; CHUNK_SIZE * CHUNK_SIZE],
 }
 
-/// Mesh a chunk with its per-column climate colors applied to grass and plants.
+impl ColumnTints {
+    fn sample(
+        biomes: &BiomeMap,
+        grass_colors: &GrassColors,
+        foliage_colors: &FoliageColors,
+    ) -> Self {
+        Self {
+            grass: std::array::from_fn(|index| {
+                grass_colors.sample(biomes.get(index % CHUNK_SIZE, index / CHUNK_SIZE))
+            }),
+            foliage: std::array::from_fn(|index| {
+                foliage_colors.sample(biomes.get(index % CHUNK_SIZE, index / CHUNK_SIZE))
+            }),
+        }
+    }
+}
+
+/// Mesh a whole chunk with its per-column climate colors applied to grass and plants.
 pub fn mesh_chunk_with_biomes(
     chunk: &Chunk,
     neighbors: &ChunkNeighbors<'_>,
@@ -221,55 +233,93 @@ pub fn mesh_chunk_with_biomes(
     biomes: &BiomeMap,
     grass_colors: &GrassColors,
     foliage_colors: &FoliageColors,
-    old_lighting: bool,
-    smooth_lighting: bool,
     fancy_graphics: bool,
-    skylight_subtracted: u8,
     position: ChunkPosition,
 ) -> ChunkMeshes {
-    let tints = ColumnTints {
-        grass: std::array::from_fn(|index| {
-            grass_colors.sample(biomes.get(index % CHUNK_SIZE, index / CHUNK_SIZE))
-        }),
-        foliage: std::array::from_fn(|index| {
-            foliage_colors.sample(biomes.get(index % CHUNK_SIZE, index / CHUNK_SIZE))
-        }),
-    };
-    mesh_chunk_inner(
+    SectionMesher::new(
         chunk,
         neighbors,
         skylight,
-        Some(&tints),
-        old_lighting,
-        smooth_lighting,
+        biomes,
+        grass_colors,
+        foliage_colors,
         fancy_graphics,
-        skylight_subtracted,
-        position.x * CHUNK_SIZE as i32,
-        position.z * CHUNK_SIZE as i32,
+        position,
     )
+    .mesher
+    .region(0..CHUNK_HEIGHT, 0)
+}
+
+/// Meshes one 16-block-tall render section at a time. Vertex positions are
+/// relative to the section origin, `(0, section * SECTION_HEIGHT, 0)` in the
+/// chunk, which keeps them inside the packed vertex range.
+pub struct SectionMesher<'a> {
+    mesher: Mesher<'a>,
+}
+
+impl<'a> SectionMesher<'a> {
+    pub fn new(
+        chunk: &'a Chunk,
+        neighbors: &'a ChunkNeighbors<'a>,
+        skylight: &'a Skylight,
+        biomes: &BiomeMap,
+        grass_colors: &GrassColors,
+        foliage_colors: &FoliageColors,
+        fancy_graphics: bool,
+        position: ChunkPosition,
+    ) -> Self {
+        Self {
+            mesher: Mesher::new(
+                chunk,
+                neighbors,
+                skylight,
+                Some(ColumnTints::sample(biomes, grass_colors, foliage_colors)),
+                fancy_graphics,
+                position.x * CHUNK_SIZE as i32,
+                position.z * CHUNK_SIZE as i32,
+            ),
+        }
+    }
+
+    pub fn mesh(&self, section: usize) -> ChunkMeshes {
+        let origin = section * SECTION_HEIGHT;
+        self.mesher.region(origin..origin + SECTION_HEIGHT, origin)
+    }
 }
 
 /// Keep the animated Beta-blue texture visible instead of washing it out
-/// against the sky and lake bed through two stacked alpha layers.
-const WATER_ALPHA: f32 = 0.8;
+/// against the sky and lake bed through two stacked alpha layers. Applied as
+/// the water material's base alpha.
+pub const WATER_ALPHA: f32 = 0.8;
 /// Two texels of a 16-pixel block, matching Beta's still-water surface drop.
 const WATER_SURFACE_DROP: f32 = 2.0 / 16.0;
 /// Lava uses the same inset surface plane as water, while remaining opaque.
 const LAVA_SURFACE_DROP: f32 = 2.0 / 16.0;
+/// Fancy grass overlays sit this far outside the side face. One packed
+/// horizontal step, so the offset survives vertex quantization.
+pub const GRASS_OVERLAY_OFFSET: f32 = 1.0 / 256.0;
+const DEFAULT_GRASS_TINT: [f32; 3] = [0.55, 0.8, 0.4];
 
-#[derive(Default)]
-struct MeshBuffers {
-    positions: Vec<[f32; 3]>,
-    normals: Vec<[f32; 3]>,
-    colors: Vec<[f32; 4]>,
-    uvs: Vec<[f32; 2]>,
-    indices: Vec<u32>,
+/// Light and occlusion for one quad's four corners.
+#[derive(Clone, Copy)]
+struct CornerShading {
+    light: [[u8; 4]; 4],
+    ao: [u8; 4],
+    shade: bool,
 }
 
-impl MeshBuffers {
-    fn push_ladder(&mut self, x: usize, y: usize, z: usize, block: Id) {
-        // Beta's ladder is one transparent wall plane. The saved facing names
-        // the supporting wall; draw the texture toward the room side.
+impl CornerShading {
+    const FULL_BRIGHT: Self = Self {
+        light: [FULL_BRIGHT; 4],
+        ao: [0; 4],
+        shade: false,
+    };
+}
+
+impl BlockGeometry {
+    /// Beta's ladder is one transparent wall plane. The saved facing names the
+    /// supporting wall; draw the texture toward the room side.
+    fn push_ladder(&mut self, origin: [f32; 3], block: Id) {
         let (face_index, coordinate) = match block.ladder_support_offset() {
             Some([0, 0, -1]) => (FACE_SOUTH, 0.125),
             Some([0, 0, 1]) => (FACE_NORTH, 0.875),
@@ -277,7 +327,6 @@ impl MeshBuffers {
             Some([-1, 0, 0]) => (FACE_EAST, 0.125),
             _ => (FACE_NORTH, 0.125),
         };
-        let face = &FACES[face_index];
         let corners = BlockFaceGeometry::unit_cube()
             .face(face_index)
             .corners
@@ -290,22 +339,19 @@ impl MeshBuffers {
                 corner[axis] = coordinate;
                 corner
             });
-        self.push_quad(
-            x,
-            y,
-            z,
-            face,
+        self.push_block_quad(
+            origin,
+            FACES[face_index].normal,
             corners,
-            face_uvs_for_tile(3, 5, face_index),
-            [1.0; 4],
-            [1.0; 4],
-            [1.0; 4],
+            face_texels(3, 5, face_index),
+            [1.0; 3],
+            CornerShading::FULL_BRIGHT,
         );
     }
 
-    fn push_torch(&mut self, x: usize, y: usize, z: usize, block: Id) {
-        // Build the same post for floor and wall attachments, then rotate its
-        // vertices and normals together so the cap follows the shaft.
+    /// Build the same post for floor and wall attachments, then rotate its
+    /// vertices and normals together so the cap follows the shaft.
+    fn push_torch(&mut self, origin: [f32; 3], block: Id) {
         let unit_cube = BlockFaceGeometry::unit_cube();
         for (face_index, face) in FACES.iter().enumerate() {
             if face_index == FACE_BOTTOM {
@@ -321,41 +367,29 @@ impl MeshBuffers {
                     ],
                 )
             });
-            let rotated_face = Face {
-                neighbor: face.neighbor,
-                normal: torch_normal(block, face.normal),
-                shade: face.shade,
-            };
-            let mut uvs = face_uvs_for_tile(0, 5, face_index);
-            let (u0, v0, u1, v1) = atlas_tile_uvs(0, 5);
-            let du = (u1 - u0) / 16.0;
-            let dv = (v1 - v0) / 16.0;
-            if face_index == FACE_TOP {
-                uvs = [
-                    [u0 + 7.0 * du, v0 + 6.0 * dv],
-                    [u0 + 7.0 * du, v0 + 8.0 * dv],
-                    [u0 + 9.0 * du, v0 + 8.0 * dv],
-                    [u0 + 9.0 * du, v0 + 6.0 * dv],
-                ];
+            let texels = if face_index == FACE_TOP {
+                [
+                    AtlasTexel::new(0, 5, 7, 6),
+                    AtlasTexel::new(0, 5, 7, 8),
+                    AtlasTexel::new(0, 5, 9, 8),
+                    AtlasTexel::new(0, 5, 9, 6),
+                ]
             } else {
                 // Only columns 7..8 and rows 6..15 contain the torch.
                 // Sampling the whole transparent tile shrinks the shaft to
                 // two pixels on a face that is already physically narrow.
-                for uv in &mut uvs {
-                    uv[0] = u0 + (7.0 + (uv[0] - u0) / (u1 - u0) * 2.0) * du;
-                    uv[1] = v0 + (6.0 + (uv[1] - v0) / (v1 - v0) * 10.0) * dv;
-                }
-            }
-            self.push_quad(
-                x,
-                y,
-                z,
-                &rotated_face,
+                face_texels(0, 5, face_index).map(|texel| {
+                    let [u, v] = texel.texel;
+                    AtlasTexel::new(0, 5, 7 + u / 16 * 2, 6 + v / 16 * 10)
+                })
+            };
+            self.push_block_quad(
+                origin,
+                torch_normal(block, face.normal),
                 corners,
-                uvs,
-                [1.0; 4],
-                [1.0; 4],
-                [1.0; 4],
+                texels,
+                [1.0; 3],
+                CornerShading::FULL_BRIGHT,
             );
         }
     }
@@ -364,19 +398,16 @@ impl MeshBuffers {
     /// material draws both sides.
     fn push_crossed_plant(
         &mut self,
-        x: usize,
-        y: usize,
-        z: usize,
+        origin: [f32; 3],
+        world: [i32; 3],
         block: Id,
-        origin_x: i32,
-        origin_z: i32,
         grass_tint: [f32; 3],
-        brightness: f32,
+        light: u8,
     ) {
         // Beta jitters only Block.tallGrass in renderBlockReed. Fern is its
         // metadata-2 equivalent here; flowers and mushrooms stay centered.
         let [dx, mut dy, dz] = if matches!(block, Id::TallGrass | Id::Fern) {
-            crossed_plant_offset(origin_x + x as i32, y as i32, origin_z + z as i32)
+            crossed_plant_offset(world[0], world[1], world[2])
         } else {
             [0.0; 3]
         };
@@ -396,15 +427,8 @@ impl MeshBuffers {
         } else {
             [1.0, 1.0, 1.0]
         };
-        let color = [
-            tint[0] * brightness,
-            tint[1] * brightness,
-            tint[2] * brightness,
-            1.0,
-        ];
         let (tile_x, tile_y) = block_tile(block, 0, false);
-        let (u0, v0, u1, v1) = atlas_tile_uvs(tile_x, tile_y);
-        let uvs = [[u0, v0], [u0, v1], [u1, v1], [u1, v0]];
+        let texels = tile_texels(tile_x, tile_y, [[0, 0], [0, 16], [16, 16], [16, 0]]);
         let inv_sqrt2 = std::f32::consts::FRAC_1_SQRT_2;
         let quads = [
             (
@@ -426,35 +450,34 @@ impl MeshBuffers {
                 ],
             ),
         ];
+        // Crossed squares take the plant cell's own light, with no face
+        // shade or corner occlusion.
+        let shading = CornerShading {
+            light: [[light; 4]; 4],
+            ao: [0; 4],
+            shade: false,
+        };
         for (normal, corners) in quads {
-            let face = Face {
-                neighbor: [0, 0, 0],
-                normal,
-                shade: 1.0,
-            };
-            self.push_quad(x, y, z, &face, corners, uvs, color, [1.0; 4], [1.0; 4]);
+            self.push_block_quad(origin, normal, corners, texels, tint, shading);
         }
     }
 
     fn push_face(
         &mut self,
-        x: usize,
-        y: usize,
-        z: usize,
+        origin: [f32; 3],
         face: &Face,
         geometry: FaceGeometry,
         face_index: usize,
-        color: [f32; 4],
-        corner_ao: [f32; 4],
-        corner_light: [f32; 4],
+        tint: [f32; 3],
+        shading: CornerShading,
         block: Id,
         fancy_graphics: bool,
         y_drop: f32,
         tile_override: Option<(u8, u8)>,
     ) {
-        let uvs = tile_override.map_or_else(
-            || face_uvs(block, face_index, fancy_graphics),
-            |(tile_x, tile_y)| face_uvs_for_tile(tile_x, tile_y, face_index),
+        let texels = tile_override.map_or_else(
+            || face_texels_for_block(block, face_index, fancy_graphics),
+            |(tile_x, tile_y)| face_texels(tile_x, tile_y, face_index),
         );
         let shape_height = match block {
             Id::SnowLayer => 0.125,
@@ -464,269 +487,230 @@ impl MeshBuffers {
         let corners = geometry
             .corners
             .map(|corner| [corner[0], corner[1] * shape_height - y_drop, corner[2]]);
-        self.push_quad(x, y, z, face, corners, uvs, color, corner_ao, corner_light);
+        self.push_block_quad(origin, face.normal, corners, texels, tint, shading);
     }
 
     /// Beta's fancy grass pass: the transparent overlay tile contains only
     /// the hanging grass pixels, leaving the normal dirt side unmodified.
     fn push_grass_overlay(
         &mut self,
-        x: usize,
-        y: usize,
-        z: usize,
+        origin: [f32; 3],
         face: &Face,
         face_index: usize,
-        color: [f32; 4],
-        corner_ao: [f32; 4],
-        corner_light: [f32; 4],
+        tint: [f32; 3],
+        shading: CornerShading,
     ) {
-        let uvs = face_uvs_for_tile(6, 2, face_index);
         let corners = BlockFaceGeometry::unit_cube()
             .face(face_index)
             .corners
             .map(|corner| {
-                [
-                    corner[0] + face.normal[0] * 0.001,
-                    corner[1] + face.normal[1] * 0.001,
-                    corner[2] + face.normal[2] * 0.001,
-                ]
+                std::array::from_fn(|axis| corner[axis] + face.normal[axis] * GRASS_OVERLAY_OFFSET)
             });
-        self.push_quad(x, y, z, face, corners, uvs, color, corner_ao, corner_light);
+        self.push_block_quad(
+            origin,
+            face.normal,
+            corners,
+            face_texels(6, 2, face_index),
+            tint,
+            shading,
+        );
     }
 
-    fn push_quad(
+    fn push_block_quad(
         &mut self,
-        x: usize,
-        y: usize,
-        z: usize,
-        face: &Face,
+        origin: [f32; 3],
+        normal: [f32; 3],
         corners: [[f32; 3]; 4],
-        uvs: [[f32; 2]; 4],
-        color: [f32; 4],
-        corner_ao: [f32; 4],
-        corner_light: [f32; 4],
+        texels: [AtlasTexel; 4],
+        tint: [f32; 3],
+        shading: CornerShading,
     ) {
-        let start = self.positions.len() as u32;
-        for (corner_index, corner) in corners.into_iter().enumerate() {
-            self.positions.push([
-                x as f32 + corner[0],
-                y as f32 + corner[1],
-                z as f32 + corner[2],
-            ]);
-            self.normals.push(face.normal);
-            self.colors.push([
-                color[0] * corner_ao[corner_index] * corner_light[corner_index],
-                color[1] * corner_ao[corner_index] * corner_light[corner_index],
-                color[2] * corner_ao[corner_index] * corner_light[corner_index],
-                color[3],
-            ]);
-        }
-        self.uvs.extend_from_slice(&uvs);
-        self.indices
-            .extend_from_slice(&[start, start + 1, start + 2, start, start + 2, start + 3]);
-    }
-
-    fn into_mesh(self) -> Mesh {
-        Mesh::new(
-            PrimitiveTopology::TriangleList,
-            // Chunk block data remains in WorldChunks. After upload, Bevy can
-            // release this mesh's CPU vertex and index buffers; a remesh
-            // replaces the asset at the same handle with fresh geometry.
-            RenderAssetUsages::RENDER_WORLD,
-        )
-        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, self.positions)
-        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, self.normals)
-        .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, self.colors)
-        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, self.uvs)
-        .with_inserted_indices(Indices::U32(self.indices))
+        self.push_quad(std::array::from_fn(|corner| BlockVertex {
+            position: std::array::from_fn(|axis| origin[axis] + corners[corner][axis]),
+            normal,
+            texel: texels[corner],
+            tint,
+            light: shading.light[corner],
+            ao: shading.ao[corner],
+            shade: shading.shade,
+        }));
     }
 }
 
-fn mesh_chunk_inner(
-    chunk: &Chunk,
-    neighbors: &ChunkNeighbors<'_>,
-    skylight: &Skylight,
-    tints: Option<&ColumnTints>,
-    old_lighting: bool,
-    smooth_lighting: bool,
+struct Mesher<'a> {
+    chunk: &'a Chunk,
+    neighbors: &'a ChunkNeighbors<'a>,
+    skylight: &'a Skylight,
+    tints: Option<ColumnTints>,
     fancy_graphics: bool,
-    skylight_subtracted: u8,
     origin_x: i32,
     origin_z: i32,
-) -> ChunkMeshes {
-    let mut opaque = MeshBuffers::default();
-    let mut grass_overlay = MeshBuffers::default();
-    let mut cutout = MeshBuffers::default();
-    let mut water = MeshBuffers::default();
-    let mut masked = MeshBuffers::default();
+}
 
-    for y in 0..CHUNK_HEIGHT {
-        for z in 0..CHUNK_SIZE {
-            for x in 0..CHUNK_SIZE {
-                let block = chunk.get(x, y, z).unwrap();
-                if block == Id::Air {
-                    continue;
-                }
-                if is_torch(block) {
-                    grass_overlay.push_torch(x, y, z, block);
-                    continue;
-                }
-                if block.is_ladder() {
-                    masked.push_ladder(x, y, z, block);
-                    continue;
-                }
-                if is_crossed_plant(block) {
-                    let grass_tint = tints
-                        .map(|tints| tints.grass[z * CHUNK_SIZE + x])
-                        .unwrap_or([0.55, 0.8, 0.4]);
-                    let level =
-                        skylight.light_at(x as i32, y as i32, z as i32, skylight_subtracted);
-                    let brightness = if old_lighting {
-                        beta_brightness(level)
-                    } else {
-                        1.0
-                    };
-                    masked.push_crossed_plant(
-                        x, y, z, block, origin_x, origin_z, grass_tint, brightness,
-                    );
-                    continue;
-                }
+impl<'a> Mesher<'a> {
+    fn new(
+        chunk: &'a Chunk,
+        neighbors: &'a ChunkNeighbors<'a>,
+        skylight: &'a Skylight,
+        tints: Option<ColumnTints>,
+        fancy_graphics: bool,
+        origin_x: i32,
+        origin_z: i32,
+    ) -> Self {
+        Self {
+            chunk,
+            neighbors,
+            skylight,
+            tints,
+            fancy_graphics,
+            origin_x,
+            origin_z,
+        }
+    }
 
-                let chest_pair = if block.is_chest() {
-                    chest_pair_direction(chunk, neighbors, x, y, z)
-                } else {
-                    None
-                };
-                let block_geometry = if block.is_chest() {
-                    chest_geometry(chest_pair)
-                } else {
-                    BlockFaceGeometry::for_block(block)
-                };
-                for (face_index, face) in FACES.iter().enumerate() {
-                    let face_geometry = block_geometry.face(face_index);
-                    if chest_pair == Some(face.neighbor) {
+    /// Mesh the chunk layers in `rows`, with positions relative to `y_origin`.
+    fn region(&self, rows: Range<usize>, y_origin: usize) -> ChunkMeshes {
+        let chunk = self.chunk;
+        let neighbors = self.neighbors;
+        let skylight = self.skylight;
+        let fancy_graphics = self.fancy_graphics;
+        let mut meshes = ChunkMeshes {
+            opaque: BlockGeometry::default(),
+            grass_overlay: BlockGeometry::default(),
+            cutout: BlockGeometry::default(),
+            masked: BlockGeometry::default(),
+            water: BlockGeometry::default(),
+        };
+
+        for y in rows {
+            for z in 0..CHUNK_SIZE {
+                for x in 0..CHUNK_SIZE {
+                    let block = chunk.get(x, y, z).unwrap();
+                    if block == Id::Air {
                         continue;
                     }
-                    if is_surface_liquid(block) && face_index != FACE_TOP {
+                    let origin = [x as f32, (y - y_origin) as f32, z as f32];
+                    if is_torch(block) {
+                        meshes.grass_overlay.push_torch(origin, block);
+                        continue;
+                    }
+                    if block.is_ladder() {
+                        meshes.masked.push_ladder(origin, block);
+                        continue;
+                    }
+                    let column = z * CHUNK_SIZE + x;
+                    let grass_tint = self
+                        .tints
+                        .as_ref()
+                        .map_or(DEFAULT_GRASS_TINT, |tints| tints.grass[column]);
+                    if is_crossed_plant(block) {
+                        let light = skylight.channels_at(x as i32, y as i32, z as i32);
+                        meshes.masked.push_crossed_plant(
+                            origin,
+                            [self.origin_x + x as i32, y as i32, self.origin_z + z as i32],
+                            block,
+                            grass_tint,
+                            light,
+                        );
                         continue;
                     }
 
-                    let nx = x as i32 + face.neighbor[0];
-                    let ny = y as i32 + face.neighbor[1];
-                    let nz = z as i32 + face.neighbor[2];
-                    let neighbor = neighbors.get(chunk, nx, ny, nz);
-                    if neighbor.is_some_and(|neighbor| same_surface_liquid(block, neighbor)) {
-                        continue;
-                    }
-                    if neighbor_hides_face(block, neighbor, fancy_graphics) {
-                        continue;
-                    }
+                    let chest_pair = if block.is_chest() {
+                        chest_pair_direction(chunk, neighbors, x, y, z)
+                    } else {
+                        None
+                    };
+                    let block_geometry = if block.is_chest() {
+                        chest_geometry(chest_pair)
+                    } else {
+                        BlockFaceGeometry::for_block(block)
+                    };
+                    for (face_index, face) in FACES.iter().enumerate() {
+                        let face_geometry = block_geometry.face(face_index);
+                        if chest_pair == Some(face.neighbor) {
+                            continue;
+                        }
+                        if is_surface_liquid(block) && face_index != FACE_TOP {
+                            continue;
+                        }
 
-                    let level = skylight.light_at(nx, ny, nz, skylight_subtracted);
-                    let brightness = if old_lighting {
-                        beta_brightness(level) * face.shade
-                    } else {
-                        1.0
-                    };
-                    let grass_side =
-                        block == Id::Grass && face_index != FACE_TOP && face_index != FACE_BOTTOM;
-                    let grass_tint = tints
-                        .map(|tints| tints.grass[z * CHUNK_SIZE + x])
-                        .unwrap_or([0.55, 0.8, 0.4]);
-                    let base = if block == Id::Grass && face_index == FACE_TOP {
-                        grass_tint
-                    } else {
-                        block_tint(block, tints.map(|tints| tints.foliage[z * CHUNK_SIZE + x]))
-                    };
-                    let alpha = if block == Id::Water { WATER_ALPHA } else { 1.0 };
-                    let color = [base[0], base[1], base[2], alpha];
-                    let buffers = if block == Id::Water {
-                        &mut water
-                    } else if block == Id::Cactus {
-                        &mut masked
-                    } else if fancy_graphics && is_leaf(block) {
-                        &mut cutout
-                    } else {
-                        &mut opaque
-                    };
-                    let y_drop = match block {
-                        Id::Water => WATER_SURFACE_DROP,
-                        Id::Lava | Id::FlowingLava => LAVA_SURFACE_DROP,
-                        _ => 0.0,
-                    };
-                    let chest_tile =
-                        chest_pair.map(|direction| double_chest_tile(block, direction, face_index));
-                    let wet_farmland_top = block == Id::Farmland
-                        && face_index == FACE_TOP
-                        && farmland_has_nearby_water(chunk, neighbors, x, y, z);
-                    let tile_override = wet_farmland_top
-                        .then(|| farmland_top_tile(true))
-                        .or(chest_tile);
-                    let corner_ao = if smooth_lighting {
-                        face_corner_ao(chunk, neighbors, x, y, z, face, face_geometry)
-                    } else {
-                        [1.0; 4]
-                    };
-                    let corner_light = if old_lighting && smooth_lighting {
-                        face_corner_light(
-                            chunk,
-                            skylight,
-                            x,
-                            y,
-                            z,
+                        let nx = x as i32 + face.neighbor[0];
+                        let ny = y as i32 + face.neighbor[1];
+                        let nz = z as i32 + face.neighbor[2];
+                        // Nothing can see the underside of the world's bottom
+                        // layer from inside the world.
+                        if ny < 0 {
+                            continue;
+                        }
+                        let neighbor = neighbors.get(chunk, nx, ny, nz);
+                        if neighbor.is_some_and(|neighbor| same_surface_liquid(block, neighbor)) {
+                            continue;
+                        }
+                        if neighbor_hides_face(block, neighbor, fancy_graphics) {
+                            continue;
+                        }
+
+                        let grass_side = block == Id::Grass
+                            && face_index != FACE_TOP
+                            && face_index != FACE_BOTTOM;
+                        let base = if block == Id::Grass && face_index == FACE_TOP {
+                            grass_tint
+                        } else {
+                            block_tint(
+                                block,
+                                self.tints.as_ref().map(|tints| tints.foliage[column]),
+                            )
+                        };
+                        let layer = if block == Id::Water {
+                            &mut meshes.water
+                        } else if block == Id::Cactus {
+                            &mut meshes.masked
+                        } else if fancy_graphics && is_leaf(block) {
+                            &mut meshes.cutout
+                        } else {
+                            &mut meshes.opaque
+                        };
+                        let y_drop = match block {
+                            Id::Water => WATER_SURFACE_DROP,
+                            Id::Lava | Id::FlowingLava => LAVA_SURFACE_DROP,
+                            _ => 0.0,
+                        };
+                        let chest_tile = chest_pair
+                            .map(|direction| double_chest_tile(block, direction, face_index));
+                        let wet_farmland_top = block == Id::Farmland
+                            && face_index == FACE_TOP
+                            && farmland_has_nearby_water(chunk, neighbors, x, y, z);
+                        let tile_override = wet_farmland_top
+                            .then(|| farmland_top_tile(true))
+                            .or(chest_tile);
+                        let shading = CornerShading {
+                            light: face_corner_light(skylight, x, y, z, face, face_geometry),
+                            ao: face_corner_ao(chunk, neighbors, x, y, z, face, face_geometry),
+                            shade: true,
+                        };
+                        let side_tint = if grass_side { [1.0; 3] } else { base };
+                        layer.push_face(
+                            origin,
                             face,
                             face_geometry,
-                            skylight_subtracted,
-                        )
-                    } else if old_lighting {
-                        [brightness; 4]
-                    } else {
-                        [1.0; 4]
-                    };
-                    let side_color = if grass_side {
-                        [1.0, 1.0, 1.0, 1.0]
-                    } else {
-                        color
-                    };
-                    buffers.push_face(
-                        x,
-                        y,
-                        z,
-                        face,
-                        face_geometry,
-                        face_index,
-                        side_color,
-                        corner_ao,
-                        corner_light,
-                        block,
-                        fancy_graphics,
-                        y_drop,
-                        tile_override,
-                    );
-                    if grass_side && fancy_graphics {
-                        let overlay_color = [grass_tint[0], grass_tint[1], grass_tint[2], 1.0];
-                        grass_overlay.push_grass_overlay(
-                            x,
-                            y,
-                            z,
-                            face,
                             face_index,
-                            overlay_color,
-                            corner_ao,
-                            corner_light,
+                            side_tint,
+                            shading,
+                            block,
+                            fancy_graphics,
+                            y_drop,
+                            tile_override,
                         );
+                        if grass_side && fancy_graphics {
+                            meshes
+                                .grass_overlay
+                                .push_grass_overlay(origin, face, face_index, grass_tint, shading);
+                        }
                     }
                 }
             }
         }
-    }
-
-    ChunkMeshes {
-        opaque: opaque.into_mesh(),
-        grass_overlay: grass_overlay.into_mesh(),
-        cutout: cutout.into_mesh(),
-        water: water.into_mesh(),
-        masked: masked.into_mesh(),
+        meshes
     }
 }
 
@@ -747,25 +731,26 @@ pub fn crossed_plant_offset(x: i32, y: i32, z: i32) -> [f32; 3] {
     ]
 }
 
-/// Per-corner ambient occlusion matching the original voxel renderer. A
-/// corner is darkened by its two face-adjacent blocks and its diagonal block;
-/// when both side blocks are present the diagonal is treated as occluded too.
+fn tangent_axes(face: &Face) -> [usize; 2] {
+    match face.neighbor {
+        [0, _, 0] => [0, 2],
+        [_, 0, 0] => [1, 2],
+        _ => [0, 1],
+    }
+}
+
+/// The four light samples of each corner, as Beta's smooth lighting reads
+/// them: the face neighbor, the two neighbors beside it toward the corner,
+/// and the diagonal. The first sample alone is the flat-lighting value.
 fn face_corner_light(
-    _chunk: &Chunk,
     skylight: &Skylight,
     x: usize,
     y: usize,
     z: usize,
     face: &Face,
     geometry: FaceGeometry,
-    skylight_subtracted: u8,
-) -> [f32; 4] {
-    let tangent_axes = match face.normal {
-        [0.0, 1.0, 0.0] | [0.0, -1.0, 0.0] => [0, 2],
-        [1.0, 0.0, 0.0] | [-1.0, 0.0, 0.0] => [1, 2],
-        _ => [0, 1],
-    };
-
+) -> [[u8; 4]; 4] {
+    let tangent_axes = tangent_axes(face);
     std::array::from_fn(|corner_index| {
         let corner = geometry.corners[corner_index];
         let directions = [
@@ -773,26 +758,23 @@ fn face_corner_light(
             if corner[tangent_axes[1]] < 0.5 { -1 } else { 1 },
         ];
         let samples = [[0, 0], [directions[0], 0], [0, directions[1]], directions];
-        let sum: f32 = samples
-            .into_iter()
-            .map(|sample| {
-                let mut offset = face.neighbor;
-                offset[tangent_axes[0]] += sample[0];
-                offset[tangent_axes[1]] += sample[1];
-                let position = [
-                    x as i32 + offset[0],
-                    y as i32 + offset[1],
-                    z as i32 + offset[2],
-                ];
-                let level =
-                    skylight.light_at(position[0], position[1], position[2], skylight_subtracted);
-                beta_brightness(level)
-            })
-            .sum();
-        sum * face.shade * 0.25
+        samples.map(|sample| {
+            let mut offset = face.neighbor;
+            offset[tangent_axes[0]] += sample[0];
+            offset[tangent_axes[1]] += sample[1];
+            skylight.channels_at(
+                x as i32 + offset[0],
+                y as i32 + offset[1],
+                z as i32 + offset[2],
+            )
+        })
     })
 }
 
+/// Per-corner ambient occlusion levels matching the original voxel renderer.
+/// A corner is darkened by its two face-adjacent blocks and its diagonal
+/// block; when both side blocks are present the diagonal is treated as
+/// occluded too.
 fn face_corner_ao(
     chunk: &Chunk,
     neighbors: &ChunkNeighbors<'_>,
@@ -801,13 +783,8 @@ fn face_corner_ao(
     z: usize,
     face: &Face,
     geometry: FaceGeometry,
-) -> [f32; 4] {
-    let tangent_axes = match face.normal {
-        [0.0, 1.0, 0.0] | [0.0, -1.0, 0.0] => [0, 2],
-        [1.0, 0.0, 0.0] | [-1.0, 0.0, 0.0] => [1, 2],
-        _ => [0, 1],
-    };
-
+) -> [u8; 4] {
+    let tangent_axes = tangent_axes(face);
     std::array::from_fn(|corner_index| {
         let corner = geometry.corners[corner_index];
         let tangent_direction = [
@@ -825,12 +802,11 @@ fn face_corner_ao(
         let side_a = opaque_at(chunk, neighbors, x, y, z, side_a);
         let side_b = opaque_at(chunk, neighbors, x, y, z, side_b);
         let diagonal = opaque_at(chunk, neighbors, x, y, z, diagonal);
-        let level = if side_a && side_b {
+        if side_a && side_b {
             3
         } else {
-            side_a as u8 + side_b as u8 + diagonal as u8
-        };
-        1.0 - level as f32 * 0.2
+            u8::from(side_a) + u8::from(side_b) + u8::from(diagonal)
+        }
     })
 }
 
@@ -1009,26 +985,30 @@ fn neighbor_hides_face(block: Id, neighbor: Option<Id>, fancy_graphics: bool) ->
     true
 }
 
-fn face_uvs(block: Id, face: usize, fancy_graphics: bool) -> [[f32; 2]; 4] {
+fn face_texels_for_block(block: Id, face: usize, fancy_graphics: bool) -> [AtlasTexel; 4] {
     let (tile_x, tile_y) = block_tile(block, face, fancy_graphics);
-    face_uvs_for_tile(tile_x, tile_y, face)
+    face_texels(tile_x, tile_y, face)
 }
 
-fn face_uvs_for_tile(tile_x: u8, tile_y: u8, face: usize) -> [[f32; 2]; 4] {
-    let (u0, v0, u1, v1) = atlas_tile_uvs(tile_x, tile_y);
+/// Tile corners in the winding each face's geometry uses.
+fn face_texels(tile_x: u8, tile_y: u8, face: usize) -> [AtlasTexel; 4] {
+    let corners = match face {
+        0 | 1 => [[0, 0], [0, 16], [16, 16], [16, 0]],
+        2 | 5 => [[0, 16], [0, 0], [16, 0], [16, 16]],
+        _ => [[0, 16], [16, 16], [16, 0], [0, 0]],
+    };
+    tile_texels(tile_x, tile_y, corners)
+}
 
-    match face {
-        0 | 1 => [[u0, v0], [u0, v1], [u1, v1], [u1, v0]],
-        2 | 5 => [[u0, v1], [u0, v0], [u1, v0], [u1, v1]],
-        _ => [[u0, v1], [u1, v1], [u1, v0], [u0, v0]],
-    }
+fn tile_texels(tile_x: u8, tile_y: u8, corners: [[u8; 2]; 4]) -> [AtlasTexel; 4] {
+    corners.map(|[u, v]| AtlasTexel::new(tile_x, tile_y, u, v))
 }
 
 fn block_tint(block: Id, foliage: Option<[f32; 3]>) -> [f32; 3] {
     if block.is_lit_furnace() {
         // The active face is a small flame, but Beta's lit furnace body also
         // appears subtly brighter than the idle block.
-        return [1.12, 1.12, 1.12];
+        return [BRIGHT_TINT; 3];
     }
     match block {
         Id::Water => [0.4, 0.6, 0.95],
@@ -1052,8 +1032,8 @@ fn linear_rgb(r: u8, g: u8, b: u8) -> [f32; 3] {
 /// face tiles, shade, and tints the chunk mesher uses. Fancy grass also
 /// gets the side overlay. Fancy leaves are marked cutout.
 pub struct DroppedBlockMeshes {
-    pub body: Mesh,
-    pub overlay: Option<Mesh>,
+    pub body: BlockGeometry,
+    pub overlay: Option<BlockGeometry>,
     pub cutout: bool,
     pub alpha_masked: bool,
 }
@@ -1064,9 +1044,10 @@ pub fn dropped_block_meshes(
     grass_tint: [f32; 3],
     foliage_tint: [f32; 3],
 ) -> DroppedBlockMeshes {
-    let mut body = MeshBuffers::default();
-    let mut overlay = MeshBuffers::default();
+    let mut body = BlockGeometry::default();
+    let mut overlay = BlockGeometry::default();
     let block_geometry = BlockFaceGeometry::for_block(block);
+    let centered = [-0.5; 3];
     for (face_index, face) in FACES.iter().enumerate() {
         let face_geometry = block_geometry.face(face_index);
         let grass_side = block == Id::Grass && face_index != FACE_TOP && face_index != FACE_BOTTOM;
@@ -1075,56 +1056,30 @@ pub fn dropped_block_meshes(
         } else {
             block_tint(block, Some(foliage_tint))
         };
-        let shade = face.shade;
-        let color = [tint[0] * shade, tint[1] * shade, tint[2] * shade, 1.0];
-        let corners = face_geometry.corners.map(|corner| {
-            let [x, y, z] = corner;
-            [x - 0.5, y - 0.5, z - 0.5]
-        });
-        body.push_quad(
-            0,
-            0,
-            0,
-            face,
-            corners,
-            face_uvs(block, face_index, fancy_graphics),
-            color,
-            [1.0; 4],
-            [1.0; 4],
+        // Items carry their face shade in the tint and ignore world light, so
+        // they look the same under every lighting mode and time of day.
+        let shade = face_shade(face.normal);
+        body.push_block_quad(
+            centered,
+            face.normal,
+            face_geometry.corners,
+            face_texels_for_block(block, face_index, fancy_graphics),
+            tint.map(|channel| channel * shade),
+            CornerShading::FULL_BRIGHT,
         );
         if grass_side && fancy_graphics {
-            let overlay_color = [
-                grass_tint[0] * shade,
-                grass_tint[1] * shade,
-                grass_tint[2] * shade,
-                1.0,
-            ];
-            let corners = BlockFaceGeometry::unit_cube()
-                .face(face_index)
-                .corners
-                .map(|corner| {
-                    [
-                        corner[0] - 0.5 + face.normal[0] * 0.001,
-                        corner[1] - 0.5 + face.normal[1] * 0.001,
-                        corner[2] - 0.5 + face.normal[2] * 0.001,
-                    ]
-                });
-            overlay.push_quad(
-                0,
-                0,
-                0,
+            overlay.push_grass_overlay(
+                centered,
                 face,
-                corners,
-                face_uvs_for_tile(6, 2, face_index),
-                overlay_color,
-                [1.0; 4],
-                [1.0; 4],
+                face_index,
+                grass_tint.map(|channel| channel * shade),
+                CornerShading::FULL_BRIGHT,
             );
         }
     }
     DroppedBlockMeshes {
-        body: body.into_mesh(),
-        overlay: (!overlay.positions.is_empty()).then(|| overlay.into_mesh()),
+        body,
+        overlay: (!overlay.is_empty()).then_some(overlay),
         cutout: fancy_graphics && is_leaf(block),
         alpha_masked: block == Id::Cactus,
     }

@@ -19,6 +19,7 @@ use crate::physics::PhysicsSet;
 use crate::player::PlayerCamera;
 use crate::world::chunk::WorldChunks;
 use crate::world::generation::Climate;
+use crate::world::textures::BlockMaterial;
 use crate::world::textures::FoliageColors;
 use crate::world::textures::GrassColors;
 use crate::world::textures::TerrainMaterial;
@@ -331,13 +332,15 @@ fn setup_renderer(
 
 fn sync_terrain_texture(
     terrain: Option<Res<TerrainMaterial>>,
+    block_materials: Option<Res<Assets<BlockMaterial>>>,
     renderer: Res<ParticleRenderer>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     let Some(terrain) = terrain else { return };
-    let texture = materials
-        .get(&terrain.0)
-        .and_then(|material| material.base_color_texture.clone());
+    let texture = block_materials
+        .as_deref()
+        .and_then(|block_materials| block_materials.get(&terrain.0))
+        .and_then(|material| material.base.base_color_texture.clone());
     if let Some(mut material) = materials.get_mut(&renderer.material)
         && material.base_color_texture != texture
     {
@@ -429,9 +432,11 @@ fn particle_mesh<'a>(
         uvs.extend([[u0, v1], [u1, v1], [u1, v0], [u0, v0]]);
         indices.extend([base, base + 1, base + 2, base, base + 2, base + 3]);
     }
+    // Rebuilt every frame while particles live, so keep no main-world copy
+    // for extraction to clone.
     Mesh::new(
         PrimitiveTopology::TriangleList,
-        RenderAssetUsages::default(),
+        RenderAssetUsages::RENDER_WORLD,
     )
     .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
     .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)

@@ -15,8 +15,10 @@ use bevy::image::ImageLoaderSettings;
 use bevy::image::ImageSampler;
 use bevy::image::ImageSamplerDescriptor;
 use bevy::light::NotShadowCaster;
+use bevy::material::OpaqueRendererMethod;
 use bevy::math::Affine2;
 use bevy::mesh::Indices;
+use bevy::mesh::MeshTag;
 use bevy::prelude::*;
 use bevy::render::render_resource::PrimitiveTopology;
 
@@ -25,14 +27,20 @@ use crate::physics::PhysicsSet;
 use crate::player::Player;
 
 use super::sky::daylight_factor;
+use super::textures::InstanceTint;
+use super::textures::TintedMaterial;
+use super::textures::tint_tag;
 use super::tick::WorldTick;
 
 /// `WorldProvider.getCloudHeight() + 0.33`.
 pub const CLOUD_HEIGHT: f32 = 108.33;
 const SCROLL_PER_TICK: f64 = 0.03;
 const SCROLL_PERIOD: f64 = 2048.0;
-/// One texel of the 256² sheet is 8 blocks, so the whole texture is 2048 across.
-const CLOUD_EXTENT: f32 = (SCROLL_PERIOD as f32) * 0.5;
+/// One texel of the 256² sheet is 8 blocks, so the whole texture is 2048
+/// across. The fast sheet spans two periods so it can slide by up to half a
+/// period to keep the texture world-locked, and still reach 1024 blocks past
+/// the player on every side.
+const CLOUD_EXTENT: f32 = SCROLL_PERIOD as f32;
 const FANCY_UV_SCALE: f32 = 1.0 / 256.0;
 const FANCY_WORLD_SCALE: f32 = 12.0;
 const FANCY_CELL: f32 = 8.0;
@@ -69,18 +77,27 @@ pub fn cloud_scroll_blocks(world_time: u64, partial: f32) -> f32 {
     distance.rem_euclid(SCROLL_PERIOD) as f32
 }
 
-/// UV translation that keeps the pattern fixed in the world.
+/// Where the fast sheet sits so the pattern stays fixed in the world.
 ///
-/// Mesh UVs run 0..1 across the 2048-block sheet centered on the entity, so
-/// the offset subtracts that half-extent and then adds the player position.
-pub fn cloud_uv_offset(player_x: f32, player_z: f32, scroll: f32) -> Vec2 {
-    let u = wrap_uv(f64::from(player_x) + f64::from(scroll) - f64::from(CLOUD_EXTENT));
-    let v = wrap_uv(f64::from(player_z) - f64::from(CLOUD_EXTENT));
-    Vec2::new(u, v)
+/// Sheet UVs run `(local + CLOUD_EXTENT) / SCROLL_PERIOD`, and the extent is a
+/// whole period, so a world point `x` samples `(x - sheet_x) / period`. The
+/// sheet is placed at `-scroll` modulo one period, as close to the player as
+/// that allows, which samples `(x + scroll) / period` without any UV offset.
+pub fn fast_cloud_anchor(player_x: f32, player_z: f32, scroll: f32) -> Vec3 {
+    let half = SCROLL_PERIOD * 0.5;
+    let nearest = |blocks: f64| (blocks + half).rem_euclid(SCROLL_PERIOD) - half;
+    let x = f64::from(player_x) - nearest(f64::from(player_x) + f64::from(scroll));
+    let z = f64::from(player_z) - nearest(f64::from(player_z));
+    Vec3::new(x as f32, CLOUD_HEIGHT, z as f32)
 }
 
-fn wrap_uv(blocks: f64) -> f32 {
-    (wrap_blocks(blocks) / SCROLL_PERIOD) as f32
+/// Texture coordinate of a world point under the fast sheet placed at `sheet`.
+pub fn fast_cloud_uv(sheet: Vec3, world_x: f32, world_z: f32) -> Vec2 {
+    let period = SCROLL_PERIOD as f32;
+    Vec2::new(
+        (world_x - sheet.x + CLOUD_EXTENT) / period,
+        (world_z - sheet.z + CLOUD_EXTENT) / period,
+    )
 }
 
 fn wrap_blocks(blocks: f64) -> f64 {
@@ -109,7 +126,8 @@ pub fn fancy_cloud_anchor(player_x: f32, player_z: f32, scroll: f32) -> (Vec3, V
     (place, uv)
 }
 
-const SHEET_UV: [[f32; 2]; 4] = [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]];
+/// Two texture periods across, repeated by the sampler.
+const SHEET_UV: [[f32; 2]; 4] = [[0.0, 2.0], [2.0, 2.0], [2.0, 0.0], [0.0, 0.0]];
 
 fn sheet_corners(y: f32) -> [[f32; 3]; 4] {
     let h = CLOUD_EXTENT;
@@ -279,17 +297,25 @@ fn cloud_mesh(
     .with_inserted_indices(Indices::U32(indices))
 }
 
-fn cloud_material(texture: Handle<Image>) -> StandardMaterial {
-    StandardMaterial {
-        base_color: Color::srgb(1.0, 1.0, 1.0),
-        base_color_texture: Some(texture),
-        unlit: true,
-        // Cut out empty texels. Passing pixels stay fully opaque, so the
-        // column sides read as solid blocks rather than a glassy sheet.
-        alpha_mode: AlphaMode::Mask(0.5),
-        cull_mode: None,
-        double_sided: true,
-        ..default()
+/// Daylight tint comes from each cloud entity's `MeshTag`, so the material
+/// itself only changes when the fancy texel window moves.
+fn cloud_material(texture: Handle<Image>) -> TintedMaterial {
+    TintedMaterial {
+        base: StandardMaterial {
+            base_color: Color::srgb(1.0, 1.0, 1.0),
+            base_color_texture: Some(texture),
+            unlit: true,
+            // Cut out empty texels. Passing pixels stay fully opaque, so the
+            // column sides read as solid blocks rather than a glassy sheet.
+            alpha_mode: AlphaMode::Mask(0.5),
+            // The tint is applied by a forward fragment shader, so clouds stay
+            // out of the Ultra deferred G-buffer.
+            opaque_render_method: OpaqueRendererMethod::Forward,
+            cull_mode: None,
+            double_sided: true,
+            ..default()
+        },
+        extension: InstanceTint {},
     }
 }
 
@@ -297,7 +323,7 @@ fn ensure_clouds(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut materials: ResMut<Assets<TintedMaterial>>,
     existing: Query<(), With<FastClouds>>,
 ) {
     if !existing.is_empty() {
@@ -329,6 +355,7 @@ fn ensure_clouds(
         FastClouds,
         Mesh3d(meshes.add(fast_cloud_mesh())),
         MeshMaterial3d(fast_material),
+        tint_tag(Color::WHITE),
         Transform::from_xyz(0.0, CLOUD_HEIGHT, 0.0),
         Visibility::default(),
         NotShadowCaster,
@@ -339,6 +366,7 @@ fn ensure_clouds(
         FancyClouds,
         Mesh3d(meshes.add(fancy_cloud_mesh())),
         MeshMaterial3d(fancy_material),
+        tint_tag(Color::WHITE),
         Transform::from_xyz(0.0, CLOUD_HEIGHT, 0.0),
         Visibility::Hidden,
         NotShadowCaster,
@@ -351,20 +379,17 @@ fn update_clouds(
     settings: Res<GameSettings>,
     assets: Option<Res<CloudsSpawned>>,
     player: Query<&Transform, (With<Player>, Without<FastClouds>, Without<FancyClouds>)>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut materials: ResMut<Assets<TintedMaterial>>,
     mut fast: Query<
-        (
-            &mut Transform,
-            &mut Visibility,
-            &MeshMaterial3d<StandardMaterial>,
-        ),
+        (&mut Transform, &mut Visibility, &mut MeshTag),
         (With<FastClouds>, Without<FancyClouds>, Without<Player>),
     >,
     mut fancy: Query<
         (
             &mut Transform,
             &mut Visibility,
-            &MeshMaterial3d<StandardMaterial>,
+            &mut MeshTag,
+            &MeshMaterial3d<TintedMaterial>,
         ),
         (With<FancyClouds>, Without<FastClouds>, Without<Player>),
     >,
@@ -380,40 +405,37 @@ fn update_clouds(
         tick.world_time(),
         tick.partial(),
     )));
-    let tint = Color::srgb(color[0], color[1], color[2]);
+    let tint = tint_tag(Color::srgb(color[0], color[1], color[2]));
     let scroll = cloud_scroll_blocks(tick.world_time(), tick.partial());
-    let uv_offset = Affine2::from_translation(cloud_uv_offset(
-        player.translation.x,
-        player.translation.z,
-        scroll,
-    ));
-    let place = Vec3::new(player.translation.x, CLOUD_HEIGHT, player.translation.z);
     let (fancy_place, fancy_uv) =
         fancy_cloud_anchor(player.translation.x, player.translation.z, scroll);
 
-    if let Ok((mut transform, mut visibility, material)) = fast.single_mut() {
-        *visibility = if fancy_mode {
+    if let Ok((mut transform, mut visibility, mut tag)) = fast.single_mut() {
+        visibility.set_if_neq(if fancy_mode {
             Visibility::Hidden
         } else {
             Visibility::Inherited
-        };
-        transform.translation = place;
-        if let Some(mut mat) = materials.get_mut(&material.0) {
-            mat.base_color = tint;
-            mat.uv_transform = uv_offset;
-        }
+        });
+        transform.translation =
+            fast_cloud_anchor(player.translation.x, player.translation.z, scroll);
+        tag.set_if_neq(tint.clone());
     }
 
-    if let Ok((mut transform, mut visibility, material)) = fancy.single_mut() {
-        *visibility = if fancy_mode {
+    if let Ok((mut transform, mut visibility, mut tag, material)) = fancy.single_mut() {
+        visibility.set_if_neq(if fancy_mode {
             Visibility::Inherited
         } else {
             Visibility::Hidden
-        };
+        });
         transform.translation = fancy_place;
-        if let Some(mut mat) = materials.get_mut(&material.0) {
-            mat.base_color = tint;
-            mat.uv_transform = Affine2::from_translation(fancy_uv);
+        tag.set_if_neq(tint);
+        // The texel window shifts only when the player or the drift crosses
+        // a 12-block column, so this rarely writes the material.
+        let moved = materials
+            .get(&material.0)
+            .is_some_and(|current| current.base.uv_transform.translation != fancy_uv);
+        if moved && let Some(mut current) = materials.get_mut(&material.0) {
+            current.base.uv_transform = Affine2::from_translation(fancy_uv);
         }
     }
 }

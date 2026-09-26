@@ -3,8 +3,6 @@ use std::path::PathBuf;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
-use bevy::mesh::VertexAttributeValues;
-use bevy::prelude::Mesh;
 use bevy::prelude::Vec3;
 use game::block::id::Id;
 use game::block::properties::collision_bounds;
@@ -35,6 +33,7 @@ use game::world::generation::GeneratedChunk;
 use game::world::generation::Heightmap;
 use game::world::lighting::Skylight;
 use game::world::lighting::light_opacity;
+use game::world::meshing::BlockGeometry;
 use game::world::meshing::mesh_chunk;
 use game::world::persistence::WorldStorage;
 use game::world::textures::atlas_tile_uvs;
@@ -80,15 +79,9 @@ fn hit(x: i32, block: Id, face: BlockFace) -> BlockHit {
     }
 }
 
-fn farmland_top_uses_tile(mesh: &Mesh, tile: (u8, u8)) -> bool {
-    let Some(VertexAttributeValues::Float32x3(positions)) =
-        mesh.attribute(Mesh::ATTRIBUTE_POSITION)
-    else {
-        return false;
-    };
-    let Some(VertexAttributeValues::Float32x2(uvs)) = mesh.attribute(Mesh::ATTRIBUTE_UV_0) else {
-        return false;
-    };
+fn farmland_top_uses_tile(mesh: &BlockGeometry, tile: (u8, u8)) -> bool {
+    let positions = mesh.positions();
+    let uvs = mesh.uvs();
     let (u0, v0, u1, v1) = atlas_tile_uvs(tile.0, tile.1);
     positions
         .chunks_exact(4)
@@ -257,11 +250,7 @@ fn farmland_mesh_and_ray_selection_stop_at_fifteen_sixteenths() {
     chunk.set(8, 64, 8, Id::Farmland);
     let chunks = world_with(chunk.clone());
     let mesh = mesh_chunk(&chunk, &Skylight::from_chunk(&chunk));
-    let Some(VertexAttributeValues::Float32x3(positions)) =
-        mesh.attribute(Mesh::ATTRIBUTE_POSITION)
-    else {
-        panic!("farmland mesh should have position data");
-    };
+    let positions = mesh.positions();
     let min_y = positions
         .iter()
         .map(|position| position[1])
@@ -309,15 +298,8 @@ fn farmland_does_not_hide_a_neighboring_full_block_side() {
     chunk.set(8, 64, 8, Id::Stone);
     chunk.set(9, 64, 8, Id::Farmland);
     let mesh = mesh_chunk(&chunk, &Skylight::from_chunk(&chunk));
-    let Some(VertexAttributeValues::Float32x3(positions)) =
-        mesh.attribute(Mesh::ATTRIBUTE_POSITION)
-    else {
-        panic!("mesh should have position data");
-    };
-    let Some(VertexAttributeValues::Float32x3(normals)) = mesh.attribute(Mesh::ATTRIBUTE_NORMAL)
-    else {
-        panic!("mesh should have normal data");
-    };
+    let positions = mesh.positions();
+    let normals = mesh.normals();
 
     assert!(
         positions

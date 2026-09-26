@@ -7,11 +7,13 @@ use game::player::Player;
 use game::world::clouds::CLOUD_HEIGHT;
 use game::world::clouds::cloud_color;
 use game::world::clouds::cloud_scroll_blocks;
-use game::world::clouds::cloud_uv_offset;
 use game::world::clouds::fancy_cloud_anchor;
 use game::world::clouds::fancy_cloud_mesh;
+use game::world::clouds::fast_cloud_anchor;
 use game::world::clouds::fast_cloud_mesh;
+use game::world::clouds::fast_cloud_uv;
 use game::world::plugin::WorldPlugin;
+use game::world::textures::TintedMaterial;
 
 fn attribute(mesh: &bevy::mesh::Mesh, id: bevy::mesh::MeshVertexAttribute) -> Vec<[f32; 3]> {
     let VertexAttributeValues::Float32x3(values) = mesh.attribute(id.id).unwrap() else {
@@ -69,7 +71,7 @@ fn cloud_follow_runs_beside_the_player() {
 
     let mut materials = app
         .world_mut()
-        .query::<(&Name, &MeshMaterial3d<StandardMaterial>)>();
+        .query::<(&Name, &MeshMaterial3d<TintedMaterial>)>();
     let handles: Vec<_> = materials
         .iter(app.world())
         .filter_map(|(name, material)| {
@@ -78,20 +80,21 @@ fn cloud_follow_runs_beside_the_player() {
                 .then(|| (name.to_string(), material.0.clone()))
         })
         .collect();
-    let assets = app.world().resource::<Assets<StandardMaterial>>();
-    let fast_uv = cloud_uv_offset(400.0, 48.0, 0.0);
+    let assets = app.world().resource::<Assets<TintedMaterial>>();
     let (_, fancy_uv) = fancy_cloud_anchor(400.0, 48.0, 0.0);
     for (name, handle) in handles {
-        let material = assets.get(&handle).unwrap();
+        let material = &assets.get(&handle).unwrap().base;
         assert!(
             matches!(material.alpha_mode, AlphaMode::Mask(cutoff) if (cutoff - 0.5).abs() < 1e-5),
             "{name} should cut out empty texels and stay opaque"
         );
         assert!((material.base_color.alpha() - 1.0).abs() < 1e-5);
+        // The fast sheet is world-locked by where it is placed, so its UVs
+        // never move; the fancy window shifts whole texels.
         let expected = if name == "Fancy clouds" {
             fancy_uv
         } else {
-            fast_uv
+            Vec2::ZERO
         };
         let uv = material.uv_transform.translation;
         assert!(
@@ -107,7 +110,7 @@ fn assert_cloud_anchor(placed: &[(String, Vec3)], player_x: f32, player_z: f32) 
         let expected = if name == "Fancy clouds" {
             fancy_place
         } else {
-            Vec3::new(player_x, CLOUD_HEIGHT, player_z)
+            fast_cloud_anchor(player_x, player_z, 0.0)
         };
         assert!(
             (translation.x - expected.x).abs() < 1e-3
@@ -120,12 +123,41 @@ fn assert_cloud_anchor(placed: &[(String, Vec3)], player_x: f32, player_z: f32) 
 
 #[test]
 fn cloud_pattern_stays_put_when_the_player_moves() {
-    let before = cloud_uv_offset(10.0, -4.0, 0.0);
-    let after = cloud_uv_offset(400.0, 48.0, 0.0);
-    let du = (after.x - before.x).rem_euclid(1.0);
-    let dv = (after.y - before.y).rem_euclid(1.0);
-    assert!((du - 390.0 / 2048.0).abs() < 1e-5);
-    assert!((dv - 52.0 / 2048.0).abs() < 1e-5);
+    // A fixed world point samples the same texel wherever the sheet sits.
+    let point = (700.0, -300.0);
+    let texel = |player_x, player_z, scroll| {
+        let uv = fast_cloud_uv(
+            fast_cloud_anchor(player_x, player_z, scroll),
+            point.0,
+            point.1,
+        );
+        Vec2::new(uv.x.rem_euclid(1.0), uv.y.rem_euclid(1.0))
+    };
+    let before = texel(10.0, -4.0, 0.0);
+    let after = texel(400.0, 48.0, 0.0);
+    let far = texel(-9_000.0, 12_345.0, 0.0);
+    assert!((after - before).length() < 1e-4);
+    assert!((far - before).length() < 1e-4);
+
+    // Drift moves the pattern by the scroll distance along X.
+    let drifted = texel(10.0, -4.0, 30.0);
+    assert!(((drifted.x - before.x).rem_euclid(1.0) - 30.0 / 2048.0).abs() < 1e-4);
+    assert!((drifted.y - before.y).abs() < 1e-4);
+}
+
+#[test]
+fn fast_cloud_sheet_always_covers_the_view() {
+    for (x, z, scroll) in [
+        (0.0, 0.0, 0.0),
+        (1023.0, -1023.0, 0.0),
+        (1024.5, 3000.0, 1500.0),
+        (-40_000.0, 77_777.0, 2047.9),
+    ] {
+        let sheet = fast_cloud_anchor(x, z, scroll);
+        assert!((sheet.x - x).abs() <= 1024.0 + 1e-2);
+        assert!((sheet.z - z).abs() <= 1024.0 + 1e-2);
+        assert!((sheet.y - CLOUD_HEIGHT).abs() < 1e-5);
+    }
 }
 
 fn cloud_places(app: &mut App) -> Vec<(String, Vec3)> {
@@ -172,8 +204,8 @@ fn fast_clouds_cover_a_flat_sheet_at_the_camera() {
         .iter()
         .map(|p| p[1])
         .fold(f32::NEG_INFINITY, f32::max);
-    assert!((min_x + 1024.0).abs() < 1e-3);
-    assert!((max_x - 1024.0).abs() < 1e-3);
+    assert!((min_x + 2048.0).abs() < 1e-3);
+    assert!((max_x - 2048.0).abs() < 1e-3);
     assert!(max_y.abs() < 1e-5);
     assert!((CLOUD_HEIGHT - 108.33).abs() < 1e-5);
     let coords = uvs(&mesh);
@@ -183,7 +215,7 @@ fn fast_clouds_cover_a_flat_sheet_at_the_camera() {
         .map(|uv| uv[0])
         .fold(f32::NEG_INFINITY, f32::max);
     assert!(min_u.abs() < 1e-5);
-    assert!((max_u - 1.0).abs() < 1e-5);
+    assert!((max_u - 2.0).abs() < 1e-5, "two texture periods across");
 }
 
 #[test]

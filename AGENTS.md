@@ -78,6 +78,11 @@ The current game has a walking, sprinting, sneaking, and jumping player with vox
 - Keep generation, lighting, meshing, and streaming distinct. Run expensive independent work off the main thread where practical, then apply results to Bevy assets and entities on the appropriate thread. Prioritize nearby or visible chunks.
 - Prefer data-oriented storage, bounded allocations, and reusable buffers in hot paths. Profile before adding complex optimizations; use benchmarks for generation, meshing, and streaming changes with meaningful performance risk.
 - Keep deterministic game rules and world representation separate from client rendering where practical. Consider a separate voxel crate or workspace only when the growing codebase or server work gives a concrete reason for that split.
+- Chunks store raw block bytes (`Chunk::raw_blocks`); `Id` itself is two bytes because of its `Unknown(u8)` catch-all.
+- Block meshes use one packed 16-byte vertex (`meshing/vertex.rs`, decoded by `textures/block_vertex.wgsl`) and 16-bit indices when they fit. Vertices carry raw sky and block light samples, AO levels, and tints; the `BlockMaterial` uniform applies `skylight_subtracted`, old lighting, and smooth lighting. Time of day and lighting settings must not rebuild meshes; only geometry changes (blocks, fancy leaves) do. Keep `BlockVertex::color` in step with the shader.
+- Chunks render as 16×16×16 sections. Streaming keeps a light fingerprint per section, so an edit (`WorldStreaming::request_block_update`) relights the chunks its light can reach and rebuilds only sections whose blocks or light changed.
+- Avoid mutating assets every frame. Animate with Bevy's `globals.time` in shaders, pass per-entity values through `MeshTag` (see `TintedMaterial`), move entities instead of UVs, and write animated atlas tiles from the render world (`textures/water.rs`) rather than modifying the atlas `Image`.
+- Sun shadow maps are only enabled when terrain is lit (`GameSettings::sun_shadows`); under old lighting every material is unlit and nothing samples them.
 
 # Working in this repo
 

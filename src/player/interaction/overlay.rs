@@ -9,6 +9,7 @@ use crate::app::state::AppScreen;
 use crate::block::properties::selection_bounds;
 use crate::physics::BlockHit;
 use crate::physics::PhysicsSet;
+use crate::world::textures::BlockMaterial;
 use crate::world::textures::TerrainMaterial;
 use crate::world::textures::atlas_tile_uvs;
 
@@ -141,6 +142,7 @@ fn spawn_block_overlays(
 fn sync_crack_texture(
     overlays: Option<ResMut<BlockOverlays>>,
     terrain: Option<Res<TerrainMaterial>>,
+    block_materials: Option<Res<Assets<BlockMaterial>>>,
     materials: Option<ResMut<Assets<StandardMaterial>>>,
     images: Option<ResMut<Assets<Image>>>,
 ) {
@@ -159,9 +161,10 @@ fn sync_crack_texture(
     let Some(terrain) = terrain else {
         return;
     };
-    let Some(source_handle) = materials
-        .get(&terrain.0)
-        .and_then(|material| material.base_color_texture.clone())
+    let Some(source_handle) = block_materials
+        .as_deref()
+        .and_then(|block_materials| block_materials.get(&terrain.0))
+        .and_then(|material| material.base.base_color_texture.clone())
     else {
         return;
     };

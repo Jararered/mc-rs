@@ -27,8 +27,13 @@ use game::player::PlayerCamera;
 use game::player::PlayerPlugin;
 use game::ui::UiCameraPlugin;
 use game::world::chunk::WorldChunks;
+use game::world::meshing::WATER_ALPHA;
 use game::world::plugin::WorldPlugin;
-use game::world::textures::LeafCutoutMaterial;
+use game::world::sky::celestial_angle;
+use game::world::sky::skylight_subtracted;
+use game::world::streaming::WorldStreaming;
+use game::world::textures::BlockMaterial;
+use game::world::tick::WorldTick;
 
 fn temp_settings_path(label: &str) -> PathBuf {
     let unique = SystemTime::now()
@@ -277,34 +282,86 @@ fn fancy_leaves_mask_does_not_apply_to_solid_terrain() {
         .add_plugins(WorldPlugin);
     app.update();
 
-    let materials: Vec<_> = app
-        .world()
-        .resource::<Assets<StandardMaterial>>()
-        .iter()
-        .map(|(_, material)| material.clone())
-        .collect();
+    let materials = block_materials(&app);
     assert!(
         materials.iter().any(|material| {
-            material.alpha_mode == AlphaMode::Opaque && material.cull_mode.is_some()
+            material.base.alpha_mode == AlphaMode::Opaque && material.base.cull_mode.is_some()
         }),
         "solid terrain should stay opaque so atlas edges are not discarded"
     );
     assert!(
-        app.world()
-            .resource::<Assets<LeafCutoutMaterial>>()
+        materials.iter().any(|material| {
+            matches!(material.base.alpha_mode, AlphaMode::Mask(_))
+                && material.extension.settings.wiggle_amplitude > 0.0
+        }),
+        "fancy leaves should use a separate, wiggling cutout material"
+    );
+    assert_eq!(
+        materials
             .iter()
-            .any(|(_, material)| matches!(material.base.alpha_mode, AlphaMode::Mask(_))),
-        "fancy leaves should use a separate cutout material"
+            .filter(|material| material.extension.settings.wiggle_amplitude > 0.0)
+            .count(),
+        1,
+        "only leaves wiggle"
     );
 }
 
-fn water_material(app: &App) -> StandardMaterial {
+#[test]
+fn lighting_settings_and_dusk_update_block_uniforms_without_remeshing() {
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, AssetPlugin::default(), MeshPlugin))
+        .init_asset::<Image>()
+        .init_asset::<StandardMaterial>()
+        .init_resource::<ButtonInput<KeyCode>>()
+        .add_plugins(WorldPlugin);
+    app.update();
+    for material in block_materials(&app) {
+        let lighting = material.extension.settings.lighting();
+        assert!(lighting.old_lighting && lighting.smooth_lighting);
+        assert_eq!(lighting.skylight_subtracted, 0);
+    }
+
+    {
+        let mut settings = app.world_mut().resource_mut::<GameSettings>();
+        settings.old_lighting = false;
+        settings.smooth_lighting = false;
+    }
+    let dusk = 13_700;
+    app.world_mut()
+        .resource_mut::<WorldTick>()
+        .set_world_time(dusk);
+    app.update();
+
+    let expected = skylight_subtracted(celestial_angle(dusk, 0.0));
+    assert!(expected > 0);
+    for material in block_materials(&app) {
+        let lighting = material.extension.settings.lighting();
+        assert!(!lighting.old_lighting && !lighting.smooth_lighting);
+        assert!(material.base.unlit == lighting.old_lighting);
+        assert_eq!(lighting.skylight_subtracted, expected);
+    }
+    // Lighting is a material uniform, so nothing was queued for rebuilding.
+    let streaming = app.world().resource::<WorldStreaming>();
+    assert_eq!(streaming.queued_remesh_positions().count(), 0);
+}
+
+fn block_materials(app: &App) -> Vec<BlockMaterial> {
     app.world()
-        .resource::<Assets<StandardMaterial>>()
+        .resource::<Assets<BlockMaterial>>()
         .iter()
         .map(|(_, material)| material.clone())
-        .find(|material| material.cull_mode.is_none() && material.double_sided)
-        .expect("water material should be double-sided with no cull")
+        .collect()
+}
+
+/// Water is the only block material with a translucent base color.
+fn water_material(app: &App) -> StandardMaterial {
+    let water = block_materials(app)
+        .into_iter()
+        .map(|material| material.base)
+        .find(|material| (material.base_color.alpha() - WATER_ALPHA).abs() < 1e-5)
+        .expect("water material should carry the water alpha");
+    assert!(water.cull_mode.is_none() && water.double_sided);
+    water
 }
 
 #[test]

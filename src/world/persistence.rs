@@ -477,7 +477,7 @@ impl StoredChunk {
     fn from_generated(generated: &GeneratedChunk) -> Self {
         Self {
             format_version: FORMAT_VERSION,
-            runs: encode_blocks(generated.chunk.blocks()),
+            runs: encode_blocks(generated.chunk.raw_blocks()),
             heightmap: generated.heightmap.heights().to_vec(),
             biomes: generated
                 .biomes
@@ -621,15 +621,14 @@ impl StoredChunk {
     }
 }
 
-fn encode_blocks(blocks: &[Id]) -> Vec<(u8, u16)> {
+fn encode_blocks(blocks: &[u8]) -> Vec<(u8, u16)> {
     let mut runs = Vec::new();
     let Some((&first, rest)) = blocks.split_first() else {
         return runs;
     };
-    let mut value = first.as_u8();
+    let mut value = first;
     let mut length: u16 = 1;
-    for block in rest {
-        let next = block.as_u8();
+    for &next in rest {
         if next == value && length < u16::MAX {
             length += 1;
         } else {

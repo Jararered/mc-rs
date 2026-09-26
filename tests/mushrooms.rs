@@ -1,5 +1,3 @@
-use bevy::mesh::VertexAttributeValues;
-use bevy::prelude::Mesh;
 use game::block::id::Id;
 use game::block::properties::collision_bounds;
 use game::block::properties::is_crossed_plant;
@@ -16,12 +14,8 @@ fn mushrooms_use_crossed_sprite_meshes_and_beta_atlas_tiles() {
     chunk.set(4, 20, 4, Id::BrownMushroom);
     chunk.set(8, 20, 8, Id::RedMushroom);
 
-    let meshes = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true, true);
-    let Some(VertexAttributeValues::Float32x3(positions)) =
-        meshes.masked.attribute(Mesh::ATTRIBUTE_POSITION.id)
-    else {
-        panic!("mushrooms should render in the masked plant mesh");
-    };
+    let meshes = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true);
+    let positions = meshes.masked.positions();
     assert_eq!(positions.len(), 16, "two crossed quads per mushroom");
     assert_eq!(block_tile(Id::BrownMushroom, 0, false), (13, 1));
     assert_eq!(block_tile(Id::RedMushroom, 0, false), (12, 1));
@@ -44,12 +38,8 @@ fn mushrooms_are_small_noncolliding_nonopaque_plants() {
 fn mushroom_mesh_is_raised_by_two_pixels() {
     let mut chunk = Chunk::new();
     chunk.set(4, 20, 4, Id::BrownMushroom);
-    let meshes = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true, true);
-    let Some(VertexAttributeValues::Float32x3(positions)) =
-        meshes.masked.attribute(Mesh::ATTRIBUTE_POSITION.id)
-    else {
-        panic!("mushroom should render in the masked plant mesh");
-    };
+    let meshes = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true);
+    let positions = meshes.masked.positions();
     let min_y = positions
         .iter()
         .map(|position| position[1])

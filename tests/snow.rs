@@ -1,4 +1,3 @@
-use bevy::mesh::VertexAttributeValues;
 use bevy::prelude::*;
 use game::block::id::Id;
 use game::block::properties::collision_bounds;
@@ -58,11 +57,7 @@ fn snow_layer_mesh_is_one_eighth_block_high() {
     let mut chunk = Chunk::new();
     chunk.set(8, 64, 8, Id::SnowLayer);
     let mesh = mesh_chunk(&chunk, &Skylight::from_chunk(&chunk));
-    let Some(VertexAttributeValues::Float32x3(positions)) =
-        mesh.attribute(Mesh::ATTRIBUTE_POSITION.id)
-    else {
-        panic!("snow layer mesh should have position data");
-    };
+    let positions = mesh.positions();
     let min_y = positions
         .iter()
         .map(|position| position[1])
@@ -81,15 +76,8 @@ fn a_snow_layer_does_not_hide_the_neighboring_full_block_side() {
     chunk.set(8, 64, 8, Id::Stone);
     chunk.set(9, 64, 8, Id::SnowLayer);
     let mesh = mesh_chunk(&chunk, &Skylight::from_chunk(&chunk));
-    let Some(VertexAttributeValues::Float32x3(positions)) =
-        mesh.attribute(Mesh::ATTRIBUTE_POSITION.id)
-    else {
-        panic!("mesh should have position data");
-    };
-    let Some(VertexAttributeValues::Float32x3(normals)) = mesh.attribute(Mesh::ATTRIBUTE_NORMAL.id)
-    else {
-        panic!("mesh should have normal data");
-    };
+    let positions = mesh.positions();
+    let normals = mesh.normals();
 
     let full_stone_side_is_visible =
         positions

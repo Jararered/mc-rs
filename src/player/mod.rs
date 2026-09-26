@@ -11,6 +11,7 @@ use crate::entity::CollisionState;
 use crate::entity::EntitySize;
 use crate::entity::Flying;
 use crate::entity::Gravity;
+use crate::entity::StepDistance;
 use crate::entity::StepHeight;
 use crate::entity::Velocity;
 use crate::inventory::Hotbar;
@@ -22,6 +23,7 @@ pub use interaction::editing::break_block;
 pub use interaction::editing::place_block;
 pub use interaction::editing::place_selected_block;
 pub use interaction::editing::place_selected_block_facing;
+pub use interaction::editing::plant_seeds;
 pub use interaction::editing::till_block;
 pub use interaction::editing::till_with_selected_hoe;
 pub use interaction::mining::MiningState;
@@ -96,6 +98,7 @@ impl Plugin for PlayerPlugin {
     Gravity,
     EntitySize = EntitySize::PLAYER,
     StepHeight = StepHeight::PLAYER,
+    StepDistance,
     FlySpeed,
     PlayerMovementInput,
     PlayerInterpolation

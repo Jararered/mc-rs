@@ -46,12 +46,14 @@ use crate::inventory::Inventory;
 use crate::item::ItemId;
 use crate::item::ItemStack;
 use crate::player::Player;
+use crate::world::block_ticks::BlockTicks;
 use crate::world::chest::CHEST_SLOTS;
 use crate::world::chest::Chest;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::Chunk;
 use crate::world::chunk::ChunkPosition;
+use crate::world::chunk::PendingTick;
 use crate::world::chunk::WorldChunks;
 use crate::world::furnace::FURNACE_SLOTS;
 use crate::world::furnace::Furnace;
@@ -436,6 +438,24 @@ struct StoredChunk {
     /// decorated in full when generated.
     #[serde(default = "populated_default")]
     populated: bool,
+    /// Run-length encoded metadata nibbles, two blocks per byte in chunk
+    /// index order. Empty when every value is zero, and absent on chunks
+    /// saved before block metadata existed.
+    #[serde(default)]
+    metadata: Vec<(u8, u16)>,
+    /// Scheduled block ticks that were pending when the chunk was unloaded.
+    /// Absent on chunks saved before block ticks existed.
+    #[serde(default)]
+    ticks: Vec<StoredTick>,
+}
+
+/// A pending scheduled tick, stored relative to the save so a chunk that
+/// stays unloaded for a while resumes with the same remaining delay.
+#[derive(Serialize, Deserialize)]
+struct StoredTick {
+    index: u16,
+    block: u8,
+    delay: u32,
 }
 
 const fn populated_default() -> bool {
@@ -536,6 +556,21 @@ impl StoredChunk {
                 })
                 .collect(),
             populated: generated.populated,
+            metadata: generated
+                .chunk
+                .raw_metadata()
+                .map(encode_blocks)
+                .unwrap_or_default(),
+            ticks: generated
+                .chunk
+                .pending_ticks()
+                .iter()
+                .map(|tick| StoredTick {
+                    index: tick.index,
+                    block: tick.block.as_u8(),
+                    delay: tick.delay,
+                })
+                .collect(),
         }
     }
 
@@ -561,6 +596,22 @@ impl StoredChunk {
         });
 
         let mut chunk = Chunk::from_blocks(blocks);
+        if !self.metadata.is_empty() {
+            chunk.set_raw_metadata(decode_runs(&self.metadata, BLOCKS_PER_CHUNK / 2)?);
+        }
+        chunk.set_pending_ticks(
+            self.ticks
+                .into_iter()
+                .filter(|tick| usize::from(tick.index) < BLOCKS_PER_CHUNK)
+                .filter_map(|tick| {
+                    Some(PendingTick {
+                        index: tick.index,
+                        block: Id::from_u8(tick.block)?,
+                        delay: tick.delay,
+                    })
+                })
+                .collect(),
+        );
         for furnace in self.furnaces {
             let index = usize::from(furnace.index);
             if index >= BLOCKS_PER_CHUNK {
@@ -629,6 +680,18 @@ impl StoredChunk {
             populated: self.populated,
         })
     }
+}
+
+fn decode_runs(runs: &[(u8, u16)], expected: usize) -> Option<Vec<u8>> {
+    let total: usize = runs.iter().map(|(_, length)| *length as usize).sum();
+    if total != expected {
+        return None;
+    }
+    let mut bytes = Vec::with_capacity(total);
+    for (value, length) in runs {
+        bytes.resize(bytes.len() + *length as usize, *value);
+    }
+    Some(bytes)
 }
 
 fn encode_blocks(blocks: &[u8]) -> Vec<(u8, u16)> {
@@ -899,6 +962,7 @@ impl WorldPersistence {
         chunks: &mut WorldChunks,
         player: Option<(&Transform, Option<&Hotbar>, Option<&Inventory>, bool, f32)>,
         items: &std::collections::HashMap<ChunkPosition, Vec<ChunkDroppedItem>>,
+        ticks: Option<&BlockTicks>,
     ) {
         let Some(storage) = self.storage.clone() else {
             return;
@@ -909,6 +973,11 @@ impl WorldPersistence {
         for position in &dirty {
             if let Some(chunk) = chunks.get_mut(*position) {
                 chunk.items = items.get(position).cloned().unwrap_or_default();
+                if let Some(ticks) = ticks {
+                    chunk
+                        .chunk
+                        .set_pending_ticks(ticks.pending_in_chunk(*position));
+                }
             }
         }
         let mut batch: Vec<(ChunkPosition, &GeneratedChunk)> =
@@ -932,6 +1001,7 @@ impl WorldPersistence {
         for position in &dirty {
             if let Some(chunk) = chunks.get_mut(*position) {
                 chunk.items.clear();
+                chunk.chunk.take_pending_ticks();
             }
         }
         if let Some((transform, hotbar, inventory, flying, fly_speed)) = player
@@ -997,6 +1067,7 @@ fn flush_persistence(
     >,
     time: Res<Time>,
     tick: Option<Res<crate::world::tick::WorldTick>>,
+    block_ticks: Option<Res<BlockTicks>>,
     mut exit: MessageReader<AppExit>,
 ) {
     let exiting = exit.read().next().is_some();
@@ -1032,6 +1103,7 @@ fn flush_persistence(
                     (transform, hotbar, inventory, flying.is_some(), fly_speed.0)
                 }),
             &saved,
+            block_ticks.as_deref(),
         );
     }
 }

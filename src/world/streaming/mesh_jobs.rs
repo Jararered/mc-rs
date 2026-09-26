@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -26,6 +27,8 @@ pub(super) struct MeshTask {
 pub(super) struct MeshJob {
     pub(super) sections: Vec<SectionMeshes>,
     pub(super) fingerprints: [u64; SECTIONS_PER_CHUNK],
+    /// The chunk's light from this pass, for [`crate::world::lighting::LightCache`].
+    pub(super) light: Arc<[u8]>,
     pub(super) elapsed: Duration,
 }
 
@@ -119,6 +122,7 @@ pub(super) fn spawn_mesh_job(
         MeshJob {
             sections,
             fingerprints,
+            light: skylight.chunk_cells(),
             elapsed: start.elapsed(),
         }
     });

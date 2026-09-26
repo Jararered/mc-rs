@@ -34,6 +34,7 @@ impl BlockDefinition for Definition {
                 | Id::DiamondBlock
                 | Id::CraftingTable
                 | Id::Farmland
+                | Id::SnowLayer
                 | Id::Ice
                 | Id::Snow
                 | Id::Clay

@@ -13,6 +13,9 @@ use super::ChunkPosition;
 
 pub const CHUNK_SIZE: usize = 16;
 pub const CHUNK_HEIGHT: usize = 128;
+const CHUNK_VOLUME: usize = CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE;
+/// Beta's `NibbleArray`: two 4-bit metadata values per byte.
+const METADATA_BYTES: usize = CHUNK_VOLUME / 2;
 /// Chunks render as 16×16×16 sections, the granularity of Beta's
 /// `WorldRenderer`, so an edit rebuilds and uploads one small mesh.
 pub const SECTION_HEIGHT: usize = 16;
@@ -35,6 +38,19 @@ impl ChestGroup {
     }
 }
 
+/// A scheduled block tick carried by a chunk that is not loaded into the live
+/// world. While a chunk is loaded its ticks live in the block tick scheduler.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PendingTick {
+    /// Flat block index in [`Chunk::index`] order.
+    pub index: u16,
+    /// The block the tick was scheduled for. It only runs if the cell still
+    /// holds this block.
+    pub block: Id,
+    /// Ticks remaining when the chunk left the world.
+    pub delay: u32,
+}
+
 #[derive(Clone)]
 pub struct Chunk {
     // Meshing snapshots the center chunk and eight neighbors. Sharing their
@@ -44,17 +60,26 @@ pub struct Chunk {
     // Raw `Id` bytes, not `Id` values: the `Unknown(u8)` catch-all makes `Id`
     // two bytes wide, which would double every chunk and generator cache.
     blocks: Arc<[u8]>,
+    /// Beta's per-block 4-bit metadata (`Chunk.data`): fluid levels, crop and
+    /// cactus ages, farmland moisture, and leaf decay flags. Packed two cells
+    /// per byte in [`Self::index`] order, low nibble first. Most chunks never
+    /// store a nonzero value, so the array is allocated on the first one.
+    metadata: Option<Arc<[u8]>>,
     /// Block-local inventories and simulation state. Keyed by flat block index.
     furnaces: HashMap<usize, Furnace>,
     chests: HashMap<usize, Chest>,
+    /// Scheduled ticks saved with the chunk. Empty while the chunk is live.
+    pending_ticks: Vec<PendingTick>,
 }
 
 impl Chunk {
     pub fn new() -> Self {
         Self {
-            blocks: vec![Id::Air.as_u8(); CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE].into(),
+            blocks: vec![Id::Air.as_u8(); CHUNK_VOLUME].into(),
+            metadata: None,
             furnaces: HashMap::new(),
             chests: HashMap::new(),
+            pending_ticks: Vec::new(),
         }
     }
 
@@ -79,8 +104,10 @@ impl Chunk {
             .collect();
         Self {
             blocks: blocks.into_iter().map(Id::as_u8).collect(),
+            metadata: None,
             furnaces,
             chests,
+            pending_ticks: Vec::new(),
         }
     }
 
@@ -106,14 +133,83 @@ impl Chunk {
             .collect();
         Self {
             blocks: blocks.into(),
+            metadata: None,
             furnaces,
             chests,
+            pending_ticks: Vec::new(),
         }
+    }
+
+    /// Scheduled ticks stored with this chunk while it is out of the world.
+    pub fn pending_ticks(&self) -> &[PendingTick] {
+        &self.pending_ticks
+    }
+
+    pub fn set_pending_ticks(&mut self, ticks: Vec<PendingTick>) {
+        self.pending_ticks = ticks;
+    }
+
+    pub fn take_pending_ticks(&mut self) -> Vec<PendingTick> {
+        std::mem::take(&mut self.pending_ticks)
     }
 
     /// The flat array of raw block bytes in [`Self::index`] order.
     pub fn raw_blocks(&self) -> &[u8] {
         &self.blocks
+    }
+
+    /// Packed metadata nibbles, or `None` while every value is zero.
+    pub fn raw_metadata(&self) -> Option<&[u8]> {
+        self.metadata.as_deref()
+    }
+
+    /// Replace every metadata value from packed nibbles in the
+    /// [`Self::raw_metadata`] layout. A wrong length clears the metadata.
+    pub fn set_raw_metadata(&mut self, packed: Vec<u8>) {
+        self.metadata = (packed.len() == METADATA_BYTES && packed.iter().any(|&byte| byte != 0))
+            .then(|| packed.into());
+    }
+
+    /// Beta `Chunk.getBlockMetadata`. Out-of-range cells read zero.
+    pub fn metadata(&self, x: usize, y: usize, z: usize) -> u8 {
+        if x >= CHUNK_SIZE || y >= CHUNK_HEIGHT || z >= CHUNK_SIZE {
+            return 0;
+        }
+        self.metadata_at_index(Self::index(x, y, z))
+    }
+
+    pub(crate) fn metadata_at_index(&self, index: usize) -> u8 {
+        self.metadata.as_ref().map_or(0, |packed| {
+            let byte = packed[index / 2];
+            if index % 2 == 0 {
+                byte & 0x0f
+            } else {
+                byte >> 4
+            }
+        })
+    }
+
+    /// Beta `Chunk.setBlockMetadata`. Only the low four bits are stored.
+    pub fn set_metadata(&mut self, x: usize, y: usize, z: usize, value: u8) {
+        assert!(x < CHUNK_SIZE && y < CHUNK_HEIGHT && z < CHUNK_SIZE);
+        self.set_metadata_at_index(Self::index(x, y, z), value);
+    }
+
+    fn set_metadata_at_index(&mut self, index: usize, value: u8) {
+        let value = value & 0x0f;
+        if self.metadata_at_index(index) == value {
+            return;
+        }
+        let packed = Arc::make_mut(
+            self.metadata
+                .get_or_insert_with(|| vec![0; METADATA_BYTES].into()),
+        );
+        let byte = &mut packed[index / 2];
+        *byte = if index % 2 == 0 {
+            (*byte & 0xf0) | value
+        } else {
+            (*byte & 0x0f) | (value << 4)
+        };
     }
 
     /// Every block decoded, in [`Self::index`] order. This copies the chunk;
@@ -129,9 +225,26 @@ impl Chunk {
         Some(Id::from(self.blocks[Self::index(x, y, z)]))
     }
 
+    /// Replace a block. Like Beta's `Chunk.setBlockID`, a different block
+    /// starts with metadata zero; setting the same block keeps its metadata.
     pub fn set(&mut self, x: usize, y: usize, z: usize, block: Id) {
         assert!(x < CHUNK_SIZE && y < CHUNK_HEIGHT && z < CHUNK_SIZE);
         let index = Self::index(x, y, z);
+        if Id::from(self.blocks[index]) != block {
+            self.set_metadata_at_index(index, 0);
+        }
+        self.set_block_only(index, block);
+    }
+
+    /// Beta `Chunk.setBlockIDWithMetadata`.
+    pub fn set_with_metadata(&mut self, x: usize, y: usize, z: usize, block: Id, metadata: u8) {
+        assert!(x < CHUNK_SIZE && y < CHUNK_HEIGHT && z < CHUNK_SIZE);
+        let index = Self::index(x, y, z);
+        self.set_block_only(index, block);
+        self.set_metadata_at_index(index, metadata);
+    }
+
+    fn set_block_only(&mut self, index: usize, block: Id) {
         let previous = Id::from(self.blocks[index]);
         if is_furnace(previous) && !is_furnace(block) {
             self.furnaces.remove(&index);
@@ -180,7 +293,7 @@ impl Chunk {
         self.chests.insert(index, chest);
     }
 
-    pub(crate) const fn index(x: usize, y: usize, z: usize) -> usize {
+    pub const fn index(x: usize, y: usize, z: usize) -> usize {
         (y * CHUNK_SIZE + z) * CHUNK_SIZE + x
     }
 }
@@ -255,6 +368,63 @@ impl WorldChunks {
         let local_x = x.rem_euclid(CHUNK_SIZE as i32) as usize;
         let local_z = z.rem_euclid(CHUNK_SIZE as i32) as usize;
         chunk.chunk.get(local_x, y as usize, local_z)
+    }
+
+    /// Beta `World.getBlockMetadata`: zero outside the world or a loaded chunk.
+    pub fn metadata_at(&self, x: i32, y: i32, z: i32) -> u8 {
+        let Some(index) = local_index(x, y, z) else {
+            return 0;
+        };
+        self.get(ChunkPosition::from_block(x, z))
+            .map_or(0, |generated| generated.chunk.metadata_at_index(index))
+    }
+
+    /// Beta `World.setBlockMetadata`. Returns `false` when the cell is outside
+    /// the world or its chunk is not loaded.
+    pub fn set_metadata(&mut self, x: i32, y: i32, z: i32, metadata: u8) -> bool {
+        if y < 0 || y >= CHUNK_HEIGHT as i32 {
+            return false;
+        }
+        let Some(generated) = self.get_mut(ChunkPosition::from_block(x, z)) else {
+            return false;
+        };
+        let local_x = x.rem_euclid(CHUNK_SIZE as i32) as usize;
+        let local_z = z.rem_euclid(CHUNK_SIZE as i32) as usize;
+        generated
+            .chunk
+            .set_metadata(local_x, y as usize, local_z, metadata);
+        true
+    }
+
+    /// Replace a loaded block and its metadata, refreshing the heightmap when
+    /// the block changes. Returns the previous block and metadata, or `None`
+    /// when the cell is outside the world or its chunk is not loaded.
+    pub fn set_block_with_metadata(
+        &mut self,
+        x: i32,
+        y: i32,
+        z: i32,
+        block: Id,
+        metadata: u8,
+    ) -> Option<(Id, u8)> {
+        if y < 0 || y >= CHUNK_HEIGHT as i32 {
+            return None;
+        }
+        let generated = self.get_mut(ChunkPosition::from_block(x, z))?;
+        let local_x = x.rem_euclid(CHUNK_SIZE as i32) as usize;
+        let local_z = z.rem_euclid(CHUNK_SIZE as i32) as usize;
+        let y = y as usize;
+        let previous = generated.chunk.get(local_x, y, local_z)?;
+        let previous_metadata = generated.chunk.metadata(local_x, y, local_z);
+        generated
+            .chunk
+            .set_with_metadata(local_x, y, local_z, block, metadata);
+        if previous != block {
+            generated
+                .heightmap
+                .recompute_column(&generated.chunk, local_x, local_z);
+        }
+        Some((previous, previous_metadata))
     }
 
     pub fn furnace_at(&self, x: i32, y: i32, z: i32) -> Option<&Furnace> {
@@ -365,7 +535,8 @@ impl WorldChunks {
         })
     }
 
-    /// Replace a loaded block and refresh that column's heightmap.
+    /// Replace a loaded block and refresh that column's heightmap. A different
+    /// block starts with metadata zero, as in Beta's `World.setBlock`.
     ///
     /// Returns the previous block, or `None` when the cell is outside the world
     /// or its chunk is not loaded.

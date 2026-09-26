@@ -21,8 +21,7 @@ const HEIGHT: i32 = CHUNK_HEIGHT as i32;
 const SIZE: i32 = CHUNK_SIZE as i32;
 const CELLS: usize = CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE;
 
-/// Beta `Block.lightOpacity`, in light levels. Unlike the game's lighting,
-/// flowing water attenuates like still water.
+/// Beta `Block.lightOpacity`, in light levels.
 pub(super) fn beta_opacity(block: Id) -> u8 {
     match block {
         Id::Leaves | Id::BirchLeaves | Id::SpruceLeaves => 1,

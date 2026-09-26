@@ -17,6 +17,7 @@ use game::world::chunk::CHUNK_HEIGHT;
 use game::world::chunk::CHUNK_SIZE;
 use game::world::chunk::Chunk;
 use game::world::chunk::ChunkPosition;
+use game::world::chunk::PendingTick;
 use game::world::chunk::WorldChunks;
 use game::world::generation::ChunkDroppedItem;
 use game::world::generation::WorldGenerator;
@@ -149,6 +150,43 @@ fn chunk_round_trips_through_a_chunk_file() {
             assert!((after.humidity - before.humidity).abs() < 0.01);
         }
     }
+}
+
+#[test]
+fn block_metadata_and_pending_ticks_round_trip_through_a_chunk_file() {
+    let saves = temp_saves("metadata");
+    let storage = WorldStorage::create(&saves, 0, "Metadata").unwrap();
+    let position = ChunkPosition { x: 3, z: -2 };
+    let mut generated = WorldGenerator::new(0).generate(position);
+    generated
+        .chunk
+        .set_with_metadata(4, 90, 5, Id::FlowingWater, 3);
+    generated.chunk.set_with_metadata(5, 90, 5, Id::Crops, 7);
+    generated.chunk.set_with_metadata(6, 90, 5, Id::Farmland, 6);
+    let tick = PendingTick {
+        index: Chunk::index(4, 90, 5) as u16,
+        block: Id::FlowingWater,
+        delay: 4,
+    };
+    generated.chunk.set_pending_ticks(vec![tick]);
+    storage.save_chunk(position, &generated).unwrap();
+
+    let loaded = storage.load_chunk(position).expect("chunk should load");
+    assert_eq!(loaded.chunk.metadata(4, 90, 5), 3);
+    assert_eq!(loaded.chunk.metadata(5, 90, 5), 7);
+    assert_eq!(loaded.chunk.metadata(6, 90, 5), 6);
+    assert_eq!(loaded.chunk.metadata(7, 90, 5), 0);
+    assert_eq!(loaded.chunk.pending_ticks(), &[tick]);
+
+    // A chunk without metadata stores none and loads all zeroes.
+    let plain = WorldGenerator::new(0).generate(ChunkPosition { x: 4, z: -2 });
+    assert!(plain.chunk.raw_metadata().is_none());
+    storage
+        .save_chunk(ChunkPosition { x: 4, z: -2 }, &plain)
+        .unwrap();
+    let loaded = storage.load_chunk(ChunkPosition { x: 4, z: -2 }).unwrap();
+    assert!(loaded.chunk.raw_metadata().is_none());
+    fs::remove_dir_all(saves).unwrap();
 }
 
 #[test]

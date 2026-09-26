@@ -35,9 +35,11 @@ use game::world::lighting::Skylight;
 use game::world::lighting::light_opacity;
 use game::world::meshing::BlockGeometry;
 use game::world::meshing::mesh_chunk;
+use game::world::meshing::mesh_chunk_with_settings;
 use game::world::persistence::WorldStorage;
 use game::world::textures::atlas_tile_uvs;
 use game::world::textures::block_tile;
+use game::world::textures::crop_tile;
 use game::world::textures::farmland_top_tile;
 
 struct Rolls;
@@ -271,15 +273,28 @@ fn farmland_mesh_and_ray_selection_stop_at_fifteen_sixteenths() {
 }
 
 #[test]
-fn farmland_nearby_water_uses_the_wet_top_tile() {
+fn moist_farmland_uses_the_wet_top_tile() {
+    let mut chunk = Chunk::new();
+    chunk.set_with_metadata(8, 64, 8, Id::Farmland, 7);
+
+    let mesh = mesh_chunk(&chunk, &Skylight::from_chunk(&chunk));
+
+    assert!(farmland_top_uses_tile(&mesh, farmland_top_tile(true)));
+    assert!(!farmland_top_uses_tile(&mesh, farmland_top_tile(false)));
+}
+
+#[test]
+fn farmland_texture_follows_moisture_not_nearby_water() {
+    // `BlockFarmland` draws the wet top from metadata. Water only matters
+    // through the random ticks that raise the moisture.
     let mut chunk = Chunk::new();
     chunk.set(8, 64, 8, Id::Farmland);
     chunk.set(4, 64, 8, Id::Water);
 
     let mesh = mesh_chunk(&chunk, &Skylight::from_chunk(&chunk));
 
-    assert!(farmland_top_uses_tile(&mesh, farmland_top_tile(true)));
-    assert!(!farmland_top_uses_tile(&mesh, farmland_top_tile(false)));
+    assert!(farmland_top_uses_tile(&mesh, farmland_top_tile(false)));
+    assert!(!farmland_top_uses_tile(&mesh, farmland_top_tile(true)));
 }
 
 #[test]
@@ -344,4 +359,35 @@ fn farmland_round_trips_through_persistence() {
     assert_eq!(loaded.chunk.get(8, 64, 8), Some(Id::Farmland));
     assert_eq!(loaded.heightmap.get(8, 8), 65);
     fs::remove_dir_all(saves).unwrap();
+}
+
+#[test]
+fn crops_render_four_planes_with_their_growth_stage_tile() {
+    for stage in [0, 3, 7] {
+        let mut chunk = Chunk::new();
+        chunk.set(8, 63, 8, Id::Farmland);
+        chunk.set_with_metadata(8, 64, 8, Id::Crops, stage);
+        let meshes = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true);
+        assert_eq!(meshes.masked.vertex_count(), 16, "a # of four planes");
+        let (u0, v0, u1, v1) = atlas_tile_uvs(crop_tile(stage).0, crop_tile(stage).1);
+        assert!(
+            meshes
+                .masked
+                .uvs()
+                .iter()
+                .all(|uv| (u0..=u1).contains(&uv[0]) && (v0..=v1).contains(&uv[1])),
+            "stage {stage} uses tile {:?}",
+            crop_tile(stage)
+        );
+        // `renderBlockCrops` sinks the planes a pixel into the farmland.
+        let bottom = meshes
+            .masked
+            .positions()
+            .iter()
+            .map(|position| position[1])
+            .fold(f32::INFINITY, f32::min);
+        assert!((bottom - (64.0 - 1.0 / 16.0)).abs() < 0.01);
+    }
+    assert_eq!(crop_tile(0), (8, 5));
+    assert_eq!(crop_tile(7), (15, 5));
 }

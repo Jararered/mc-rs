@@ -1,12 +1,17 @@
+use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::hash::Hasher;
+use std::sync::Arc;
 use std::sync::OnceLock;
+
+use bevy::prelude::Resource;
 
 use crate::block::definition::BlockProperties;
 use crate::block::id::Id;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::Chunk;
+use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::SECTION_HEIGHT;
 use crate::world::chunk::SECTIONS_PER_CHUNK;
 use crate::world::chunk::WorldChunks;
@@ -486,6 +491,19 @@ impl Skylight {
         combined_light(sky, block, skylight_subtracted)
     }
 
+    /// The chunk's own packed light cells, without the neighbor ring, in
+    /// [`Chunk::index`] order. [`LightCache`] keeps this for block ticks.
+    pub fn chunk_cells(&self) -> Arc<[u8]> {
+        let mut cells = Vec::with_capacity(LIGHT_CELLS);
+        for y in 0..CHUNK_HEIGHT {
+            for z in 0..CHUNK_SIZE as i32 {
+                let row = padded_index(0, y, z);
+                cells.extend_from_slice(&self.cells[row..row + CHUNK_SIZE]);
+            }
+        }
+        cells.into()
+    }
+
     /// One hash per render section over every light cell its mesh can sample,
     /// including the ring and the layer above and below. A section whose
     /// fingerprint is unchanged after an edit keeps its mesh.
@@ -497,6 +515,82 @@ impl Skylight {
             hasher.write(&self.cells[first * PADDED_LAYER..(last + 1) * PADDED_LAYER]);
             hasher.finish()
         })
+    }
+}
+
+/// The light each loaded chunk had when it was last lit, for simulation that
+/// reads light outside a mesh job: grass spread, crop growth, and melting.
+///
+/// The world keeps no persistent light arrays. Streaming lights every
+/// rendered chunk as part of meshing, and this cache keeps the chunk's cells
+/// from that pass, so a lookup costs one map probe instead of a relight. A
+/// cached value lags an edit until the edited chunk's mesh job finishes, as
+/// Beta's queued lighting updates lag its block changes.
+#[derive(Resource, Default)]
+pub struct LightCache {
+    chunks: HashMap<ChunkPosition, Arc<[u8]>>,
+}
+
+impl LightCache {
+    /// Cells from [`Skylight::chunk_cells`] for `position`.
+    pub fn insert(&mut self, position: ChunkPosition, cells: Arc<[u8]>) {
+        debug_assert_eq!(cells.len(), LIGHT_CELLS);
+        self.chunks.insert(position, cells);
+    }
+
+    pub fn remove(&mut self, position: ChunkPosition) {
+        self.chunks.remove(&position);
+    }
+
+    pub fn clear(&mut self) {
+        self.chunks.clear();
+    }
+
+    pub fn contains(&self, position: ChunkPosition) -> bool {
+        self.chunks.contains_key(&position)
+    }
+
+    /// Light `position` from the loaded chunks around it now, as a mesh job
+    /// would. For tests and tools; the game fills the cache from meshing.
+    pub fn relight(&mut self, chunks: &WorldChunks, position: ChunkPosition) {
+        let Some(center) = chunks.get(position) else {
+            return;
+        };
+        let neighbor = |dx: i32, dz: i32| {
+            chunks
+                .get(ChunkPosition {
+                    x: position.x + dx,
+                    z: position.z + dz,
+                })
+                .map(|generated| &generated.chunk)
+        };
+        let light = Skylight::from_chunk_with_neighbors_and_corners(
+            &center.chunk,
+            neighbor(-1, 0),
+            neighbor(1, 0),
+            neighbor(0, -1),
+            neighbor(0, 1),
+            neighbor(-1, -1),
+            neighbor(1, -1),
+            neighbor(-1, 1),
+            neighbor(1, 1),
+        );
+        self.insert(position, light.chunk_cells());
+    }
+
+    /// Sky and block light at a world cell, or `None` when its chunk has not
+    /// been lit. Above the world is open sky and below it is dark.
+    pub fn channels(&self, x: i32, y: i32, z: i32) -> Option<(u8, u8)> {
+        if y < 0 {
+            return Some((0, 0));
+        }
+        if y >= CHUNK_HEIGHT as i32 {
+            return Some((MAX_LIGHT, 0));
+        }
+        let cells = self.chunks.get(&ChunkPosition::from_block(x, z))?;
+        let local_x = x.rem_euclid(CHUNK_SIZE as i32) as usize;
+        let local_z = z.rem_euclid(CHUNK_SIZE as i32) as usize;
+        Some(unpack(cells[Chunk::index(local_x, y as usize, local_z)]))
     }
 }
 

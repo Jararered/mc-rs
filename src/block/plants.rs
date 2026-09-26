@@ -19,6 +19,7 @@ impl BlockDefinition for Definition {
                 | Id::RedMushroom
                 | Id::Cactus
                 | Id::SugarCane
+                | Id::Crops
                 | Id::SpruceLeaves
                 | Id::BirchLeaves
                 | Id::SpruceWood
@@ -48,6 +49,7 @@ impl BlockDefinition for Definition {
                 | Id::TallGrass
                 | Id::Fern
                 | Id::SugarCane
+                | Id::Crops
         )
     }
 
@@ -62,7 +64,8 @@ impl BlockDefinition for Definition {
             | Id::RedMushroom
             | Id::TallGrass
             | Id::Fern
-            | Id::SugarCane => 0,
+            | Id::SugarCane
+            | Id::Crops => 0,
             _ => 15,
         }
     }
@@ -99,7 +102,11 @@ fn properties(id: Id) -> BlockProperties {
         Id::BrownMushroom | Id::RedMushroom => {
             crossed_plant(0.0, ([0.3, 0.0, 0.3], [0.7, 0.4, 0.7]))
         }
-        Id::Crops => BlockProperties::solid(0.0),
+        // `BlockCrops`: a quarter-block selection box and no collision.
+        Id::Crops => BlockProperties {
+            selection_bounds: ([0.0; 3], [1.0, 0.25, 1.0]),
+            ..BlockProperties::non_colliding(0.0)
+        },
         Id::Cactus => BlockProperties {
             opaque_cube: false,
             light_opacity: 0,

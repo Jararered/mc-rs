@@ -3,8 +3,8 @@ pub mod registry;
 pub mod tools;
 use crate::block::id::Id;
 pub use registry::ItemData;
-pub use registry::ItemDefinition;
 pub use registry::ItemId;
+pub use registry::ItemProperties;
 pub use registry::ItemRegistry;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -41,7 +41,7 @@ impl ItemStack {
         Self::with_data(item, count, 0)
     }
     pub fn with_data(item: ItemId, count: u8, data: u16) -> Result<Self, StackError> {
-        let definition = item.definition().ok_or(StackError::UnknownItem(item))?;
+        let definition = item.properties().ok_or(StackError::UnknownItem(item))?;
         if count == 0 || count > definition.max_stack_size {
             return Err(StackError::InvalidCount {
                 count,
@@ -80,8 +80,8 @@ impl ItemStack {
     pub fn container_item(self) -> Option<ItemId> {
         self.definition().container_item()
     }
-    pub fn definition(self) -> ItemDefinition {
-        self.item.definition().expect("validated stack identity")
+    pub fn definition(self) -> ItemProperties {
+        self.item.properties().expect("validated stack identity")
     }
 
     /// Direct placement candidate for implemented block states. Special items

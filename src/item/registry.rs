@@ -26,7 +26,7 @@ impl ItemData {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct ItemDefinition {
+pub struct ItemProperties {
     pub id: ItemId,
     pub max_stack_size: u8,
     pub data: ItemData,
@@ -34,7 +34,7 @@ pub struct ItemDefinition {
     pub block: Option<Id>,
 }
 
-impl ItemDefinition {
+impl ItemProperties {
     /// Beta crafting remainder, for example an empty bucket left by milk.
     pub const fn container_item(self) -> Option<ItemId> {
         match self.id {
@@ -160,8 +160,8 @@ pub enum ItemId {
     #[num_enum(catch_all)]
     BlockOrUnknown(u16),
 }
-const fn standalone(id: ItemId, max_stack_size: u8, data: ItemData) -> ItemDefinition {
-    ItemDefinition {
+const fn standalone(id: ItemId, max_stack_size: u8, data: ItemData) -> ItemProperties {
+    ItemProperties {
         id,
         max_stack_size,
         data,
@@ -196,9 +196,9 @@ impl ItemId {
         block.has_item_id().then_some(block)
     }
 
-    pub fn definition(self) -> Option<ItemDefinition> {
+    pub fn properties(self) -> Option<ItemProperties> {
         if let Some(block) = self.block() {
-            return Some(ItemDefinition {
+            return Some(ItemProperties {
                 id: self,
                 max_stack_size: 64,
                 data: block.item_data(),
@@ -288,7 +288,7 @@ impl ItemId {
             Self::MilkBucket => Some(standalone(self, 1, ItemData::None)),
             Self::Brick => Some(standalone(self, 64, ItemData::None)),
             Self::ClayBall => Some(standalone(self, 64, ItemData::None)),
-            Self::SugarCane => Some(ItemDefinition {
+            Self::SugarCane => Some(ItemProperties {
                 block: Some(Id::SugarCane),
                 ..standalone(self, 64, ItemData::None)
             }),
@@ -337,11 +337,11 @@ const RAW_RANGES: [(u16, u16); 3] = [(1, Id::MAX_ITEM_ID as u16), (256, 359), (2
 pub struct ItemRegistry;
 
 impl ItemRegistry {
-    pub fn get(raw: u16) -> Option<ItemDefinition> {
-        ItemId::from_u16(raw).and_then(ItemId::definition)
+    pub fn get(raw: u16) -> Option<ItemProperties> {
+        ItemId::from_u16(raw).and_then(ItemId::properties)
     }
 
-    pub fn iter() -> impl Iterator<Item = ItemDefinition> {
+    pub fn iter() -> impl Iterator<Item = ItemProperties> {
         RAW_RANGES
             .into_iter()
             .flat_map(|(start, end)| start..=end)

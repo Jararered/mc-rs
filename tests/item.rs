@@ -179,7 +179,7 @@ fn beta_stack_and_durability_rules_include_pre_release_differences() {
         (ItemId::Bow, 1),
         (ItemId::Record13, 1),
     ] {
-        assert_eq!(id.definition().unwrap().max_stack_size, limit);
+        assert_eq!(id.properties().unwrap().max_stack_size, limit);
     }
     for (id, damage) in [
         (ItemId::WoodenPickaxe, 59),
@@ -191,10 +191,10 @@ fn beta_stack_and_durability_rules_include_pre_release_differences() {
         (ItemId::LeatherHelmet, 33),
         (ItemId::DiamondChestplate, 384),
     ] {
-        assert_eq!(id.definition().unwrap().data, ItemData::Durability(damage));
+        assert_eq!(id.properties().unwrap().data, ItemData::Durability(damage));
     }
     // Beta bows have no durability.
-    assert_eq!(ItemId::Bow.definition().unwrap().data, ItemData::None);
+    assert_eq!(ItemId::Bow.properties().unwrap().data, ItemData::None);
 }
 
 #[test]

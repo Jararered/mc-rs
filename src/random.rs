@@ -79,6 +79,37 @@ impl JavaRandom {
     }
 }
 
+/// Java's `String.hashCode()`: `h = h * 31 + c`, wrapping in `i32` so that long
+/// seeds overflow into the negative range exactly as they do in Java.
+fn java_string_hash(text: &str) -> i32 {
+    let mut hash: i32 = 0;
+    for unit in text.encode_utf16() {
+        // Java widens each UTF-16 code unit to a signed 32-bit int, so a
+        // surrogate in a non-BMP character contributes as a negative value.
+        let unit = i32::from(unit) - 0x1_0000 * i32::from(unit >= 0x8000);
+        hash = hash.wrapping_mul(31).wrapping_add(unit);
+    }
+    hash
+}
+
+/// Parse a text seed into the 64-bit value world generation takes.
+///
+/// `GuiCreateWorld.actionPerformed`: text which `Long.parseLong` accepts is used
+/// directly, so a seed copied out of `level.json` round-trips unchanged. Anything
+/// else falls back to `String.hashCode()`, sign-extended from `int` to `long` as
+/// the cast in the reference does. That sign extension is load-bearing: the
+/// generator masks to 48 bits, so bits 32 through 47 decide the world for any
+/// negative text seed.
+///
+/// The reference does not trim, and `Long.parseLong` rejects surrounding
+/// whitespace, so `" 42 "` hashes as text rather than parsing as a number.
+pub fn parse_seed(text: &str) -> u64 {
+    match text.parse::<i64>() {
+        Ok(value) => value.cast_unsigned(),
+        Err(_) => i64::from(java_string_hash(text)).cast_unsigned(),
+    }
+}
+
 /// Spawn-time randomness. Each caller keeps its own so tests do not need the resource.
 #[derive(Clone, Debug)]
 pub struct ItemRng {

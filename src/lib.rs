@@ -1,3 +1,7 @@
+// `AsBindGroup`'s generated `SystemParam` bound chain through wgpu's internals
+// exceeds the default recursion limit of 128.
+#![recursion_limit = "256"]
+
 pub mod block;
 
 pub mod app;

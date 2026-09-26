@@ -19,7 +19,9 @@ use crate::block::properties::is_torch;
 use crate::entity::CollisionState;
 use crate::entity::DroppedItem;
 use crate::entity::EntitySize;
+use crate::entity::PreviousTick;
 use crate::entity::drops::blocks::DropRoll;
+use crate::entity::shadow::Shadow;
 use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
 use crate::item::ItemStack;
@@ -81,18 +83,15 @@ pub struct DroppedItemState {
     pub pickup_delay_ticks: u16,
     pub age_ticks: u32,
     pub hover_start: f32,
-    /// Position before the latest tick. Rendering lerps from here with `partial`.
-    previous_position: Vec3,
     rng: JavaRandom,
 }
 
 impl DroppedItemState {
-    pub fn new(pickup_delay_ticks: u16, hover_start: f32, rng_seed: u64, position: Vec3) -> Self {
+    pub fn new(pickup_delay_ticks: u16, hover_start: f32, rng_seed: u64) -> Self {
         Self {
             pickup_delay_ticks,
             age_ticks: 0,
             hover_start,
-            previous_position: position,
             rng: JavaRandom::new(rng_seed),
         }
     }
@@ -102,13 +101,11 @@ impl DroppedItemState {
         age_ticks: u32,
         hover_start: f32,
         rng_state: u64,
-        position: Vec3,
     ) -> Self {
         Self {
             pickup_delay_ticks,
             age_ticks,
             hover_start,
-            previous_position: position,
             rng: JavaRandom::from_state(rng_state),
         }
     }
@@ -252,12 +249,13 @@ pub fn spawn_saved_item(commands: &mut Commands, item: crate::world::generation:
             item.age_ticks,
             item.hover_start,
             item.rng_state,
-            Vec3::from_array(item.position),
         ),
         Transform::from_translation(Vec3::from_array(item.position)),
+        PreviousTick(Vec3::from_array(item.position)),
         ItemMotion(Vec3::from_array(item.motion)),
         CollisionState::default(),
         EntitySize::DROPPED_ITEM,
+        Shadow::DROPPED_ITEM,
         ItemChunkHome(ChunkPosition::from_block(
             item.position[0].floor() as i32,
             item.position[2].floor() as i32,
@@ -294,11 +292,13 @@ fn spawn_item(
     commands.spawn((
         Name::new("Dropped item"),
         DroppedItem(stack),
-        DroppedItemState::new(pickup_delay_ticks, hover_start, rng_seed, position),
+        DroppedItemState::new(pickup_delay_ticks, hover_start, rng_seed),
         Transform::from_translation(position),
+        PreviousTick(position),
         ItemMotion(motion),
         CollisionState::default(),
         EntitySize::DROPPED_ITEM,
+        Shadow::DROPPED_ITEM,
     ));
 }
 
@@ -501,6 +501,7 @@ fn tick_dropped_items(
     mut items: Query<(
         Entity,
         &mut Transform,
+        &mut PreviousTick,
         &mut ItemMotion,
         &mut CollisionState,
         &EntitySize,
@@ -526,7 +527,16 @@ fn tick_dropped_items(
         }
     }
 
-    for (entity, mut transform, mut motion, mut collision, size, mut state, mut home) in &mut items
+    for (
+        entity,
+        mut transform,
+        mut previous_tick,
+        mut motion,
+        mut collision,
+        size,
+        mut state,
+        mut home,
+    ) in &mut items
     {
         if !chunks.contains(ChunkPosition::from_world(
             transform.translation.x,
@@ -535,7 +545,7 @@ fn tick_dropped_items(
             continue;
         }
         for _ in 0..steps {
-            state.previous_position = transform.translation;
+            previous_tick.0 = transform.translation;
             state.age_ticks += 1;
             if state.pickup_delay_ticks > 0 {
                 state.pickup_delay_ticks -= 1;
@@ -731,13 +741,7 @@ fn spawn_pickup_flyer(
     commands.spawn((
         Name::new("Item pickup"),
         DroppedItem(stack),
-        DroppedItemState::from_saved(
-            0,
-            state.age_ticks,
-            state.hover_start,
-            state.rng_state(),
-            origin,
-        ),
+        DroppedItemState::from_saved(0, state.age_ticks, state.hover_start, state.rng_state()),
         Transform::from_translation(origin),
         PickupAnimation {
             start: origin,
@@ -774,6 +778,7 @@ fn sync_item_rendering(
         &mut Transform,
         &DroppedItem,
         &DroppedItemState,
+        Option<&PreviousTick>,
         Option<&ItemVisual>,
         Option<&Children>,
         Option<&PickupAnimation>,
@@ -806,7 +811,9 @@ fn sync_item_rendering(
         });
 
     let player_eye = player.single().ok().map(|transform| transform.translation);
-    for (entity, mut transform, dropped, state, visual, children, pickup) in &mut items {
+    for (entity, mut transform, dropped, state, previous_tick, visual, children, pickup) in
+        &mut items
+    {
         if let (Some(pickup), Some(player_eye)) = (pickup, player_eye) {
             transform.translation = pickup_position(
                 pickup.start,
@@ -824,14 +831,13 @@ fn sync_item_rendering(
         let spin = item_spin_yaw(state.age_ticks as f32, tick.partial(), state.hover_start);
         // Physics keeps the post-tick position. The mesh is a child, so this
         // local slide shows the in-between point without moving the simulation.
-        let slide = if pickup.is_some() {
-            Vec3::ZERO
-        } else {
-            interpolated_item_position(
-                state.previous_position,
-                transform.translation,
-                tick.partial(),
-            ) - transform.translation
+        // Pickup flight is already continuous and has no `PreviousTick`.
+        let slide = match previous_tick {
+            Some(previous_tick) => {
+                interpolated_item_position(previous_tick.0, transform.translation, tick.partial())
+                    - transform.translation
+            }
+            None => Vec3::ZERO,
         };
         let yaw = item_visual_yaw(cube, spin, camera_yaw);
         let scale = if cube { CUBE_SCALE } else { SPRITE_SCALE };

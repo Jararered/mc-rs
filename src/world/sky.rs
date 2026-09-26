@@ -31,11 +31,9 @@ use crate::block::id::Id;
 use crate::player::Player;
 use crate::player::PlayerCamera;
 use crate::random::JavaRandom;
-use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::WorldChunks;
 use crate::world::lighting::beta_brightness;
-use crate::world::lighting::light_emission;
-use crate::world::lighting::light_opacity;
+use crate::world::lighting::light_level_at;
 use crate::world::textures::InstanceTint;
 use crate::world::textures::TintedMaterial;
 use crate::world::textures::tint_tag;
@@ -372,33 +370,11 @@ fn srgb(rgb: [f32; 3]) -> Color {
     Color::srgb(rgb[0], rgb[1], rgb[2])
 }
 
-/// Direct sun reaches the eye when no opaque block sits in the column above it.
-fn open_to_sky(chunks: &WorldChunks, x: i32, y: i32, z: i32) -> bool {
-    if y >= CHUNK_HEIGHT as i32 {
-        return true;
-    }
-    for above in (y + 1)..CHUNK_HEIGHT as i32 {
-        let Some(block) = chunks.block_at(x, above, z) else {
-            return true;
-        };
-        if light_opacity(block) >= 15 {
-            return false;
-        }
-    }
-    true
-}
-
 fn eye_brightness(chunks: &WorldChunks, eye: Vec3, subtracted: u8) -> f32 {
     let x = eye.x.floor() as i32;
     let y = eye.y.floor() as i32;
     let z = eye.z.floor() as i32;
-    let sky = if open_to_sky(chunks, x, y, z) {
-        15u8.saturating_sub(subtracted)
-    } else {
-        0
-    };
-    let emitted = chunks.block_at(x, y, z).map_or(0, light_emission);
-    beta_brightness(sky.max(emitted))
+    beta_brightness(light_level_at(chunks, x, y, z, subtracted))
 }
 
 fn medium_at(chunks: &WorldChunks, eye: Vec3) -> Medium {

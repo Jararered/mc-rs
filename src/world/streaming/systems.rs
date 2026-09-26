@@ -194,6 +194,7 @@ pub(crate) fn stream_chunks(
         ),
         Without<PickupAnimation>,
     >,
+    mut last_unload_sweep: Local<Option<(ChunkPosition, i32)>>,
 ) {
     let Ok(player) = player.single() else {
         return;
@@ -218,59 +219,66 @@ pub(crate) fn stream_chunks(
     streaming
         .meshing
         .retain(|position, _| within_radius(*position, center, load_radius));
-    let mut forgotten = Vec::new();
+    // Chunks only leave the load/unload/generate radii when the player
+    // crosses a chunk boundary or the render distance setting changes, so
+    // skip these O(loaded-chunks) sweeps on the many frames in between.
+    if *last_unload_sweep != Some((center, load_radius)) {
+        *last_unload_sweep = Some((center, load_radius));
 
-    let expired: Vec<_> = streaming
-        .rendered
-        .keys()
-        .copied()
-        .filter(|position| !within_radius(*position, center, unload_radius))
-        .collect();
-    for position in expired {
-        if let Some(rendered) = streaming.rendered.remove(&position) {
-            despawn_rendered_chunk(&mut commands, &mut meshes, rendered);
-        }
-    }
-    streaming.remesh_queue.retain(|position| {
-        let keep = within_radius(*position, center, load_radius);
-        if !keep {
-            forgotten.push(*position);
-        }
-        keep
-    });
-    for position in forgotten {
-        streaming.remesh_sections.remove(&position);
-    }
+        let mut forgotten = Vec::new();
 
-    // Stored chunks are kept for the whole generation radius, including the ring
-    // that is generated ahead of the render distance.
-    let stale: Vec<_> = chunks
-        .positions()
-        .filter(|position| !within_radius(*position, center, generate_radius))
-        .collect();
-    for position in stale {
-        if let Some(mut chunk) = chunks.remove(position) {
-            let mut leaving = Vec::new();
-            for (entity, transform, dropped, motion, state) in &dropped {
-                let item_chunk = ChunkPosition::from_block(
-                    transform.translation.x.floor() as i32,
-                    transform.translation.z.floor() as i32,
-                );
-                if item_chunk == position {
-                    chunk.items.push(chunk_record(
-                        dropped.0,
-                        transform.translation,
-                        motion.0,
-                        state,
-                    ));
-                    leaving.push(entity);
+        let expired: Vec<_> = streaming
+            .rendered
+            .keys()
+            .copied()
+            .filter(|position| !within_radius(*position, center, unload_radius))
+            .collect();
+        for position in expired {
+            if let Some(rendered) = streaming.rendered.remove(&position) {
+                despawn_rendered_chunk(&mut commands, &mut meshes, rendered);
+            }
+        }
+        streaming.remesh_queue.retain(|position| {
+            let keep = within_radius(*position, center, load_radius);
+            if !keep {
+                forgotten.push(*position);
+            }
+            keep
+        });
+        for position in forgotten {
+            streaming.remesh_sections.remove(&position);
+        }
+
+        // Stored chunks are kept for the whole generation radius, including the
+        // ring that is generated ahead of the render distance.
+        let stale: Vec<_> = chunks
+            .positions()
+            .filter(|position| !within_radius(*position, center, generate_radius))
+            .collect();
+        for position in stale {
+            if let Some(mut chunk) = chunks.remove(position) {
+                let mut leaving = Vec::new();
+                for (entity, transform, dropped, motion, state) in &dropped {
+                    let item_chunk = ChunkPosition::from_block(
+                        transform.translation.x.floor() as i32,
+                        transform.translation.z.floor() as i32,
+                    );
+                    if item_chunk == position {
+                        chunk.items.push(chunk_record(
+                            dropped.0,
+                            transform.translation,
+                            motion.0,
+                            state,
+                        ));
+                        leaving.push(entity);
+                    }
                 }
-            }
-            for entity in leaving {
-                commands.entity(entity).despawn();
-            }
-            if let Some(persistence) = persistence.as_deref_mut() {
-                persistence.queue_unload(position, chunk);
+                for entity in leaving {
+                    commands.entity(entity).despawn();
+                }
+                if let Some(persistence) = persistence.as_deref_mut() {
+                    persistence.queue_unload(position, chunk);
+                }
             }
         }
     }

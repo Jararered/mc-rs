@@ -28,10 +28,8 @@ pub use interaction::mining::MiningState;
 pub use interaction::mining::destroy_stage;
 pub use interaction::mining::hand_ticks_to_break;
 pub use interaction::overlay::BlockFocus;
-pub use interaction::overlay::OUTLINE_THICKNESS;
 pub use interaction::overlay::destroy_overlay_mesh;
-pub use interaction::overlay::punch_nearly_transparent_texels;
-pub use interaction::overlay::selection_outline_mesh;
+pub use interaction::overlay::double_crack_intensity;
 pub use model::arm::interpolated_swing;
 
 use crate::physics::PhysicsSet;

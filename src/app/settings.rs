@@ -49,6 +49,12 @@ impl GraphicsQuality {
         !matches!(self, Self::Fast)
     }
 
+    /// Beta's `doRenderShadowAndFire` draws entity shadows only under
+    /// `gameSettings.fancyGraphics`, the same flag Fast disables here.
+    pub fn entity_shadows(self) -> bool {
+        !matches!(self, Self::Fast)
+    }
+
     /// Glossy water with screen-space reflections. Mesh positions stay the same.
     pub fn realistic_water(self) -> bool {
         matches!(self, Self::Ultra)

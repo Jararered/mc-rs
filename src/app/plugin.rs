@@ -3,6 +3,7 @@ use bevy::prelude::*;
 use crate::entity::drops::items::DroppedItemPlugin;
 use crate::entity::particles::block::BlockParticlePlugin;
 use crate::entity::particles::registry::ParticleRegistryPlugin;
+use crate::entity::shadow::plugin as entity_shadow_plugin;
 use crate::physics::PhysicsPlugin;
 use crate::player::PlayerPlugin;
 use crate::ui::HudPlugin;
@@ -28,6 +29,7 @@ impl Plugin for GamePlugin {
             PlayerPlugin,
             BlockParticlePlugin,
             DroppedItemPlugin,
+            entity_shadow_plugin,
             ParticleRegistryPlugin,
             PhysicsPlugin,
             UiCameraPlugin,

@@ -295,9 +295,6 @@ pub const WATER_ALPHA: f32 = 0.8;
 const WATER_SURFACE_DROP: f32 = 2.0 / 16.0;
 /// Lava uses the same inset surface plane as water, while remaining opaque.
 const LAVA_SURFACE_DROP: f32 = 2.0 / 16.0;
-/// Fancy grass overlays sit this far outside the side face. One packed
-/// horizontal step, so the offset survives vertex quantization.
-pub const GRASS_OVERLAY_OFFSET: f32 = 1.0 / 256.0;
 const DEFAULT_GRASS_TINT: [f32; 3] = [0.55, 0.8, 0.4];
 
 /// Light and occlusion for one quad's four corners.
@@ -492,6 +489,10 @@ impl BlockGeometry {
 
     /// Beta's fancy grass pass: the transparent overlay tile contains only
     /// the hanging grass pixels, leaving the normal dirt side unmodified.
+    /// Coplanar with the dirt side face, not nudged outward: both quads pack
+    /// their corners into the same quantized vertex positions (see
+    /// `vertex.rs`) and share the opaque layer's depth test, so the mask
+    /// layer's fragments resolve deterministically without z-fighting.
     fn push_grass_overlay(
         &mut self,
         origin: [f32; 3],
@@ -500,12 +501,7 @@ impl BlockGeometry {
         tint: [f32; 3],
         shading: CornerShading,
     ) {
-        let corners = BlockFaceGeometry::unit_cube()
-            .face(face_index)
-            .corners
-            .map(|corner| {
-                std::array::from_fn(|axis| corner[axis] + face.normal[axis] * GRASS_OVERLAY_OFFSET)
-            });
+        let corners = BlockFaceGeometry::unit_cube().face(face_index).corners;
         self.push_block_quad(
             origin,
             face.normal,

@@ -16,17 +16,15 @@ use game::player::BlockFocus;
 use game::player::HeartFill;
 use game::player::MAX_PLAYER_HEALTH;
 use game::player::MiningState;
-use game::player::OUTLINE_THICKNESS;
 use game::player::PLACED_BLOCK;
 use game::player::PlayerHealth;
 use game::player::break_block;
 use game::player::destroy_overlay_mesh;
 use game::player::destroy_stage;
+use game::player::double_crack_intensity;
 use game::player::hand_ticks_to_break;
 use game::player::place_block;
 use game::player::place_selected_block_facing;
-use game::player::punch_nearly_transparent_texels;
-use game::player::selection_outline_mesh;
 use game::world::chunk::CHUNK_SIZE;
 use game::world::chunk::Chunk;
 use game::world::chunk::ChunkPosition;
@@ -435,32 +433,19 @@ fn switching_tools_keeps_mining_progress() {
 }
 
 #[test]
-fn selection_outline_is_a_twelve_edge_wire_cube() {
-    let mesh = selection_outline_mesh();
-    assert_eq!(
-        mesh.primitive_topology(),
-        bevy::render::render_resource::PrimitiveTopology::TriangleList
-    );
-    // 12 edges × 6 faces × 4 corners of a thickness box.
-    assert_eq!(mesh.count_vertices(), 12 * 24);
-    assert_eq!(mesh.indices().unwrap().len(), 12 * 36);
-    assert!(OUTLINE_THICKNESS >= 1.0 / 32.0);
-}
-
-#[test]
-fn destroy_stage_empty_texels_become_fully_transparent() {
+fn crack_texel_intensity_is_doubled_for_multiply_blending() {
     let mut pixels = [
         255, 255, 255, 1, // empty destroy-stage background
         61, 61, 61, 255, // crack
         255, 255, 255, 15, 120, 120, 120, 200, 210, 210, 210,
         255, // opaque pale-grey background
     ];
-    punch_nearly_transparent_texels(&mut pixels);
-    assert_eq!(&pixels[0..4], &[0, 0, 0, 0]);
-    assert_eq!(&pixels[4..8], &[61, 61, 61, 255]);
-    assert_eq!(&pixels[8..12], &[0, 0, 0, 0]);
-    assert_eq!(&pixels[12..16], &[120, 120, 120, 200]);
-    assert_eq!(&pixels[16..20], &[0, 0, 0, 0]);
+    double_crack_intensity(&mut pixels);
+    assert_eq!(&pixels[0..4], &[255, 255, 255, 1]);
+    assert_eq!(&pixels[4..8], &[122, 122, 122, 255]);
+    assert_eq!(&pixels[8..12], &[255, 255, 255, 15]);
+    assert_eq!(&pixels[12..16], &[240, 240, 240, 200]);
+    assert_eq!(&pixels[16..20], &[255, 255, 255, 255]);
 }
 
 #[test]

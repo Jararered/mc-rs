@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -39,7 +40,9 @@ pub(super) fn spawn_mesh_job(
     position: ChunkPosition,
     forced: SectionMask,
 ) -> bool {
-    if streaming.meshing.contains_key(&position) || !mesh_neighborhood_ready(chunks, position) {
+    if streaming.meshing.contains_key(&position)
+        || !mesh_neighborhood_ready(chunks, &streaming.held, position)
+    {
         return false;
     }
     let Some(generated) = chunks.get(position) else {
@@ -127,15 +130,49 @@ pub(super) fn spawn_mesh_job(
 
 /// Lighting and ambient occlusion sample across both faces and corners. Do
 /// not bake fallback edge light into a chunk's first mesh while any of its
-/// surrounding block data is still being generated or loaded.
-pub(super) fn mesh_neighborhood_ready(chunks: &WorldChunks, position: ChunkPosition) -> bool {
+/// surrounding block data is still being generated, loaded, or populated.
+///
+/// A finished chunk is never held by a population job, so every chunk this
+/// accepts is loaded. `held` supplies the flags of chunks jobs are holding.
+pub(super) fn mesh_neighborhood_ready(
+    chunks: &WorldChunks,
+    held: &HashMap<ChunkPosition, bool>,
+    position: ChunkPosition,
+) -> bool {
     (-1..=1).all(|dx| {
         (-1..=1).all(|dz| {
             position
                 .x
                 .checked_add(dx)
                 .zip(position.z.checked_add(dz))
-                .is_some_and(|(x, z)| chunks.contains(ChunkPosition { x, z }))
+                .is_some_and(|(x, z)| chunk_finished(chunks, held, ChunkPosition { x, z }))
         })
     })
+}
+
+/// A chunk is finished once every population pass that writes into it has
+/// run: its own and those of its `-x`, `-z`, and `-x-z` neighbors. Population
+/// never writes into a finished chunk.
+fn chunk_finished(
+    chunks: &WorldChunks,
+    held: &HashMap<ChunkPosition, bool>,
+    position: ChunkPosition,
+) -> bool {
+    chunks.contains(position)
+        && [(0, 0), (-1, 0), (0, -1), (-1, -1)]
+            .into_iter()
+            .all(|(dx, dz)| {
+                position
+                    .x
+                    .checked_add(dx)
+                    .zip(position.z.checked_add(dz))
+                    .and_then(|(x, z)| {
+                        let writer = ChunkPosition { x, z };
+                        chunks
+                            .get(writer)
+                            .map(|generated| generated.populated)
+                            .or_else(|| held.get(&writer).copied())
+                    })
+                    .unwrap_or(false)
+            })
 }

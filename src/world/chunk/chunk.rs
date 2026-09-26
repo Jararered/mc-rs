@@ -84,6 +84,33 @@ impl Chunk {
         }
     }
 
+    /// Rebuild a chunk from raw block bytes in [`Self::index`] order.
+    pub fn from_raw(blocks: Vec<u8>) -> Self {
+        assert_eq!(
+            blocks.len(),
+            CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE,
+            "a chunk holds exactly one block per position"
+        );
+        let indices = |matches: fn(Id) -> bool| {
+            blocks
+                .iter()
+                .enumerate()
+                .filter(move |(_, raw)| matches(Id::from(**raw)))
+                .map(|(index, _)| index)
+        };
+        let furnaces = indices(is_furnace)
+            .map(|index| (index, Furnace::default()))
+            .collect();
+        let chests = indices(Id::is_chest)
+            .map(|index| (index, Chest::default()))
+            .collect();
+        Self {
+            blocks: blocks.into(),
+            furnaces,
+            chests,
+        }
+    }
+
     /// The flat array of raw block bytes in [`Self::index`] order.
     pub fn raw_blocks(&self) -> &[u8] {
         &self.blocks

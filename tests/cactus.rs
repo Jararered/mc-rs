@@ -44,6 +44,7 @@ fn world_with(chunk: Chunk) -> WorldChunks {
                 }; CHUNK_SIZE * CHUNK_SIZE],
             ),
             items: Vec::new(),
+            populated: true,
         },
     );
     chunks

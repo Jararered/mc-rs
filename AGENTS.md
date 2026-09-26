@@ -8,6 +8,7 @@ Compatibility with original Minecraft Beta 1.7.3 worlds and servers is a **secon
 
 - The decompiled Beta 1.7.3 Java source is checked in under `refs/mc_b1.7.3_release/1.7.3-LTS/src/minecraft/net/minecraft/{src,client}/` (client) and `.../minecraft_server/net/minecraft/src/` (server). Treat it as the behavioral source of truth for generation, block/item behavior, recipes, and options rather than guessing from memory. The Java source files are large; do not read them in their entirety. Use `grep`/`sed`/`rg` to find and inspect only the relevant methods and fields.
 - `refs/mc_b1.7.3_release` is a nested git repo recorded as a gitlink with no `.gitmodules`, so it may be missing in a fresh clone; `refs/` is otherwise not ignored.
+- `.../1.7.3-LTS/jars/world` (server, seed `-5779659068535663308`) and `.../jars/saves/New World` (client) are worlds the real game generated, in McRegion format. They are the ground truth for generation output; `tests/world/generation/beta_reference.rs` pins chunks from the server world. Both ran briefly after generating, so gravel has fallen and springs have flowed.
 - `docs/PLAN.md` is an aspirational layout sketch; this file and the code are authoritative.
 - The feature/settings workflow lives in `.grok/skills/implement-feature/SKILL.md` (when a `GameSettings` toggle is warranted, menu wiring, when to remesh, and tests). Read it before adding a graphics option.
 
@@ -25,7 +26,7 @@ Organize code by gameplay and engine subsystem, not broad `components/` and `sys
 - `src/app/`: application assembly, game states, and loading. The top-level plugin should compose subsystem plugins.
 - `src/block/`: compact block values, definitions, properties, materials, and registry.
 - `src/world/chunk/`: chunk coordinates, compact block storage, management, and lifecycle.
-- `src/world/generation/`: staged terrain generation, including noise, biomes, caves, ores, and structures.
+- `src/world/generation/`: staged terrain generation, including noise, biomes, caves, ores, and structures. As in Beta, a base chunk (terrain, surface, caves) is built alone, and population then decorates a chunk once its `+x`, `+z`, and `+x+z` neighbors exist, writing into all four. Streaming runs those passes as chunks arrive and meshes a chunk only once its neighborhood is finished.
 - `src/world/meshing/`: visible faces, mesh construction, lighting data for meshes, and background mesh jobs.
 - `src/world/streaming/`: chunk loading, unloading, view distance, and work priorities.
 - `src/world/textures/`: the terrain atlas plugin, block-face tile mappings, and climate-based grass colors.

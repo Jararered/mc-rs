@@ -1,18 +1,25 @@
 use crate::block::id::Id;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;
-use crate::world::chunk::Chunk;
 use crate::world::chunk::ChunkPosition;
 
 use super::biome::BiomeMap;
-use super::biome::Climate;
 use super::noise::PerlinOctaves;
-use super::noise::lerp;
 use crate::random::JavaRandom;
 
 const GRID: usize = 5;
 const VERTICAL_GRID: usize = CHUNK_HEIGHT / 8 + 1;
 const SEA_LEVEL: usize = 64;
+/// Beta's density grid spacing, `684.412` in every noise axis.
+const DENSITY_SCALE: f64 = 684.412;
+
+/// Raw block bytes of one chunk in [`crate::world::chunk::Chunk::index`]
+/// order, the working form of Beta's `byte[]` during base generation.
+pub(super) type RawBlocks = Vec<u8>;
+
+pub(super) const fn raw_index(x: usize, y: usize, z: usize) -> usize {
+    (y * CHUNK_SIZE + z) * CHUNK_SIZE + x
+}
 
 pub(super) struct TerrainGenerator {
     min_limit: PerlinOctaves,
@@ -51,168 +58,154 @@ impl TerrainGenerator {
         }
     }
 
-    pub fn generate_base(&self, position: ChunkPosition, biomes: &BiomeMap) -> Chunk {
-        let mut density = [0.0; GRID * GRID * VERTICAL_GRID];
-        for gx in 0..GRID {
-            for gz in 0..GRID {
-                let climate = biomes.get(gx * 3 + 1, gz * 3 + 1);
-                let world_x = (position.x * 4 + gx as i32) as f64;
-                let world_z = (position.z * 4 + gz as i32) as f64;
-                let column = self.density_column(world_x, world_z, climate);
-                for gy in 0..VERTICAL_GRID {
-                    density[density_index(gx, gz, gy)] = column[gy];
-                }
-            }
-        }
-
-        let mut chunk = Chunk::new();
-        // Each 4×4×8 cell is a bounded generation slice of the full chunk.
+    /// `ChunkProviderGenerate.generateTerrain`: stone below the interpolated
+    /// density surface, water below sea level, and ice on cold sea surfaces.
+    pub fn generate_base(&self, position: ChunkPosition, biomes: &BiomeMap) -> RawBlocks {
+        let density = self.density(position, biomes);
+        let index = |x: usize, z: usize, y: usize| (x * GRID + z) * VERTICAL_GRID + y;
+        let mut blocks = vec![Id::Air.as_u8(); CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE];
+        // Each 4×8×4 cell interpolates by accumulating steps, as Beta does,
+        // rather than evaluating a lerp per block.
         for gx in 0..4 {
             for gz in 0..4 {
                 for gy in 0..CHUNK_HEIGHT / 8 {
-                    let a00 = density[density_index(gx, gz, gy)];
-                    let b00 = density[density_index(gx, gz, gy + 1)];
-                    let a01 = density[density_index(gx, gz + 1, gy)];
-                    let b01 = density[density_index(gx, gz + 1, gy + 1)];
-                    let a10 = density[density_index(gx + 1, gz, gy)];
-                    let b10 = density[density_index(gx + 1, gz, gy + 1)];
-                    let a11 = density[density_index(gx + 1, gz + 1, gy)];
-                    let b11 = density[density_index(gx + 1, gz + 1, gy + 1)];
+                    let mut d00 = density[index(gx, gz, gy)];
+                    let mut d01 = density[index(gx, gz + 1, gy)];
+                    let mut d10 = density[index(gx + 1, gz, gy)];
+                    let mut d11 = density[index(gx + 1, gz + 1, gy)];
+                    let step00 = (density[index(gx, gz, gy + 1)] - d00) * 0.125;
+                    let step01 = (density[index(gx, gz + 1, gy + 1)] - d01) * 0.125;
+                    let step10 = (density[index(gx + 1, gz, gy + 1)] - d10) * 0.125;
+                    let step11 = (density[index(gx + 1, gz + 1, gy + 1)] - d11) * 0.125;
                     for dy in 0..8 {
-                        let ty = dy as f64 / 8.0;
-                        let n00 = lerp(ty, a00, b00);
-                        let n01 = lerp(ty, a01, b01);
-                        let n10 = lerp(ty, a10, b10);
-                        let n11 = lerp(ty, a11, b11);
                         let y = gy * 8 + dy;
+                        let mut near = d00;
+                        let mut far = d01;
+                        let near_step = (d10 - d00) * 0.25;
+                        let far_step = (d11 - d01) * 0.25;
                         for dx in 0..4 {
-                            let tx = dx as f64 / 4.0;
-                            let z0 = lerp(tx, n00, n10);
-                            let z1 = lerp(tx, n01, n11);
-                            let z_step = (z1 - z0) / 4.0;
-                            let mut limit = z0;
+                            let x = gx * 4 + dx;
+                            let mut value = near;
+                            let z_step = (far - near) * 0.25;
                             for dz in 0..4 {
-                                let block = if limit > 0.0 {
-                                    Id::Stone
-                                } else if y < SEA_LEVEL {
-                                    Id::Water
-                                } else {
-                                    Id::Air
-                                };
-                                chunk.set(gx * 4 + dx, y, gz * 4 + dz, block);
-                                limit += z_step;
+                                let z = gz * 4 + dz;
+                                let mut block = Id::Air;
+                                if y < SEA_LEVEL {
+                                    block = if biomes.get(x, z).temperature < 0.5
+                                        && y >= SEA_LEVEL - 1
+                                    {
+                                        Id::Ice
+                                    } else {
+                                        Id::Water
+                                    };
+                                }
+                                if value > 0.0 {
+                                    block = Id::Stone;
+                                }
+                                blocks[raw_index(x, y, z)] = block.as_u8();
+                                value += z_step;
                             }
+                            near += near_step;
+                            far += far_step;
                         }
+                        d00 += step00;
+                        d01 += step01;
+                        d10 += step10;
+                        d11 += step11;
                     }
                 }
             }
         }
-        chunk
+        blocks
     }
 
-    /// Density values at the 17 vertical grid points for one 4×4 cell column.
-    ///
-    /// `world_x`/`world_z` are the noise-space coordinates the reference samples
-    /// at (chunk coordinate times four plus the grid index), not block coordinates.
-    fn density_column(&self, world_x: f64, world_z: f64, climate: Climate) -> [f64; VERTICAL_GRID] {
-        let mut aridity = 1.0 - climate.humidity * climate.temperature;
-        aridity *= aridity;
-        aridity *= aridity;
-        aridity = 1.0 - aridity;
-        let mut surface = ((self.scale.sample_2d(world_x, world_z, 1.121, 1.121) / 512.0 + 0.5)
-            * aridity)
-            .min(1.0);
-        let mut depth = self.depth.sample_2d(world_x, world_z, 200.0, 200.0) / 8000.0;
-        if depth < 0.0 {
-            depth *= -0.3;
-        }
-        depth = depth * 3.0 - 2.0;
-        if depth < 0.0 {
-            depth = (depth / 2.0).max(-1.0) / 1.4 / 2.0;
-            surface = 0.0;
-        } else {
-            depth = depth.min(1.0) / 8.0;
-        }
-        surface = surface.max(0.0) + 0.5;
-        let depth_column = 8.5 + depth * (17.0 / 16.0) * 4.0;
+    /// `func_4061_a`: the 5×17×5 density grid, indexed `(x * 5 + z) * 17 + y`.
+    fn density(&self, position: ChunkPosition, biomes: &BiomeMap) -> Vec<f64> {
+        let x0 = position.x * 4;
+        let z0 = position.z * 4;
+        let origin = [f64::from(x0), 0.0, f64::from(z0)];
+        let size = [GRID, VERTICAL_GRID, GRID];
+        let scale = self.scale.grid_2d(x0, z0, [GRID, GRID], [1.121, 1.121]);
+        let depth = self.depth.grid_2d(x0, z0, [GRID, GRID], [200.0, 200.0]);
+        let main = self.main_limit.grid(
+            origin,
+            size,
+            [
+                DENSITY_SCALE / 80.0,
+                DENSITY_SCALE / 160.0,
+                DENSITY_SCALE / 80.0,
+            ],
+        );
+        let min = self.min_limit.grid(origin, size, [DENSITY_SCALE; 3]);
+        let max = self.max_limit.grid(origin, size, [DENSITY_SCALE; 3]);
 
-        let mut values = [0.0; VERTICAL_GRID];
-        for (gy, slot) in values.iter_mut().enumerate() {
-            let mut column = ((gy as f64 - depth_column) * 12.0) / surface;
-            if column < 0.0 {
-                column *= 4.0;
+        let mut density = vec![0.0; GRID * VERTICAL_GRID * GRID];
+        let mut index = 0;
+        let mut column = 0;
+        for gx in 0..GRID {
+            for gz in 0..GRID {
+                let climate = biomes.get(gx * 3 + 1, gz * 3 + 1);
+                let mut aridity = 1.0 - climate.humidity * climate.temperature;
+                aridity *= aridity;
+                aridity *= aridity;
+                aridity = 1.0 - aridity;
+                let mut surface = (scale[column] + 256.0) / 512.0 * aridity;
+                if surface > 1.0 {
+                    surface = 1.0;
+                }
+                let mut height = depth[column] / 8000.0;
+                if height < 0.0 {
+                    height = -height * 0.3;
+                }
+                height = height * 3.0 - 2.0;
+                if height < 0.0 {
+                    height /= 2.0;
+                    if height < -1.0 {
+                        height = -1.0;
+                    }
+                    height /= 1.4;
+                    height /= 2.0;
+                    surface = 0.0;
+                } else {
+                    if height > 1.0 {
+                        height = 1.0;
+                    }
+                    height /= 8.0;
+                }
+                if surface < 0.0 {
+                    surface = 0.0;
+                }
+                surface += 0.5;
+                height = height * VERTICAL_GRID as f64 / 16.0;
+                let center = VERTICAL_GRID as f64 / 2.0 + height * 4.0;
+                column += 1;
+
+                for gy in 0..VERTICAL_GRID {
+                    let mut falloff = (gy as f64 - center) * 12.0 / surface;
+                    if falloff < 0.0 {
+                        falloff *= 4.0;
+                    }
+                    let low = min[index] / 512.0;
+                    let high = max[index] / 512.0;
+                    let blend = (main[index] / 10.0 + 1.0) / 2.0;
+                    let mut value = if blend < 0.0 {
+                        low
+                    } else if blend > 1.0 {
+                        high
+                    } else {
+                        low + (high - low) * blend
+                    };
+                    value -= falloff;
+                    if gy > VERTICAL_GRID - 4 {
+                        // Beta divides in float before widening.
+                        let top = f64::from((gy - (VERTICAL_GRID - 4)) as f32 / 3.0);
+                        value = value * (1.0 - top) + -10.0 * top;
+                    }
+                    density[index] = value;
+                    index += 1;
+                }
             }
-            let scale = [684.412, 684.412, 684.412];
-            let min = self.min_limit.sample_3d(world_x, gy as f64, world_z, scale) / 512.0;
-            let max = self.max_limit.sample_3d(world_x, gy as f64, world_z, scale) / 512.0;
-            let blend = (self.main_limit.sample_3d(
-                world_x,
-                gy as f64,
-                world_z,
-                [scale[0] / 80.0, scale[1] / 160.0, scale[2] / 80.0],
-            ) / 10.0
-                + 1.0)
-                / 2.0;
-            let mut value = lerp(blend.clamp(0.0, 1.0), min, max) - column;
-            if gy > 13 {
-                value = lerp(((gy - 13) as f64 / 3.0).min(1.0), value, -10.0);
-            }
-            *slot = value;
         }
-        values
+        density
     }
-
-    /// Topmost solid block (density above zero) in a world column.
-    ///
-    /// This mirrors the density interpolation in [`Self::generate_base`] for a
-    /// single column, so decoration can find the ground height outside the chunk
-    /// it is generating without generating a whole neighbouring chunk.
-    pub fn column_top(
-        &self,
-        world_x: i32,
-        world_z: i32,
-        climate_at: impl Fn(f64, f64) -> Climate,
-    ) -> usize {
-        let chunk_x = world_x.div_euclid(CHUNK_SIZE as i32);
-        let chunk_z = world_z.div_euclid(CHUNK_SIZE as i32);
-        let local_x = world_x.rem_euclid(CHUNK_SIZE as i32) as usize;
-        let local_z = world_z.rem_euclid(CHUNK_SIZE as i32) as usize;
-        let gx = local_x / 4;
-        let gz = local_z / 4;
-
-        // Corner grid columns of the 4×4 cell the column falls in, in the same
-        // order `generate_base` reads them: (gx,gz), (gx+1,gz), (gx,gz+1), (gx+1,gz+1).
-        let corners = [(gx, gz), (gx + 1, gz), (gx, gz + 1), (gx + 1, gz + 1)];
-        let mut columns = [[0.0; VERTICAL_GRID]; 4];
-        for (column, (corner_x, corner_z)) in columns.iter_mut().zip(corners) {
-            let noise_x = (chunk_x * 4 + corner_x as i32) as f64;
-            let noise_z = (chunk_z * 4 + corner_z as i32) as f64;
-            let climate = climate_at(
-                (chunk_x * CHUNK_SIZE as i32 + corner_x as i32 * 3 + 1) as f64,
-                (chunk_z * CHUNK_SIZE as i32 + corner_z as i32 * 3 + 1) as f64,
-            );
-            *column = self.density_column(noise_x, noise_z, climate);
-        }
-
-        let tx = (local_x % 4) as f64 / 4.0;
-        let tz = (local_z % 4) as f64 / 4.0;
-        for y in (0..CHUNK_HEIGHT).rev() {
-            let gy = y / 8;
-            let ty = (y % 8) as f64 / 8.0;
-            let n00 = lerp(ty, columns[0][gy], columns[0][gy + 1]);
-            let n10 = lerp(ty, columns[1][gy], columns[1][gy + 1]);
-            let n01 = lerp(ty, columns[2][gy], columns[2][gy + 1]);
-            let n11 = lerp(ty, columns[3][gy], columns[3][gy + 1]);
-            let z0 = lerp(tx, n00, n10);
-            let z1 = lerp(tx, n01, n11);
-            if lerp(tz, z0, z1) > 0.0 {
-                return y;
-            }
-        }
-        0
-    }
-}
-
-const fn density_index(x: usize, z: usize, y: usize) -> usize {
-    (x * GRID + z) * VERTICAL_GRID + y
 }

@@ -4,6 +4,7 @@ mod caves;
 mod dungeon_loot;
 mod generator;
 mod heightmap;
+mod math;
 mod noise;
 mod plants;
 mod population;
@@ -13,6 +14,7 @@ mod snow;
 mod surface;
 mod terrain;
 mod trees;
+mod world;
 
 pub use biome::Biome;
 pub use biome::BiomeMap;

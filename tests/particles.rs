@@ -114,6 +114,7 @@ fn add_climate_chunk(app: &mut App) {
             chunk,
             biomes: BiomeMap::from_cells([climate; 16 * 16]),
             items: Vec::new(),
+            populated: true,
         },
     );
 }

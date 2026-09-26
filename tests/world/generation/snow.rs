@@ -3,11 +3,10 @@ use game::block::properties::blocks_movement;
 use game::world::chunk::CHUNK_HEIGHT;
 use game::world::chunk::CHUNK_SIZE;
 use game::world::chunk::ChunkPosition;
-use game::world::generation::Biome;
 use game::world::generation::WorldGenerator;
 
 #[test]
-fn snow_layers_are_generated_only_on_cold_exposed_snow_biome_surfaces() {
+fn snow_layers_are_generated_only_on_cold_exposed_surfaces() {
     let mut checked_layers = 0;
     let mut found_snow = false;
 
@@ -24,11 +23,9 @@ fn snow_layers_are_generated_only_on_cold_exposed_snow_biome_surfaces() {
                             }
                             found_snow = true;
                             checked_layers += 1;
+                            // Beta checks only the temperature, so cold swamps
+                            // are snowy too.
                             let climate = generated.biomes.get(local_x, local_z);
-                            assert!(matches!(
-                                climate.biome,
-                                Biome::Taiga | Biome::Tundra | Biome::IceDesert
-                            ));
                             assert!(y > 0 && y + 1 < CHUNK_HEIGHT);
                             assert_eq!(generated.chunk.get(local_x, y + 1, local_z), Some(Id::Air));
                             let support = generated.chunk.get(local_x, y - 1, local_z).unwrap();

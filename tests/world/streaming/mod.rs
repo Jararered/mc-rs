@@ -12,8 +12,19 @@ fn streaming_radius_is_centered_on_the_player_chunk() {
     assert!(positions.contains(&center));
     assert!(positions.contains(&ChunkPosition { x: -6, z: -1 }));
     assert!(positions.contains(&ChunkPosition { x: 2, z: 7 }));
+    assert!(within_radius(
+        ChunkPosition {
+            x: center.x + UNLOAD_RADIUS,
+            z: 3
+        },
+        center,
+        UNLOAD_RADIUS
+    ));
     assert!(!within_radius(
-        ChunkPosition { x: 4, z: 3 },
+        ChunkPosition {
+            x: center.x + UNLOAD_RADIUS + 1,
+            z: 3
+        },
         center,
         UNLOAD_RADIUS
     ));

@@ -20,10 +20,12 @@ use crate::world::persistence::WorldPersistence;
 
 use super::ChunkJob;
 use super::GENERATE_MARGIN;
+use super::PopulationJob;
 use super::StreamingDiagnostics;
 use super::WorldStreaming;
 use super::mesh_jobs::mesh_neighborhood_ready;
 use super::mesh_jobs::spawn_mesh_job;
+use super::population_footprint;
 use super::positions_in_radius;
 use super::render::ChunkMaterials;
 use super::render::apply_sections;
@@ -68,24 +70,37 @@ pub(crate) fn setup_streaming(
     let generator = Arc::new(WorldGenerator::new(seed));
     // The player starts in PostStartup and needs this heightmap immediately, so
     // the spawn chunk is loaded or generated synchronously.
-    let load_start = Instant::now();
-    let stored = persistence
+    let storage = persistence
         .as_ref()
         .and_then(|persistence| persistence.storage())
+        .cloned();
+    let load_start = Instant::now();
+    let stored = storage
+        .as_ref()
         .and_then(|storage| storage.load_chunk(ChunkPosition::ZERO));
-    let mut generated = match stored {
+    let spawn_area = match stored {
         Some(chunk) => {
             perf.load.record(load_start.elapsed());
-            chunk
+            vec![(ChunkPosition::ZERO, chunk, true)]
         }
         None => {
-            if let Some(persistence) = persistence.as_deref_mut() {
-                persistence.mark_dirty(ChunkPosition::ZERO);
-            }
+            // A new spawn chunk is only finished once its neighbors' population
+            // passes have run, so build its whole neighborhood now. Saved
+            // neighbors are kept rather than overwritten.
             let generate_start = Instant::now();
-            let chunk = generator.generate(ChunkPosition::ZERO);
+            let area = generator.generate_area(ChunkPosition::ZERO, 0);
             perf.generate.record(generate_start.elapsed());
-            chunk
+            area.into_iter()
+                .map(|(position, generated)| {
+                    let stored = (position != ChunkPosition::ZERO)
+                        .then(|| storage.as_ref()?.load_chunk(position))
+                        .flatten();
+                    match stored {
+                        Some(stored) => (position, stored, true),
+                        None => (position, generated, false),
+                    }
+                })
+                .collect()
         }
     };
     let materials = ChunkMaterials([
@@ -96,16 +111,23 @@ pub(crate) fn setup_streaming(
         mask_material.0.clone(),
     ]);
     let max_in_flight = (AsyncComputeTaskPool::get().thread_num() * JOBS_PER_THREAD).max(2);
-    let saved_items = std::mem::take(&mut generated.items);
-    chunks.insert(ChunkPosition::ZERO, generated);
-    for item in saved_items {
-        spawn_saved_item(&mut commands, item);
+    for (position, mut generated, loaded) in spawn_area {
+        if !loaded && let Some(persistence) = persistence.as_deref_mut() {
+            persistence.mark_dirty(position);
+        }
+        let saved_items = std::mem::take(&mut generated.items);
+        chunks.insert(position, generated);
+        for item in saved_items {
+            spawn_saved_item(&mut commands, item);
+        }
     }
     commands.insert_resource(WorldStreaming {
         generator,
         grass_colors: grass_colors.clone(),
         foliage_colors: foliage_colors.clone(),
         generating: HashMap::new(),
+        populating: HashMap::new(),
+        held: HashMap::new(),
         meshing: HashMap::new(),
         // The spawn chunk has block data for the player's heightmap, but its
         // first mesh waits for all eight neighboring chunks below.
@@ -140,6 +162,8 @@ pub(crate) fn regenerate_loaded_chunks(
     if keys.is_some_and(|keys| keys.just_pressed(KeyCode::F4)) {
         let count = chunks.positions().count();
         streaming.generating.clear();
+        streaming.populating.clear();
+        streaming.held.clear();
         streaming.remesh_everything();
         chunks.clear();
         // Saved chunks would otherwise be loaded straight back from disk.
@@ -251,8 +275,28 @@ pub(crate) fn stream_chunks(
         }
     }
 
-    // Apply finished generation jobs. Decoration is part of generation, so a
-    // chunk is only eligible for meshing once it lands in `chunks`.
+    // Apply finished population jobs. Their chunks rejoin the world even if
+    // the player has moved away, so the next unload pass saves what the
+    // population pass wrote into them.
+    let populated: Vec<_> = streaming
+        .populating
+        .iter_mut()
+        .filter_map(|(source, task)| check_ready(task).map(|job| (*source, job)))
+        .collect();
+    for (source, job) in populated {
+        streaming.populating.remove(&source);
+        perf.populate.record(job.elapsed);
+        for (position, generated) in population_footprint(source).into_iter().zip(job.chunks) {
+            streaming.held.remove(&position);
+            if let Some(persistence) = persistence.as_deref_mut() {
+                persistence.mark_dirty(position);
+            }
+            chunks.insert(position, generated);
+        }
+    }
+
+    // Apply finished generation jobs. A chunk is only eligible for meshing once
+    // it and its neighbors are populated.
     let generated: Vec<_> = streaming
         .generating
         .iter_mut()
@@ -350,9 +394,9 @@ pub(crate) fn stream_chunks(
         streaming.desired_radius = load_radius;
     }
 
-    // Generate terrain and decoration for the render distance plus one ring.
-    // Chunks already on disk are loaded instead of regenerated, unless F4 asked
-    // for a from-scratch pass.
+    // Generate base terrain out to the generation margin. Chunks already on
+    // disk are loaded instead of regenerated, unless F4 asked for a
+    // from-scratch pass.
     let bypass_load = persistence
         .as_deref()
         .is_some_and(WorldPersistence::bypass_load);
@@ -365,6 +409,7 @@ pub(crate) fn stream_chunks(
         if chunks.contains(*position)
             || streaming.generating.contains_key(position)
             || streaming.meshing.contains_key(position)
+            || streaming.held.contains_key(position)
         {
             continue;
         }
@@ -391,12 +436,50 @@ pub(crate) fn stream_chunks(
                 };
             }
             ChunkJob {
-                chunk: generator.generate(position),
+                chunk: generator.generate_base(position),
                 loaded: false,
                 elapsed: start.elapsed(),
             }
         });
         streaming.generating.insert(position, task);
+    }
+
+    // Populate each unpopulated chunk whose `+x`, `+z`, and `+x+z` neighbors
+    // are loaded, nearest first, as Beta does when those chunks arrive. A job
+    // takes its chunks with it, so overlapping passes wait their turn.
+    let candidates: Vec<_> = streaming
+        .desired_generation
+        .iter()
+        .copied()
+        .filter(|source| {
+            chunks
+                .get(*source)
+                .is_some_and(|generated| !generated.populated)
+        })
+        .collect();
+    for source in candidates {
+        if streaming.populating.len() >= max_in_flight {
+            break;
+        }
+        let footprint = population_footprint(source);
+        if !footprint.iter().all(|position| {
+            within_radius(*position, center, generate_radius) && chunks.contains(*position)
+        }) {
+            continue;
+        }
+        let taken = footprint.map(|position| chunks.remove(position).unwrap());
+        for (position, generated) in footprint.iter().zip(&taken) {
+            streaming.held.insert(*position, generated.populated);
+        }
+        let generator = Arc::clone(&streaming.generator);
+        let task = AsyncComputeTaskPool::get().spawn(async move {
+            let start = Instant::now();
+            PopulationJob {
+                chunks: generator.populate(source, taken),
+                elapsed: start.elapsed(),
+            }
+        });
+        streaming.populating.insert(source, task);
     }
 
     // A regeneration pass is over once every desired chunk has been produced.
@@ -417,7 +500,7 @@ pub(crate) fn stream_chunks(
         .filter(|position| {
             !streaming.rendered.contains_key(position)
                 && !streaming.meshing.contains_key(position)
-                && mesh_neighborhood_ready(&chunks, *position)
+                && mesh_neighborhood_ready(&chunks, &streaming.held, *position)
         })
         .take(max_in_flight.saturating_sub(streaming.meshing.len()))
         .collect();

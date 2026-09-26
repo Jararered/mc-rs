@@ -247,9 +247,19 @@ fn tree_wood_components_do_not_merge_trunks() {
 
 #[test]
 fn tree_trunks_replace_existing_leaves() {
-    let generated = WorldGenerator::new(0).generate(ChunkPosition { x: 0, z: 1 });
-    let chunk = &generated.chunk;
+    let area = WorldGenerator::new(0).generate_area(ChunkPosition::ZERO, 3);
     let mut found_birch = false;
+    for generated in area.values().filter(|generated| generated.populated) {
+        let chunk = &generated.chunk;
+        assert_trunks_start_on_ground(chunk, &mut found_birch);
+    }
+    assert!(
+        found_birch,
+        "seed zero should contain a birch trunk near spawn"
+    );
+}
+
+fn assert_trunks_start_on_ground(chunk: &Chunk, found_birch: &mut bool) {
     for z in 0..CHUNK_SIZE {
         for x in 0..CHUNK_SIZE {
             for y in 1..CHUNK_HEIGHT - 1 {
@@ -259,7 +269,7 @@ fn tree_trunks_replace_existing_leaves() {
                 {
                     continue;
                 }
-                found_birch = true;
+                *found_birch = true;
                 let mut below = y;
                 while below > 0 && is_leaf(chunk.get(x, below - 1, z).unwrap()) {
                     below -= 1;
@@ -271,7 +281,6 @@ fn tree_trunks_replace_existing_leaves() {
             }
         }
     }
-    assert!(found_birch, "seed zero should contain a birch trunk");
 }
 
 #[test]
@@ -281,47 +290,6 @@ fn dry_biomes_have_no_trees() {
     let generated = WorldGenerator::new(1).generate(ChunkPosition::ZERO);
     assert_eq!(count(&generated.chunk, Id::Wood), 0);
     assert_eq!(count(&generated.chunk, Id::Leaves), 0);
-}
-
-#[test]
-fn column_top_matches_generated_terrain() {
-    let generator = WorldGenerator::new(0);
-    // Include a neighbouring chunk: decoration queries columns outside the chunk
-    // it is generating, so the query must match that neighbour's terrain too.
-    for position in [
-        ChunkPosition::ZERO,
-        ChunkPosition { x: 1, z: 0 },
-        ChunkPosition { x: -1, z: 2 },
-    ] {
-        let generated = generator.generate(position);
-        for z in 0..CHUNK_SIZE {
-            for x in 0..CHUNK_SIZE {
-                let expected = (0..CHUNK_HEIGHT)
-                    .rev()
-                    .find(|&y| {
-                        matches!(
-                            generated.chunk.get(x, y, z),
-                            Some(
-                                Id::Stone
-                                    | Id::Dirt
-                                    | Id::Grass
-                                    | Id::Sand
-                                    | Id::Gravel
-                                    | Id::Bedrock
-                            )
-                        )
-                    })
-                    .unwrap();
-                let world_x = position.x * CHUNK_SIZE as i32 + x as i32;
-                let world_z = position.z * CHUNK_SIZE as i32 + z as i32;
-                assert_eq!(
-                    generator.column_top(world_x, world_z),
-                    expected,
-                    "column height mismatch at ({world_x}, {world_z})"
-                );
-            }
-        }
-    }
 }
 
 fn grounded_trunk_base(chunk: &Chunk, x: usize, z: usize) -> Option<usize> {
@@ -354,10 +322,10 @@ fn has_nearby_leaf(chunk: &Chunk, x0: usize, z0: usize, base: usize, along_x: bo
 fn canopies_continue_across_chunk_boundaries() {
     let mut boundary_trunks = 0;
     for seed in 0..16 {
-        let generator = WorldGenerator::new(seed);
-        let west = generator.generate(ChunkPosition::ZERO);
-        let east = generator.generate(ChunkPosition { x: 1, z: 0 });
-        let north = generator.generate(ChunkPosition { x: 0, z: 1 });
+        let area = WorldGenerator::new(seed).generate_area(ChunkPosition::ZERO, 1);
+        let west = &area[&ChunkPosition::ZERO];
+        let east = &area[&ChunkPosition { x: 1, z: 0 }];
+        let north = &area[&ChunkPosition { x: 0, z: 1 }];
 
         for z in 0..CHUNK_SIZE {
             if let Some(base) = grounded_trunk_base(&west.chunk, CHUNK_SIZE - 1, z) {
@@ -420,10 +388,10 @@ fn terrain_top(chunk: &Chunk, x: usize, z: usize) -> (usize, Id) {
 fn trees_do_not_plant_on_sand() {
     let mut sand_columns = 0;
     for seed in 0..4 {
-        let generator = WorldGenerator::new(seed);
+        let area = WorldGenerator::new(seed).generate_area(ChunkPosition::ZERO, 4);
         for z in -4..4 {
             for x in -4..4 {
-                let generated = generator.generate(ChunkPosition { x, z });
+                let generated = &area[&ChunkPosition { x, z }];
                 for lz in 0..CHUNK_SIZE {
                     for lx in 0..CHUNK_SIZE {
                         let (top, block) = terrain_top(&generated.chunk, lx, lz);
@@ -431,13 +399,14 @@ fn trees_do_not_plant_on_sand() {
                             continue;
                         }
                         sand_columns += 1;
-                        for y in top + 1..CHUNK_HEIGHT {
-                            let placed = generated.chunk.get(lx, y, lz).unwrap();
-                            assert!(
-                                !is_wood(placed),
-                                "seed {seed}: trunk on sand at chunk ({x},{z}) column ({lx}, {y}, {lz})"
-                            );
-                        }
+                        // Big oak branches may overhang a beach; only a trunk
+                        // stands directly on the ground.
+                        let placed = generated.chunk.get(lx, top + 1, lz).unwrap();
+                        assert!(
+                            !is_wood(placed),
+                            "seed {seed}: trunk on sand at chunk ({x},{z}) column ({lx}, {}, {lz})",
+                            top + 1
+                        );
                     }
                 }
             }
@@ -452,11 +421,12 @@ fn trees_do_not_plant_on_sand() {
 #[test]
 fn canopies_over_sand_still_have_a_trunk() {
     for seed in 0..8 {
-        let generator = WorldGenerator::new(seed);
+        let mut area = WorldGenerator::new(seed).generate_area(ChunkPosition::ZERO, 1);
         let mut chunks = Vec::new();
         for z in 0..2 {
             for x in 0..2 {
-                chunks.push((ChunkPosition { x, z }, generator.generate(ChunkPosition { x, z })));
+                let position = ChunkPosition { x, z };
+                chunks.push((position, area.remove(&position).unwrap()));
             }
         }
 

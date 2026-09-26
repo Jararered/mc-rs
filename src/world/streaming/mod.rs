@@ -28,10 +28,12 @@ pub(crate) use systems::setup_streaming;
 pub(crate) use systems::stream_chunks;
 
 pub const LOAD_RADIUS: i32 = 4;
-/// Chunks are generated one ring beyond the render distance. Decoration such as
-/// trees can spill into a chunk from its neighbours, so the extra ring is
-/// generated (but not meshed) before the chunks inside the render distance are.
-pub const GENERATE_MARGIN: i32 = 1;
+/// Chunks are generated two rings beyond the render distance. A chunk is
+/// finished once the population passes of it and its `-x`, `-z`, and `-x-z`
+/// neighbors have run, and each pass needs its `+x`, `+z`, and `+x+z`
+/// neighbors. Meshing a chunk needs its eight neighbors finished too, so the
+/// last rendered ring depends on chunks two rings out.
+pub const GENERATE_MARGIN: i32 = 2;
 pub const UNLOAD_RADIUS: i32 = LOAD_RADIUS + GENERATE_MARGIN;
 
 /// One bit per render section of a chunk, bottom section first.
@@ -53,10 +55,26 @@ pub(crate) struct ChunkJob {
     pub elapsed: Duration,
 }
 
+/// The result of a population job: its source chunk and the source's `+x`,
+/// `+z`, and `+x+z` neighbors, in that order.
+pub(crate) struct PopulationJob {
+    pub chunks: [GeneratedChunk; 4],
+    pub elapsed: Duration,
+}
+
+/// A population pass's source chunk and the three chunks it writes into.
+fn population_footprint(source: ChunkPosition) -> [ChunkPosition; 4] {
+    [(0, 0), (1, 0), (0, 1), (1, 1)].map(|(dx, dz)| ChunkPosition {
+        x: source.x + dx,
+        z: source.z + dz,
+    })
+}
+
 /// Timing samples collected since the last performance print.
 #[derive(Resource, Default)]
 pub struct StreamingDiagnostics {
     pub generate: TimingStats,
+    pub populate: TimingStats,
     pub load: TimingStats,
     pub mesh: TimingStats,
 }
@@ -100,8 +118,16 @@ pub struct WorldStreaming {
     generator: Arc<WorldGenerator>,
     grass_colors: GrassColors,
     foliage_colors: FoliageColors,
-    /// Terrain and decoration jobs inside the generation radius.
+    /// Base terrain and load jobs inside the generation radius.
     generating: HashMap<ChunkPosition, Task<ChunkJob>>,
+    /// Population jobs by source chunk. Each takes its four chunks out of
+    /// [`WorldChunks`](crate::world::chunk::WorldChunks) until it finishes,
+    /// so jobs never share a chunk and nothing else sees one mid-pass.
+    populating: HashMap<ChunkPosition, Task<PopulationJob>>,
+    /// The chunks population jobs hold, with each one's `populated` flag.
+    /// Whether a chunk is finished depends on its neighbors' flags, which
+    /// must stay readable while those neighbors are away.
+    held: HashMap<ChunkPosition, bool>,
     /// Lighting and mesh jobs for already generated chunks inside the render distance.
     meshing: HashMap<ChunkPosition, MeshTask>,
     rendered: HashMap<ChunkPosition, RenderedChunk>,
@@ -138,6 +164,10 @@ impl WorldStreaming {
 
     pub fn generating_job_count(&self) -> usize {
         self.generating.len()
+    }
+
+    pub fn populating_job_count(&self) -> usize {
+        self.populating.len()
     }
 
     pub fn meshing_job_count(&self) -> usize {

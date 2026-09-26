@@ -432,6 +432,14 @@ struct StoredChunk {
     /// Absent on chunks saved before chest inventories were added.
     #[serde(default)]
     chests: Vec<StoredChest>,
+    /// Absent on chunks saved before population ran across chunks. Those were
+    /// decorated in full when generated.
+    #[serde(default = "populated_default")]
+    populated: bool,
+}
+
+const fn populated_default() -> bool {
+    true
 }
 
 #[derive(Serialize, Deserialize)]
@@ -527,6 +535,7 @@ impl StoredChunk {
                     slots: chest.slots.map(|stack| stack.map(StoredStack::from_stack)),
                 })
                 .collect(),
+            populated: generated.populated,
         }
     }
 
@@ -617,6 +626,7 @@ impl StoredChunk {
                     })
                 })
                 .collect(),
+            populated: self.populated,
         })
     }
 }

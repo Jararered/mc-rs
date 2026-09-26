@@ -1,142 +1,49 @@
 //! Beta reed (sugar cane) patches from `WorldGenReed`.
 
-use std::collections::HashMap;
-use std::collections::HashSet;
-
 use crate::block::id::Id;
-use crate::block::properties::sugar_cane_can_stay;
 use crate::random::JavaRandom;
-use crate::world::chunk::CHUNK_HEIGHT;
-use crate::world::chunk::CHUNK_SIZE;
-use crate::world::chunk::Chunk;
-use crate::world::chunk::ChunkPosition;
 
-/// Replay the ten reed attempts for `source`, writing every segment whose
-/// column reaches `target`. Reed scatter extends at most three blocks from its
-/// origin, so the usual 3x3 source neighborhood covers all target overlap.
-pub(super) fn place_reeds(
-    chunk: &mut Chunk,
-    target: ChunkPosition,
-    source: ChunkPosition,
+use super::world::PopulationWorld;
+use super::world::is_water;
+
+/// Water beside `(x, y, z)`, in `BlockReed.canPlaceBlockAt`'s order.
+fn adjacent_water(world: &PopulationWorld, x: i32, y: i32, z: i32) -> bool {
+    [(x - 1, z), (x + 1, z), (x, z - 1), (x, z + 1)]
+        .into_iter()
+        .any(|(x, z)| is_water(world.get(x, y, z)))
+}
+
+/// Beta 1.7.3 `BlockReed.canBlockStay`: on another reed, or on grass or dirt
+/// beside water. Unlike the game's placement rule, sand never holds a reed.
+fn can_stay(world: &PopulationWorld, x: i32, y: i32, z: i32) -> bool {
+    match world.get(x, y - 1, z) {
+        Id::SugarCane => true,
+        Id::Grass | Id::Dirt => adjacent_water(world, x, y - 1, z),
+        _ => false,
+    }
+}
+
+/// Twenty attempts at the origin's height, each needing water beside the
+/// block below, stacking two to four segments.
+pub(super) fn reed_patch(
+    world: &mut PopulationWorld,
     rand: &mut JavaRandom,
-    placed: &mut HashSet<(i32, i32, i32)>,
-    remote_chunks: &mut HashMap<ChunkPosition, Chunk>,
-    remote_chunk: &impl Fn(ChunkPosition) -> Chunk,
+    x: i32,
+    y: i32,
+    z: i32,
 ) {
-    for _ in 0..10 {
-        let origin_x = source.x * CHUNK_SIZE as i32 + rand.next_int(16) as i32 + 8;
-        let origin_y = rand.next_int(CHUNK_HEIGHT as u32) as i32;
-        let origin_z = source.z * CHUNK_SIZE as i32 + rand.next_int(16) as i32 + 8;
-
-        for _ in 0..20 {
-            let x = origin_x + rand.next_int(4) as i32 - rand.next_int(4) as i32;
-            let z = origin_z + rand.next_int(4) as i32 - rand.next_int(4) as i32;
-            let y = origin_y;
-            if !(0..CHUNK_HEIGHT as i32).contains(&y)
-                || block_at(chunk, target, x, y, z, placed, remote_chunks, remote_chunk) != Id::Air
-            {
-                continue;
-            }
-
-            let water = adjacent_water(
-                chunk,
-                target,
-                x,
-                y - 1,
-                z,
-                placed,
-                remote_chunks,
-                remote_chunk,
-            );
-            if !water.into_iter().any(|is_water| is_water) {
-                continue;
-            }
-
-            let height_bound = rand.next_int(3) + 1;
-            let height = 2 + rand.next_int(height_bound) as i32;
-            for offset in 0..height {
-                let cane_y = y + offset;
-                if !(0..CHUNK_HEIGHT as i32).contains(&cane_y) {
-                    continue;
-                }
-                let below = block_at(
-                    chunk,
-                    target,
-                    x,
-                    cane_y - 1,
-                    z,
-                    placed,
-                    remote_chunks,
-                    remote_chunk,
-                );
-                if !sugar_cane_can_stay(below, water) {
-                    continue;
-                }
-                placed.insert((x, cane_y, z));
-                if let Some((local_x, local_z)) = local_column(target, x, z) {
-                    chunk.set(local_x, cane_y as usize, local_z, Id::SugarCane);
-                }
+    for _ in 0..20 {
+        let x = x + rand.next_int(4) as i32 - rand.next_int(4) as i32;
+        let z = z + rand.next_int(4) as i32 - rand.next_int(4) as i32;
+        if !world.is_air(x, y, z) || !adjacent_water(world, x, y - 1, z) {
+            continue;
+        }
+        let bound = rand.next_int(3) + 1;
+        let height = 2 + rand.next_int(bound) as i32;
+        for offset in 0..height {
+            if can_stay(world, x, y + offset, z) {
+                world.set(x, y + offset, z, Id::SugarCane);
             }
         }
     }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn adjacent_water(
-    chunk: &Chunk,
-    target: ChunkPosition,
-    x: i32,
-    y: i32,
-    z: i32,
-    placed: &HashSet<(i32, i32, i32)>,
-    remote_chunks: &mut HashMap<ChunkPosition, Chunk>,
-    remote_chunk: &impl Fn(ChunkPosition) -> Chunk,
-) -> [bool; 4] {
-    [(x - 1, z), (x + 1, z), (x, z - 1), (x, z + 1)].map(|(x, z)| {
-        matches!(
-            block_at(chunk, target, x, y, z, placed, remote_chunks, remote_chunk),
-            Id::Water | Id::FlowingWater
-        )
-    })
-}
-
-#[allow(clippy::too_many_arguments)]
-fn block_at(
-    chunk: &Chunk,
-    target: ChunkPosition,
-    x: i32,
-    y: i32,
-    z: i32,
-    placed: &HashSet<(i32, i32, i32)>,
-    remote_chunks: &mut HashMap<ChunkPosition, Chunk>,
-    remote_chunk: &impl Fn(ChunkPosition) -> Chunk,
-) -> Id {
-    if !(0..CHUNK_HEIGHT as i32).contains(&y) {
-        return Id::Air;
-    }
-    if placed.contains(&(x, y, z)) {
-        return Id::SugarCane;
-    }
-    let pos = ChunkPosition {
-        x: x.div_euclid(CHUNK_SIZE as i32),
-        z: z.div_euclid(CHUNK_SIZE as i32),
-    };
-    let local_x = x.rem_euclid(CHUNK_SIZE as i32) as usize;
-    let local_z = z.rem_euclid(CHUNK_SIZE as i32) as usize;
-    if pos == target {
-        chunk.get(local_x, y as usize, local_z).unwrap_or(Id::Air)
-    } else {
-        remote_chunks
-            .entry(pos)
-            .or_insert_with(|| remote_chunk(pos))
-            .get(local_x, y as usize, local_z)
-            .unwrap_or(Id::Air)
-    }
-}
-
-fn local_column(target: ChunkPosition, x: i32, z: i32) -> Option<(usize, usize)> {
-    let local_x = x - target.x * CHUNK_SIZE as i32;
-    let local_z = z - target.z * CHUNK_SIZE as i32;
-    ((0..CHUNK_SIZE as i32).contains(&local_x) && (0..CHUNK_SIZE as i32).contains(&local_z))
-        .then_some((local_x as usize, local_z as usize))
 }

@@ -74,16 +74,19 @@ fn settings_controls_stay_within_their_ranges() {
     assert_eq!(settings.graphics, GraphicsQuality::Fancy);
     assert!(settings.graphics.fancy_leaves());
     assert!(!settings.graphics.realistic_water());
+    assert!(settings.graphics.entity_shadows());
 
     settings.cycle_graphics();
     assert_eq!(settings.graphics, GraphicsQuality::Ultra);
     assert!(settings.graphics.fancy_leaves());
     assert!(settings.graphics.realistic_water());
+    assert!(settings.graphics.entity_shadows());
 
     settings.cycle_graphics();
     assert_eq!(settings.graphics, GraphicsQuality::Fast);
     assert!(!settings.graphics.fancy_leaves());
     assert!(!settings.graphics.realistic_water());
+    assert!(!settings.graphics.entity_shadows());
 
     settings.cycle_graphics();
     assert_eq!(settings.graphics, GraphicsQuality::Fancy);

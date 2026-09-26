@@ -9,6 +9,7 @@ use crate::item::ItemStack;
 
 pub mod drops;
 pub mod particles;
+pub mod shadow;
 
 /// An independently simulated inventory stack lying in the world.
 #[derive(Component, Clone, Copy, Debug)]
@@ -17,6 +18,15 @@ pub struct DroppedItem(pub ItemStack);
 /// Linear velocity in blocks per second.
 #[derive(Component, Default, Clone, Copy, Debug)]
 pub struct Velocity(pub Vec3);
+
+/// `Transform.translation` at the start of the current tick. Rendering lerps
+/// from here to the current translation with [`WorldTick::partial`], Beta's
+/// `lastTickPosX/Y/Z` interpolation for anything simulated slower than the
+/// frame rate (the item mesh, and now its shadow).
+///
+/// [`WorldTick::partial`]: crate::world::tick::WorldTick::partial
+#[derive(Component, Clone, Copy, Debug)]
+pub struct PreviousTick(pub Vec3);
 
 /// Width, height, and the Y offset from [`Transform`] down to the feet.
 #[derive(Component, Clone, Copy, Debug, PartialEq)]

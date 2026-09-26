@@ -9,6 +9,7 @@ use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::Chunk;
 use crate::world::chunk::SECTION_HEIGHT;
 use crate::world::chunk::SECTIONS_PER_CHUNK;
+use crate::world::chunk::WorldChunks;
 
 const MAX_LIGHT: u8 = 15;
 const LIGHT_CELLS: usize = CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE;
@@ -582,6 +583,37 @@ pub fn beta_brightness(level: u8) -> f32 {
     let darkness = 1.0 - level / 15.0;
     let base = 0.05;
     (1.0 - darkness) / (darkness * 3.0 + 1.0) * (1.0 - base) + base
+}
+
+/// `World.getBlockLightValue` for a position outside the meshed area (fog,
+/// eye brightness, entity shadows). Cheaper than rebuilding a [`Skylight`]
+/// snapshot, at the cost of ignoring lateral propagation from a torch just
+/// outside this exact cell.
+pub fn light_level_at(chunks: &WorldChunks, x: i32, y: i32, z: i32, skylight_subtracted: u8) -> u8 {
+    let sky = if open_to_sky(chunks, x, y, z) {
+        MAX_LIGHT
+    } else {
+        0
+    };
+    let block = chunks.block_at(x, y, z).map_or(0, light_emission);
+    combined_light(sky, block, skylight_subtracted)
+}
+
+/// Direct sun reaches a position when no opaque block sits in the column
+/// above it.
+fn open_to_sky(chunks: &WorldChunks, x: i32, y: i32, z: i32) -> bool {
+    if y >= CHUNK_HEIGHT as i32 {
+        return true;
+    }
+    for above in (y + 1)..CHUNK_HEIGHT as i32 {
+        let Some(block) = chunks.block_at(x, above, z) else {
+            return true;
+        };
+        if light_opacity(block) >= MAX_LIGHT {
+            return false;
+        }
+    }
+    true
 }
 
 fn seed_sky_edge(

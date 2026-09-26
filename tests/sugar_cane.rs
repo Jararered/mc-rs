@@ -1,4 +1,3 @@
-use bevy::mesh::VertexAttributeValues;
 use bevy::prelude::Vec3;
 use game::block::id::Id;
 use game::block::properties::blocks_movement;
@@ -59,15 +58,10 @@ fn sugar_cane_is_a_centered_crossed_plant_with_beta_appearance() {
 
     let mut chunk = Chunk::new();
     chunk.set(3, 10, 5, Id::SugarCane);
-    let meshes = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true, true);
-    assert_eq!(meshes.opaque.count_vertices(), 0);
-    assert_eq!(meshes.masked.count_vertices(), 8);
-    let Some(VertexAttributeValues::Float32x3(positions)) = meshes
-        .masked
-        .attribute(bevy::prelude::Mesh::ATTRIBUTE_POSITION.id)
-    else {
-        panic!("sugar cane should have crossed-sprite positions");
-    };
+    let meshes = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true);
+    assert_eq!(meshes.opaque.vertex_count(), 0);
+    assert_eq!(meshes.masked.vertex_count(), 8);
+    let positions = meshes.masked.positions();
     let min_x = positions.iter().map(|p| p[0]).fold(f32::INFINITY, f32::min);
     let max_x = positions
         .iter()

@@ -1,5 +1,3 @@
-use bevy::mesh::Mesh;
-use bevy::mesh::VertexAttributeValues;
 use bevy::prelude::Vec3;
 use game::block::id::Id;
 use game::entity::EntitySize;
@@ -27,6 +25,8 @@ use game::inventory::Inventory;
 use game::inventory::MAIN_SLOTS;
 use game::item::ItemId;
 use game::item::ItemStack;
+use game::world::meshing::BlockGeometry;
+use game::world::meshing::BlockLighting;
 use game::world::meshing::dropped_block_meshes;
 
 struct Rolls<'a> {
@@ -394,22 +394,16 @@ fn dropped_ladder_uses_the_flat_item_sprite() {
     assert_eq!(dropped_block_model(ladder), None);
 }
 
-fn position_count(mesh: &Mesh) -> usize {
-    positions_of(mesh).len()
+fn position_count(mesh: &BlockGeometry) -> usize {
+    mesh.vertex_count()
 }
 
-fn positions_of(mesh: &Mesh) -> &[[f32; 3]] {
-    match mesh.attribute(Mesh::ATTRIBUTE_POSITION) {
-        Some(VertexAttributeValues::Float32x3(values)) => values,
-        _ => panic!("mesh positions"),
-    }
+fn positions_of(mesh: &BlockGeometry) -> Vec<[f32; 3]> {
+    mesh.positions()
 }
 
-fn uvs_of(mesh: &Mesh) -> &[[f32; 2]] {
-    match mesh.attribute(Mesh::ATTRIBUTE_UV_0) {
-        Some(VertexAttributeValues::Float32x2(values)) => values,
-        _ => panic!("mesh uvs"),
-    }
+fn uvs_of(mesh: &BlockGeometry) -> Vec<[f32; 2]> {
+    mesh.uvs()
 }
 
 #[test]
@@ -491,9 +485,7 @@ fn take_selected_drops_one_item() {
     assert!(hotbar.selected_stack().is_none());
 }
 
-fn colors_of(mesh: &Mesh) -> &[[f32; 4]] {
-    match mesh.attribute(Mesh::ATTRIBUTE_COLOR) {
-        Some(VertexAttributeValues::Float32x4(values)) => values,
-        _ => panic!("mesh colors"),
-    }
+/// Dropped blocks carry their face shade in the tint and ignore world light.
+fn colors_of(mesh: &BlockGeometry) -> Vec<[f32; 4]> {
+    mesh.colors(BlockLighting::default())
 }

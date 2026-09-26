@@ -1,5 +1,3 @@
-use bevy::mesh::VertexAttributeValues;
-use bevy::prelude::Mesh;
 use game::block::id::Id;
 use game::block::properties::collision_bounds;
 use game::block::properties::is_crossed_plant;
@@ -24,19 +22,12 @@ fn dead_bush_uses_its_beta_sprite_tile_and_crossed_mesh() {
 
     let mut chunk = Chunk::new();
     chunk.set(4, 20, 4, Id::DeadBush);
-    let meshes = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true, true);
-    assert_eq!(meshes.opaque.count_vertices(), 0);
-    let Some(VertexAttributeValues::Float32x3(positions)) =
-        meshes.masked.attribute(Mesh::ATTRIBUTE_POSITION)
-    else {
-        panic!("dead bush should render as a crossed plant");
-    };
+    let meshes = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true);
+    assert_eq!(meshes.opaque.vertex_count(), 0);
+    let positions = meshes.masked.positions();
     assert_eq!(positions.len(), 8);
 
-    let Some(VertexAttributeValues::Float32x2(uvs)) = meshes.masked.attribute(Mesh::ATTRIBUTE_UV_0)
-    else {
-        panic!("dead bush should use the terrain atlas tile");
-    };
+    let uvs = meshes.masked.uvs();
     let (u0, v0, u1, v1) = atlas_tile_uvs(7, 3);
     assert_eq!(
         (

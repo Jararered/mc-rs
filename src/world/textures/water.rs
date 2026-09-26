@@ -1,5 +1,18 @@
-use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
+use bevy::render::Render;
+use bevy::render::RenderApp;
+use bevy::render::RenderSystems;
+use bevy::render::extract_resource::ExtractResource;
+use bevy::render::extract_resource::ExtractResourcePlugin;
+use bevy::render::render_asset::RenderAssets;
+use bevy::render::render_resource::Extent3d;
+use bevy::render::render_resource::Origin3d;
+use bevy::render::render_resource::TexelCopyBufferLayout;
+use bevy::render::render_resource::TexelCopyTextureInfo;
+use bevy::render::render_resource::TextureAspect;
+use bevy::render::render_resource::TextureId;
+use bevy::render::renderer::RenderQueue;
+use bevy::render::texture::GpuImage;
 
 use super::ATLAS_GRID;
 use super::ATLAS_PAD_TEXELS;
@@ -10,11 +23,9 @@ use crate::world::tick::WorldTick;
 /// generated 16×16, matching Beta `TextureWaterFlowFX.tileSize`.
 pub const WATER_STILL_TILE: (u8, u8) = (13, 12);
 pub const WATER_FLOW_TILE: (u8, u8) = (14, 12);
-const WATER_FLOW_TILE_SIZE: u8 = 2;
 /// Beta's still and flowing lava atlas tile positions.
 pub const LAVA_STILL_TILE: (u8, u8) = (13, 14);
 pub const LAVA_FLOW_TILE: (u8, u8) = (14, 14);
-const LAVA_FLOW_TILE_SIZE: u8 = 2;
 
 const TILE: usize = ATLAS_TILE_PX as usize;
 const TILE_PIXELS: usize = TILE * TILE;
@@ -287,10 +298,10 @@ fn write_water_pixels(values: &[f32; TILE_PIXELS], rgba: &mut [u8; TILE_PIXELS *
 
 /// Copy a generated 16×16 water frame into one atlas tile, including padding.
 pub fn write_atlas_tile(image: &mut Image, tile_x: u8, tile_y: u8, rgba: &[u8]) {
-    if rgba.len() != TILE_PIXELS * 4 {
-        return;
-    }
     let Some(layout) = AtlasLayout::from_image(image) else {
+        return;
+    };
+    let Some(frame) = padded_frame(layout, rgba) else {
         return;
     };
     let Some(dst) = image.data.as_mut() else {
@@ -300,11 +311,27 @@ pub fn write_atlas_tile(image: &mut Image, tile_x: u8, tile_y: u8, rgba: &[u8]) 
     if dst.len() != layout.atlas_px as usize * layout.atlas_px as usize * bpp {
         return;
     }
+    let stride = layout.stride as usize;
+    for row in 0..stride {
+        let target = ((usize::from(tile_y) * stride + row) * layout.atlas_px as usize
+            + usize::from(tile_x) * stride)
+            * bpp;
+        dst[target..target + stride * bpp]
+            .copy_from_slice(&frame[row * stride * bpp..(row + 1) * stride * bpp]);
+    }
+}
 
+/// A generated 16×16 frame scaled to the atlas tile size, with its edge texels
+/// repeated into the padding. `stride × stride` RGBA texels.
+fn padded_frame(layout: AtlasLayout, rgba: &[u8]) -> Option<Vec<u8>> {
+    if rgba.len() != TILE_PIXELS * 4 {
+        return None;
+    }
+    let bpp = 4usize;
     let tile = layout.tile_px;
     let pad = layout.pad_px;
     let stride = layout.stride;
-    let atlas = layout.atlas_px;
+    let mut frame = vec![0u8; stride as usize * stride as usize * bpp];
     for py in 0..stride {
         for px in 0..stride {
             let sx = (px as i32 - pad as i32).clamp(0, tile as i32 - 1) as u32;
@@ -312,13 +339,11 @@ pub fn write_atlas_tile(image: &mut Image, tile_x: u8, tile_y: u8, rgba: &[u8]) 
             let src_x = sx * ATLAS_TILE_PX / tile;
             let src_y = sy * ATLAS_TILE_PX / tile;
             let src_index = (src_y as usize * TILE + src_x as usize) * bpp;
-            let dst_index = ((u32::from(tile_y) * stride + py) * atlas
-                + u32::from(tile_x) * stride
-                + px) as usize
-                * bpp;
-            dst[dst_index..dst_index + bpp].copy_from_slice(&rgba[src_index..src_index + bpp]);
+            let dst_index = (py * stride + px) as usize * bpp;
+            frame[dst_index..dst_index + bpp].copy_from_slice(&rgba[src_index..src_index + bpp]);
         }
     }
+    Some(frame)
 }
 
 #[derive(Clone, Copy)]
@@ -361,41 +386,116 @@ impl AtlasLayout {
 
 #[derive(Resource)]
 pub(super) struct WaterAnimator {
-    atlas: Handle<Image>,
     still: StillWaterTexture,
     flow: FlowingWaterTexture,
     lava: LavaTexture,
     lava_flow: LavaTexture,
 }
 
+/// Frames in [`FluidFrames::frames`] and the atlas tiles each one fills.
+/// Flowing water and lava repeat one frame over a 2×2 block of tiles, like
+/// Beta's `tileSize = 2` texture effects.
+const FLUID_TILES: [(usize, (u8, u8)); 10] = [
+    (0, WATER_STILL_TILE),
+    (1, WATER_FLOW_TILE),
+    (1, (WATER_FLOW_TILE.0 + 1, WATER_FLOW_TILE.1)),
+    (1, (WATER_FLOW_TILE.0, WATER_FLOW_TILE.1 + 1)),
+    (1, (WATER_FLOW_TILE.0 + 1, WATER_FLOW_TILE.1 + 1)),
+    (2, LAVA_STILL_TILE),
+    (3, LAVA_FLOW_TILE),
+    (3, (LAVA_FLOW_TILE.0 + 1, LAVA_FLOW_TILE.1)),
+    (3, (LAVA_FLOW_TILE.0, LAVA_FLOW_TILE.1 + 1)),
+    (3, (LAVA_FLOW_TILE.0 + 1, LAVA_FLOW_TILE.1 + 1)),
+];
+
+/// The newest padded fluid frames, copied into the render world when they
+/// change. The render world writes them into the atlas texture tile by tile,
+/// the way Beta's `glTexSubImage2D` did, so the atlas asset itself is never
+/// modified and never re-uploaded.
+#[derive(Resource, Clone)]
+pub(super) struct FluidFrames {
+    atlas: AssetId<Image>,
+    stride: u32,
+    frames: [Vec<u8>; 4],
+    version: u64,
+}
+
+impl ExtractResource for FluidFrames {
+    type Source = Self;
+
+    fn extract_resource(source: &Self) -> Self {
+        source.clone()
+    }
+}
+
+impl FluidFrames {
+    fn new(atlas: AssetId<Image>, layout: AtlasLayout, animator: &WaterAnimator) -> Option<Self> {
+        let mut frames = Self {
+            atlas,
+            stride: layout.stride,
+            frames: Default::default(),
+            version: 0,
+        };
+        frames.update(layout, animator)?;
+        Some(frames)
+    }
+
+    fn update(&mut self, layout: AtlasLayout, animator: &WaterAnimator) -> Option<()> {
+        self.frames = [
+            padded_frame(layout, animator.still.rgba())?,
+            padded_frame(layout, animator.flow.rgba())?,
+            padded_frame(layout, animator.lava.rgba())?,
+            padded_frame(layout, animator.lava_flow.rgba())?,
+        ];
+        self.version += 1;
+        Some(())
+    }
+}
+
+/// Where the atlas stores its tiles, kept for rebuilding fluid frames.
+#[derive(Resource, Clone, Copy)]
+pub(super) struct FluidAtlasLayout(AtlasLayout);
+
 pub(super) fn start_fluid_animation(
     commands: &mut Commands,
-    atlas: Handle<Image>,
+    atlas: &Handle<Image>,
     image: &mut Image,
 ) {
-    image.asset_usage = RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD;
-    let mut still = StillWaterTexture::new();
-    let mut flow = FlowingWaterTexture::new();
-    let mut lava = LavaTexture::still();
-    let mut lava_flow = LavaTexture::flowing();
-    still.tick();
-    flow.tick();
-    lava.tick();
-    lava_flow.tick();
-    write_fluid_frames(image, &still, &flow, &lava, &lava_flow);
-    commands.insert_resource(WaterAnimator {
-        atlas,
-        still,
-        flow,
-        lava,
-        lava_flow,
-    });
+    let mut animator = WaterAnimator {
+        still: StillWaterTexture::new(),
+        flow: FlowingWaterTexture::new(),
+        lava: LavaTexture::still(),
+        lava_flow: LavaTexture::flowing(),
+    };
+    animator.still.tick();
+    animator.flow.tick();
+    animator.lava.tick();
+    animator.lava_flow.tick();
+    // The first frame goes out with the atlas upload itself; later frames are
+    // tile writes from the render world.
+    for (frame, (tile_x, tile_y)) in FLUID_TILES {
+        let rgba = match frame {
+            0 => animator.still.rgba(),
+            1 => animator.flow.rgba(),
+            2 => animator.lava.rgba(),
+            _ => animator.lava_flow.rgba(),
+        };
+        write_atlas_tile(image, tile_x, tile_y, rgba);
+    }
+    if let Some(layout) = AtlasLayout::from_image(image)
+        && let Some(frames) = FluidFrames::new(atlas.id(), layout, &animator)
+    {
+        commands.insert_resource(frames);
+        commands.insert_resource(FluidAtlasLayout(layout));
+    }
+    commands.insert_resource(animator);
 }
 
 pub(super) fn animate_fluid_textures(
     animator: Option<ResMut<WaterAnimator>>,
+    layout: Option<Res<FluidAtlasLayout>>,
+    frames: Option<ResMut<FluidFrames>>,
     tick: Res<WorldTick>,
-    mut images: ResMut<Assets<Image>>,
 ) {
     let Some(mut animator) = animator else {
         return;
@@ -410,47 +510,76 @@ pub(super) fn animate_fluid_textures(
         animator.lava.tick();
         animator.lava_flow.tick();
     }
-    let Some(mut image) = images.get_mut(&animator.atlas) else {
+    if let (Some(layout), Some(mut frames)) = (layout, frames) {
+        frames.update(layout.0, &animator);
+    }
+}
+
+pub(super) fn render_plugin(app: &mut App) {
+    // Headless apps have no render world, so there is no texture to write.
+    if app.get_sub_app(RenderApp).is_none() {
         return;
-    };
-    write_fluid_frames(
-        &mut image,
-        &animator.still,
-        &animator.flow,
-        &animator.lava,
-        &animator.lava_flow,
+    }
+    app.add_plugins(ExtractResourcePlugin::<FluidFrames>::default());
+    app.sub_app_mut(RenderApp).add_systems(
+        Render,
+        write_fluid_tiles.in_set(RenderSystems::PrepareResources),
     );
 }
 
-fn write_fluid_frames(
-    image: &mut Image,
-    still: &StillWaterTexture,
-    flow: &FlowingWaterTexture,
-    lava: &LavaTexture,
-    lava_flow: &LavaTexture,
+#[derive(Default)]
+struct WrittenFluidFrames {
+    version: u64,
+    texture: Option<TextureId>,
+}
+
+/// Copy the newest fluid frames into their atlas tiles. A re-created atlas
+/// texture gets them again even if the frames have not advanced.
+fn write_fluid_tiles(
+    frames: Option<Res<FluidFrames>>,
+    images: Res<RenderAssets<GpuImage>>,
+    queue: Res<RenderQueue>,
+    mut written: Local<WrittenFluidFrames>,
 ) {
-    write_atlas_tile(image, WATER_STILL_TILE.0, WATER_STILL_TILE.1, still.rgba());
-    for dy in 0..WATER_FLOW_TILE_SIZE {
-        for dx in 0..WATER_FLOW_TILE_SIZE {
-            write_atlas_tile(
-                image,
-                WATER_FLOW_TILE.0 + dx,
-                WATER_FLOW_TILE.1 + dy,
-                flow.rgba(),
-            );
-        }
+    let Some(frames) = frames else {
+        return;
+    };
+    let Some(atlas) = images.get(frames.atlas) else {
+        return;
+    };
+    let texture = atlas.texture.id();
+    if written.version == frames.version && written.texture == Some(texture) {
+        return;
     }
-    write_atlas_tile(image, LAVA_STILL_TILE.0, LAVA_STILL_TILE.1, lava.rgba());
-    for dy in 0..LAVA_FLOW_TILE_SIZE {
-        for dx in 0..LAVA_FLOW_TILE_SIZE {
-            write_atlas_tile(
-                image,
-                LAVA_FLOW_TILE.0 + dx,
-                LAVA_FLOW_TILE.1 + dy,
-                lava_flow.rgba(),
-            );
-        }
+    let stride = frames.stride;
+    let size = Extent3d {
+        width: stride,
+        height: stride,
+        depth_or_array_layers: 1,
+    };
+    for (frame, (tile_x, tile_y)) in FLUID_TILES {
+        queue.write_texture(
+            TexelCopyTextureInfo {
+                texture: &atlas.texture,
+                mip_level: 0,
+                origin: Origin3d {
+                    x: u32::from(tile_x) * stride,
+                    y: u32::from(tile_y) * stride,
+                    z: 0,
+                },
+                aspect: TextureAspect::All,
+            },
+            &frames.frames[frame],
+            TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(stride * 4),
+                rows_per_image: Some(stride),
+            },
+            size,
+        );
     }
+    written.version = frames.version;
+    written.texture = Some(texture);
 }
 
 /// Java `Math.random()` / `Random.nextDouble`.

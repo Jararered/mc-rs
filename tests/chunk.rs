@@ -1,6 +1,3 @@
-use bevy::mesh::Mesh;
-use bevy::mesh::VertexAttributeValues;
-
 use game::block::id::Id;
 use game::block::properties::selection_bounds;
 use game::world::chunk::CHUNK_HEIGHT;
@@ -21,11 +18,13 @@ use game::world::lighting::beta_brightness;
 use game::world::lighting::combined_light;
 use game::world::lighting::light_emission;
 use game::world::lighting::light_opacity;
+use game::world::meshing::BlockGeometry;
+use game::world::meshing::BlockLighting;
 use game::world::meshing::ChunkNeighbors;
+use game::world::meshing::WATER_ALPHA;
 use game::world::meshing::mesh_chunk;
 use game::world::meshing::mesh_chunk_with_neighbors;
 use game::world::meshing::mesh_chunk_with_settings;
-use game::world::meshing::mesh_chunk_with_settings_and_smooth_lighting;
 use game::world::textures::atlas_tile_uvs;
 use game::world::textures::block_tile;
 
@@ -78,12 +77,8 @@ fn ambient_occlusion_darkens_enclosed_face_corners() {
     chunk.set(1, 2, 2, Id::Stone);
     chunk.set(2, 2, 2, Id::Stone);
 
-    let meshes = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true, false);
-    let Some(VertexAttributeValues::Float32x4(colors)) =
-        meshes.opaque.attribute(Mesh::ATTRIBUTE_COLOR)
-    else {
-        panic!("terrain mesh should have vertex colors");
-    };
+    let meshes = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), false);
+    let colors = meshes.opaque.colors(BlockLighting::default());
     let top_colors = &colors[0..4];
     assert!(
         top_colors
@@ -107,11 +102,7 @@ fn species_plank_meshes_apply_distinct_vertex_tints() {
         let mut chunk = Chunk::new();
         chunk.set(1, 1, 1, block);
         let mesh = mesh_chunk(&chunk, &Skylight::from_chunk(&chunk));
-        let Some(VertexAttributeValues::Float32x4(colors)) = mesh.attribute(Mesh::ATTRIBUTE_COLOR)
-        else {
-            panic!("terrain mesh should have vertex colors");
-        };
-        colors[0]
+        mesh.colors(BlockLighting::default())[0]
     };
 
     let oak = first_vertex_color(Id::WoodenPlanks);
@@ -139,12 +130,8 @@ fn neighboring_block_data_culls_shared_faces_and_darkens_border_corners() {
         },
         &light,
     );
-    assert_eq!(isolated.count_vertices(), 24);
-    assert_eq!(
-        connected.count_vertices(),
-        20,
-        "shared face should be culled"
-    );
+    assert_eq!(isolated.vertex_count(), 24);
+    assert_eq!(connected.vertex_count(), 20, "shared face should be culled");
 
     east.set(0, 1, 1, Id::Air);
     east.set(0, 2, 1, Id::Stone);
@@ -156,12 +143,8 @@ fn neighboring_block_data_culls_shared_faces_and_darkens_border_corners() {
         },
         &light,
     );
-    let colors = |mesh: &Mesh| {
-        let Some(VertexAttributeValues::Float32x4(colors)) = mesh.attribute(Mesh::ATTRIBUTE_COLOR)
-        else {
-            panic!("terrain mesh should have vertex colors");
-        };
-        colors[0..4]
+    let colors = |mesh: &BlockGeometry| {
+        mesh.colors(BlockLighting::default())[0..4]
             .iter()
             .map(|color| color[0])
             .collect::<Vec<_>>()
@@ -186,19 +169,17 @@ fn smooth_lighting_toggle_controls_corner_interpolation() {
     chunk.set(2, 2, 2, Id::Stone);
     let skylight = Skylight::from_chunk(&chunk);
 
-    let smooth =
-        mesh_chunk_with_settings_and_smooth_lighting(&chunk, &skylight, true, true, false, 0);
-    let flat =
-        mesh_chunk_with_settings_and_smooth_lighting(&chunk, &skylight, true, false, false, 0);
-    let colors = |mesh: &Mesh| {
-        let Some(VertexAttributeValues::Float32x4(colors)) = mesh.attribute(Mesh::ATTRIBUTE_COLOR)
-        else {
-            panic!("terrain mesh should have vertex colors");
-        };
-        colors[0..4].to_vec()
+    // Smooth lighting is a shader setting, so one mesh serves both modes.
+    let meshes = mesh_chunk_with_settings(&chunk, &skylight, false);
+    let colors = |smooth_lighting| {
+        meshes.opaque.colors(BlockLighting {
+            smooth_lighting,
+            ..BlockLighting::default()
+        })[0..4]
+            .to_vec()
     };
-    let smooth_colors = colors(&smooth.opaque);
-    let flat_colors = colors(&flat.opaque);
+    let smooth_colors = colors(true);
+    let flat_colors = colors(false);
     assert!(smooth_colors.windows(2).any(|pair| pair[0] != pair[1]));
     assert!(flat_colors.windows(2).all(|pair| pair[0] == pair[1]));
 }
@@ -219,17 +200,38 @@ fn terrain_generation_is_deterministic_at_a_chunk_position() {
 }
 
 #[test]
+fn world_floor_undersides_are_not_meshed() {
+    let mut chunk = Chunk::new();
+    chunk.set(1, 0, 1, Id::Bedrock);
+    let mesh = mesh_chunk(&chunk, &Skylight::from_chunk(&chunk));
+    assert_eq!(mesh.vertex_count(), 20);
+    assert!(
+        mesh.normals().iter().all(|normal| normal[1] > -0.5),
+        "no face may point below the world"
+    );
+
+    chunk.set(1, 0, 1, Id::Air);
+    chunk.set(1, 1, 1, Id::Bedrock);
+    let raised = mesh_chunk(&chunk, &Skylight::from_chunk(&chunk));
+    assert_eq!(
+        raised.vertex_count(),
+        24,
+        "a floating block keeps its bottom"
+    );
+}
+
+#[test]
 fn mesher_culls_faces_between_adjacent_blocks() {
     let mut chunk = Chunk::new();
     chunk.set(1, 1, 1, Id::Stone);
     let mesh = mesh_chunk(&chunk, &Skylight::from_chunk(&chunk));
-    assert_eq!(mesh.count_vertices(), 24);
-    assert_eq!(mesh.indices().unwrap().len(), 36);
+    assert_eq!(mesh.vertex_count(), 24);
+    assert_eq!(mesh.index_count(), 36);
 
     chunk.set(2, 1, 1, Id::Stone);
     let mesh = mesh_chunk(&chunk, &Skylight::from_chunk(&chunk));
-    assert_eq!(mesh.count_vertices(), 40);
-    assert_eq!(mesh.indices().unwrap().len(), 60);
+    assert_eq!(mesh.vertex_count(), 40);
+    assert_eq!(mesh.index_count(), 60);
 }
 
 #[test]
@@ -239,17 +241,14 @@ fn fancy_leaves_keep_internal_faces_and_use_the_cutout_tile() {
     chunk.set(2, 1, 1, Id::Leaves);
     let skylight = Skylight::from_chunk(&chunk);
 
-    let fast = mesh_chunk_with_settings(&chunk, &skylight, true, false);
-    assert_eq!(fast.opaque.count_vertices(), 40);
+    let fast = mesh_chunk_with_settings(&chunk, &skylight, false);
+    assert_eq!(fast.opaque.vertex_count(), 40);
 
-    let fancy = mesh_chunk_with_settings(&chunk, &skylight, true, true);
-    assert_eq!(fancy.opaque.count_vertices(), 0);
-    assert_eq!(fancy.cutout.count_vertices(), 48);
+    let fancy = mesh_chunk_with_settings(&chunk, &skylight, true);
+    assert_eq!(fancy.opaque.vertex_count(), 0);
+    assert_eq!(fancy.cutout.vertex_count(), 48);
 
-    let Some(VertexAttributeValues::Float32x2(uvs)) = fancy.cutout.attribute(Mesh::ATTRIBUTE_UV_0)
-    else {
-        panic!("chunk mesh should have atlas UVs");
-    };
+    let uvs = fancy.cutout.uvs();
     assert!(
         uvs.iter()
             .all(|uv| (4.0 / 16.0..5.0 / 16.0).contains(&uv[0])),
@@ -262,9 +261,7 @@ fn grass_mesh_uses_separate_atlas_tiles_for_top_bottom_and_sides() {
     let mut chunk = Chunk::new();
     chunk.set(1, 1, 1, Id::Grass);
     let mesh = mesh_chunk(&chunk, &Skylight::from_chunk(&chunk));
-    let Some(VertexAttributeValues::Float32x2(uvs)) = mesh.attribute(Mesh::ATTRIBUTE_UV_0) else {
-        panic!("chunk mesh should have atlas UVs");
-    };
+    let uvs = mesh.uvs();
     assert_eq!(uvs.len(), 24);
     assert!(uvs[0..4].iter().all(|uv| uv[0] < 1.0 / 16.0));
     assert!(
@@ -283,12 +280,8 @@ fn grass_mesh_uses_separate_atlas_tiles_for_top_bottom_and_sides() {
 fn fancy_grass_adds_the_transparent_biome_overlay_tile() {
     let mut chunk = Chunk::new();
     chunk.set(1, 1, 1, Id::Grass);
-    let meshes = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true, true);
-    let Some(VertexAttributeValues::Float32x2(uvs)) =
-        meshes.grass_overlay.attribute(Mesh::ATTRIBUTE_UV_0)
-    else {
-        panic!("chunk mesh should have atlas UVs");
-    };
+    let meshes = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true);
+    let uvs = meshes.grass_overlay.uvs();
     assert_eq!(uvs.len(), 16);
     assert!(
         uvs.iter()
@@ -301,9 +294,7 @@ fn block_face_uvs_stay_inside_the_padded_tile() {
     let mut chunk = Chunk::new();
     chunk.set(1, 1, 1, Id::Stone);
     let mesh = mesh_chunk(&chunk, &Skylight::from_chunk(&chunk));
-    let Some(VertexAttributeValues::Float32x2(uvs)) = mesh.attribute(Mesh::ATTRIBUTE_UV_0) else {
-        panic!("chunk mesh should have atlas UVs");
-    };
+    let uvs = mesh.uvs();
     // Stone is terrain.png tile (1, 0). Padding keeps UVs off the 1/16 grid
     // lines so neighbouring tiles cannot bleed across a block edge.
     let gutter = 2.0 / 320.0;
@@ -326,26 +317,23 @@ fn water_renders_as_a_transparent_top_face() {
     let mut chunk = Chunk::new();
     chunk.set(1, 1, 1, Id::Water);
     let skylight = Skylight::from_chunk(&chunk);
-    let meshes = mesh_chunk_with_settings(&chunk, &skylight, true, true);
-    assert_eq!(meshes.opaque.count_vertices(), 0);
-    assert_eq!(meshes.water.count_vertices(), 4);
-    assert_eq!(meshes.water.indices().unwrap().len(), 6);
+    let meshes = mesh_chunk_with_settings(&chunk, &skylight, true);
+    assert_eq!(meshes.opaque.vertex_count(), 0);
+    assert_eq!(meshes.water.vertex_count(), 4);
+    assert_eq!(meshes.water.index_count(), 6);
 
-    let Some(VertexAttributeValues::Float32x4(colors)) =
-        meshes.water.attribute(Mesh::ATTRIBUTE_COLOR)
-    else {
-        panic!("water mesh should have vertex colors");
-    };
+    // Translucency is the water material's base alpha, not a vertex value.
+    assert!((WATER_ALPHA - 0.8).abs() < 0.001);
     assert!(
-        colors.iter().all(|color| (color[3] - 0.8).abs() < 0.001),
-        "water vertices should be translucent"
+        meshes
+            .water
+            .vertices()
+            .iter()
+            .all(|vertex| vertex.tint == [0.4, 0.6, 0.95]),
+        "water keeps Beta's blue tint"
     );
 
-    let Some(VertexAttributeValues::Float32x3(positions)) =
-        meshes.water.attribute(Mesh::ATTRIBUTE_POSITION)
-    else {
-        panic!("water mesh should have positions");
-    };
+    let positions = meshes.water.positions();
     let surface_y = 1.0 + 1.0 - 2.0 / 16.0;
     assert!(
         positions
@@ -355,18 +343,20 @@ fn water_renders_as_a_transparent_top_face() {
     );
 
     chunk.set(1, 2, 1, Id::Water);
-    let stacked = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true, true);
+    let stacked = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true);
     assert_eq!(
-        stacked.water.count_vertices(),
+        stacked.water.vertex_count(),
         4,
         "only the surface of a water column should be meshed"
     );
 
     chunk.set(1, 0, 1, Id::Stone);
-    let with_bed = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true, true);
+    let with_bed = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true);
+    // Five faces: water must not hide the bed's top, and the bed sits on the
+    // world floor, whose underside is never drawn.
     assert_eq!(
-        with_bed.opaque.count_vertices(),
-        24,
+        with_bed.opaque.vertex_count(),
+        20,
         "water must not hide the lake bed"
     );
 }
@@ -493,11 +483,15 @@ fn night_dims_sunlight_and_leaves_torches() {
     let mut chunk = Chunk::new();
     chunk.set(1, 64, 1, Id::Stone);
     let light = Skylight::from_chunk(&chunk);
-    let day = mesh_chunk_with_settings_and_smooth_lighting(&chunk, &light, true, false, false, 0);
-    let night =
-        mesh_chunk_with_settings_and_smooth_lighting(&chunk, &light, true, false, false, 11);
-    let day_top = top_vertex_brightness(&day.opaque);
-    let night_top = top_vertex_brightness(&night.opaque);
+    // Dusk changes a material uniform; the same mesh serves day and night.
+    let meshes = mesh_chunk_with_settings(&chunk, &light, false);
+    let flat_at = |skylight_subtracted| BlockLighting {
+        old_lighting: true,
+        smooth_lighting: false,
+        skylight_subtracted,
+    };
+    let day_top = top_vertex_brightness(&meshes.opaque, flat_at(0));
+    let night_top = top_vertex_brightness(&meshes.opaque, flat_at(11));
     assert!(
         night_top < day_top,
         "open sunlight should darken after dusk, day {day_top} night {night_top}"
@@ -506,12 +500,8 @@ fn night_dims_sunlight_and_leaves_torches() {
     assert!((night_top - beta_brightness(4)).abs() < 1e-4);
 }
 
-fn top_vertex_brightness(mesh: &Mesh) -> f32 {
-    let Some(VertexAttributeValues::Float32x4(colors)) = mesh.attribute(Mesh::ATTRIBUTE_COLOR)
-    else {
-        panic!("terrain mesh should have vertex colors");
-    };
-    colors[0][0]
+fn top_vertex_brightness(mesh: &BlockGeometry, lighting: BlockLighting) -> f32 {
+    mesh.colors(lighting)[0][0]
 }
 
 #[test]
@@ -580,14 +570,23 @@ fn set_block_updates_the_column_heightmap() {
             items: Vec::new(),
         },
     );
-    assert_eq!(chunks.get(ChunkPosition::ZERO).unwrap().heightmap.get(3, 4), 11);
+    assert_eq!(
+        chunks.get(ChunkPosition::ZERO).unwrap().heightmap.get(3, 4),
+        11
+    );
 
     assert_eq!(chunks.set_block(3, 20, 4, Id::Dirt), Some(Id::Air));
     assert_eq!(chunks.block_at(3, 20, 4), Some(Id::Dirt));
-    assert_eq!(chunks.get(ChunkPosition::ZERO).unwrap().heightmap.get(3, 4), 21);
+    assert_eq!(
+        chunks.get(ChunkPosition::ZERO).unwrap().heightmap.get(3, 4),
+        21
+    );
 
     assert_eq!(chunks.set_block(3, 20, 4, Id::Air), Some(Id::Dirt));
-    assert_eq!(chunks.get(ChunkPosition::ZERO).unwrap().heightmap.get(3, 4), 11);
+    assert_eq!(
+        chunks.get(ChunkPosition::ZERO).unwrap().heightmap.get(3, 4),
+        11
+    );
 }
 
 #[test]
@@ -637,21 +636,13 @@ fn torch_mesh_uses_a_narrow_shape_instead_of_a_cube() {
     let mut chunk = Chunk::new();
     chunk.set(8, 40, 8, Id::Torch);
     let light = Skylight::from_chunk(&chunk);
-    let meshes = mesh_chunk_with_settings(&chunk, &light, true, false);
-    let Some(VertexAttributeValues::Float32x3(positions)) =
-        meshes.grass_overlay.attribute(Mesh::ATTRIBUTE_POSITION)
-    else {
-        panic!("torch mesh should have vertices");
-    };
+    let meshes = mesh_chunk_with_settings(&chunk, &light, false);
+    let positions = meshes.grass_overlay.positions();
     assert!(positions.iter().all(|p| p[0] > 8.4 && p[0] < 8.6));
     assert!(positions.iter().all(|p| p[2] > 8.4 && p[2] < 8.6));
     assert!(positions.iter().all(|p| p[1] >= 40.0 && p[1] <= 40.625));
 
-    let Some(VertexAttributeValues::Float32x2(uvs)) =
-        meshes.grass_overlay.attribute(Mesh::ATTRIBUTE_UV_0)
-    else {
-        panic!("torch mesh should have atlas UVs");
-    };
+    let uvs = meshes.grass_overlay.uvs();
     let (u0, v0, u1, v1) = atlas_tile_uvs(0, 5);
     for side in uvs[4..].chunks_exact(4) {
         let min_u = side.iter().map(|uv| uv[0]).fold(f32::INFINITY, f32::min);
@@ -675,11 +666,8 @@ fn torch_mesh_uses_a_narrow_shape_instead_of_a_cube() {
 fn ladder_mesh_uses_beta_tile_and_a_wall_plane() {
     let mut chunk = Chunk::new();
     chunk.set(3, 5, 7, Id::LadderWest);
-    let meshes = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true, false);
-    let positions = match meshes.masked.attribute(Mesh::ATTRIBUTE_POSITION).unwrap() {
-        VertexAttributeValues::Float32x3(values) => values,
-        _ => panic!("ladder mesh should have 3D positions"),
-    };
+    let meshes = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), false);
+    let positions = meshes.masked.positions();
     assert_eq!(positions.len(), 4);
     assert!(
         positions
@@ -688,10 +676,7 @@ fn ladder_mesh_uses_beta_tile_and_a_wall_plane() {
     );
     assert_eq!(block_tile(Id::LadderWest, 0, false), (3, 5));
 
-    let uvs = match meshes.masked.attribute(Mesh::ATTRIBUTE_UV_0).unwrap() {
-        VertexAttributeValues::Float32x2(values) => values,
-        _ => panic!("ladder mesh should have UV coordinates"),
-    };
+    let uvs = meshes.masked.uvs();
     let (u0, v0, u1, v1) = atlas_tile_uvs(3, 5);
     assert!(
         uvs.iter()
@@ -713,17 +698,9 @@ fn wall_torch_rotates_the_floor_post_without_tapering_or_flattening_its_cap() {
         let mut chunk = Chunk::new();
         chunk.set(8, 40, 8, block);
         let light = Skylight::from_chunk(&chunk);
-        let meshes = mesh_chunk_with_settings(&chunk, &light, true, false);
-        let Some(VertexAttributeValues::Float32x3(positions)) =
-            meshes.grass_overlay.attribute(Mesh::ATTRIBUTE_POSITION)
-        else {
-            panic!("wall torch mesh should have vertices");
-        };
-        let Some(VertexAttributeValues::Float32x3(normals)) =
-            meshes.grass_overlay.attribute(Mesh::ATTRIBUTE_NORMAL)
-        else {
-            panic!("wall torch mesh should have normals");
-        };
+        let meshes = mesh_chunk_with_settings(&chunk, &light, false);
+        let positions = meshes.grass_overlay.positions();
+        let normals = meshes.grass_overlay.normals();
         assert!((distance(positions[0], positions[3]) - 0.125).abs() < 1e-5);
         assert!((distance(positions[4], positions[5]) - 0.625).abs() < 1e-5);
         assert!(normals[0][tilted_axis] * sign > 0.5);

@@ -1,37 +1,93 @@
-use bevy::camera::primitives::MeshAabb;
+use bevy::camera::primitives::Aabb;
 use bevy::camera::visibility::NoAutoAabb;
 use bevy::prelude::*;
 
 use crate::world::chunk::ChunkPosition;
+use crate::world::chunk::SECTION_HEIGHT;
+use crate::world::chunk::SECTIONS_PER_CHUNK;
 use crate::world::meshing::ChunkMeshes;
+use crate::world::textures::BlockMaterial;
 use crate::world::textures::LEAF_WIGGLE_AMPLITUDE;
-use crate::world::textures::LeafCutoutMaterial;
+
+/// Layers of a section in [`ChunkMeshes::into_layers`] order.
+const LAYER_COUNT: usize = 5;
+const LAYER_NAMES: [&str; LAYER_COUNT] = [
+    "Opaque",
+    "Grass overlay",
+    "Cutout",
+    "Water",
+    "Alpha-masked geometry",
+];
+const CUTOUT_LAYER: usize = 2;
+
+/// Handles for each layer's material, in layer order.
+#[derive(Clone)]
+pub(super) struct ChunkMaterials(pub [Handle<BlockMaterial>; LAYER_COUNT]);
+
+/// One uploaded layer mesh and the bounds computed before its vertex data
+/// left the main world.
+pub(super) struct LayerMesh {
+    mesh: Mesh,
+    aabb: Aabb,
+}
+
+/// Rebuilt layers for one section, produced on the compute pool.
+pub(super) struct SectionMeshes {
+    index: usize,
+    layers: [Option<LayerMesh>; LAYER_COUNT],
+}
+
+impl SectionMeshes {
+    pub(super) fn build(index: usize, meshes: ChunkMeshes) -> Self {
+        let mut layer_index = 0;
+        let layers = meshes.into_layers().map(|geometry| {
+            // Leaf vertices move in the shader; keep them inside the culling box.
+            let padding = if layer_index == CUTOUT_LAYER {
+                LEAF_WIGGLE_AMPLITUDE * 1.5
+            } else {
+                0.0
+            };
+            layer_index += 1;
+            let aabb = geometry.aabb(padding)?;
+            Some(LayerMesh {
+                mesh: geometry.into_mesh(),
+                aabb,
+            })
+        });
+        Self { index, layers }
+    }
+}
 
 pub(super) struct RenderedChunk {
     entity: Entity,
-    opaque: Option<MeshLayer>,
-    grass_overlay: Option<MeshLayer>,
-    cutout: Option<MeshLayer>,
-    water: Option<MeshLayer>,
-    masked: Option<MeshLayer>,
+    sections: [[Option<MeshLayer>; LAYER_COUNT]; SECTIONS_PER_CHUNK],
+    /// Light fingerprints of the meshes currently shown, one per section.
+    pub(super) fingerprints: [u64; SECTIONS_PER_CHUNK],
 }
 
 struct MeshLayer {
     entity: Entity,
     mesh: Handle<Mesh>,
+    bytes: usize,
 }
 
-pub(super) fn spawn_chunk(
-    commands: &mut Commands,
-    meshes: &mut Assets<Mesh>,
-    position: ChunkPosition,
-    layers: ChunkMeshes,
-    material: &Handle<StandardMaterial>,
-    grass_overlay_material: &Handle<StandardMaterial>,
-    cutout_material: &Handle<LeafCutoutMaterial>,
-    water_material: &Handle<StandardMaterial>,
-    mask_material: &Handle<StandardMaterial>,
-) -> RenderedChunk {
+impl RenderedChunk {
+    /// GPU vertex and index bytes of every layer in this chunk.
+    pub(super) fn mesh_bytes(&self) -> usize {
+        self.sections
+            .iter()
+            .flatten()
+            .flatten()
+            .map(|layer| layer.bytes)
+            .sum()
+    }
+
+    pub(super) fn layer_count(&self) -> usize {
+        self.sections.iter().flatten().flatten().count()
+    }
+}
+
+pub(super) fn spawn_chunk(commands: &mut Commands, position: ChunkPosition) -> RenderedChunk {
     let (x, z) = position.world_origin();
     let entity = commands
         .spawn((
@@ -41,144 +97,87 @@ pub(super) fn spawn_chunk(
             Visibility::default(),
         ))
         .id();
-    let mut rendered = RenderedChunk {
+    RenderedChunk {
         entity,
-        opaque: None,
-        grass_overlay: None,
-        cutout: None,
-        water: None,
-        masked: None,
-    };
-    apply_chunk_meshes(
-        commands,
-        meshes,
-        &mut rendered,
-        layers,
-        material,
-        grass_overlay_material,
-        cutout_material,
-        water_material,
-        mask_material,
-    );
-    rendered
+        sections: Default::default(),
+        fingerprints: [0; SECTIONS_PER_CHUNK],
+    }
 }
 
-pub(super) fn apply_chunk_meshes(
+pub(super) fn apply_sections(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     rendered: &mut RenderedChunk,
-    layers: ChunkMeshes,
-    material: &Handle<StandardMaterial>,
-    grass_overlay_material: &Handle<StandardMaterial>,
-    cutout_material: &Handle<LeafCutoutMaterial>,
-    water_material: &Handle<StandardMaterial>,
-    mask_material: &Handle<StandardMaterial>,
+    sections: Vec<SectionMeshes>,
+    materials: &ChunkMaterials,
 ) {
-    apply_layer(
-        commands,
-        meshes,
-        rendered.entity,
-        &mut rendered.opaque,
-        layers.opaque,
-        material,
-        "Opaque",
-        0.0,
-    );
-    apply_layer(
-        commands,
-        meshes,
-        rendered.entity,
-        &mut rendered.grass_overlay,
-        layers.grass_overlay,
-        grass_overlay_material,
-        "Grass overlay",
-        0.0,
-    );
-    apply_layer(
-        commands,
-        meshes,
-        rendered.entity,
-        &mut rendered.cutout,
-        layers.cutout,
-        cutout_material,
-        "Cutout",
-        LEAF_WIGGLE_AMPLITUDE * 1.5,
-    );
-    apply_layer(
-        commands,
-        meshes,
-        rendered.entity,
-        &mut rendered.water,
-        layers.water,
-        water_material,
-        "Water",
-        0.0,
-    );
-    apply_layer(
-        commands,
-        meshes,
-        rendered.entity,
-        &mut rendered.masked,
-        layers.masked,
-        mask_material,
-        "Alpha-masked geometry",
-        0.0,
-    );
+    for section in sections {
+        for (layer_index, mesh) in section.layers.into_iter().enumerate() {
+            apply_layer(
+                commands,
+                meshes,
+                rendered.entity,
+                &mut rendered.sections[section.index][layer_index],
+                mesh,
+                &materials.0[layer_index],
+                LAYER_NAMES[layer_index],
+                section.index,
+            );
+        }
+    }
 }
 
 /// Bevy 0.19's mesh allocator logs a use-after-free error if an empty mesh is
 /// spawned or uploaded. Skip those layers until they have faces.
-fn apply_layer<M: Material>(
+fn apply_layer(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     parent: Entity,
     layer: &mut Option<MeshLayer>,
-    mesh: Mesh,
-    material: &Handle<M>,
+    mesh: Option<LayerMesh>,
+    material: &Handle<BlockMaterial>,
     name: &'static str,
-    bounds_padding: f32,
+    section: usize,
 ) {
-    let empty = mesh.count_vertices() == 0;
-    // Meshes are uploaded once and retain only metadata in the main world.
-    // Compute their local bounds while vertex positions are still available.
-    let bounds = (!empty).then(|| {
-        let mut bounds = mesh.compute_aabb().expect("chunk mesh has positions");
-        // Leaf vertices move in the shader; keep them inside the culling box.
-        bounds.half_extents += Vec3A::splat(bounds_padding);
-        bounds
-    });
-    match (layer.take(), empty) {
-        (Some(existing), false) => {
+    match (layer.take(), mesh) {
+        (Some(mut existing), Some(built)) => {
+            existing.bytes = mesh_bytes(&built.mesh);
             if let Some(mut current) = meshes.get_mut(existing.mesh.id()) {
-                *current = mesh;
+                *current = built.mesh;
             }
-            commands.entity(existing.entity).insert(bounds.unwrap());
+            commands.entity(existing.entity).insert(built.aabb);
             *layer = Some(existing);
         }
-        (Some(existing), true) => {
+        (Some(existing), None) => {
             commands.entity(existing.entity).despawn();
             meshes.remove(existing.mesh.id());
         }
-        (None, false) => {
-            let handle = meshes.add(mesh);
+        (None, Some(built)) => {
+            let bytes = mesh_bytes(&built.mesh);
+            let handle = meshes.add(built.mesh);
             let entity = commands
                 .spawn((
                     Name::new(name),
                     Mesh3d(handle.clone()),
                     MeshMaterial3d(material.clone()),
-                    bounds.unwrap(),
+                    built.aabb,
                     NoAutoAabb,
-                    Transform::default(),
+                    Transform::from_xyz(0.0, (section * SECTION_HEIGHT) as f32, 0.0),
                     ChildOf(parent),
                 ))
                 .id();
             *layer = Some(MeshLayer {
                 entity,
                 mesh: handle,
+                bytes,
             });
         }
-        (None, true) => {}
+        (None, None) => {}
     }
+}
+
+fn mesh_bytes(mesh: &Mesh) -> usize {
+    mesh.get_vertex_buffer_size() + mesh.get_index_buffer_bytes().map_or(0, <[u8]>::len)
 }
 
 pub(super) fn despawn_rendered_chunk(
@@ -187,19 +186,7 @@ pub(super) fn despawn_rendered_chunk(
     rendered: RenderedChunk,
 ) {
     commands.entity(rendered.entity).despawn();
-    if let Some(layer) = rendered.opaque {
-        meshes.remove(layer.mesh.id());
-    }
-    if let Some(layer) = rendered.grass_overlay {
-        meshes.remove(layer.mesh.id());
-    }
-    if let Some(layer) = rendered.cutout {
-        meshes.remove(layer.mesh.id());
-    }
-    if let Some(layer) = rendered.water {
-        meshes.remove(layer.mesh.id());
-    }
-    if let Some(layer) = rendered.masked {
+    for layer in rendered.sections.into_iter().flatten().flatten() {
         meshes.remove(layer.mesh.id());
     }
 }

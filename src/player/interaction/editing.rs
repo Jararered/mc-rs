@@ -319,10 +319,10 @@ pub(crate) fn interact_blocks(
                 let selected = hotbar.selected;
                 hotbar.slots[selected] =
                     ItemStack::with_data(stack.item(), stack.count() - 1, stack.data()).ok();
-                let (x, _, z) = hit.face.neighbor(hit.x, hit.y, hit.z);
-                notify_edit(&mut streaming, &mut persistence, x, z, true);
+                let (x, y, z) = hit.face.neighbor(hit.x, hit.y, hit.z);
+                notify_edit(&mut streaming, &mut persistence, x, y, z, true);
             } else if till_with_selected_hoe(&mut chunks, &mut hotbar, hit) {
-                notify_edit(&mut streaming, &mut persistence, hit.x, hit.z, false);
+                notify_edit(&mut streaming, &mut persistence, hit.x, hit.y, hit.z, false);
             }
         }
     }
@@ -440,7 +440,7 @@ fn apply_break(
         if let Some(particles) = particles.as_deref_mut() {
             particles.emit_break(hit);
         }
-        notify_edit(streaming, persistence, hit.x, hit.z, light_edit);
+        notify_edit(streaming, persistence, hit.x, hit.y, hit.z, light_edit);
         if let Some(tool) = tool {
             let cost = break_durability(tool, hit.block);
             if cost > 0 {
@@ -669,6 +669,7 @@ fn notify_edit(
     streaming: &mut Option<ResMut<WorldStreaming>>,
     persistence: &mut Option<ResMut<WorldPersistence>>,
     x: i32,
+    y: i32,
     z: i32,
     light_edit: bool,
 ) {
@@ -681,21 +682,9 @@ fn notify_edit(
             }
         }
     }
+    // Relighting decides which sections actually changed, so torches and
+    // plain blocks take the same path.
     if let Some(streaming) = streaming.as_deref_mut() {
-        if light_edit {
-            let center = ChunkPosition::from_block(x, z);
-            for dz in -1..=1 {
-                for dx in -1..=1 {
-                    streaming.request_remesh(ChunkPosition {
-                        x: center.x + dx,
-                        z: center.z + dz,
-                    });
-                }
-            }
-        } else {
-            for position in remesh_chunks_touching(x, z) {
-                streaming.request_remesh(position);
-            }
-        }
+        streaming.request_block_update(x, y, z);
     }
 }

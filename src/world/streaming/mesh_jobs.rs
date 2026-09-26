@@ -1,20 +1,43 @@
+use std::time::Duration;
 use std::time::Instant;
 
 use bevy::tasks::AsyncComputeTaskPool;
+use bevy::tasks::Task;
 
+use super::ALL_SECTIONS;
+use super::SectionMask;
 use super::WorldStreaming;
+use super::render::SectionMeshes;
 use crate::world::chunk::ChunkPosition;
+use crate::world::chunk::SECTIONS_PER_CHUNK;
 use crate::world::chunk::WorldChunks;
 use crate::world::lighting::Skylight;
 use crate::world::meshing::ChunkNeighbors;
-use crate::world::meshing::mesh_chunk_with_biomes;
+use crate::world::meshing::SectionMesher;
+
+/// A background lighting and meshing job for one chunk. `forced` is kept so a
+/// cancelled job's pending section rebuilds can be requeued.
+pub(super) struct MeshTask {
+    pub(super) task: Task<MeshJob>,
+    pub(super) forced: SectionMask,
+}
+
+pub(super) struct MeshJob {
+    pub(super) sections: Vec<SectionMeshes>,
+    pub(super) fingerprints: [u64; SECTIONS_PER_CHUNK],
+    pub(super) elapsed: Duration,
+}
 
 /// Snapshot the nine loaded chunks on the main thread, then do all lighting and
 /// mesh construction in a background job. A cancelled job never publishes its mesh.
+///
+/// A chunk that is already rendered rebuilds the `forced` sections plus any
+/// section whose light fingerprint changed; a first mesh builds all of them.
 pub(super) fn spawn_mesh_job(
     streaming: &mut WorldStreaming,
     chunks: &WorldChunks,
     position: ChunkPosition,
+    forced: SectionMask,
 ) -> bool {
     if streaming.meshing.contains_key(&position) || !mesh_neighborhood_ready(chunks, position) {
         return false;
@@ -26,10 +49,11 @@ pub(super) fn spawn_mesh_job(
     let biomes = generated.biomes.clone();
     let grass_colors = streaming.grass_colors.clone();
     let foliage_colors = streaming.foliage_colors.clone();
-    let old_lighting = streaming.old_lighting;
-    let smooth_lighting = streaming.smooth_lighting;
     let fancy_graphics = streaming.fancy_graphics;
-    let skylight_subtracted = streaming.skylight_subtracted;
+    let previous = streaming
+        .rendered
+        .get(&position)
+        .map(|rendered| rendered.fingerprints);
     let neighbor = |dx: i32, dz: i32| {
         position
             .x
@@ -59,6 +83,12 @@ pub(super) fn spawn_mesh_job(
             southwest.as_ref(),
             southeast.as_ref(),
         );
+        let fingerprints = skylight.section_fingerprints();
+        let rebuild = previous.map_or(ALL_SECTIONS, |previous| {
+            (0..SECTIONS_PER_CHUNK)
+                .filter(|&section| previous[section] != fingerprints[section])
+                .fold(forced, |mask, section| mask | (1 << section))
+        });
         let neighbors = ChunkNeighbors {
             west: west.as_ref(),
             east: east.as_ref(),
@@ -69,22 +99,29 @@ pub(super) fn spawn_mesh_job(
             southwest: southwest.as_ref(),
             southeast: southeast.as_ref(),
         };
-        let layers = mesh_chunk_with_biomes(
+        let mesher = SectionMesher::new(
             &chunk,
             &neighbors,
             &skylight,
             &biomes,
             &grass_colors,
             &foliage_colors,
-            old_lighting,
-            smooth_lighting,
             fancy_graphics,
-            skylight_subtracted,
             position,
         );
-        (layers, start.elapsed())
+        let sections = (0..SECTIONS_PER_CHUNK)
+            .filter(|&section| rebuild & (1 << section) != 0)
+            .map(|section| SectionMeshes::build(section, mesher.mesh(section)))
+            .collect();
+        MeshJob {
+            sections,
+            fingerprints,
+            elapsed: start.elapsed(),
+        }
     });
-    streaming.meshing.insert(position, task);
+    streaming
+        .meshing
+        .insert(position, MeshTask { task, forced });
     true
 }
 

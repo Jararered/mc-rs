@@ -103,6 +103,12 @@ impl GameSettings {
         }
     }
 
+    /// Old lighting draws every material unlit, so nothing would sample a
+    /// shadow map; rendering one would only redraw the terrain for no effect.
+    pub fn sun_shadows(&self) -> bool {
+        self.directional_lighting && !self.old_lighting
+    }
+
     pub fn change_fov(&mut self, change: f32) {
         self.fov = (self.fov + change).clamp(MIN_FOV, MAX_FOV);
     }

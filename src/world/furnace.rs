@@ -191,15 +191,7 @@ pub fn tick_furnaces(
             let next = block.with_furnace_lit(burning);
             chunks.set_block(x, y, z, next);
             if let Some(streaming) = streaming.as_deref_mut() {
-                let center = ChunkPosition::from_block(x, z);
-                for dz in -1..=1 {
-                    for dx in -1..=1 {
-                        streaming.request_remesh(ChunkPosition {
-                            x: center.x + dx,
-                            z: center.z + dz,
-                        });
-                    }
-                }
+                streaming.request_block_update(x, y, z);
             }
         }
         if changed && let Some(persistence) = persistence.as_deref_mut() {

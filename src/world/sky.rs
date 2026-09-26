@@ -19,6 +19,7 @@ use bevy::ecs::hierarchy::ChildSpawnerCommands;
 use bevy::ecs::system::SystemParam;
 use bevy::light::NotShadowCaster;
 use bevy::mesh::Indices;
+use bevy::mesh::MeshTag;
 use bevy::pbr::DistanceFog;
 use bevy::pbr::FogFalloff;
 use bevy::prelude::*;
@@ -35,6 +36,9 @@ use crate::world::chunk::WorldChunks;
 use crate::world::lighting::beta_brightness;
 use crate::world::lighting::light_emission;
 use crate::world::lighting::light_opacity;
+use crate::world::textures::InstanceTint;
+use crate::world::textures::TintedMaterial;
+use crate::world::textures::tint_tag;
 
 use super::plugin::apply_lighting_settings;
 use super::tick::WorldTick;
@@ -96,10 +100,10 @@ impl Default for EyeFog {
 
 #[derive(Clone, Resource)]
 struct SkyAssets {
-    sun: Handle<StandardMaterial>,
-    moon: Handle<StandardMaterial>,
-    stars: Handle<StandardMaterial>,
-    sunrise: Handle<StandardMaterial>,
+    sun: Handle<TintedMaterial>,
+    moon: Handle<TintedMaterial>,
+    stars: Handle<TintedMaterial>,
+    sunrise: Handle<TintedMaterial>,
     sunrise_mesh: Handle<Mesh>,
 }
 
@@ -166,7 +170,11 @@ struct SkyViews<'w, 's> {
     sunrises: Query<
         'w,
         's,
-        (&'static mut Transform, &'static mut Visibility),
+        (
+            &'static mut Transform,
+            &'static mut Visibility,
+            &'static mut MeshTag,
+        ),
         (
             With<SunriseFan>,
             Without<StarField>,
@@ -174,7 +182,12 @@ struct SkyViews<'w, 's> {
             Without<Player>,
         ),
     >,
-    stars: Query<'w, 's, &'static mut Visibility, (With<StarField>, Without<SunriseFan>)>,
+    stars: Query<
+        'w,
+        's,
+        (&'static mut Visibility, &'static mut MeshTag),
+        (With<StarField>, Without<SunriseFan>),
+    >,
     suns: Query<
         'w,
         's,
@@ -409,7 +422,7 @@ enum Medium {
 fn ensure_sky(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut materials: ResMut<Assets<TintedMaterial>>,
     assets: Option<Res<SkyAssets>>,
     asset_server: Res<AssetServer>,
     settings: Res<GameSettings>,
@@ -442,10 +455,12 @@ fn ensure_sky(
     let sky_assets = if let Some(existing) = assets.as_deref() {
         existing.clone()
     } else {
+        // Star fade and sunrise color ride in each entity's `MeshTag`, so
+        // these materials never change after creation.
         let created = SkyAssets {
-            sun: materials.add(body_material(&asset_server, "terrain/sun.png")),
-            moon: materials.add(body_material(&asset_server, "terrain/moon.png")),
-            stars: materials.add(StandardMaterial {
+            sun: materials.add(tinted(body_material(&asset_server, "terrain/sun.png"))),
+            moon: materials.add(tinted(body_material(&asset_server, "terrain/moon.png"))),
+            stars: materials.add(tinted(StandardMaterial {
                 base_color: Color::WHITE,
                 unlit: true,
                 fog_enabled: false,
@@ -453,16 +468,16 @@ fn ensure_sky(
                 cull_mode: None,
                 double_sided: true,
                 ..default()
-            }),
-            sunrise: materials.add(StandardMaterial {
+            })),
+            sunrise: materials.add(tinted(StandardMaterial {
                 unlit: true,
                 fog_enabled: false,
                 alpha_mode: AlphaMode::Blend,
                 cull_mode: None,
                 double_sided: true,
                 ..default()
-            }),
-            sunrise_mesh: meshes.add(sunrise_mesh([0.0; 4])),
+            })),
+            sunrise_mesh: meshes.add(sunrise_mesh()),
         };
         commands.insert_resource(created.clone());
         created
@@ -521,6 +536,7 @@ fn ensure_sky(
                 Name::new("Sunrise"),
                 SunriseFan,
                 Mesh3d(sky_assets.sunrise_mesh.clone()),
+                tint_tag(Color::NONE),
                 MeshMaterial3d(sky_assets.sunrise.clone()),
                 Transform::default(),
                 Visibility::Hidden,
@@ -554,6 +570,7 @@ fn ensure_sky(
                 rig.spawn((
                     Name::new("Stars"),
                     StarField,
+                    tint_tag(Color::NONE),
                     Mesh3d(star_mesh),
                     MeshMaterial3d(sky_assets.stars.clone()),
                     Transform::default(),
@@ -570,7 +587,7 @@ fn spawn_layer(
     parent: &mut ChildSpawnerCommands,
     name: &str,
     mesh: Handle<Mesh>,
-    material: Handle<StandardMaterial>,
+    material: Handle<TintedMaterial>,
     transform: Transform,
     layer: usize,
 ) {
@@ -594,12 +611,11 @@ fn update_atmosphere(
     mut eye_fog: ResMut<EyeFog>,
     assets: Option<Res<SkyAssets>>,
     mut views: SkyViews,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut meshes: ResMut<Assets<Mesh>>,
 ) {
-    let Some(assets) = assets else {
+    // Nothing to update until `ensure_sky` has created the sky entities.
+    if assets.is_none() {
         return;
-    };
+    }
     let far = view_distance_blocks(settings.render_distance);
     let angle = celestial_angle(tick.world_time(), tick.partial());
     let eye = views.eyes.single().ok().map(|eye| *eye);
@@ -687,30 +703,30 @@ fn update_atmosphere(
         rig.rotation = spin;
     }
     let stars_on = star_brightness(angle);
-    if let Some(mut material) = materials.get_mut(&assets.stars) {
-        material.base_color = Color::WHITE.with_alpha(stars_on);
-    }
-    for mut visibility in &mut views.stars {
-        *visibility = if stars_on > 0.0 {
+    let star_tag = tint_tag(Color::WHITE.with_alpha(stars_on));
+    for (mut visibility, mut tag) in &mut views.stars {
+        visibility.set_if_neq(if stars_on > 0.0 {
             Visibility::Inherited
         } else {
             Visibility::Hidden
-        };
+        });
+        tag.set_if_neq(star_tag.clone());
     }
     let sunrise = sunrise_rgba(angle);
-    for (mut transform, mut visibility) in &mut views.sunrises {
-        if let Some(rgba) = sunrise {
+    for (mut transform, mut visibility, mut tag) in &mut views.sunrises {
+        if let Some([red, green, blue, alpha]) = sunrise {
             let mut rotation = Quat::from_rotation_x(std::f32::consts::FRAC_PI_2);
             if angle > 0.5 {
                 rotation *= Quat::from_rotation_z(std::f32::consts::PI);
             }
             transform.rotation = rotation;
-            *visibility = Visibility::Inherited;
-            if let Some(mut mesh) = meshes.get_mut(&assets.sunrise_mesh) {
-                *mesh = sunrise_mesh(rgba);
-            }
+            // The rim bows back by 40 blocks times the fan's alpha. The center
+            // sits at z = 0, so scaling z reproduces that without a new mesh.
+            transform.scale = Vec3::new(1.0, 1.0, alpha.max(1e-4));
+            visibility.set_if_neq(Visibility::Inherited);
+            tag.set_if_neq(tint_tag(Color::linear_rgba(red, green, blue, alpha)));
         } else {
-            *visibility = Visibility::Hidden;
+            visibility.set_if_neq(Visibility::Hidden);
         }
     }
 
@@ -726,12 +742,16 @@ fn update_atmosphere(
         Vec3::Y
     };
     for (mut light, mut transform) in &mut views.suns {
-        light.illuminance = if settings.directional_lighting {
+        let illuminance = if settings.directional_lighting {
             SUN_ILLUMINANCE * day
         } else {
             0.0
         };
-        light.shadow_maps_enabled = settings.directional_lighting;
+        let shadows = settings.sun_shadows();
+        if light.illuminance != illuminance || light.shadow_maps_enabled != shadows {
+            light.illuminance = illuminance;
+            light.shadow_maps_enabled = shadows;
+        }
         transform.translation = direction * SUN_DISTANCE;
         transform.look_at(Vec3::ZERO, up);
     }
@@ -752,6 +772,13 @@ fn unlit_color(color: Color, fog: bool) -> StandardMaterial {
         cull_mode: None,
         double_sided: true,
         ..default()
+    }
+}
+
+fn tinted(base: StandardMaterial) -> TintedMaterial {
+    TintedMaterial {
+        base,
+        extension: InstanceTint {},
     }
 }
 
@@ -796,15 +823,17 @@ fn textured_quad(y: f32, size: f32, uvs: [[f32; 2]; 4]) -> Mesh {
     )
 }
 
-fn sunrise_mesh(rgba: [f32; 4]) -> Mesh {
+/// The sunrise fan at full alpha. Its color comes from the entity's tint tag
+/// and its depth from the entity's z scale, both set by `update_atmosphere`.
+fn sunrise_mesh() -> Mesh {
     let mut positions = vec![[0.0, 100.0, 0.0]];
-    let mut colors = vec![[rgba[0], rgba[1], rgba[2], rgba[3]]];
+    let mut colors = vec![[1.0; 4]];
     let segments = 16;
     for step in 0..=segments {
         let theta = step as f32 * MC_PI * 2.0 / segments as f32;
         let (sin, cos) = theta.sin_cos();
-        positions.push([sin * 120.0, cos * 120.0, -cos * 40.0 * rgba[3]]);
-        colors.push([rgba[0], rgba[1], rgba[2], 0.0]);
+        positions.push([sin * 120.0, cos * 120.0, -cos * 40.0]);
+        colors.push([1.0, 1.0, 1.0, 0.0]);
     }
     let mut indices = Vec::new();
     for step in 0..segments {

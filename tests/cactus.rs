@@ -1,5 +1,3 @@
-use bevy::mesh::Mesh;
-use bevy::mesh::VertexAttributeValues;
 use bevy::prelude::Vec3;
 use game::block::id::Id;
 use game::block::properties::blocks_movement;
@@ -59,15 +57,11 @@ fn cactus_uses_species_faces_and_an_inset_world_mesh() {
 
     let mut chunk = Chunk::new();
     chunk.set(1, 1, 1, Id::Cactus);
-    let meshes = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true, false);
-    assert_eq!(meshes.opaque.count_vertices(), 0);
-    assert_eq!(meshes.masked.count_vertices(), 24);
+    let meshes = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), false);
+    assert_eq!(meshes.opaque.vertex_count(), 0);
+    assert_eq!(meshes.masked.vertex_count(), 24);
     let mesh = &meshes.masked;
-    let Some(VertexAttributeValues::Float32x3(positions)) =
-        mesh.attribute(Mesh::ATTRIBUTE_POSITION)
-    else {
-        panic!("terrain mesh should have vertex positions");
-    };
+    let positions = mesh.positions();
     let minimum = std::array::from_fn::<_, 3, _>(|axis| {
         positions
             .iter()
@@ -105,9 +99,7 @@ fn cactus_uses_species_faces_and_an_inset_world_mesh() {
         assert!((1.0..=2.0).contains(&point[0]));
         assert!((1.0..=2.0).contains(&point[1]));
     }
-    let Some(VertexAttributeValues::Float32x2(uvs)) = mesh.attribute(Mesh::ATTRIBUTE_UV_0) else {
-        panic!("terrain mesh should have texture coordinates");
-    };
+    let uvs = mesh.uvs();
     let (top_u0, _, top_u1, _) = atlas_tile_uvs(5, 4);
     let top_min = uvs[..4]
         .iter()
@@ -155,12 +147,8 @@ fn cactus_uses_species_faces_and_an_inset_world_mesh() {
 
     let dropped = dropped_block_meshes(Id::Cactus, false, [1.0; 3], [1.0; 3]);
     assert!(dropped.alpha_masked);
-    assert_eq!(dropped.body.count_vertices(), 24);
-    let Some(VertexAttributeValues::Float32x3(dropped_positions)) =
-        dropped.body.attribute(Mesh::ATTRIBUTE_POSITION)
-    else {
-        panic!("dropped cactus mesh should have positions");
-    };
+    assert_eq!(dropped.body.vertex_count(), 24);
+    let dropped_positions = dropped.body.positions();
     assert!(
         dropped_positions[8..12]
             .iter()

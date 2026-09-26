@@ -1,4 +1,3 @@
-use bevy::prelude::Mesh;
 use game::block::id::Id;
 use game::world::chunk::Chunk;
 use game::world::chunk::ChunkPosition;
@@ -6,6 +5,7 @@ use game::world::generation::Biome;
 use game::world::generation::BiomeMap;
 use game::world::generation::Climate;
 use game::world::lighting::Skylight;
+use game::world::meshing::BlockLighting;
 use game::world::meshing::ChunkNeighbors;
 use game::world::meshing::mesh_chunk_with_biomes;
 use game::world::textures::FoliageColors;
@@ -76,19 +76,10 @@ fn crossed_grass_mesh_uses_each_column_biome_grass_color() {
         &biomes,
         &GrassColors::from_rgba(rgba),
         &FoliageColors::default(),
-        true,
-        true,
         false,
-        0,
         ChunkPosition::ZERO,
     );
-    let bevy::mesh::VertexAttributeValues::Float32x4(colors) = meshes
-        .masked
-        .attribute(Mesh::ATTRIBUTE_COLOR)
-        .expect("crossed plants should have vertex colors")
-    else {
-        panic!("plant colors should be float RGBA values");
-    };
+    let colors = meshes.masked.colors(BlockLighting::default());
     assert_eq!(colors.len(), 16);
     assert!(
         colors[..8]

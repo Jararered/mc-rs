@@ -6,6 +6,11 @@ use bevy::prelude::*;
 
 use crate::app::settings::GameSettings;
 use crate::app::settings::GraphicsQuality;
+use crate::world::meshing::BlockLighting;
+use crate::world::meshing::WATER_ALPHA;
+use crate::world::sky::celestial_angle;
+use crate::world::sky::skylight_subtracted;
+use crate::world::tick::WorldTick;
 
 /// `terrain.png` is a 16×16 grid of square tiles.
 pub const ATLAS_GRID: u32 = 16;
@@ -15,17 +20,21 @@ pub const ATLAS_TILE_PX: u32 = 16;
 pub const ATLAS_PAD_TEXELS: u32 = 2;
 
 mod biome_color;
-mod leaf_wiggle;
+mod block_material;
+mod instance_tint;
 mod water;
 
 pub use biome_color::FoliageColors;
 pub use biome_color::GrassColors;
 pub use biome_color::PALETTE_SIZE;
 pub use biome_color::palette_index;
-pub(crate) use leaf_wiggle::LEAF_WIGGLE_AMPLITUDE;
-pub use leaf_wiggle::LeafCutoutMaterial;
-pub use leaf_wiggle::LeafWiggle;
-pub use leaf_wiggle::LeafWiggleSettings;
+pub use block_material::BlockMaterial;
+pub use block_material::BlockShading;
+pub use block_material::BlockShadingSettings;
+pub use block_material::LEAF_WIGGLE_AMPLITUDE;
+pub use instance_tint::InstanceTint;
+pub use instance_tint::TintedMaterial;
+pub use instance_tint::tint_tag;
 pub use water::FlowingWaterTexture;
 pub use water::LAVA_FLOW_TILE;
 pub use water::LAVA_STILL_TILE;
@@ -39,7 +48,9 @@ pub struct TerrainTexturePlugin;
 
 impl Plugin for TerrainTexturePlugin {
     fn build(&self, app: &mut App) {
-        leaf_wiggle::plugin(app);
+        block_material::plugin(app);
+        instance_tint::plugin(app);
+        water::render_plugin(app);
         app.init_resource::<GameSettings>()
             .add_systems(PreStartup, load_terrain_atlas)
             .add_systems(
@@ -47,6 +58,7 @@ impl Plugin for TerrainTexturePlugin {
                 (
                     apply_terrain_atlas,
                     apply_graphics_materials,
+                    update_block_lighting.after(apply_graphics_materials),
                     water::animate_fluid_textures.after(apply_terrain_atlas),
                 ),
             );
@@ -54,20 +66,21 @@ impl Plugin for TerrainTexturePlugin {
 }
 
 #[derive(Resource)]
-pub(crate) struct TerrainMaterial(pub Handle<StandardMaterial>);
+pub(crate) struct TerrainMaterial(pub Handle<BlockMaterial>);
 
 #[derive(Resource)]
-pub(crate) struct GrassOverlayMaterial(pub Handle<StandardMaterial>);
+pub(crate) struct GrassOverlayMaterial(pub Handle<BlockMaterial>);
+
+/// Fancy leaves: alpha-masked and wiggling.
+#[derive(Resource)]
+pub(crate) struct CutoutMaterial(pub Handle<BlockMaterial>);
 
 #[derive(Resource)]
-pub(crate) struct CutoutMaterial(pub Handle<LeafCutoutMaterial>);
-
-#[derive(Resource)]
-pub(crate) struct WaterMaterial(pub Handle<StandardMaterial>);
+pub(crate) struct WaterMaterial(pub Handle<BlockMaterial>);
 
 /// Static alpha-masked geometry such as crossed plants and cactus blocks.
 #[derive(Resource)]
-pub(crate) struct AlphaMaskMaterial(pub Handle<StandardMaterial>);
+pub(crate) struct AlphaMaskMaterial(pub Handle<BlockMaterial>);
 
 #[derive(Resource)]
 struct PendingTerrainAtlas(Handle<Image>);
@@ -79,11 +92,35 @@ fn nearest_atlas_sampler() -> ImageSampler {
     })
 }
 
+fn block_lighting(settings: &GameSettings, skylight_subtracted: u8) -> BlockLighting {
+    BlockLighting {
+        old_lighting: settings.old_lighting,
+        smooth_lighting: settings.smooth_lighting,
+        skylight_subtracted,
+    }
+}
+
+fn leaf_wiggle_amplitude(settings: &GameSettings) -> f32 {
+    if settings.wiggle_leaves {
+        LEAF_WIGGLE_AMPLITUDE
+    } else {
+        0.0
+    }
+}
+
+fn block_material(base: StandardMaterial, lighting: BlockLighting, wiggle: f32) -> BlockMaterial {
+    BlockMaterial {
+        base,
+        extension: BlockShading {
+            settings: BlockShadingSettings::new(lighting, wiggle),
+        },
+    }
+}
+
 fn load_terrain_atlas(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut cutout_materials: ResMut<Assets<LeafCutoutMaterial>>,
+    mut materials: ResMut<Assets<BlockMaterial>>,
     settings: Res<GameSettings>,
 ) {
     let image = asset_server
@@ -92,20 +129,29 @@ fn load_terrain_atlas(
             settings.sampler = nearest_atlas_sampler();
         })
         .load("terrain.png");
-    let material = materials.add(StandardMaterial {
-        perceptual_roughness: 1.0,
-        alpha_mode: AlphaMode::Opaque,
-        unlit: settings.old_lighting,
-        ..default()
-    });
-    let grass_overlay = materials.add(StandardMaterial {
-        perceptual_roughness: 1.0,
-        alpha_mode: AlphaMode::Mask(0.5),
-        unlit: settings.old_lighting,
-        ..default()
-    });
-    let cutout = cutout_materials.add(LeafCutoutMaterial {
-        base: StandardMaterial {
+    let lighting = block_lighting(&settings, 0);
+    let material = materials.add(block_material(
+        StandardMaterial {
+            perceptual_roughness: 1.0,
+            alpha_mode: AlphaMode::Opaque,
+            unlit: settings.old_lighting,
+            ..default()
+        },
+        lighting,
+        0.0,
+    ));
+    let grass_overlay = materials.add(block_material(
+        StandardMaterial {
+            perceptual_roughness: 1.0,
+            alpha_mode: AlphaMode::Mask(0.5),
+            unlit: settings.old_lighting,
+            ..default()
+        },
+        lighting,
+        0.0,
+    ));
+    let cutout = materials.add(block_material(
+        StandardMaterial {
             perceptual_roughness: 1.0,
             unlit: settings.old_lighting,
             // Fancy leaf tiles have punched holes. Mask discards those texels
@@ -113,33 +159,30 @@ fn load_terrain_atlas(
             alpha_mode: AlphaMode::Mask(0.5),
             ..default()
         },
-        extension: LeafWiggle {
-            settings: LeafWiggleSettings {
-                amplitude: if settings.wiggle_leaves {
-                    leaf_wiggle::LEAF_WIGGLE_AMPLITUDE
-                } else {
-                    0.0
-                },
-                ..default()
-            },
-        },
-    });
+        lighting,
+        leaf_wiggle_amplitude(&settings),
+    ));
     let mut water = StandardMaterial {
+        base_color: Color::WHITE.with_alpha(WATER_ALPHA),
         double_sided: true,
         cull_mode: None,
         unlit: settings.old_lighting,
         ..default()
     };
     apply_water_quality(&mut water, settings.graphics);
-    let water = materials.add(water);
-    let plants = materials.add(StandardMaterial {
-        perceptual_roughness: 1.0,
-        alpha_mode: AlphaMode::Mask(0.5),
-        cull_mode: None,
-        double_sided: true,
-        unlit: settings.old_lighting,
-        ..default()
-    });
+    let water = materials.add(block_material(water, lighting, 0.0));
+    let plants = materials.add(block_material(
+        StandardMaterial {
+            perceptual_roughness: 1.0,
+            alpha_mode: AlphaMode::Mask(0.5),
+            cull_mode: None,
+            double_sided: true,
+            unlit: settings.old_lighting,
+            ..default()
+        },
+        lighting,
+        0.0,
+    ));
     commands.insert_resource(TerrainMaterial(material));
     commands.insert_resource(GrassOverlayMaterial(grass_overlay));
     commands.insert_resource(CutoutMaterial(cutout));
@@ -150,17 +193,34 @@ fn load_terrain_atlas(
     commands.insert_resource(FoliageColors::load());
 }
 
+/// The five block material handles, in the layer order meshes use.
+#[derive(bevy::ecs::system::SystemParam)]
+struct BlockMaterials<'w> {
+    terrain: Res<'w, TerrainMaterial>,
+    grass_overlay: Res<'w, GrassOverlayMaterial>,
+    cutout: Res<'w, CutoutMaterial>,
+    water: Res<'w, WaterMaterial>,
+    alpha_mask: Res<'w, AlphaMaskMaterial>,
+}
+
+impl BlockMaterials<'_> {
+    fn handles(&self) -> [&Handle<BlockMaterial>; 5] {
+        [
+            &self.terrain.0,
+            &self.grass_overlay.0,
+            &self.cutout.0,
+            &self.water.0,
+            &self.alpha_mask.0,
+        ]
+    }
+}
+
 fn apply_terrain_atlas(
     mut commands: Commands,
     pending: Option<Res<PendingTerrainAtlas>>,
     mut images: ResMut<Assets<Image>>,
-    terrain_material: Res<TerrainMaterial>,
-    grass_overlay_material: Res<GrassOverlayMaterial>,
-    cutout_material: Res<CutoutMaterial>,
-    water_material: Res<WaterMaterial>,
-    alpha_mask_material: Res<AlphaMaskMaterial>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut cutout_materials: ResMut<Assets<LeafCutoutMaterial>>,
+    handles: BlockMaterials,
+    mut materials: ResMut<Assets<BlockMaterial>>,
 ) {
     let Some(pending) = pending else {
         return;
@@ -171,53 +231,64 @@ fn apply_terrain_atlas(
     pad_atlas_tiles(&mut image);
     image.sampler = nearest_atlas_sampler();
     let handle = pending.0.clone();
-    if let Some(mut material) = materials.get_mut(&terrain_material.0) {
-        material.base_color_texture = Some(handle.clone());
+    for material in handles.handles() {
+        if let Some(mut material) = materials.get_mut(material) {
+            material.base.base_color_texture = Some(handle.clone());
+        }
     }
-    if let Some(mut material) = materials.get_mut(&grass_overlay_material.0) {
-        material.base_color_texture = Some(handle.clone());
-    }
-    if let Some(mut material) = cutout_materials.get_mut(&cutout_material.0) {
-        material.base.base_color_texture = Some(handle.clone());
-    }
-    if let Some(mut material) = materials.get_mut(&water_material.0) {
-        material.base_color_texture = Some(handle.clone());
-    }
-    if let Some(mut material) = materials.get_mut(&alpha_mask_material.0) {
-        material.base_color_texture = Some(handle.clone());
-    }
-    water::start_fluid_animation(&mut commands, handle, &mut image);
+    water::start_fluid_animation(&mut commands, &handle, &mut image);
     commands.remove_resource::<PendingTerrainAtlas>();
 }
 
 fn apply_graphics_materials(
     settings: Res<GameSettings>,
-    terrain_material: Res<TerrainMaterial>,
-    grass_overlay_material: Res<GrassOverlayMaterial>,
-    cutout_material: Res<CutoutMaterial>,
-    water_material: Res<WaterMaterial>,
-    alpha_mask_material: Res<AlphaMaskMaterial>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut cutout_materials: ResMut<Assets<LeafCutoutMaterial>>,
+    handles: BlockMaterials,
+    mut materials: ResMut<Assets<BlockMaterial>>,
 ) {
     if !settings.is_changed() {
         return;
     }
-    if let Some(mut material) = materials.get_mut(&terrain_material.0) {
-        material.unlit = settings.old_lighting;
-    }
-    if let Some(mut material) = materials.get_mut(&grass_overlay_material.0) {
-        material.unlit = settings.old_lighting;
-    }
-    if let Some(mut material) = cutout_materials.get_mut(&cutout_material.0) {
+    let wiggle = leaf_wiggle_amplitude(&settings);
+    for handle in handles.handles() {
+        let Some(mut material) = materials.get_mut(handle) else {
+            continue;
+        };
         material.base.unlit = settings.old_lighting;
+        let subtracted = material.extension.settings.lighting().skylight_subtracted;
+        let amplitude = if *handle == handles.cutout.0 {
+            wiggle
+        } else {
+            0.0
+        };
+        material.extension.settings =
+            BlockShadingSettings::new(block_lighting(&settings, subtracted), amplitude);
+        if *handle == handles.water.0 {
+            apply_water_quality(&mut material.base, settings.graphics);
+        }
     }
-    if let Some(mut material) = materials.get_mut(&water_material.0) {
-        material.unlit = settings.old_lighting;
-        apply_water_quality(&mut material, settings.graphics);
-    }
-    if let Some(mut material) = materials.get_mut(&alpha_mask_material.0) {
-        material.unlit = settings.old_lighting;
+}
+
+/// `World.skylightSubtracted` steps 22 times a day. Each step rewrites the
+/// block material uniforms once; no mesh is rebuilt.
+fn update_block_lighting(
+    tick: Option<Res<WorldTick>>,
+    handles: BlockMaterials,
+    mut materials: ResMut<Assets<BlockMaterial>>,
+) {
+    let Some(tick) = tick else {
+        return;
+    };
+    let subtracted = skylight_subtracted(celestial_angle(tick.world_time(), tick.partial()));
+    for handle in handles.handles() {
+        let unchanged = materials.get(handle).is_none_or(|material| {
+            material.extension.settings.lighting().skylight_subtracted == subtracted
+        });
+        if unchanged {
+            continue;
+        }
+        if let Some(mut material) = materials.get_mut(handle) {
+            material.extension.settings.skylight_subtracted = f32::from(subtracted);
+        }
     }
 }
 

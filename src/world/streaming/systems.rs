@@ -25,15 +25,14 @@ use super::WorldStreaming;
 use super::mesh_jobs::mesh_neighborhood_ready;
 use super::mesh_jobs::spawn_mesh_job;
 use super::positions_in_radius;
-use super::render::apply_chunk_meshes;
+use super::render::ChunkMaterials;
+use super::render::apply_sections;
 use super::render::despawn_rendered_chunk;
 use super::render::spawn_chunk;
 use super::within_radius;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
 use crate::world::generation::WorldGenerator;
-use crate::world::sky::celestial_angle;
-use crate::world::sky::skylight_subtracted;
 use crate::world::textures::AlphaMaskMaterial;
 use crate::world::textures::CutoutMaterial;
 use crate::world::textures::FoliageColors;
@@ -41,11 +40,13 @@ use crate::world::textures::GrassColors;
 use crate::world::textures::GrassOverlayMaterial;
 use crate::world::textures::TerrainMaterial;
 use crate::world::textures::WaterMaterial;
-use crate::world::tick::WorldTick;
 
-const MAX_IN_FLIGHT: usize = 2;
+/// Jobs of each kind kept in flight per async compute thread. A job that
+/// finishes mid-frame waits for the next streaming pass to be replaced, so a
+/// second queued job keeps the thread busy meanwhile.
+const JOBS_PER_THREAD: usize = 2;
 /// Limit snapshot work on the main thread when many chunks need rebuilding.
-const MAX_REMESH_PER_FRAME: usize = 8;
+const MAX_REMESH_PER_FRAME: usize = 16;
 
 pub(crate) fn setup_streaming(
     mut commands: Commands,
@@ -87,11 +88,14 @@ pub(crate) fn setup_streaming(
             chunk
         }
     };
-    let material = terrain_material.0.clone();
-    let cutout_material = cutout_material.0.clone();
-    let water_material = water_material.0.clone();
-    let mask_material = mask_material.0.clone();
-    let grass_overlay_material = grass_overlay_material.0.clone();
+    let materials = ChunkMaterials([
+        terrain_material.0.clone(),
+        grass_overlay_material.0.clone(),
+        cutout_material.0.clone(),
+        water_material.0.clone(),
+        mask_material.0.clone(),
+    ]);
+    let max_in_flight = (AsyncComputeTaskPool::get().thread_num() * JOBS_PER_THREAD).max(2);
     let saved_items = std::mem::take(&mut generated.items);
     chunks.insert(ChunkPosition::ZERO, generated);
     for item in saved_items {
@@ -106,20 +110,15 @@ pub(crate) fn setup_streaming(
         // The spawn chunk has block data for the player's heightmap, but its
         // first mesh waits for all eight neighboring chunks below.
         rendered: HashMap::new(),
-        material,
-        grass_overlay_material,
-        cutout_material,
-        water_material,
-        mask_material,
-        old_lighting: settings.old_lighting,
-        smooth_lighting: settings.smooth_lighting,
+        materials,
         fancy_graphics: settings.graphics.fancy_leaves(),
-        skylight_subtracted: 0,
         remesh_queue: VecDeque::new(),
+        remesh_sections: HashMap::new(),
         desired_generation: Vec::new(),
         desired_meshing: Vec::new(),
         desired_center: None,
         desired_radius: 0,
+        max_in_flight,
     });
 }
 
@@ -141,8 +140,7 @@ pub(crate) fn regenerate_loaded_chunks(
     if keys.is_some_and(|keys| keys.just_pressed(KeyCode::F4)) {
         let count = chunks.positions().count();
         streaming.generating.clear();
-        streaming.meshing.clear();
-        streaming.remesh_queue = streaming.rendered.keys().copied().collect();
+        streaming.remesh_everything();
         chunks.clear();
         // Saved chunks would otherwise be loaded straight back from disk.
         if let Some(persistence) = persistence.as_deref_mut() {
@@ -155,7 +153,6 @@ pub(crate) fn regenerate_loaded_chunks(
 pub(crate) fn stream_chunks(
     mut commands: Commands,
     player: Query<&Transform, With<Player>>,
-    tick: Res<WorldTick>,
     mut streaming: ResMut<WorldStreaming>,
     mut chunks: ResMut<WorldChunks>,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -182,25 +179,12 @@ pub(crate) fn stream_chunks(
     let generate_radius = load_radius + GENERATE_MARGIN;
     let unload_radius = generate_radius;
 
-    if streaming.old_lighting != settings.old_lighting
-        || streaming.smooth_lighting != settings.smooth_lighting
-        || streaming.fancy_graphics != settings.graphics.fancy_leaves()
-    {
-        streaming.old_lighting = settings.old_lighting;
-        streaming.smooth_lighting = settings.smooth_lighting;
+    // Lighting settings and the time of day are block material uniforms; only
+    // the leaf style changes geometry.
+    if streaming.fancy_graphics != settings.graphics.fancy_leaves() {
         streaming.fancy_graphics = settings.graphics.fancy_leaves();
-        // In-flight meshes were built with the previous lighting or leaf style.
-        streaming.meshing.clear();
-        streaming.remesh_queue = streaming.rendered.keys().copied().collect();
-    }
-
-    let subtracted = skylight_subtracted(celestial_angle(tick.world_time(), tick.partial()));
-    if streaming.old_lighting && streaming.skylight_subtracted != subtracted {
-        streaming.skylight_subtracted = subtracted;
-        streaming.meshing.clear();
-        streaming.remesh_queue = streaming.rendered.keys().copied().collect();
-    } else {
-        streaming.skylight_subtracted = subtracted;
+        // In-flight meshes were built with the previous leaf style.
+        streaming.remesh_everything();
     }
 
     // Dropping an unfinished task cancels work that is no longer useful.
@@ -210,6 +194,7 @@ pub(crate) fn stream_chunks(
     streaming
         .meshing
         .retain(|position, _| within_radius(*position, center, load_radius));
+    let mut forgotten = Vec::new();
 
     let expired: Vec<_> = streaming
         .rendered
@@ -222,9 +207,16 @@ pub(crate) fn stream_chunks(
             despawn_rendered_chunk(&mut commands, &mut meshes, rendered);
         }
     }
-    streaming
-        .remesh_queue
-        .retain(|position| within_radius(*position, center, load_radius));
+    streaming.remesh_queue.retain(|position| {
+        let keep = within_radius(*position, center, load_radius);
+        if !keep {
+            forgotten.push(*position);
+        }
+        keep
+    });
+    for position in forgotten {
+        streaming.remesh_sections.remove(&position);
+    }
 
     // Stored chunks are kept for the whole generation radius, including the ring
     // that is generated ahead of the render distance.
@@ -295,61 +287,52 @@ pub(crate) fn stream_chunks(
     let meshed: Vec<_> = streaming
         .meshing
         .iter_mut()
-        .filter_map(|(position, task)| check_ready(task).map(|job| (*position, job)))
+        .filter_map(|(position, job)| check_ready(&mut job.task).map(|job| (*position, job)))
         .collect();
-    for (position, (layers, elapsed)) in meshed {
+    for (position, job) in meshed {
         streaming.meshing.remove(&position);
-        perf.mesh.record(elapsed);
+        perf.mesh.record(job.elapsed);
         if !within_radius(position, center, load_radius) {
             continue;
         }
-        let material = streaming.material.clone();
-        let grass_overlay_material = streaming.grass_overlay_material.clone();
-        let cutout_material = streaming.cutout_material.clone();
-        let water_material = streaming.water_material.clone();
-        let mask_material = streaming.mask_material.clone();
-        if let Some(rendered) = streaming.rendered.get_mut(&position) {
-            apply_chunk_meshes(
-                &mut commands,
-                &mut meshes,
-                rendered,
-                layers,
-                &material,
-                &grass_overlay_material,
-                &cutout_material,
-                &water_material,
-                &mask_material,
-            );
-        } else {
-            let rendered = spawn_chunk(
-                &mut commands,
-                &mut meshes,
-                position,
-                layers,
-                &streaming.material,
-                &streaming.grass_overlay_material,
-                &streaming.cutout_material,
-                &streaming.water_material,
-                &streaming.mask_material,
-            );
-            streaming.rendered.insert(position, rendered);
-        }
+        let materials = streaming.materials.clone();
+        let rendered = streaming
+            .rendered
+            .entry(position)
+            .or_insert_with(|| spawn_chunk(&mut commands, position));
+        rendered.fingerprints = job.fingerprints;
+        apply_sections(
+            &mut commands,
+            &mut meshes,
+            rendered,
+            job.sections,
+            &materials,
+        );
     }
 
     // Edits take priority over first meshes. Only snapshot chunk data here;
     // lighting and mesh construction run on the compute pool.
+    let max_in_flight = streaming.max_in_flight;
     let remesh_attempts = streaming.remesh_queue.len().min(MAX_REMESH_PER_FRAME);
     for _ in 0..remesh_attempts {
-        if streaming.meshing.len() >= MAX_IN_FLIGHT {
+        if streaming.meshing.len() >= max_in_flight {
             break;
         }
         let Some(position) = streaming.remesh_queue.pop_front() else {
             break;
         };
         if !streaming.rendered.contains_key(&position) {
+            streaming.remesh_sections.remove(&position);
             continue;
         }
-        if !spawn_mesh_job(&mut streaming, &chunks, position) {
+        let forced = streaming
+            .remesh_sections
+            .get(&position)
+            .copied()
+            .unwrap_or_default();
+        if spawn_mesh_job(&mut streaming, &chunks, position, forced) {
+            streaming.remesh_sections.remove(&position);
+        } else {
             streaming.remesh_queue.push_back(position);
         }
     }
@@ -376,7 +359,7 @@ pub(crate) fn stream_chunks(
     let mut in_flight = streaming.generating.len();
     let mut to_generate = Vec::new();
     for position in &streaming.desired_generation {
-        if in_flight >= MAX_IN_FLIGHT {
+        if in_flight >= max_in_flight {
             break;
         }
         if chunks.contains(*position)
@@ -436,14 +419,14 @@ pub(crate) fn stream_chunks(
                 && !streaming.meshing.contains_key(position)
                 && mesh_neighborhood_ready(&chunks, *position)
         })
-        .take(MAX_IN_FLIGHT.saturating_sub(streaming.meshing.len()))
+        .take(max_in_flight.saturating_sub(streaming.meshing.len()))
         .collect();
     for position in to_mesh {
-        spawn_mesh_job(&mut streaming, &chunks, position);
+        spawn_mesh_job(&mut streaming, &chunks, position, 0);
     }
 }
 
-fn sort_by_distance(positions: &mut [ChunkPosition], center: ChunkPosition) {
+pub(super) fn sort_by_distance(positions: &mut [ChunkPosition], center: ChunkPosition) {
     positions.sort_by_key(|position| {
         let dx = i64::from(position.x) - i64::from(center.x);
         let dz = i64::from(position.z) - i64::from(center.z);

@@ -13,6 +13,10 @@ use super::ChunkPosition;
 
 pub const CHUNK_SIZE: usize = 16;
 pub const CHUNK_HEIGHT: usize = 128;
+/// Chunks render as 16×16×16 sections, the granularity of Beta's
+/// `WorldRenderer`, so an edit rebuilds and uploads one small mesh.
+pub const SECTION_HEIGHT: usize = 16;
+pub const SECTIONS_PER_CHUNK: usize = CHUNK_HEIGHT / SECTION_HEIGHT;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ChestGroup {
@@ -36,7 +40,10 @@ pub struct Chunk {
     // Meshing snapshots the center chunk and eight neighbors. Sharing their
     // immutable blocks avoids copying nine full arrays for every mesh job;
     // edits detach only the modified chunk.
-    blocks: Arc<[Id]>,
+    //
+    // Raw `Id` bytes, not `Id` values: the `Unknown(u8)` catch-all makes `Id`
+    // two bytes wide, which would double every chunk and generator cache.
+    blocks: Arc<[u8]>,
     /// Block-local inventories and simulation state. Keyed by flat block index.
     furnaces: HashMap<usize, Furnace>,
     chests: HashMap<usize, Chest>,
@@ -45,13 +52,13 @@ pub struct Chunk {
 impl Chunk {
     pub fn new() -> Self {
         Self {
-            blocks: vec![Id::Air; CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE].into(),
+            blocks: vec![Id::Air.as_u8(); CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE].into(),
             furnaces: HashMap::new(),
             chests: HashMap::new(),
         }
     }
 
-    /// Rebuild a chunk from a flat block array, as produced by [`Self::blocks`].
+    /// Rebuild a chunk from a flat block array in [`Self::index`] order.
     pub fn from_blocks(blocks: Vec<Id>) -> Self {
         assert_eq!(
             blocks.len(),
@@ -71,28 +78,34 @@ impl Chunk {
             .map(|(index, _)| (index, Chest::default()))
             .collect();
         Self {
-            blocks: blocks.into(),
+            blocks: blocks.into_iter().map(Id::as_u8).collect(),
             furnaces,
             chests,
         }
     }
 
-    /// The flat block array in [`Self::index`] order.
-    pub fn blocks(&self) -> &[Id] {
+    /// The flat array of raw block bytes in [`Self::index`] order.
+    pub fn raw_blocks(&self) -> &[u8] {
         &self.blocks
+    }
+
+    /// Every block decoded, in [`Self::index`] order. This copies the chunk;
+    /// hot paths read [`Self::raw_blocks`].
+    pub fn blocks(&self) -> Vec<Id> {
+        self.blocks.iter().map(|&raw| Id::from(raw)).collect()
     }
 
     pub fn get(&self, x: usize, y: usize, z: usize) -> Option<Id> {
         if x >= CHUNK_SIZE || y >= CHUNK_HEIGHT || z >= CHUNK_SIZE {
             return None;
         }
-        Some(self.blocks[Self::index(x, y, z)])
+        Some(Id::from(self.blocks[Self::index(x, y, z)]))
     }
 
     pub fn set(&mut self, x: usize, y: usize, z: usize, block: Id) {
         assert!(x < CHUNK_SIZE && y < CHUNK_HEIGHT && z < CHUNK_SIZE);
         let index = Self::index(x, y, z);
-        let previous = self.blocks[index];
+        let previous = Id::from(self.blocks[index]);
         if is_furnace(previous) && !is_furnace(block) {
             self.furnaces.remove(&index);
         } else if !is_furnace(previous) && is_furnace(block) {
@@ -103,7 +116,7 @@ impl Chunk {
         } else if !previous.is_chest() && block.is_chest() {
             self.chests.entry(index).or_default();
         }
-        Arc::make_mut(&mut self.blocks)[index] = block;
+        Arc::make_mut(&mut self.blocks)[index] = block.as_u8();
     }
 
     pub fn furnaces(&self) -> impl Iterator<Item = (usize, &Furnace)> {

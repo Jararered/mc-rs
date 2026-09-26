@@ -57,13 +57,17 @@ fn print_perf_stats(
     let entities = fmt_diag(&diagnostics, &EntityCountDiagnosticsPlugin::ENTITY_COUNT, 0);
 
     let loaded_chunks = chunks.as_ref().map_or(0, |chunks| chunks.len());
-    let (rendered, generating, meshing) = streaming.as_ref().map_or((0, 0, 0), |streaming| {
-        (
-            streaming.rendered_mesh_count(),
-            streaming.generating_job_count(),
-            streaming.meshing_job_count(),
-        )
-    });
+    let (rendered, layers, mesh_bytes, generating, meshing) =
+        streaming.as_ref().map_or((0, 0, 0, 0, 0), |streaming| {
+            (
+                streaming.rendered_mesh_count(),
+                streaming.rendered_layer_count(),
+                streaming.mesh_bytes(),
+                streaming.generating_job_count(),
+                streaming.meshing_job_count(),
+            )
+        });
+    let mesh_mib = mesh_bytes as f64 / (1024.0 * 1024.0);
 
     let (generate, load, mesh) = match perf {
         Some(mut perf) => (perf.generate.take(), perf.load.take(), perf.mesh.take()),
@@ -81,7 +85,8 @@ fn print_perf_stats(
          frames          {frames}\n  \
          entities        {entities}\n  \
          chunks          {loaded_chunks} loaded, {generating} generating\n  \
-         meshes          {rendered} rendered, {meshing} meshing\n  \
+         meshes          {rendered} chunks, {layers} section layers, {meshing} meshing\n  \
+         mesh memory     {mesh_mib:.1} MiB vertex and index data\n  \
          chunk generate  {}\n  \
          chunk load      {}\n  \
          mesh            {}",

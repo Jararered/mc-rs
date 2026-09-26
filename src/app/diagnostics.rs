@@ -8,23 +8,23 @@ use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
 use bevy::prelude::*;
 
 use crate::world::chunk::WorldChunks;
-use crate::world::streaming::StreamingPerf;
+use crate::world::streaming::StreamingDiagnostics;
 use crate::world::streaming::TimingStats;
 use crate::world::streaming::WorldStreaming;
 use crate::world::streaming::stream_chunks;
 
-const PERF_INTERVAL_SECS: f32 = 10.0;
+const DIAGNOSTICS_INTERVAL_SECS: f32 = 10.0;
 
-pub struct PerfPlugin;
+pub struct DiagnosticsPlugin;
 
-impl Plugin for PerfPlugin {
+impl Plugin for DiagnosticsPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins((
             FrameTimeDiagnosticsPlugin::default(),
             EntityCountDiagnosticsPlugin::default(),
         ))
-        .insert_resource(PerfTimer(Timer::from_seconds(
-            PERF_INTERVAL_SECS,
+        .insert_resource(DiagnosticsTimer(Timer::from_seconds(
+            DIAGNOSTICS_INTERVAL_SECS,
             TimerMode::Repeating,
         )))
         .add_systems(Update, print_perf_stats.after(stream_chunks));
@@ -32,15 +32,15 @@ impl Plugin for PerfPlugin {
 }
 
 #[derive(Resource)]
-struct PerfTimer(Timer);
+struct DiagnosticsTimer(Timer);
 
 fn print_perf_stats(
     time: Res<Time>,
-    mut timer: ResMut<PerfTimer>,
+    mut timer: ResMut<DiagnosticsTimer>,
     diagnostics: Res<DiagnosticsStore>,
     chunks: Option<Res<WorldChunks>>,
     streaming: Option<Res<WorldStreaming>>,
-    perf: Option<ResMut<StreamingPerf>>,
+    perf: Option<ResMut<StreamingDiagnostics>>,
 ) {
     timer.0.tick(time.delta());
     if !timer.0.just_finished() {
@@ -75,7 +75,7 @@ fn print_perf_stats(
     };
 
     info!(
-        "performance ({PERF_INTERVAL_SECS:.0}s)\n  \
+        "performance ({DIAGNOSTICS_INTERVAL_SECS:.0}s)\n  \
          fps             {fps}\n  \
          frame time      {frame_ms} ms\n  \
          frames          {frames}\n  \

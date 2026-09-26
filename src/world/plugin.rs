@@ -11,7 +11,7 @@ use crate::physics::PhysicsSet;
 use super::chunk::WorldChunks;
 use super::sky::CelestialCamera;
 use super::sky::SkyCamera;
-use super::streaming::StreamingPerf;
+use super::streaming::StreamingDiagnostics;
 use super::streaming::regenerate_loaded_chunks;
 use super::streaming::setup_streaming;
 use super::streaming::stream_chunks;
@@ -31,7 +31,7 @@ impl Plugin for WorldPlugin {
             .init_resource::<GlobalAmbientLight>()
             .init_resource::<WorldChunks>()
             .init_resource::<WorldTick>()
-            .init_resource::<StreamingPerf>()
+            .init_resource::<StreamingDiagnostics>()
             .add_systems(Startup, (setup_streaming, spawn_sun))
             .add_systems(First, advance_world_tick)
             .add_systems(

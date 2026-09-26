@@ -1,4 +1,4 @@
-mod perf;
+mod diagnostics;
 mod plugin;
 pub mod screenshot;
 pub mod settings;

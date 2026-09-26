@@ -12,7 +12,7 @@ use crate::ui::UiCameraPlugin;
 use crate::world::persistence::PersistencePlugin;
 use crate::world::plugin::WorldPlugin;
 
-use super::perf::PerfPlugin;
+use super::diagnostics::DiagnosticsPlugin;
 use super::screenshot::ScreenshotPlugin;
 use super::settings::SettingsPlugin;
 use super::state::AppScreen;
@@ -35,7 +35,7 @@ impl Plugin for GamePlugin {
             HudPlugin,
             InventoryGuiPlugin,
             ScreenshotPlugin,
-            PerfPlugin,
+            DiagnosticsPlugin,
         ));
     }
 }

@@ -63,7 +63,7 @@ pub(crate) struct ChunkJob {
 
 /// Timing samples collected since the last performance print.
 #[derive(Resource, Default)]
-pub struct StreamingPerf {
+pub struct StreamingDiagnostics {
     pub generate: TimingStats,
     pub load: TimingStats,
     pub mesh: TimingStats,
@@ -189,7 +189,7 @@ pub(crate) fn setup_streaming(
     settings: Res<GameSettings>,
     mut persistence: Option<ResMut<WorldPersistence>>,
     mut chunks: ResMut<WorldChunks>,
-    mut perf: ResMut<StreamingPerf>,
+    mut perf: ResMut<StreamingDiagnostics>,
 ) {
     let seed = persistence
         .as_ref()
@@ -292,7 +292,7 @@ pub(crate) fn stream_chunks(
     settings: Res<GameSettings>,
     screen: Option<Res<State<AppScreen>>>,
     mut persistence: Option<ResMut<WorldPersistence>>,
-    mut perf: ResMut<StreamingPerf>,
+    mut perf: ResMut<StreamingDiagnostics>,
     dropped: Query<
         (
             Entity,

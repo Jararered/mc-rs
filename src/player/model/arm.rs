@@ -22,11 +22,11 @@ use crate::ui::icons::appearance::block_appearance;
 use crate::ui::icons::appearance::item_tile;
 use crate::world::tick::WorldTick;
 
-use super::CameraBobbing;
-use super::Player;
-use super::camera_bob_pose;
-use super::held_mesh;
-use super::update_camera_bobbing;
+use super::mesh;
+use crate::player::CameraBobbing;
+use crate::player::Player;
+use crate::player::camera_bob_pose;
+use crate::player::update_camera_bobbing;
 
 const ARM_LAYER: usize = 1;
 /// Beta `EntityPlayer.swingItem` counts eight ticks.
@@ -35,7 +35,7 @@ const SWING_TICKS: i32 = 8;
 const EQUIP_STEP: f32 = 0.4;
 
 #[derive(Resource)]
-pub(super) struct ArmAssets {
+pub(crate) struct ArmAssets {
     mesh: Handle<Mesh>,
     material: Handle<StandardMaterial>,
     terrain: Handle<StandardMaterial>,
@@ -94,7 +94,7 @@ impl Default for FirstPersonArm {
     }
 }
 
-pub(super) fn plugin(app: &mut App) {
+pub(crate) fn plugin(app: &mut App) {
     app.init_asset::<StandardMaterial>()
         .add_systems(PreStartup, prepare_arm)
         .add_systems(OnEnter(AppScreen::Playing), show_arm_camera)
@@ -167,7 +167,7 @@ fn held_material(
     })
 }
 
-pub(super) fn spawn(parent: &mut ChildSpawnerCommands, assets: &ArmAssets, fov: f32) {
+pub(crate) fn spawn(parent: &mut ChildSpawnerCommands, assets: &ArmAssets, fov: f32) {
     parent
         .spawn((
             Name::new("First-person arm camera"),
@@ -344,11 +344,11 @@ fn mesh_for(key: VisualKey) -> Mesh {
     if key.id < 256 {
         let look = block_appearance(key.id as u8, key.data);
         if look.shape != Shape::Flat {
-            return held_mesh::block_mesh(key.id as u8, look);
+            return mesh::block_mesh(key.id as u8, look);
         }
-        held_mesh::sprite_mesh(look.top, look.tint, true)
+        mesh::sprite_mesh(look.top, look.tint, true)
     } else {
-        held_mesh::sprite_mesh(item_tile(key.id, key.data).unwrap_or(0), [255; 3], false)
+        mesh::sprite_mesh(item_tile(key.id, key.data).unwrap_or(0), [255; 3], false)
     }
 }
 

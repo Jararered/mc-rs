@@ -48,10 +48,10 @@ use crate::world::persistence::WorldPersistence;
 use crate::world::streaming::WorldStreaming;
 use crate::world::tick::WorldTick;
 
-use super::Player;
-use super::PlayerCamera;
 use super::mining::MiningState;
 use super::overlay::BlockFocus;
+use crate::player::Player;
+use crate::player::PlayerCamera;
 
 /// Held-button place repeat, matching Beta's `ticksPerSecond / 4`.
 const PLACE_DELAY_TICKS: i32 = 5;
@@ -60,12 +60,12 @@ const PLACE_DELAY_TICKS: i32 = 5;
 pub const PLACED_BLOCK: BlockId = BlockId::Torch;
 
 #[derive(Default)]
-pub(super) struct BlockInteractState {
+pub(crate) struct BlockInteractState {
     place_delay: i32,
     mining: MiningState,
 }
 
-pub(super) fn interact_blocks(
+pub(crate) fn interact_blocks(
     mut commands: Commands,
     tick: Res<WorldTick>,
     keys: Res<ButtonInput<KeyCode>>,

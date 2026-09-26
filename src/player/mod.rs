@@ -14,28 +14,25 @@ use crate::entity::Gravity;
 use crate::entity::StepHeight;
 use crate::entity::Velocity;
 use crate::inventory::Hotbar;
-mod arm;
-mod held_mesh;
 mod interaction;
-mod mining;
-mod overlay;
+mod model;
 
-pub use arm::interpolated_swing;
-pub use interaction::PLACED_BLOCK;
-pub use interaction::break_block;
-pub use interaction::place_block;
-pub use interaction::place_selected_block;
-pub use interaction::place_selected_block_facing;
-pub use interaction::till_block;
-pub use interaction::till_with_selected_hoe;
-pub use mining::MiningState;
-pub use mining::destroy_stage;
-pub use mining::hand_ticks_to_break;
-pub use overlay::BlockFocus;
-pub use overlay::OUTLINE_THICKNESS;
-pub use overlay::destroy_overlay_mesh;
-pub use overlay::punch_nearly_transparent_texels;
-pub use overlay::selection_outline_mesh;
+pub use interaction::editing::PLACED_BLOCK;
+pub use interaction::editing::break_block;
+pub use interaction::editing::place_block;
+pub use interaction::editing::place_selected_block;
+pub use interaction::editing::place_selected_block_facing;
+pub use interaction::editing::till_block;
+pub use interaction::editing::till_with_selected_hoe;
+pub use interaction::mining::MiningState;
+pub use interaction::mining::destroy_stage;
+pub use interaction::mining::hand_ticks_to_break;
+pub use interaction::overlay::BlockFocus;
+pub use interaction::overlay::OUTLINE_THICKNESS;
+pub use interaction::overlay::destroy_overlay_mesh;
+pub use interaction::overlay::punch_nearly_transparent_texels;
+pub use interaction::overlay::selection_outline_mesh;
+pub use model::arm::interpolated_swing;
 
 use crate::physics::PhysicsSet;
 use crate::world::chunk::ChunkPos;
@@ -62,8 +59,8 @@ pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
-        overlay::overlay_plugin(app);
-        arm::plugin(app);
+        interaction::overlay::overlay_plugin(app);
+        model::arm::plugin(app);
         app.add_systems(PostStartup, spawn_player)
             .add_systems(OnEnter(AppScreen::Playing), capture_mouse)
             .add_systems(OnEnter(AppScreen::Menu), release_mouse)
@@ -73,7 +70,7 @@ impl Plugin for PlayerPlugin {
                 Update,
                 (
                     look_player,
-                    interaction::interact_blocks,
+                    interaction::editing::interact_blocks,
                     update_mouse_capture,
                     toggle_flying,
                     adjust_fly_speed,
@@ -204,7 +201,7 @@ fn spawn_player(
     chunks: Res<WorldChunks>,
     persistence: Option<Res<WorldPersistence>>,
     settings: Res<GameSettings>,
-    arm_assets: Res<arm::ArmAssets>,
+    arm_assets: Res<model::arm::ArmAssets>,
 ) {
     let saved = persistence
         .as_ref()
@@ -248,7 +245,7 @@ fn spawn_player(
                 }),
                 Transform::default(),
             ))
-            .with_children(|camera| arm::spawn(camera, &arm_assets, settings.fov_radians()));
+            .with_children(|camera| model::arm::spawn(camera, &arm_assets, settings.fov_radians()));
     });
 }
 

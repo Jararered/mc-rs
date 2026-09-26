@@ -55,7 +55,7 @@ struct OverlayLayer {
     material: Handle<StandardMaterial>,
 }
 
-pub(super) fn overlay_plugin(app: &mut App) {
+pub(crate) fn overlay_plugin(app: &mut App) {
     app.init_resource::<BlockFocus>()
         .add_systems(PostStartup, spawn_block_overlays)
         .add_systems(

@@ -5,7 +5,7 @@
 //! from the same random sequence the tree pass just finished, and only cells
 //! inside the chunk being filled are written.
 
-use crate::block::id::BlockId;
+use crate::block::id::Id;
 use crate::block::properties::plant_grows_on;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;
@@ -32,7 +32,7 @@ pub(super) fn place_plants(
         _ => 0,
     };
     for _ in 0..yellow {
-        flower_patch(chunk, target, source, rand, BlockId::Dandelion);
+        flower_patch(chunk, target, source, rand, Id::Dandelion);
     }
 
     let grass = match biome {
@@ -58,7 +58,7 @@ pub(super) fn place_plant_extras(
     rand: &mut JavaRandom,
 ) {
     if rand.next_int(2) == 0 {
-        flower_patch(chunk, target, source, rand, BlockId::Rose);
+        flower_patch(chunk, target, source, rand, Id::Rose);
     }
 
     // ChunkProviderGenerate.populate rolls mushrooms after the flowers. Their
@@ -68,10 +68,10 @@ pub(super) fn place_plant_extras(
     // is the useful discriminator: exposed positions have skylight 15, while
     // positions under a cave roof are dark enough absent placed light sources.
     if rand.next_int(4) == 0 {
-        mushroom_patch(chunk, target, source, rand, BlockId::BrownMushroom);
+        mushroom_patch(chunk, target, source, rand, Id::BrownMushroom);
     }
     if rand.next_int(8) == 0 {
-        mushroom_patch(chunk, target, source, rand, BlockId::RedMushroom);
+        mushroom_patch(chunk, target, source, rand, Id::RedMushroom);
     }
 }
 
@@ -107,7 +107,7 @@ pub(super) fn place_dead_bushes(
                     remote_chunks,
                     remote_chunk
                 ),
-                BlockId::Air | BlockId::Leaves | BlockId::BirchLeaves | BlockId::SpruceLeaves
+                Id::Air | Id::Leaves | Id::BirchLeaves | Id::SpruceLeaves
             )
         {
             origin_y -= 1;
@@ -118,14 +118,13 @@ pub(super) fn place_dead_bushes(
             let y = origin_y + rand.next_int(4) as i32 - rand.next_int(4) as i32;
             let z = origin_z + rand.next_int(8) as i32 - rand.next_int(8) as i32;
             if !(0..CHUNK_HEIGHT as i32).contains(&y)
-                || block_at(chunk, target, x, y, z, remote_chunks, remote_chunk) != BlockId::Air
-                || block_at(chunk, target, x, y - 1, z, remote_chunks, remote_chunk)
-                    != BlockId::Sand
+                || block_at(chunk, target, x, y, z, remote_chunks, remote_chunk) != Id::Air
+                || block_at(chunk, target, x, y - 1, z, remote_chunks, remote_chunk) != Id::Sand
             {
                 continue;
             }
             if let Some((local_x, local_z)) = local_column(target, x, z) {
-                chunk.set(local_x, y as usize, local_z, BlockId::DeadBush);
+                chunk.set(local_x, y as usize, local_z, Id::DeadBush);
             }
         }
     }
@@ -139,9 +138,9 @@ fn block_at(
     z: i32,
     remote_chunks: &mut HashMap<ChunkPos, Chunk>,
     remote_chunk: &impl Fn(ChunkPos) -> Chunk,
-) -> BlockId {
+) -> Id {
     if !(0..CHUNK_HEIGHT as i32).contains(&y) {
-        return BlockId::Air;
+        return Id::Air;
     }
     let pos = ChunkPos {
         x: x.div_euclid(CHUNK_SIZE as i32),
@@ -150,15 +149,13 @@ fn block_at(
     let local_x = x.rem_euclid(CHUNK_SIZE as i32) as usize;
     let local_z = z.rem_euclid(CHUNK_SIZE as i32) as usize;
     if pos == target {
-        chunk
-            .get(local_x, y as usize, local_z)
-            .unwrap_or(BlockId::Air)
+        chunk.get(local_x, y as usize, local_z).unwrap_or(Id::Air)
     } else {
         remote_chunks
             .entry(pos)
             .or_insert_with(|| remote_chunk(pos))
             .get(local_x, y as usize, local_z)
-            .unwrap_or(BlockId::Air)
+            .unwrap_or(Id::Air)
     }
 }
 
@@ -174,7 +171,7 @@ fn flower_patch(
     target: ChunkPos,
     source: ChunkPos,
     rand: &mut JavaRandom,
-    block: BlockId,
+    block: Id,
 ) {
     let origin_x = source.x * CHUNK_SIZE as i32 + rand.next_int(CHUNK_SIZE as u32) as i32 + 8;
     let origin_y = rand.next_int(CHUNK_HEIGHT as u32) as i32;
@@ -192,7 +189,7 @@ fn mushroom_patch(
     target: ChunkPos,
     source: ChunkPos,
     rand: &mut JavaRandom,
-    block: BlockId,
+    block: Id,
 ) {
     let origin_x = source.x * CHUNK_SIZE as i32 + rand.next_int(CHUNK_SIZE as u32) as i32 + 8;
     let origin_y = rand.next_int(CHUNK_HEIGHT as u32) as i32;
@@ -205,7 +202,7 @@ fn mushroom_patch(
     }
 }
 
-fn try_mushroom(chunk: &mut Chunk, target: ChunkPos, x: i32, y: i32, z: i32, block: BlockId) {
+fn try_mushroom(chunk: &mut Chunk, target: ChunkPos, x: i32, y: i32, z: i32, block: Id) {
     let local_x = x - target.x * CHUNK_SIZE as i32;
     let local_z = z - target.z * CHUNK_SIZE as i32;
     if !(0..CHUNK_SIZE as i32).contains(&local_x)
@@ -216,11 +213,11 @@ fn try_mushroom(chunk: &mut Chunk, target: ChunkPos, x: i32, y: i32, z: i32, blo
         return;
     }
     let (local_x, local_z, y) = (local_x as usize, local_z as usize, y as usize);
-    if chunk.get(local_x, y, local_z) != Some(BlockId::Air)
+    if chunk.get(local_x, y, local_z) != Some(Id::Air)
         || !(y + 1..CHUNK_HEIGHT).any(|above| {
             chunk
                 .get(local_x, above, local_z)
-                .is_some_and(|b| b != BlockId::Air)
+                .is_some_and(|b| b != Id::Air)
         })
         || !chunk
             .get(local_x, y - 1, local_z)
@@ -261,9 +258,9 @@ fn tall_grass_patch(
     }
     // Rainforest rolls fern (metadata 2) unless `nextInt(3) == 0`.
     let block = if biome == Biome::Rainforest && rand.next_int(3) != 0 {
-        BlockId::Fern
+        Id::Fern
     } else {
-        BlockId::TallGrass
+        Id::TallGrass
     };
     for _ in 0..128 {
         let x = origin_x + rand.next_int(8) as i32 - rand.next_int(8) as i32;
@@ -273,7 +270,7 @@ fn tall_grass_patch(
     }
 }
 
-fn try_plant(chunk: &mut Chunk, target: ChunkPos, x: i32, y: i32, z: i32, block: BlockId) {
+fn try_plant(chunk: &mut Chunk, target: ChunkPos, x: i32, y: i32, z: i32, block: Id) {
     let local_x = x - target.x * CHUNK_SIZE as i32;
     let local_z = z - target.z * CHUNK_SIZE as i32;
     if !(0..CHUNK_SIZE as i32).contains(&local_x)
@@ -285,7 +282,7 @@ fn try_plant(chunk: &mut Chunk, target: ChunkPos, x: i32, y: i32, z: i32, block:
     }
     let (local_x, local_z) = (local_x as usize, local_z as usize);
     let y = y as usize;
-    if chunk.get(local_x, y, local_z) != Some(BlockId::Air) {
+    if chunk.get(local_x, y, local_z) != Some(Id::Air) {
         return;
     }
     if chunk

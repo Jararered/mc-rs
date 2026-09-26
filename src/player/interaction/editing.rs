@@ -8,8 +8,8 @@ use bevy::window::CursorGrabMode;
 use bevy::window::CursorOptions;
 use bevy::window::PrimaryWindow;
 
-use crate::block::id::BlockId;
 use crate::block::id::FurnaceFacing;
+use crate::block::id::Id;
 use crate::block::properties::cactus_can_stay;
 use crate::block::properties::is_breakable;
 use crate::block::properties::is_crossed_plant;
@@ -57,7 +57,7 @@ use crate::player::PlayerCamera;
 const PLACE_DELAY_TICKS: i32 = 5;
 
 /// Torch used by the standalone placement helper and legacy tests.
-pub const PLACED_BLOCK: BlockId = BlockId::Torch;
+pub const PLACED_BLOCK: Id = Id::Torch;
 
 #[derive(Default)]
 pub(crate) struct BlockInteractState {
@@ -224,7 +224,7 @@ pub(crate) fn interact_blocks(
     }
     if right_click
         && !inventory_screen.open
-        && hit.is_some_and(|hit| hit.block == BlockId::CraftingTable)
+        && hit.is_some_and(|hit| hit.block == Id::CraftingTable)
     {
         let hit = hit.expect("checked above");
         // Do not let stale player-grid contents leak into a new workbench
@@ -258,7 +258,7 @@ pub(crate) fn interact_blocks(
         transform.translation.x.floor() as i32,
         transform.translation.y.floor() as i32,
         transform.translation.z.floor() as i32,
-    ) == Some(BlockId::Water);
+    ) == Some(Id::Water);
     let on_ground = collision.on_ground;
 
     if left_held {
@@ -354,12 +354,12 @@ pub fn till_block(chunks: &mut WorldChunks, hit: BlockHit) -> bool {
         return false;
     }
     let can_till = match hit.block {
-        BlockId::Dirt => true,
-        BlockId::Grass => {
+        Id::Dirt => true,
+        Id::Grass => {
             hit.face != BlockFace::Down
                 && chunks
                     .block_at(hit.x, hit.y + 1, hit.z)
-                    .is_none_or(|block| block == BlockId::Air)
+                    .is_none_or(|block| block == Id::Air)
         }
         _ => false,
     };
@@ -367,7 +367,7 @@ pub fn till_block(chunks: &mut WorldChunks, hit: BlockHit) -> bool {
         return false;
     }
     chunks
-        .set_block(hit.x, hit.y, hit.z, BlockId::Farmland)
+        .set_block(hit.x, hit.y, hit.z, Id::Farmland)
         .is_some_and(|previous| previous == hit.block)
 }
 
@@ -383,15 +383,15 @@ fn apply_break(
 ) {
     let mut attached =
         [
-            (0, 1, 0, BlockId::Torch),
-            (1, 0, 0, BlockId::TorchWest),
-            (-1, 0, 0, BlockId::TorchEast),
-            (0, 0, 1, BlockId::TorchNorth),
-            (0, 0, -1, BlockId::TorchSouth),
-            (0, 0, 1, BlockId::LadderNorth),
-            (0, 0, -1, BlockId::LadderSouth),
-            (-1, 0, 0, BlockId::LadderEast),
-            (1, 0, 0, BlockId::LadderWest),
+            (0, 1, 0, Id::Torch),
+            (1, 0, 0, Id::TorchWest),
+            (-1, 0, 0, Id::TorchEast),
+            (0, 0, 1, Id::TorchNorth),
+            (0, 0, -1, Id::TorchSouth),
+            (0, 0, 1, Id::LadderNorth),
+            (0, 0, -1, Id::LadderSouth),
+            (-1, 0, 0, Id::LadderEast),
+            (1, 0, 0, Id::LadderWest),
         ]
         .into_iter()
         .filter_map(|(dx, dy, dz, attached_block)| {
@@ -456,30 +456,30 @@ pub fn break_block(chunks: &mut WorldChunks, hit: BlockHit) -> bool {
         return false;
     }
     let broken = chunks
-        .set_block(hit.x, hit.y, hit.z, BlockId::Air)
-        .is_some_and(|previous| previous != BlockId::Air);
+        .set_block(hit.x, hit.y, hit.z, Id::Air)
+        .is_some_and(|previous| previous != Id::Air);
     if broken {
         for (dx, dy, dz, attached) in [
-            (0, 1, 0, BlockId::Torch),
-            (1, 0, 0, BlockId::TorchWest),
-            (-1, 0, 0, BlockId::TorchEast),
-            (0, 0, 1, BlockId::TorchNorth),
-            (0, 0, -1, BlockId::TorchSouth),
-            (0, 0, 1, BlockId::LadderNorth),
-            (0, 0, -1, BlockId::LadderSouth),
-            (-1, 0, 0, BlockId::LadderEast),
-            (1, 0, 0, BlockId::LadderWest),
+            (0, 1, 0, Id::Torch),
+            (1, 0, 0, Id::TorchWest),
+            (-1, 0, 0, Id::TorchEast),
+            (0, 0, 1, Id::TorchNorth),
+            (0, 0, -1, Id::TorchSouth),
+            (0, 0, 1, Id::LadderNorth),
+            (0, 0, -1, Id::LadderSouth),
+            (-1, 0, 0, Id::LadderEast),
+            (1, 0, 0, Id::LadderWest),
         ] {
             let (x, y, z) = (hit.x + dx, hit.y + dy, hit.z + dz);
             if chunks.block_at(x, y, z) == Some(attached) {
-                chunks.set_block(x, y, z, BlockId::Air);
+                chunks.set_block(x, y, z, Id::Air);
             }
         }
         if chunks
             .block_at(hit.x, hit.y + 1, hit.z)
             .is_some_and(is_crossed_plant)
         {
-            chunks.set_block(hit.x, hit.y + 1, hit.z, BlockId::Air);
+            chunks.set_block(hit.x, hit.y + 1, hit.z, Id::Air);
         }
     }
     broken
@@ -487,14 +487,14 @@ pub fn break_block(chunks: &mut WorldChunks, hit: BlockHit) -> bool {
 
 /// Attach a torch to the hit face. Fails without a solid support block.
 pub fn place_block(chunks: &mut WorldChunks, hit: BlockHit, player: Aabb) -> bool {
-    place_selected_block(chunks, hit, player, BlockId::Torch)
+    place_selected_block(chunks, hit, player, Id::Torch)
 }
 
 pub fn place_selected_block(
     chunks: &mut WorldChunks,
     hit: BlockHit,
     player: Aabb,
-    selected: BlockId,
+    selected: Id,
 ) -> bool {
     place_selected_block_facing(chunks, hit, player, selected, FurnaceFacing::South)
 }
@@ -503,7 +503,7 @@ pub fn place_selected_block_facing(
     chunks: &mut WorldChunks,
     hit: BlockHit,
     player: Aabb,
-    selected: BlockId,
+    selected: Id,
     furnace_facing: FurnaceFacing,
 ) -> bool {
     let (x, y, z) = hit.face.neighbor(hit.x, hit.y, hit.z);
@@ -516,20 +516,19 @@ pub fn place_selected_block_facing(
     if !is_replaceable(current) {
         return false;
     }
-    if selected == BlockId::Chest && !chest_can_place_at(chunks, x, y, z) {
+    if selected == Id::Chest && !chest_can_place_at(chunks, x, y, z) {
         return false;
     }
-    if selected == BlockId::Ladder && ladder_facing(chunks, x, y, z, hit.face, hit.block).is_none()
-    {
+    if selected == Id::Ladder && ladder_facing(chunks, x, y, z, hit.face, hit.block).is_none() {
         return false;
     }
     if is_crossed_plant(selected)
-        && selected != BlockId::SugarCane
+        && selected != Id::SugarCane
         && !chunks.block_at(x, y - 1, z).is_some_and(plant_grows_on)
     {
         return false;
     }
-    if selected == BlockId::SugarCane {
+    if selected == Id::SugarCane {
         let Some(below) = chunks.block_at(x, y - 1, z) else {
             return false;
         };
@@ -539,12 +538,12 @@ pub fn place_selected_block_facing(
             chunks.block_at(x, y - 1, z - 1),
             chunks.block_at(x, y - 1, z + 1),
         ]
-        .map(|block| matches!(block, Some(BlockId::Water | BlockId::FlowingWater)));
+        .map(|block| matches!(block, Some(Id::Water | Id::FlowingWater)));
         if !sugar_cane_can_stay(below, adjacent_water) {
             return false;
         }
     }
-    if selected == BlockId::Cactus {
+    if selected == Id::Cactus {
         let Some(below) = chunks.block_at(x, y - 1, z) else {
             return false;
         };
@@ -560,28 +559,28 @@ pub fn place_selected_block_facing(
             return false;
         }
     }
-    if selected == BlockId::Pumpkin && !chunks.block_at(x, y - 1, z).is_some_and(is_opaque_cube) {
+    if selected == Id::Pumpkin && !chunks.block_at(x, y - 1, z).is_some_and(is_opaque_cube) {
         return false;
     }
-    if !is_opaque_cube(hit.block) && selected == BlockId::Torch {
+    if !is_opaque_cube(hit.block) && selected == Id::Torch {
         return false;
     }
-    let block = if selected == BlockId::Torch {
+    let block = if selected == Id::Torch {
         match hit.face {
-            BlockFace::Up => BlockId::Torch,
+            BlockFace::Up => Id::Torch,
             BlockFace::Down => return false,
-            BlockFace::West => BlockId::TorchEast,
-            BlockFace::East => BlockId::TorchWest,
-            BlockFace::North => BlockId::TorchSouth,
-            BlockFace::South => BlockId::TorchNorth,
+            BlockFace::West => Id::TorchEast,
+            BlockFace::East => Id::TorchWest,
+            BlockFace::North => Id::TorchSouth,
+            BlockFace::South => Id::TorchNorth,
         }
-    } else if selected == BlockId::Furnace {
+    } else if selected == Id::Furnace {
         selected.with_furnace_state(furnace_facing, false)
-    } else if selected == BlockId::Pumpkin {
+    } else if selected == Id::Pumpkin {
         selected.with_pumpkin_facing(furnace_facing)
-    } else if selected == BlockId::Chest {
+    } else if selected == Id::Chest {
         selected.with_chest_facing(furnace_facing)
-    } else if selected == BlockId::Ladder {
+    } else if selected == Id::Ladder {
         let Some(facing) = ladder_facing(chunks, x, y, z, hit.face, hit.block) else {
             return false;
         };
@@ -608,10 +607,10 @@ fn ladder_facing(
     y: i32,
     z: i32,
     hit_face: BlockFace,
-    hit_block: BlockId,
+    hit_block: Id,
 ) -> Option<FurnaceFacing> {
     let support_at = |facing: FurnaceFacing| {
-        let [dx, dy, dz] = BlockId::Ladder
+        let [dx, dy, dz] = Id::Ladder
             .with_ladder_support(facing)
             .ladder_support_offset()?;
         chunks
@@ -640,7 +639,7 @@ fn chest_can_place_at(chunks: &WorldChunks, x: i32, y: i32, z: i32) -> bool {
     let neighbors = [(x - 1, y, z), (x + 1, y, z), (x, y, z - 1), (x, y, z + 1)];
     let chests = neighbors
         .into_iter()
-        .filter(|&(nx, ny, nz)| chunks.block_at(nx, ny, nz).is_some_and(BlockId::is_chest))
+        .filter(|&(nx, ny, nz)| chunks.block_at(nx, ny, nz).is_some_and(Id::is_chest))
         .collect::<Vec<_>>();
     match chests.as_slice() {
         [] => true,

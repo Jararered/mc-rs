@@ -1,7 +1,7 @@
 use bevy::mesh::Mesh;
 use bevy::mesh::VertexAttributeValues;
 
-use game::block::id::BlockId;
+use game::block::id::Id;
 use game::block::properties::selection_bounds;
 use game::world::chunk::CHUNK_HEIGHT;
 use game::world::chunk::CHUNK_SIZE;
@@ -32,13 +32,13 @@ use game::world::textures::block_tile;
 #[test]
 fn mesh_snapshot_keeps_old_blocks_after_world_edit() {
     let mut world_chunk = Chunk::new();
-    world_chunk.set(1, 2, 3, BlockId::Stone);
+    world_chunk.set(1, 2, 3, Id::Stone);
     let snapshot = world_chunk.clone();
 
-    world_chunk.set(1, 2, 3, BlockId::Dirt);
+    world_chunk.set(1, 2, 3, Id::Dirt);
 
-    assert_eq!(snapshot.get(1, 2, 3), Some(BlockId::Stone));
-    assert_eq!(world_chunk.get(1, 2, 3), Some(BlockId::Dirt));
+    assert_eq!(snapshot.get(1, 2, 3), Some(Id::Stone));
+    assert_eq!(world_chunk.get(1, 2, 3), Some(Id::Dirt));
 }
 
 #[test]
@@ -53,14 +53,13 @@ fn generated_chunk_has_solid_ground_and_sunlit_air() {
             assert!(height > 0 && height < CHUNK_HEIGHT);
             assert!(!matches!(
                 chunk.get(x, height - 1, z),
-                Some(BlockId::Air | BlockId::Water)
+                Some(Id::Air | Id::Water)
             ));
-            assert_eq!(chunk.get(x, 0, z), Some(BlockId::Bedrock));
+            assert_eq!(chunk.get(x, 0, z), Some(Id::Bedrock));
             assert_eq!(light.get(x, height - 1, z), Some(0));
             // Trees can shadow the air directly above the terrain, so only
             // assert sunlight where the column is clear above the surface.
-            let clear_above =
-                (height..CHUNK_HEIGHT).all(|y| chunk.get(x, y, z) == Some(BlockId::Air));
+            let clear_above = (height..CHUNK_HEIGHT).all(|y| chunk.get(x, y, z) == Some(Id::Air));
             if clear_above {
                 assert_eq!(light.get(x, height, z), Some(15));
             }
@@ -74,10 +73,10 @@ fn generated_chunk_has_solid_ground_and_sunlit_air() {
 #[test]
 fn ambient_occlusion_darkens_enclosed_face_corners() {
     let mut chunk = Chunk::new();
-    chunk.set(1, 1, 1, BlockId::Stone);
-    chunk.set(2, 2, 1, BlockId::Stone);
-    chunk.set(1, 2, 2, BlockId::Stone);
-    chunk.set(2, 2, 2, BlockId::Stone);
+    chunk.set(1, 1, 1, Id::Stone);
+    chunk.set(2, 2, 1, Id::Stone);
+    chunk.set(1, 2, 2, Id::Stone);
+    chunk.set(2, 2, 2, Id::Stone);
 
     let meshes = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true, false);
     let Some(VertexAttributeValues::Float32x4(colors)) =
@@ -115,9 +114,9 @@ fn species_plank_meshes_apply_distinct_vertex_tints() {
         colors[0]
     };
 
-    let oak = first_vertex_color(BlockId::WoodenPlanks);
-    let spruce = first_vertex_color(BlockId::SprucePlanks);
-    let birch = first_vertex_color(BlockId::BirchPlanks);
+    let oak = first_vertex_color(Id::WoodenPlanks);
+    let spruce = first_vertex_color(Id::SprucePlanks);
+    let birch = first_vertex_color(Id::BirchPlanks);
 
     assert_ne!(oak, spruce);
     assert_ne!(oak, birch);
@@ -127,9 +126,9 @@ fn species_plank_meshes_apply_distinct_vertex_tints() {
 #[test]
 fn neighboring_block_data_culls_shared_faces_and_darkens_border_corners() {
     let mut center = Chunk::new();
-    center.set(CHUNK_SIZE - 1, 1, 1, BlockId::Stone);
+    center.set(CHUNK_SIZE - 1, 1, 1, Id::Stone);
     let mut east = Chunk::new();
-    east.set(0, 1, 1, BlockId::Stone);
+    east.set(0, 1, 1, Id::Stone);
     let light = Skylight::from_chunk(&center);
     let isolated = mesh_chunk(&center, &light);
     let connected = mesh_chunk_with_neighbors(
@@ -147,8 +146,8 @@ fn neighboring_block_data_culls_shared_faces_and_darkens_border_corners() {
         "shared face should be culled"
     );
 
-    east.set(0, 1, 1, BlockId::Air);
-    east.set(0, 2, 1, BlockId::Stone);
+    east.set(0, 1, 1, Id::Air);
+    east.set(0, 2, 1, Id::Stone);
     let connected = mesh_chunk_with_neighbors(
         &center,
         &ChunkNeighbors {
@@ -181,10 +180,10 @@ fn neighboring_block_data_culls_shared_faces_and_darkens_border_corners() {
 #[test]
 fn smooth_lighting_toggle_controls_corner_interpolation() {
     let mut chunk = Chunk::new();
-    chunk.set(1, 1, 1, BlockId::Stone);
-    chunk.set(2, 2, 1, BlockId::Stone);
-    chunk.set(1, 2, 2, BlockId::Stone);
-    chunk.set(2, 2, 2, BlockId::Stone);
+    chunk.set(1, 1, 1, Id::Stone);
+    chunk.set(2, 2, 1, Id::Stone);
+    chunk.set(1, 2, 2, Id::Stone);
+    chunk.set(2, 2, 2, Id::Stone);
     let skylight = Skylight::from_chunk(&chunk);
 
     let smooth =
@@ -222,12 +221,12 @@ fn terrain_generation_is_deterministic_at_a_chunk_position() {
 #[test]
 fn mesher_culls_faces_between_adjacent_blocks() {
     let mut chunk = Chunk::new();
-    chunk.set(1, 1, 1, BlockId::Stone);
+    chunk.set(1, 1, 1, Id::Stone);
     let mesh = mesh_chunk(&chunk, &Skylight::from_chunk(&chunk));
     assert_eq!(mesh.count_vertices(), 24);
     assert_eq!(mesh.indices().unwrap().len(), 36);
 
-    chunk.set(2, 1, 1, BlockId::Stone);
+    chunk.set(2, 1, 1, Id::Stone);
     let mesh = mesh_chunk(&chunk, &Skylight::from_chunk(&chunk));
     assert_eq!(mesh.count_vertices(), 40);
     assert_eq!(mesh.indices().unwrap().len(), 60);
@@ -236,8 +235,8 @@ fn mesher_culls_faces_between_adjacent_blocks() {
 #[test]
 fn fancy_leaves_keep_internal_faces_and_use_the_cutout_tile() {
     let mut chunk = Chunk::new();
-    chunk.set(1, 1, 1, BlockId::Leaves);
-    chunk.set(2, 1, 1, BlockId::Leaves);
+    chunk.set(1, 1, 1, Id::Leaves);
+    chunk.set(2, 1, 1, Id::Leaves);
     let skylight = Skylight::from_chunk(&chunk);
 
     let fast = mesh_chunk_with_settings(&chunk, &skylight, true, false);
@@ -261,7 +260,7 @@ fn fancy_leaves_keep_internal_faces_and_use_the_cutout_tile() {
 #[test]
 fn grass_mesh_uses_separate_atlas_tiles_for_top_bottom_and_sides() {
     let mut chunk = Chunk::new();
-    chunk.set(1, 1, 1, BlockId::Grass);
+    chunk.set(1, 1, 1, Id::Grass);
     let mesh = mesh_chunk(&chunk, &Skylight::from_chunk(&chunk));
     let Some(VertexAttributeValues::Float32x2(uvs)) = mesh.attribute(Mesh::ATTRIBUTE_UV_0) else {
         panic!("chunk mesh should have atlas UVs");
@@ -283,7 +282,7 @@ fn grass_mesh_uses_separate_atlas_tiles_for_top_bottom_and_sides() {
 #[test]
 fn fancy_grass_adds_the_transparent_biome_overlay_tile() {
     let mut chunk = Chunk::new();
-    chunk.set(1, 1, 1, BlockId::Grass);
+    chunk.set(1, 1, 1, Id::Grass);
     let meshes = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true, true);
     let Some(VertexAttributeValues::Float32x2(uvs)) =
         meshes.grass_overlay.attribute(Mesh::ATTRIBUTE_UV_0)
@@ -300,7 +299,7 @@ fn fancy_grass_adds_the_transparent_biome_overlay_tile() {
 #[test]
 fn block_face_uvs_stay_inside_the_padded_tile() {
     let mut chunk = Chunk::new();
-    chunk.set(1, 1, 1, BlockId::Stone);
+    chunk.set(1, 1, 1, Id::Stone);
     let mesh = mesh_chunk(&chunk, &Skylight::from_chunk(&chunk));
     let Some(VertexAttributeValues::Float32x2(uvs)) = mesh.attribute(Mesh::ATTRIBUTE_UV_0) else {
         panic!("chunk mesh should have atlas UVs");
@@ -325,7 +324,7 @@ fn block_face_uvs_stay_inside_the_padded_tile() {
 #[test]
 fn water_renders_as_a_transparent_top_face() {
     let mut chunk = Chunk::new();
-    chunk.set(1, 1, 1, BlockId::Water);
+    chunk.set(1, 1, 1, Id::Water);
     let skylight = Skylight::from_chunk(&chunk);
     let meshes = mesh_chunk_with_settings(&chunk, &skylight, true, true);
     assert_eq!(meshes.opaque.count_vertices(), 0);
@@ -355,7 +354,7 @@ fn water_renders_as_a_transparent_top_face() {
         "water surface should sit two texels below the block top"
     );
 
-    chunk.set(1, 2, 1, BlockId::Water);
+    chunk.set(1, 2, 1, Id::Water);
     let stacked = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true, true);
     assert_eq!(
         stacked.water.count_vertices(),
@@ -363,7 +362,7 @@ fn water_renders_as_a_transparent_top_face() {
         "only the surface of a water column should be meshed"
     );
 
-    chunk.set(1, 0, 1, BlockId::Stone);
+    chunk.set(1, 0, 1, Id::Stone);
     let with_bed = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true, true);
     assert_eq!(
         with_bed.opaque.count_vertices(),
@@ -375,8 +374,8 @@ fn water_renders_as_a_transparent_top_face() {
 #[test]
 fn skylight_passes_through_water_and_stops_at_stone() {
     let mut chunk = Chunk::new();
-    chunk.set(1, 1, 1, BlockId::Water);
-    chunk.set(1, 0, 1, BlockId::Stone);
+    chunk.set(1, 1, 1, Id::Water);
+    chunk.set(1, 0, 1, Id::Stone);
     let light = Skylight::from_chunk(&chunk);
     assert_eq!(light.get(1, 2, 1), Some(15));
     assert_eq!(light.get(1, 1, 1), Some(12));
@@ -387,7 +386,7 @@ fn skylight_passes_through_water_and_stops_at_stone() {
 fn skylight_propagates_sideways_under_an_overhang() {
     let mut chunk = Chunk::new();
     for x in 1..=3 {
-        chunk.set(x, 3, 1, BlockId::Stone);
+        chunk.set(x, 3, 1, Id::Stone);
     }
     let light = Skylight::from_chunk(&chunk);
 
@@ -398,7 +397,7 @@ fn skylight_propagates_sideways_under_an_overhang() {
 fn chunk_border_light_uses_loaded_neighbor_values() {
     let center = Chunk::new();
     let mut west = Chunk::new();
-    west.set(CHUNK_SIZE - 1, 2, 1, BlockId::Stone);
+    west.set(CHUNK_SIZE - 1, 2, 1, Id::Stone);
 
     let isolated = Skylight::from_chunk(&center);
     let connected = Skylight::from_chunk_with_neighbors(&center, Some(&west), None, None, None);
@@ -410,7 +409,7 @@ fn chunk_border_light_uses_loaded_neighbor_values() {
 fn chunk_corner_light_uses_loaded_diagonal_neighbor_values() {
     let center = Chunk::new();
     let mut northwest = Chunk::new();
-    northwest.set(CHUNK_SIZE - 1, 2, CHUNK_SIZE - 1, BlockId::Stone);
+    northwest.set(CHUNK_SIZE - 1, 2, CHUNK_SIZE - 1, Id::Stone);
 
     let isolated = Skylight::from_chunk(&center);
     let connected = Skylight::from_chunk_with_neighbors_and_corners(
@@ -431,7 +430,7 @@ fn chunk_corner_light_uses_loaded_diagonal_neighbor_values() {
 
 #[test]
 fn complete_neighborhood_does_not_invent_light_at_cave_edges() {
-    let stone = || Chunk::from_blocks(vec![BlockId::Stone; CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE]);
+    let stone = || Chunk::from_blocks(vec![Id::Stone; CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE]);
     let northwest = stone();
     let mut north = stone();
     let northeast = stone();
@@ -442,9 +441,9 @@ fn complete_neighborhood_does_not_invent_light_at_cave_edges() {
     let south = stone();
     let southeast = stone();
     for x in 0..CHUNK_SIZE {
-        north.set(x, 64, CHUNK_SIZE - 1, BlockId::Air);
-        center.set(x, 64, 8, BlockId::Air);
-        east.set(x, 64, 8, BlockId::Air);
+        north.set(x, 64, CHUNK_SIZE - 1, Id::Air);
+        center.set(x, 64, 8, Id::Air);
+        east.set(x, 64, 8, Id::Air);
     }
     let light = Skylight::from_chunk_with_neighbors_and_corners(
         &center,
@@ -460,7 +459,7 @@ fn complete_neighborhood_does_not_invent_light_at_cave_edges() {
     assert_eq!(light.sky(CHUNK_SIZE - 1, 64, 8), Some(0));
     assert_eq!(light.light_at(CHUNK_SIZE as i32, 64, 8, 0), 0);
     for y in 65..CHUNK_HEIGHT {
-        center.set(CHUNK_SIZE - 1, y, 8, BlockId::Air);
+        center.set(CHUNK_SIZE - 1, y, 8, Id::Air);
     }
     let lit = Skylight::from_chunk_with_neighbors_and_corners(
         &center,
@@ -492,7 +491,7 @@ fn night_dims_sunlight_and_leaves_torches() {
     assert_eq!(combined_light(15, 14, 11), 14);
 
     let mut chunk = Chunk::new();
-    chunk.set(1, 64, 1, BlockId::Stone);
+    chunk.set(1, 64, 1, Id::Stone);
     let light = Skylight::from_chunk(&chunk);
     let day = mesh_chunk_with_settings_and_smooth_lighting(&chunk, &light, true, false, false, 0);
     let night =
@@ -518,7 +517,7 @@ fn top_vertex_brightness(mesh: &Mesh) -> f32 {
 #[test]
 fn block_light_propagates_from_beta_emitters() {
     let mut chunk = Chunk::new();
-    chunk.set(2, 2, 2, BlockId::Glowstone);
+    chunk.set(2, 2, 2, Id::Glowstone);
     let light = Skylight::from_chunk(&chunk);
 
     assert_eq!(light.block(2, 2, 2), Some(15));
@@ -564,7 +563,7 @@ fn climate_matches_the_local_cpp_reference_at_seed_zero() {
 #[test]
 fn set_block_updates_the_column_heightmap() {
     let mut chunk = Chunk::new();
-    chunk.set(3, 10, 4, BlockId::Stone);
+    chunk.set(3, 10, 4, Id::Stone);
     let mut chunks = WorldChunks::default();
     chunks.insert(
         ChunkPos::ZERO,
@@ -583,25 +582,19 @@ fn set_block_updates_the_column_heightmap() {
     );
     assert_eq!(chunks.get(ChunkPos::ZERO).unwrap().heightmap.get(3, 4), 11);
 
-    assert_eq!(
-        chunks.set_block(3, 20, 4, BlockId::Dirt),
-        Some(BlockId::Air)
-    );
-    assert_eq!(chunks.block_at(3, 20, 4), Some(BlockId::Dirt));
+    assert_eq!(chunks.set_block(3, 20, 4, Id::Dirt), Some(Id::Air));
+    assert_eq!(chunks.block_at(3, 20, 4), Some(Id::Dirt));
     assert_eq!(chunks.get(ChunkPos::ZERO).unwrap().heightmap.get(3, 4), 21);
 
-    assert_eq!(
-        chunks.set_block(3, 20, 4, BlockId::Air),
-        Some(BlockId::Dirt)
-    );
+    assert_eq!(chunks.set_block(3, 20, 4, Id::Air), Some(Id::Dirt));
     assert_eq!(chunks.get(ChunkPos::ZERO).unwrap().heightmap.get(3, 4), 11);
 }
 
 #[test]
 fn ladders_transmit_light_and_do_not_raise_the_surface_heightmap() {
     let mut chunk = Chunk::new();
-    chunk.set(3, 20, 4, BlockId::LadderWest);
-    assert_eq!(light_opacity(BlockId::LadderWest), 0);
+    chunk.set(3, 20, 4, Id::LadderWest);
+    assert_eq!(light_opacity(Id::LadderWest), 0);
     assert_eq!(Heightmap::from_chunk(&chunk).get(3, 4), 0);
 }
 
@@ -626,13 +619,13 @@ fn remesh_includes_the_neighbour_when_an_edge_block_changes() {
 #[test]
 fn torch_emits_level_fifteen_and_lights_neighboring_chunk() {
     let mut west = Chunk::new();
-    west.set(CHUNK_SIZE - 1, 40, 8, BlockId::Torch);
+    west.set(CHUNK_SIZE - 1, 40, 8, Id::Torch);
     let east = Chunk::new();
     let west_light = Skylight::from_chunk(&west);
     let east_light = Skylight::from_chunk_with_neighbors(&east, Some(&west), None, None, None);
 
-    assert_eq!(light_emission(BlockId::Torch), 15);
-    assert_eq!(light_opacity(BlockId::Torch), 0);
+    assert_eq!(light_emission(Id::Torch), 15);
+    assert_eq!(light_opacity(Id::Torch), 0);
     assert_eq!(west_light.block(CHUNK_SIZE - 1, 40, 8), Some(15));
     assert_eq!(west_light.block(CHUNK_SIZE - 2, 40, 8), Some(14));
     assert_eq!(east_light.block(0, 40, 8), Some(14));
@@ -642,7 +635,7 @@ fn torch_emits_level_fifteen_and_lights_neighboring_chunk() {
 #[test]
 fn torch_mesh_uses_a_narrow_shape_instead_of_a_cube() {
     let mut chunk = Chunk::new();
-    chunk.set(8, 40, 8, BlockId::Torch);
+    chunk.set(8, 40, 8, Id::Torch);
     let light = Skylight::from_chunk(&chunk);
     let meshes = mesh_chunk_with_settings(&chunk, &light, true, false);
     let Some(VertexAttributeValues::Float32x3(positions)) =
@@ -681,7 +674,7 @@ fn torch_mesh_uses_a_narrow_shape_instead_of_a_cube() {
 #[test]
 fn ladder_mesh_uses_beta_tile_and_a_wall_plane() {
     let mut chunk = Chunk::new();
-    chunk.set(3, 5, 7, BlockId::LadderWest);
+    chunk.set(3, 5, 7, Id::LadderWest);
     let meshes = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true, false);
     let positions = match meshes.masked.attribute(Mesh::ATTRIBUTE_POSITION).unwrap() {
         VertexAttributeValues::Float32x3(values) => values,
@@ -693,7 +686,7 @@ fn ladder_mesh_uses_beta_tile_and_a_wall_plane() {
             .iter()
             .all(|position| (position[0] - 3.125).abs() < 1e-6)
     );
-    assert_eq!(block_tile(BlockId::LadderWest, 0, false), (3, 5));
+    assert_eq!(block_tile(Id::LadderWest, 0, false), (3, 5));
 
     let uvs = match meshes.masked.attribute(Mesh::ATTRIBUTE_UV_0).unwrap() {
         VertexAttributeValues::Float32x2(values) => values,
@@ -712,10 +705,10 @@ fn wall_torch_rotates_the_floor_post_without_tapering_or_flattening_its_cap() {
         ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
     };
     for (block, tilted_axis, sign) in [
-        (BlockId::TorchWest, 0, 1.0),
-        (BlockId::TorchEast, 0, -1.0),
-        (BlockId::TorchNorth, 2, 1.0),
-        (BlockId::TorchSouth, 2, -1.0),
+        (Id::TorchWest, 0, 1.0),
+        (Id::TorchEast, 0, -1.0),
+        (Id::TorchNorth, 2, 1.0),
+        (Id::TorchSouth, 2, -1.0),
     ] {
         let mut chunk = Chunk::new();
         chunk.set(8, 40, 8, block);

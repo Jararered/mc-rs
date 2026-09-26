@@ -1,142 +1,140 @@
-use crate::block::id::BlockId;
 use crate::block::definition::BlockDefinition;
 use crate::block::definition::BlockProperties;
+use crate::block::id::Id;
 
 pub(super) struct Definition;
 pub(super) static DEFINITION: Definition = Definition;
 
 impl BlockDefinition for Definition {
-    fn name(&self, state: BlockId) -> &'static str {
+    fn name(&self, state: Id) -> &'static str {
         match state {
-            BlockId::Sapling => "sapling",
-            BlockId::Wood => "wood",
-            BlockId::Leaves => "leaves",
-            BlockId::TallGrass => "tall_grass",
-            BlockId::DeadBush => "dead_bush",
-            BlockId::Dandelion => "dandelion",
-            BlockId::Rose => "rose",
-            BlockId::BrownMushroom => "brown_mushroom",
-            BlockId::RedMushroom => "red_mushroom",
-            BlockId::Crops => "crops",
-            BlockId::Cactus => "cactus",
-            BlockId::SugarCane => "sugar_cane",
-            BlockId::SpruceLeaves => "spruce_leaves",
-            BlockId::BirchLeaves => "birch_leaves",
-            BlockId::SpruceWood => "spruce_wood",
-            BlockId::BirchWood => "birch_wood",
-            BlockId::SprucePlanks => "spruce_planks",
-            BlockId::BirchPlanks => "birch_planks",
-            BlockId::Fern => "fern",
-            BlockId::Unknown(_) => "unknown",
+            Id::Sapling => "sapling",
+            Id::Wood => "wood",
+            Id::Leaves => "leaves",
+            Id::TallGrass => "tall_grass",
+            Id::DeadBush => "dead_bush",
+            Id::Dandelion => "dandelion",
+            Id::Rose => "rose",
+            Id::BrownMushroom => "brown_mushroom",
+            Id::RedMushroom => "red_mushroom",
+            Id::Crops => "crops",
+            Id::Cactus => "cactus",
+            Id::SugarCane => "sugar_cane",
+            Id::SpruceLeaves => "spruce_leaves",
+            Id::BirchLeaves => "birch_leaves",
+            Id::SpruceWood => "spruce_wood",
+            Id::BirchWood => "birch_wood",
+            Id::SprucePlanks => "spruce_planks",
+            Id::BirchPlanks => "birch_planks",
+            Id::Fern => "fern",
+            Id::Unknown(_) => "unknown",
             _ => "unknown",
         }
     }
 
-    fn in_world(&self, state: BlockId) -> bool {
+    fn in_world(&self, state: Id) -> bool {
         matches!(
             state,
-            BlockId::Wood
-                | BlockId::Leaves
-                | BlockId::TallGrass
-                | BlockId::DeadBush
-                | BlockId::Dandelion
-                | BlockId::Rose
-                | BlockId::BrownMushroom
-                | BlockId::RedMushroom
-                | BlockId::Cactus
-                | BlockId::SugarCane
-                | BlockId::SpruceLeaves
-                | BlockId::BirchLeaves
-                | BlockId::SpruceWood
-                | BlockId::BirchWood
-                | BlockId::SprucePlanks
-                | BlockId::BirchPlanks
-                | BlockId::Fern
+            Id::Wood
+                | Id::Leaves
+                | Id::TallGrass
+                | Id::DeadBush
+                | Id::Dandelion
+                | Id::Rose
+                | Id::BrownMushroom
+                | Id::RedMushroom
+                | Id::Cactus
+                | Id::SugarCane
+                | Id::SpruceLeaves
+                | Id::BirchLeaves
+                | Id::SpruceWood
+                | Id::BirchWood
+                | Id::SprucePlanks
+                | Id::BirchPlanks
+                | Id::Fern
         )
     }
 
-    fn properties(&self, state: BlockId) -> BlockProperties {
+    fn properties(&self, state: Id) -> BlockProperties {
         properties(state)
     }
 
-    fn opaque_cube(&self, state: BlockId) -> bool {
+    fn opaque_cube(&self, state: Id) -> bool {
         !matches!(
             state,
-            BlockId::Leaves
-                | BlockId::SpruceLeaves
-                | BlockId::BirchLeaves
-                | BlockId::Cactus
-                | BlockId::DeadBush
-                | BlockId::Dandelion
-                | BlockId::Rose
-                | BlockId::BrownMushroom
-                | BlockId::RedMushroom
-                | BlockId::TallGrass
-                | BlockId::Fern
-                | BlockId::SugarCane
+            Id::Leaves
+                | Id::SpruceLeaves
+                | Id::BirchLeaves
+                | Id::Cactus
+                | Id::DeadBush
+                | Id::Dandelion
+                | Id::Rose
+                | Id::BrownMushroom
+                | Id::RedMushroom
+                | Id::TallGrass
+                | Id::Fern
+                | Id::SugarCane
         )
     }
 
-    fn light_opacity(&self, state: BlockId) -> u8 {
+    fn light_opacity(&self, state: Id) -> u8 {
         match state {
-            BlockId::Leaves | BlockId::SpruceLeaves | BlockId::BirchLeaves => 1,
-            BlockId::Cactus
-            | BlockId::DeadBush
-            | BlockId::Dandelion
-            | BlockId::Rose
-            | BlockId::BrownMushroom
-            | BlockId::RedMushroom
-            | BlockId::TallGrass
-            | BlockId::Fern
-            | BlockId::SugarCane => 0,
+            Id::Leaves | Id::SpruceLeaves | Id::BirchLeaves => 1,
+            Id::Cactus
+            | Id::DeadBush
+            | Id::Dandelion
+            | Id::Rose
+            | Id::BrownMushroom
+            | Id::RedMushroom
+            | Id::TallGrass
+            | Id::Fern
+            | Id::SugarCane => 0,
             _ => 15,
         }
     }
 
-    fn crossed_plant(&self, state: BlockId) -> bool {
+    fn crossed_plant(&self, state: Id) -> bool {
         matches!(
             state,
-            BlockId::DeadBush
-                | BlockId::Dandelion
-                | BlockId::Rose
-                | BlockId::BrownMushroom
-                | BlockId::RedMushroom
-                | BlockId::TallGrass
-                | BlockId::Fern
-                | BlockId::SugarCane
+            Id::DeadBush
+                | Id::Dandelion
+                | Id::Rose
+                | Id::BrownMushroom
+                | Id::RedMushroom
+                | Id::TallGrass
+                | Id::Fern
+                | Id::SugarCane
         )
     }
 }
 
-fn properties(state: BlockId) -> BlockProperties {
+fn properties(state: Id) -> BlockProperties {
     match state {
-        BlockId::Sapling => BlockProperties::solid(0.0),
-        BlockId::Wood | BlockId::SpruceWood | BlockId::BirchWood => BlockProperties::solid(2.0),
-        BlockId::SprucePlanks | BlockId::BirchPlanks => BlockProperties::solid(2.0),
-        BlockId::Leaves | BlockId::SpruceLeaves | BlockId::BirchLeaves => BlockProperties {
+        Id::Sapling => BlockProperties::solid(0.0),
+        Id::Wood | Id::SpruceWood | Id::BirchWood => BlockProperties::solid(2.0),
+        Id::SprucePlanks | Id::BirchPlanks => BlockProperties::solid(2.0),
+        Id::Leaves | Id::SpruceLeaves | Id::BirchLeaves => BlockProperties {
             opaque_cube: false,
             light_opacity: 1,
             ..BlockProperties::solid(0.2)
         },
-        BlockId::TallGrass | BlockId::Fern | BlockId::DeadBush => {
+        Id::TallGrass | Id::Fern | Id::DeadBush => {
             crossed_plant(0.0, ([0.1, 0.0, 0.1], [0.9, 0.8, 0.9]))
         }
-        BlockId::Dandelion | BlockId::Rose => {
-            crossed_plant(0.0, ([0.3, 0.0, 0.3], [0.7, 0.6, 0.7]))
-        }
-        BlockId::BrownMushroom | BlockId::RedMushroom => {
+        Id::Dandelion | Id::Rose => crossed_plant(0.0, ([0.3, 0.0, 0.3], [0.7, 0.6, 0.7])),
+        Id::BrownMushroom | Id::RedMushroom => {
             crossed_plant(0.0, ([0.3, 0.0, 0.3], [0.7, 0.4, 0.7]))
         }
-        BlockId::Crops => BlockProperties::solid(0.0),
-        BlockId::Cactus => BlockProperties {
+        Id::Crops => BlockProperties::solid(0.0),
+        Id::Cactus => BlockProperties {
             opaque_cube: false,
             light_opacity: 0,
             collision_bounds: Some(([0.0625, 0.0, 0.0625], [0.9375, 0.9375, 0.9375])),
             selection_bounds: ([0.0625, 0.0, 0.0625], [0.9375, 1.0, 0.9375]),
             ..BlockProperties::solid(0.4)
         },
-        BlockId::SugarCane => crossed_plant(0.0, ([0.125, 0.0, 0.125], [0.875, 1.0, 0.875])),
-        BlockId::Unknown(_) => BlockProperties::unknown(),
+        Id::SugarCane => crossed_plant(0.0, ([0.125, 0.0, 0.125], [0.875, 1.0, 0.875])),
+        Id::Unknown(_) => BlockProperties::unknown(),
         _ => BlockProperties::unknown(),
     }
 }

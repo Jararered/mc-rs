@@ -1,4 +1,4 @@
-use game::block::id::BlockId;
+use game::block::id::Id;
 use game::block::properties::blocks_movement;
 use game::world::chunk::CHUNK_HEIGHT;
 use game::world::chunk::CHUNK_SIZE;
@@ -19,8 +19,7 @@ fn snow_layers_are_generated_only_on_cold_exposed_snow_biome_surfaces() {
                 for local_z in 0..CHUNK_SIZE {
                     for local_x in 0..CHUNK_SIZE {
                         for y in 0..CHUNK_HEIGHT {
-                            if generated.chunk.get(local_x, y, local_z) != Some(BlockId::SnowLayer)
-                            {
+                            if generated.chunk.get(local_x, y, local_z) != Some(Id::SnowLayer) {
                                 continue;
                             }
                             found_snow = true;
@@ -31,12 +30,9 @@ fn snow_layers_are_generated_only_on_cold_exposed_snow_biome_surfaces() {
                                 Biome::Taiga | Biome::Tundra | Biome::IceDesert
                             ));
                             assert!(y > 0 && y + 1 < CHUNK_HEIGHT);
-                            assert_eq!(
-                                generated.chunk.get(local_x, y + 1, local_z),
-                                Some(BlockId::Air)
-                            );
+                            assert_eq!(generated.chunk.get(local_x, y + 1, local_z), Some(Id::Air));
                             let support = generated.chunk.get(local_x, y - 1, local_z).unwrap();
-                            assert_ne!(support, BlockId::Ice);
+                            assert_ne!(support, Id::Ice);
                             assert!(blocks_movement(support));
                             let adjusted_temperature =
                                 climate.temperature - (y as f64 - 64.0) / 64.0 * 0.3;

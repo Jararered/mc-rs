@@ -1,196 +1,192 @@
-use crate::block::id::BlockId;
 use crate::block::definition::BlockDefinition;
 use crate::block::definition::BlockProperties;
+use crate::block::id::Id;
 
 pub(super) struct Definition;
 pub(super) static DEFINITION: Definition = Definition;
 
 impl BlockDefinition for Definition {
-    fn name(&self, state: BlockId) -> &'static str {
+    fn name(&self, state: Id) -> &'static str {
         match state {
-            BlockId::Air => "air",
-            BlockId::Stone => "stone",
-            BlockId::Grass => "grass",
-            BlockId::Dirt => "dirt",
-            BlockId::Cobblestone => "cobblestone",
-            BlockId::WoodenPlanks => "wooden_planks",
-            BlockId::Bedrock => "bedrock",
-            BlockId::Sand => "sand",
-            BlockId::Gravel => "gravel",
-            BlockId::Sponge => "sponge",
-            BlockId::Glass => "glass",
-            BlockId::Sandstone => "sandstone",
-            BlockId::NoteBlock => "note_block",
-            BlockId::Wool => "wool",
-            BlockId::GoldBlock => "gold_block",
-            BlockId::IronBlock => "iron_block",
-            BlockId::DoubleStoneSlab => "double_stone_slab",
-            BlockId::StoneSlab => "stone_slab",
-            BlockId::Bricks => "bricks",
-            BlockId::Tnt => "tnt",
-            BlockId::Bookshelf => "bookshelf",
-            BlockId::MossyCobblestone => "mossy_cobblestone",
-            BlockId::Obsidian => "obsidian",
-            BlockId::MobSpawner => "mob_spawner",
-            BlockId::WoodenStairs => "wooden_stairs",
-            BlockId::CobblestoneStairs => "cobblestone_stairs",
-            BlockId::DiamondBlock => "diamond_block",
-            BlockId::CraftingTable => "crafting_table",
-            BlockId::Farmland => "farmland",
-            BlockId::SnowLayer => "snow_layer",
-            BlockId::Ice => "ice",
-            BlockId::Snow => "snow",
-            BlockId::Clay => "clay",
-            BlockId::Jukebox => "jukebox",
-            BlockId::Fence => "fence",
-            BlockId::SoulSand => "soul_sand",
-            BlockId::Cake => "cake",
-            BlockId::LockedChest => "locked_chest",
-            BlockId::Trapdoor => "trapdoor",
-            BlockId::Netherrack => "netherrack",
-            BlockId::Unknown(_) => "unknown",
+            Id::Air => "air",
+            Id::Stone => "stone",
+            Id::Grass => "grass",
+            Id::Dirt => "dirt",
+            Id::Cobblestone => "cobblestone",
+            Id::WoodenPlanks => "wooden_planks",
+            Id::Bedrock => "bedrock",
+            Id::Sand => "sand",
+            Id::Gravel => "gravel",
+            Id::Sponge => "sponge",
+            Id::Glass => "glass",
+            Id::Sandstone => "sandstone",
+            Id::NoteBlock => "note_block",
+            Id::Wool => "wool",
+            Id::GoldBlock => "gold_block",
+            Id::IronBlock => "iron_block",
+            Id::DoubleStoneSlab => "double_stone_slab",
+            Id::StoneSlab => "stone_slab",
+            Id::Bricks => "bricks",
+            Id::Tnt => "tnt",
+            Id::Bookshelf => "bookshelf",
+            Id::MossyCobblestone => "mossy_cobblestone",
+            Id::Obsidian => "obsidian",
+            Id::MobSpawner => "mob_spawner",
+            Id::WoodenStairs => "wooden_stairs",
+            Id::CobblestoneStairs => "cobblestone_stairs",
+            Id::DiamondBlock => "diamond_block",
+            Id::CraftingTable => "crafting_table",
+            Id::Farmland => "farmland",
+            Id::SnowLayer => "snow_layer",
+            Id::Ice => "ice",
+            Id::Snow => "snow",
+            Id::Clay => "clay",
+            Id::Jukebox => "jukebox",
+            Id::Fence => "fence",
+            Id::SoulSand => "soul_sand",
+            Id::Cake => "cake",
+            Id::LockedChest => "locked_chest",
+            Id::Trapdoor => "trapdoor",
+            Id::Netherrack => "netherrack",
+            Id::Unknown(_) => "unknown",
             _ => "unknown",
         }
     }
 
-    fn in_world(&self, state: BlockId) -> bool {
+    fn in_world(&self, state: Id) -> bool {
         matches!(
             state,
-            BlockId::Air
-                | BlockId::Stone
-                | BlockId::Grass
-                | BlockId::Dirt
-                | BlockId::Cobblestone
-                | BlockId::WoodenPlanks
-                | BlockId::Bedrock
-                | BlockId::Sand
-                | BlockId::Gravel
-                | BlockId::Sponge
-                | BlockId::Sandstone
-                | BlockId::NoteBlock
-                | BlockId::Wool
-                | BlockId::GoldBlock
-                | BlockId::IronBlock
-                | BlockId::DoubleStoneSlab
-                | BlockId::Bricks
-                | BlockId::Tnt
-                | BlockId::Bookshelf
-                | BlockId::MossyCobblestone
-                | BlockId::Obsidian
-                | BlockId::MobSpawner
-                | BlockId::DiamondBlock
-                | BlockId::CraftingTable
-                | BlockId::Farmland
-                | BlockId::Ice
-                | BlockId::Snow
-                | BlockId::Clay
-                | BlockId::Jukebox
-                | BlockId::Netherrack
+            Id::Air
+                | Id::Stone
+                | Id::Grass
+                | Id::Dirt
+                | Id::Cobblestone
+                | Id::WoodenPlanks
+                | Id::Bedrock
+                | Id::Sand
+                | Id::Gravel
+                | Id::Sponge
+                | Id::Sandstone
+                | Id::NoteBlock
+                | Id::Wool
+                | Id::GoldBlock
+                | Id::IronBlock
+                | Id::DoubleStoneSlab
+                | Id::Bricks
+                | Id::Tnt
+                | Id::Bookshelf
+                | Id::MossyCobblestone
+                | Id::Obsidian
+                | Id::MobSpawner
+                | Id::DiamondBlock
+                | Id::CraftingTable
+                | Id::Farmland
+                | Id::Ice
+                | Id::Snow
+                | Id::Clay
+                | Id::Jukebox
+                | Id::Netherrack
         )
     }
 
-    fn properties(&self, state: BlockId) -> BlockProperties {
+    fn properties(&self, state: Id) -> BlockProperties {
         properties(state)
     }
 
-    fn opaque_cube(&self, state: BlockId) -> bool {
+    fn opaque_cube(&self, state: Id) -> bool {
         !matches!(
             state,
-            BlockId::Air
-                | BlockId::MobSpawner
-                | BlockId::Ice
-                | BlockId::SnowLayer
-                | BlockId::Farmland
+            Id::Air | Id::MobSpawner | Id::Ice | Id::SnowLayer | Id::Farmland
         )
     }
 
-    fn light_opacity(&self, state: BlockId) -> u8 {
+    fn light_opacity(&self, state: Id) -> u8 {
         match state {
-            BlockId::Air | BlockId::SnowLayer => 0,
-            BlockId::Ice => 3,
+            Id::Air | Id::SnowLayer => 0,
+            Id::Ice => 3,
             _ => 15,
         }
     }
 }
 
-fn properties(state: BlockId) -> BlockProperties {
+fn properties(state: Id) -> BlockProperties {
     match state {
-        BlockId::Air => BlockProperties::fluid(0.0),
-        BlockId::Stone => BlockProperties {
+        Id::Air => BlockProperties::fluid(0.0),
+        Id::Stone => BlockProperties {
             harvestable_by_hand: false,
             ..BlockProperties::solid(1.5)
         },
-        BlockId::Grass => BlockProperties::solid(0.6),
-        BlockId::Dirt => BlockProperties::solid(0.5),
-        BlockId::Cobblestone => BlockProperties {
+        Id::Grass => BlockProperties::solid(0.6),
+        Id::Dirt => BlockProperties::solid(0.5),
+        Id::Cobblestone => BlockProperties {
             harvestable_by_hand: false,
             ..BlockProperties::solid(2.0)
         },
-        BlockId::WoodenPlanks => BlockProperties::solid(2.0),
-        BlockId::Bedrock => BlockProperties {
+        Id::WoodenPlanks => BlockProperties::solid(2.0),
+        Id::Bedrock => BlockProperties {
             harvestable_by_hand: false,
             ..BlockProperties::solid(-1.0)
         },
-        BlockId::Sand => BlockProperties::solid(0.5),
-        BlockId::Gravel => BlockProperties::solid(0.6),
-        BlockId::Sponge => BlockProperties::solid(0.6),
-        BlockId::Glass => BlockProperties::solid(0.0),
-        BlockId::Sandstone => BlockProperties {
+        Id::Sand => BlockProperties::solid(0.5),
+        Id::Gravel => BlockProperties::solid(0.6),
+        Id::Sponge => BlockProperties::solid(0.6),
+        Id::Glass => BlockProperties::solid(0.0),
+        Id::Sandstone => BlockProperties {
             harvestable_by_hand: false,
             ..BlockProperties::solid(0.8)
         },
-        BlockId::NoteBlock => BlockProperties::solid(0.8),
-        BlockId::Wool => BlockProperties::solid(0.8),
-        BlockId::GoldBlock => BlockProperties {
+        Id::NoteBlock => BlockProperties::solid(0.8),
+        Id::Wool => BlockProperties::solid(0.8),
+        Id::GoldBlock => BlockProperties {
             harvestable_by_hand: false,
             ..BlockProperties::solid(3.0)
         },
-        BlockId::IronBlock => BlockProperties {
+        Id::IronBlock => BlockProperties {
             harvestable_by_hand: false,
             ..BlockProperties::solid(5.0)
         },
-        BlockId::DoubleStoneSlab => BlockProperties {
+        Id::DoubleStoneSlab => BlockProperties {
             harvestable_by_hand: false,
             ..BlockProperties::solid(2.0)
         },
-        BlockId::StoneSlab => BlockProperties {
+        Id::StoneSlab => BlockProperties {
             harvestable_by_hand: false,
             ..BlockProperties::solid(0.0)
         },
-        BlockId::Bricks => BlockProperties {
+        Id::Bricks => BlockProperties {
             harvestable_by_hand: false,
             ..BlockProperties::solid(2.0)
         },
-        BlockId::Tnt => BlockProperties::solid(0.0),
-        BlockId::Bookshelf => BlockProperties::solid(1.5),
-        BlockId::MossyCobblestone => BlockProperties {
+        Id::Tnt => BlockProperties::solid(0.0),
+        Id::Bookshelf => BlockProperties::solid(1.5),
+        Id::MossyCobblestone => BlockProperties {
             harvestable_by_hand: false,
             ..BlockProperties::solid(2.0)
         },
-        BlockId::Obsidian => BlockProperties {
+        Id::Obsidian => BlockProperties {
             harvestable_by_hand: false,
             ..BlockProperties::solid(10.0)
         },
-        BlockId::MobSpawner => BlockProperties {
+        Id::MobSpawner => BlockProperties {
             opaque_cube: false,
             ..BlockProperties::solid(0.0)
         },
-        BlockId::WoodenStairs => BlockProperties::solid(0.0),
-        BlockId::CobblestoneStairs => BlockProperties {
+        Id::WoodenStairs => BlockProperties::solid(0.0),
+        Id::CobblestoneStairs => BlockProperties {
             harvestable_by_hand: false,
             ..BlockProperties::solid(0.0)
         },
-        BlockId::DiamondBlock => BlockProperties {
+        Id::DiamondBlock => BlockProperties {
             harvestable_by_hand: false,
             ..BlockProperties::solid(5.0)
         },
-        BlockId::CraftingTable => BlockProperties::solid(2.5),
-        BlockId::Farmland => BlockProperties {
+        Id::CraftingTable => BlockProperties::solid(2.5),
+        Id::Farmland => BlockProperties {
             opaque_cube: false,
             selection_bounds: ([0.0; 3], [1.0, 15.0 / 16.0, 1.0]),
             ..BlockProperties::solid(0.6)
         },
-        BlockId::SnowLayer => BlockProperties {
+        Id::SnowLayer => BlockProperties {
             opaque_cube: false,
             collision_bounds: Some(([0.0; 3], [1.0, 0.125, 1.0])),
             selection_bounds: ([0.0; 3], [1.0, 0.125, 1.0]),
@@ -198,29 +194,29 @@ fn properties(state: BlockId) -> BlockProperties {
             harvestable_by_hand: false,
             ..BlockProperties::solid(0.1)
         },
-        BlockId::Ice => BlockProperties {
+        Id::Ice => BlockProperties {
             opaque_cube: false,
             slipperiness: 0.98,
             light_opacity: 3,
             harvestable_by_hand: false,
             ..BlockProperties::solid(0.5)
         },
-        BlockId::Snow => BlockProperties {
+        Id::Snow => BlockProperties {
             harvestable_by_hand: false,
             ..BlockProperties::solid(0.2)
         },
-        BlockId::Clay => BlockProperties::solid(0.6),
-        BlockId::Jukebox => BlockProperties::solid(2.0),
-        BlockId::Fence => BlockProperties::solid(0.0),
-        BlockId::SoulSand => BlockProperties::solid(0.0),
-        BlockId::Cake => BlockProperties::solid(0.0),
-        BlockId::LockedChest => BlockProperties::solid(0.0),
-        BlockId::Trapdoor => BlockProperties::solid(0.0),
-        BlockId::Netherrack => BlockProperties {
+        Id::Clay => BlockProperties::solid(0.6),
+        Id::Jukebox => BlockProperties::solid(2.0),
+        Id::Fence => BlockProperties::solid(0.0),
+        Id::SoulSand => BlockProperties::solid(0.0),
+        Id::Cake => BlockProperties::solid(0.0),
+        Id::LockedChest => BlockProperties::solid(0.0),
+        Id::Trapdoor => BlockProperties::solid(0.0),
+        Id::Netherrack => BlockProperties {
             harvestable_by_hand: false,
             ..BlockProperties::solid(0.4)
         },
-        BlockId::Unknown(_) => BlockProperties::unknown(),
+        Id::Unknown(_) => BlockProperties::unknown(),
         _ => BlockProperties::unknown(),
     }
 }

@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use bevy::prelude::Resource;
 
-use crate::block::id::BlockId;
+use crate::block::id::Id;
 use crate::world::chest::Chest;
 use crate::world::furnace::Furnace;
 use crate::world::generation::Climate;
@@ -36,7 +36,7 @@ pub struct Chunk {
     // Meshing snapshots the center chunk and eight neighbors. Sharing their
     // immutable blocks avoids copying nine full arrays for every mesh job;
     // edits detach only the modified chunk.
-    blocks: Arc<[BlockId]>,
+    blocks: Arc<[Id]>,
     /// Block-local inventories and simulation state. Keyed by flat block index.
     furnaces: HashMap<usize, Furnace>,
     chests: HashMap<usize, Chest>,
@@ -45,14 +45,14 @@ pub struct Chunk {
 impl Chunk {
     pub fn new() -> Self {
         Self {
-            blocks: vec![BlockId::Air; CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE].into(),
+            blocks: vec![Id::Air; CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE].into(),
             furnaces: HashMap::new(),
             chests: HashMap::new(),
         }
     }
 
     /// Rebuild a chunk from a flat block array, as produced by [`Self::blocks`].
-    pub fn from_blocks(blocks: Vec<BlockId>) -> Self {
+    pub fn from_blocks(blocks: Vec<Id>) -> Self {
         assert_eq!(
             blocks.len(),
             CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE,
@@ -78,18 +78,18 @@ impl Chunk {
     }
 
     /// The flat block array in [`Self::index`] order.
-    pub fn blocks(&self) -> &[BlockId] {
+    pub fn blocks(&self) -> &[Id] {
         &self.blocks
     }
 
-    pub fn get(&self, x: usize, y: usize, z: usize) -> Option<BlockId> {
+    pub fn get(&self, x: usize, y: usize, z: usize) -> Option<Id> {
         if x >= CHUNK_SIZE || y >= CHUNK_HEIGHT || z >= CHUNK_SIZE {
             return None;
         }
         Some(self.blocks[Self::index(x, y, z)])
     }
 
-    pub fn set(&mut self, x: usize, y: usize, z: usize, block: BlockId) {
+    pub fn set(&mut self, x: usize, y: usize, z: usize, block: Id) {
         assert!(x < CHUNK_SIZE && y < CHUNK_HEIGHT && z < CHUNK_SIZE);
         let index = Self::index(x, y, z);
         let previous = self.blocks[index];
@@ -145,7 +145,7 @@ impl Chunk {
     }
 }
 
-fn is_furnace(block: BlockId) -> bool {
+fn is_furnace(block: Id) -> bool {
     block.is_furnace()
 }
 
@@ -207,7 +207,7 @@ impl WorldChunks {
         Some(generated.biomes.get(local_x, local_z))
     }
 
-    pub fn block_at(&self, x: i32, y: i32, z: i32) -> Option<BlockId> {
+    pub fn block_at(&self, x: i32, y: i32, z: i32) -> Option<Id> {
         if y < 0 || y >= CHUNK_HEIGHT as i32 {
             return None;
         }
@@ -278,12 +278,12 @@ impl WorldChunks {
     /// Resolve one chest or a valid adjacent pair in stable inventory order.
     /// Invalid clusters never become a multi-chest inventory view.
     pub fn chest_group_at(&self, x: i32, y: i32, z: i32) -> Option<ChestGroup> {
-        if !self.block_at(x, y, z).is_some_and(BlockId::is_chest) {
+        if !self.block_at(x, y, z).is_some_and(Id::is_chest) {
             return None;
         }
         let adjacent = [(x - 1, y, z), (x + 1, y, z), (x, y, z - 1), (x, y, z + 1)]
             .into_iter()
-            .filter(|&(nx, ny, nz)| self.block_at(nx, ny, nz).is_some_and(BlockId::is_chest))
+            .filter(|&(nx, ny, nz)| self.block_at(nx, ny, nz).is_some_and(Id::is_chest))
             .collect::<Vec<_>>();
         let [neighbor] = adjacent.as_slice() else {
             return adjacent.is_empty().then_some(ChestGroup {
@@ -305,7 +305,7 @@ impl WorldChunks {
                     && other != pair[1]
                     && self
                         .block_at(other.0, other.1, other.2)
-                        .is_some_and(BlockId::is_chest)
+                        .is_some_and(Id::is_chest)
                 {
                     return None;
                 }
@@ -329,7 +329,7 @@ impl WorldChunks {
     ///
     /// Returns the previous block, or `None` when the cell is outside the world
     /// or its chunk is not loaded.
-    pub fn set_block(&mut self, x: i32, y: i32, z: i32, block: BlockId) -> Option<BlockId> {
+    pub fn set_block(&mut self, x: i32, y: i32, z: i32, block: Id) -> Option<Id> {
         if y < 0 || y >= CHUNK_HEIGHT as i32 {
             return None;
         }

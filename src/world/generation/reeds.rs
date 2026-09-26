@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 
-use crate::block::id::BlockId;
+use crate::block::id::Id;
 use crate::block::properties::sugar_cane_can_stay;
 use crate::random::JavaRandom;
 use crate::world::chunk::CHUNK_HEIGHT;
@@ -33,8 +33,7 @@ pub(super) fn place_reeds(
             let z = origin_z + rand.next_int(4) as i32 - rand.next_int(4) as i32;
             let y = origin_y;
             if !(0..CHUNK_HEIGHT as i32).contains(&y)
-                || block_at(chunk, target, x, y, z, placed, remote_chunks, remote_chunk)
-                    != BlockId::Air
+                || block_at(chunk, target, x, y, z, placed, remote_chunks, remote_chunk) != Id::Air
             {
                 continue;
             }
@@ -75,7 +74,7 @@ pub(super) fn place_reeds(
                 }
                 placed.insert((x, cane_y, z));
                 if let Some((local_x, local_z)) = local_column(target, x, z) {
-                    chunk.set(local_x, cane_y as usize, local_z, BlockId::SugarCane);
+                    chunk.set(local_x, cane_y as usize, local_z, Id::SugarCane);
                 }
             }
         }
@@ -96,7 +95,7 @@ fn adjacent_water(
     [(x - 1, z), (x + 1, z), (x, z - 1), (x, z + 1)].map(|(x, z)| {
         matches!(
             block_at(chunk, target, x, y, z, placed, remote_chunks, remote_chunk),
-            BlockId::Water | BlockId::FlowingWater
+            Id::Water | Id::FlowingWater
         )
     })
 }
@@ -111,12 +110,12 @@ fn block_at(
     placed: &HashSet<(i32, i32, i32)>,
     remote_chunks: &mut HashMap<ChunkPos, Chunk>,
     remote_chunk: &impl Fn(ChunkPos) -> Chunk,
-) -> BlockId {
+) -> Id {
     if !(0..CHUNK_HEIGHT as i32).contains(&y) {
-        return BlockId::Air;
+        return Id::Air;
     }
     if placed.contains(&(x, y, z)) {
-        return BlockId::SugarCane;
+        return Id::SugarCane;
     }
     let pos = ChunkPos {
         x: x.div_euclid(CHUNK_SIZE as i32),
@@ -125,15 +124,13 @@ fn block_at(
     let local_x = x.rem_euclid(CHUNK_SIZE as i32) as usize;
     let local_z = z.rem_euclid(CHUNK_SIZE as i32) as usize;
     if pos == target {
-        chunk
-            .get(local_x, y as usize, local_z)
-            .unwrap_or(BlockId::Air)
+        chunk.get(local_x, y as usize, local_z).unwrap_or(Id::Air)
     } else {
         remote_chunks
             .entry(pos)
             .or_insert_with(|| remote_chunk(pos))
             .get(local_x, y as usize, local_z)
-            .unwrap_or(BlockId::Air)
+            .unwrap_or(Id::Air)
     }
 }
 

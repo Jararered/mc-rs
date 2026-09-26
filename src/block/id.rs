@@ -7,7 +7,7 @@ use num_enum::IntoPrimitive;
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, FromPrimitive, IntoPrimitive)]
-pub enum BlockId {
+pub enum Id {
     Air = 0,
     Stone = 1,
     Grass = 2,
@@ -148,7 +148,7 @@ pub enum BlockId {
     Unknown(u8),
 }
 
-impl BlockId {
+impl Id {
     /// Highest block ID that can be used directly as an item ID.
     pub const MAX_ITEM_ID: u8 = 96;
 

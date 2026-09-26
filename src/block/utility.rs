@@ -1,86 +1,86 @@
-use crate::block::id::BlockId;
 use crate::block::definition::BlockDefinition;
 use crate::block::definition::BlockProperties;
+use crate::block::id::Id;
 
 pub(super) struct Definition;
 pub(super) static DEFINITION: Definition = Definition;
 
 impl BlockDefinition for Definition {
-    fn name(&self, state: BlockId) -> &'static str {
+    fn name(&self, state: Id) -> &'static str {
         match state {
-            BlockId::Bed => "bed",
-            BlockId::Cobweb => "cobweb",
-            BlockId::DetectorRail => "detector_rail",
-            BlockId::Dispenser => "dispenser",
-            BlockId::IronDoor => "iron_door",
-            BlockId::Lever => "lever",
-            BlockId::MovingPiston => "moving_piston",
-            BlockId::NetherPortal => "nether_portal",
-            BlockId::Piston => "piston",
-            BlockId::PistonHead => "piston_head",
-            BlockId::PoweredRail => "powered_rail",
-            BlockId::PoweredRepeater => "powered_repeater",
-            BlockId::Rail => "rail",
-            BlockId::RedstoneWire => "redstone_wire",
-            BlockId::Repeater => "repeater",
-            BlockId::StandingSign => "standing_sign",
-            BlockId::StickyPiston => "sticky_piston",
-            BlockId::StoneButton => "stone_button",
-            BlockId::StonePressurePlate => "stone_pressure_plate",
-            BlockId::WallSign => "wall_sign",
-            BlockId::WoodenDoor => "wooden_door",
-            BlockId::WoodenPressurePlate => "wooden_pressure_plate",
-            BlockId::Unknown(_) => "unknown",
+            Id::Bed => "bed",
+            Id::Cobweb => "cobweb",
+            Id::DetectorRail => "detector_rail",
+            Id::Dispenser => "dispenser",
+            Id::IronDoor => "iron_door",
+            Id::Lever => "lever",
+            Id::MovingPiston => "moving_piston",
+            Id::NetherPortal => "nether_portal",
+            Id::Piston => "piston",
+            Id::PistonHead => "piston_head",
+            Id::PoweredRail => "powered_rail",
+            Id::PoweredRepeater => "powered_repeater",
+            Id::Rail => "rail",
+            Id::RedstoneWire => "redstone_wire",
+            Id::Repeater => "repeater",
+            Id::StandingSign => "standing_sign",
+            Id::StickyPiston => "sticky_piston",
+            Id::StoneButton => "stone_button",
+            Id::StonePressurePlate => "stone_pressure_plate",
+            Id::WallSign => "wall_sign",
+            Id::WoodenDoor => "wooden_door",
+            Id::WoodenPressurePlate => "wooden_pressure_plate",
+            Id::Unknown(_) => "unknown",
             _ => "unknown",
         }
     }
 
-    fn in_world(&self, state: BlockId) -> bool {
-        matches!(state, BlockId::Dispenser)
+    fn in_world(&self, state: Id) -> bool {
+        matches!(state, Id::Dispenser)
     }
 
-    fn properties(&self, state: BlockId) -> BlockProperties {
+    fn properties(&self, state: Id) -> BlockProperties {
         properties(state)
     }
 }
 
-fn properties(state: BlockId) -> BlockProperties {
+fn properties(state: Id) -> BlockProperties {
     match state {
-        BlockId::Bed => BlockProperties::solid(0.0),
-        BlockId::Cobweb => BlockProperties {
+        Id::Bed => BlockProperties::solid(0.0),
+        Id::Cobweb => BlockProperties {
             harvestable_by_hand: false,
             ..BlockProperties::solid(0.0)
         },
-        BlockId::DetectorRail => BlockProperties::solid(0.0),
-        BlockId::Dispenser => BlockProperties {
+        Id::DetectorRail => BlockProperties::solid(0.0),
+        Id::Dispenser => BlockProperties {
             harvestable_by_hand: false,
             ..BlockProperties::solid(3.5)
         },
-        BlockId::IronDoor => BlockProperties {
+        Id::IronDoor => BlockProperties {
             harvestable_by_hand: false,
             ..BlockProperties::solid(0.0)
         },
-        BlockId::Lever => BlockProperties::solid(0.0),
-        BlockId::MovingPiston => BlockProperties::solid(0.0),
-        BlockId::NetherPortal => BlockProperties::solid(0.0),
-        BlockId::Piston => BlockProperties::solid(0.0),
-        BlockId::PistonHead => BlockProperties::solid(0.0),
-        BlockId::PoweredRail => BlockProperties::solid(0.0),
-        BlockId::PoweredRepeater => BlockProperties::solid(0.0),
-        BlockId::Rail => BlockProperties::solid(0.0),
-        BlockId::RedstoneWire => BlockProperties::solid(0.0),
-        BlockId::Repeater => BlockProperties::solid(0.0),
-        BlockId::StandingSign => BlockProperties::solid(0.0),
-        BlockId::StickyPiston => BlockProperties::solid(0.0),
-        BlockId::StoneButton => BlockProperties::solid(0.0),
-        BlockId::StonePressurePlate => BlockProperties {
+        Id::Lever => BlockProperties::solid(0.0),
+        Id::MovingPiston => BlockProperties::solid(0.0),
+        Id::NetherPortal => BlockProperties::solid(0.0),
+        Id::Piston => BlockProperties::solid(0.0),
+        Id::PistonHead => BlockProperties::solid(0.0),
+        Id::PoweredRail => BlockProperties::solid(0.0),
+        Id::PoweredRepeater => BlockProperties::solid(0.0),
+        Id::Rail => BlockProperties::solid(0.0),
+        Id::RedstoneWire => BlockProperties::solid(0.0),
+        Id::Repeater => BlockProperties::solid(0.0),
+        Id::StandingSign => BlockProperties::solid(0.0),
+        Id::StickyPiston => BlockProperties::solid(0.0),
+        Id::StoneButton => BlockProperties::solid(0.0),
+        Id::StonePressurePlate => BlockProperties {
             harvestable_by_hand: false,
             ..BlockProperties::solid(0.0)
         },
-        BlockId::WallSign => BlockProperties::solid(0.0),
-        BlockId::WoodenDoor => BlockProperties::solid(0.0),
-        BlockId::WoodenPressurePlate => BlockProperties::solid(0.0),
-        BlockId::Unknown(_) => BlockProperties::unknown(),
+        Id::WallSign => BlockProperties::solid(0.0),
+        Id::WoodenDoor => BlockProperties::solid(0.0),
+        Id::WoodenPressurePlate => BlockProperties::solid(0.0),
+        Id::Unknown(_) => BlockProperties::unknown(),
         _ => BlockProperties::unknown(),
     }
 }

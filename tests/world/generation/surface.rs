@@ -1,4 +1,4 @@
-use game::block::id::BlockId;
+use game::block::id::Id;
 use game::world::chunk::CHUNK_HEIGHT;
 use game::world::chunk::CHUNK_SIZE;
 use game::world::chunk::ChunkPos;
@@ -19,16 +19,16 @@ fn underwater_surface_is_dirt_not_grass() {
                         for y in 1..CHUNK_HEIGHT {
                             let above = generated.chunk.get(lx, y, lz).unwrap();
                             let below = generated.chunk.get(lx, y - 1, lz).unwrap();
-                            if !matches!(above, BlockId::Water | BlockId::Ice) {
+                            if !matches!(above, Id::Water | Id::Ice) {
                                 continue;
                             }
                             assert_ne!(
                                 below,
-                                BlockId::Grass,
+                                Id::Grass,
                                 "seed {seed} chunk ({x},{z}) column ({lx},{lz}): grass under water at y={}",
                                 y - 1
                             );
-                            if below == BlockId::Dirt {
+                            if below == Id::Dirt {
                                 water_over_dirt += 1;
                             }
                         }
@@ -56,15 +56,15 @@ fn desert_biome_columns_use_sand_as_top_and_filler() {
             }
             desert_columns += 1;
             let top = generated.heightmap.get(x, z) as usize;
-            assert_eq!(generated.chunk.get(x, top - 1, z), Some(BlockId::Sand));
-            assert_eq!(generated.chunk.get(x, top - 2, z), Some(BlockId::Sand));
+            assert_eq!(generated.chunk.get(x, top - 1, z), Some(Id::Sand));
+            assert_eq!(generated.chunk.get(x, top - 2, z), Some(Id::Sand));
 
             let mut y = top - 2;
-            while y > 0 && generated.chunk.get(x, y - 1, z) == Some(BlockId::Sand) {
+            while y > 0 && generated.chunk.get(x, y - 1, z) == Some(Id::Sand) {
                 y -= 1;
             }
             let mut sandstone = 0;
-            while y > 0 && generated.chunk.get(x, y - 1, z) == Some(BlockId::Sandstone) {
+            while y > 0 && generated.chunk.get(x, y - 1, z) == Some(Id::Sandstone) {
                 sandstone += 1;
                 y -= 1;
             }
@@ -88,15 +88,15 @@ fn dirt_filler_does_not_transition_to_sandstone() {
     for z in 0..CHUNK_SIZE {
         for x in 0..CHUNK_SIZE {
             let top = generated.heightmap.get(x, z) as usize;
-            if top < 2 || generated.chunk.get(x, top - 1, z) != Some(BlockId::Grass) {
+            if top < 2 || generated.chunk.get(x, top - 1, z) != Some(Id::Grass) {
                 continue;
             }
             dirt_columns += 1;
             let mut y = top - 1;
-            while y > 0 && generated.chunk.get(x, y - 1, z) == Some(BlockId::Dirt) {
+            while y > 0 && generated.chunk.get(x, y - 1, z) == Some(Id::Dirt) {
                 y -= 1;
             }
-            assert_ne!(generated.chunk.get(x, y - 1, z), Some(BlockId::Sandstone));
+            assert_ne!(generated.chunk.get(x, y - 1, z), Some(Id::Sandstone));
         }
     }
     assert!(dirt_columns > 0, "expected grass and dirt surface columns");

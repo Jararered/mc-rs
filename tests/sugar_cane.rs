@@ -1,6 +1,6 @@
 use bevy::mesh::VertexAttributeValues;
 use bevy::prelude::Vec3;
-use game::block::id::BlockId;
+use game::block::id::Id;
 use game::block::properties::blocks_movement;
 use game::block::properties::collision_bounds;
 use game::block::properties::is_opaque_cube;
@@ -48,17 +48,17 @@ fn world_with(chunk: Chunk) -> WorldChunks {
 
 #[test]
 fn sugar_cane_is_a_centered_crossed_plant_with_beta_appearance() {
-    assert_eq!(block_tile(BlockId::SugarCane, 0, false), (9, 4));
-    assert!(!is_opaque_cube(BlockId::SugarCane));
-    assert!(!blocks_movement(BlockId::SugarCane));
-    assert_eq!(collision_bounds(BlockId::SugarCane), None);
+    assert_eq!(block_tile(Id::SugarCane, 0, false), (9, 4));
+    assert!(!is_opaque_cube(Id::SugarCane));
+    assert!(!blocks_movement(Id::SugarCane));
+    assert_eq!(collision_bounds(Id::SugarCane), None);
     assert_eq!(
-        selection_bounds(BlockId::SugarCane),
+        selection_bounds(Id::SugarCane),
         ([0.125, 0.0, 0.125], [0.875, 1.0, 0.875])
     );
 
     let mut chunk = Chunk::new();
-    chunk.set(3, 10, 5, BlockId::SugarCane);
+    chunk.set(3, 10, 5, Id::SugarCane);
     let meshes = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true, true);
     assert_eq!(meshes.opaque.count_vertices(), 0);
     assert_eq!(meshes.masked.count_vertices(), 8);
@@ -87,11 +87,11 @@ fn sugar_cane_is_a_centered_crossed_plant_with_beta_appearance() {
 #[test]
 fn sugar_cane_can_be_placed_on_watered_soil_or_sand_and_stacked() {
     let cane = ItemStack::new(ItemId::SugarCane, 1).unwrap();
-    assert_eq!(cane.runtime_block(), Some(BlockId::SugarCane));
-    for soil in [BlockId::Grass, BlockId::Dirt, BlockId::Sand] {
+    assert_eq!(cane.runtime_block(), Some(Id::SugarCane));
+    for soil in [Id::Grass, Id::Dirt, Id::Sand] {
         let mut chunk = Chunk::new();
         chunk.set(8, 64, 8, soil);
-        chunk.set(9, 64, 8, BlockId::Water);
+        chunk.set(9, 64, 8, Id::Water);
         let mut chunks = world_with(chunk);
         let base_hit = BlockHit {
             x: 8,
@@ -112,36 +112,36 @@ fn sugar_cane_can_be_placed_on_watered_soil_or_sand_and_stacked() {
             y: 65,
             z: 8,
             face: BlockFace::Up,
-            block: BlockId::SugarCane,
+            block: Id::SugarCane,
         };
         assert!(place_selected_block(
             &mut chunks,
             stack_hit,
             Aabb::new(Vec3::splat(100.0), Vec3::splat(101.0)),
-            BlockId::SugarCane,
+            Id::SugarCane,
         ));
-        assert_eq!(chunks.block_at(8, 65, 8), Some(BlockId::SugarCane));
-        assert_eq!(chunks.block_at(8, 66, 8), Some(BlockId::SugarCane));
+        assert_eq!(chunks.block_at(8, 65, 8), Some(Id::SugarCane));
+        assert_eq!(chunks.block_at(8, 66, 8), Some(Id::SugarCane));
     }
 }
 
 #[test]
 fn sugar_cane_requires_water_next_to_its_ground_support() {
     let mut chunk = Chunk::new();
-    chunk.set(8, 64, 8, BlockId::Dirt);
+    chunk.set(8, 64, 8, Id::Dirt);
     let mut chunks = world_with(chunk);
     let hit = BlockHit {
         x: 8,
         y: 64,
         z: 8,
         face: BlockFace::Up,
-        block: BlockId::Dirt,
+        block: Id::Dirt,
     };
     assert!(!place_selected_block(
         &mut chunks,
         hit,
         Aabb::new(Vec3::splat(100.0), Vec3::splat(101.0)),
-        BlockId::SugarCane,
+        Id::SugarCane,
     ));
 }
 
@@ -151,7 +151,7 @@ fn world_generation_places_sugar_cane_near_water() {
     for z in -16..=16 {
         for x in -16..=16 {
             let generated = generator.generate(ChunkPos { x, z });
-            if generated.chunk.blocks().contains(&BlockId::SugarCane) {
+            if generated.chunk.blocks().contains(&Id::SugarCane) {
                 return;
             }
         }

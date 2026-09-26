@@ -1,4 +1,4 @@
-use crate::block::id::BlockId;
+use crate::block::id::Id;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::Chunk;
@@ -93,11 +93,11 @@ impl TerrainGenerator {
                             let mut limit = z0;
                             for dz in 0..4 {
                                 let block = if limit > 0.0 {
-                                    BlockId::Stone
+                                    Id::Stone
                                 } else if y < SEA_LEVEL {
-                                    BlockId::Water
+                                    Id::Water
                                 } else {
-                                    BlockId::Air
+                                    Id::Air
                                 };
                                 chunk.set(gx * 4 + dx, y, gz * 4 + dz, block);
                                 limit += z_step;

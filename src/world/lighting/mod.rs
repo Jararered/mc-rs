@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 
-use crate::block::id::BlockId;
 use crate::block::definition::BlockProperties;
+use crate::block::id::Id;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::Chunk;
@@ -736,26 +736,26 @@ fn propagate(
 
 /// Beta `Block.lightOpacity`, expressed in light levels rather than its old
 /// internal 0..255 table.
-pub fn light_opacity(block: BlockId) -> u8 {
+pub fn light_opacity(block: Id) -> u8 {
     crate::block::definition::light_opacity(block)
 }
 
-pub fn light_emission(block: BlockId) -> u8 {
+pub fn light_emission(block: Id) -> u8 {
     crate::block::definition::light_emission(block)
 }
 
 #[inline]
-fn light_opacity_from_table(table: &[BlockProperties; 256], block: BlockId) -> u8 {
+fn light_opacity_from_table(table: &[BlockProperties; 256], block: Id) -> u8 {
     match block {
-        BlockId::Unknown(_) => 15,
+        Id::Unknown(_) => 15,
         _ => table[block.as_u8() as usize].light_opacity,
     }
 }
 
 #[inline]
-fn light_emission_from_table(table: &[BlockProperties; 256], block: BlockId) -> u8 {
+fn light_emission_from_table(table: &[BlockProperties; 256], block: Id) -> u8 {
     match block {
-        BlockId::Unknown(_) => 0,
+        Id::Unknown(_) => 0,
         _ => table[block.as_u8() as usize].light_emission,
     }
 }

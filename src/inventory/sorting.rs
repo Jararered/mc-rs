@@ -1,6 +1,6 @@
 //! Inventory stack sorting and its Beta item category order.
 
-use crate::block::id::BlockId;
+use crate::block::id::Id;
 use crate::inventory::Inventory;
 use crate::item::ItemData;
 use crate::item::ItemId;
@@ -141,89 +141,79 @@ fn sort_key(stack: ItemStack) -> (u8, u8, u8, u16, u16) {
 }
 
 /// Block subtree order: natural, building, functional, then redstone.
-fn block_sort_path(block: BlockId) -> (u8, u8) {
+fn block_sort_path(block: Id) -> (u8, u8) {
     match block {
         // naturalBlock: stone, dirt, sand, gravel, ores, logs, leaves, netherBlocks
-        BlockId::Stone | BlockId::Bedrock | BlockId::Obsidian => (0, 0),
-        BlockId::Dirt | BlockId::Grass | BlockId::Farmland | BlockId::Clay => (0, 1),
-        BlockId::Sand | BlockId::Sandstone => (0, 2),
-        BlockId::Gravel => (0, 3),
-        BlockId::GoldOre
-        | BlockId::IronOre
-        | BlockId::CoalOre
-        | BlockId::LapisOre
-        | BlockId::DiamondOre
-        | BlockId::RedstoneOre
-        | BlockId::LitRedstoneOre => (0, 4),
-        BlockId::Wood | BlockId::SpruceWood | BlockId::BirchWood => (0, 5),
-        BlockId::Leaves
-        | BlockId::SpruceLeaves
-        | BlockId::BirchLeaves
-        | BlockId::Sapling
-        | BlockId::TallGrass
-        | BlockId::Fern
-        | BlockId::DeadBush
-        | BlockId::Dandelion
-        | BlockId::Rose
-        | BlockId::BrownMushroom
-        | BlockId::RedMushroom
-        | BlockId::Crops
-        | BlockId::SugarCane => (0, 6),
-        BlockId::Netherrack | BlockId::SoulSand | BlockId::Glowstone | BlockId::NetherPortal => {
-            (0, 7)
-        }
-        BlockId::Ice
-        | BlockId::Snow
-        | BlockId::SnowLayer
-        | BlockId::Cactus
-        | BlockId::Sponge
-        | BlockId::Water
-        | BlockId::FlowingWater
-        | BlockId::Lava
-        | BlockId::FlowingLava
-        | BlockId::Pumpkin
-        | BlockId::JackOLantern => (0, 8),
+        Id::Stone | Id::Bedrock | Id::Obsidian => (0, 0),
+        Id::Dirt | Id::Grass | Id::Farmland | Id::Clay => (0, 1),
+        Id::Sand | Id::Sandstone => (0, 2),
+        Id::Gravel => (0, 3),
+        Id::GoldOre
+        | Id::IronOre
+        | Id::CoalOre
+        | Id::LapisOre
+        | Id::DiamondOre
+        | Id::RedstoneOre
+        | Id::LitRedstoneOre => (0, 4),
+        Id::Wood | Id::SpruceWood | Id::BirchWood => (0, 5),
+        Id::Leaves
+        | Id::SpruceLeaves
+        | Id::BirchLeaves
+        | Id::Sapling
+        | Id::TallGrass
+        | Id::Fern
+        | Id::DeadBush
+        | Id::Dandelion
+        | Id::Rose
+        | Id::BrownMushroom
+        | Id::RedMushroom
+        | Id::Crops
+        | Id::SugarCane => (0, 6),
+        Id::Netherrack | Id::SoulSand | Id::Glowstone | Id::NetherPortal => (0, 7),
+        Id::Ice
+        | Id::Snow
+        | Id::SnowLayer
+        | Id::Cactus
+        | Id::Sponge
+        | Id::Water
+        | Id::FlowingWater
+        | Id::Lava
+        | Id::FlowingLava
+        | Id::Pumpkin
+        | Id::JackOLantern => (0, 8),
         // buildingBlock: planks, cobblestone, bricks, glass, wool, slabs/stairs
-        BlockId::WoodenPlanks | BlockId::SprucePlanks | BlockId::BirchPlanks => (1, 0),
-        BlockId::Cobblestone | BlockId::MossyCobblestone => (1, 1),
-        BlockId::Bricks => (1, 2),
-        BlockId::Glass => (1, 3),
-        BlockId::Wool => (1, 4),
-        BlockId::DoubleStoneSlab
-        | BlockId::StoneSlab
-        | BlockId::WoodenStairs
-        | BlockId::CobblestoneStairs => (1, 5),
-        BlockId::Bookshelf => (1, 6),
+        Id::WoodenPlanks | Id::SprucePlanks | Id::BirchPlanks => (1, 0),
+        Id::Cobblestone | Id::MossyCobblestone => (1, 1),
+        Id::Bricks => (1, 2),
+        Id::Glass => (1, 3),
+        Id::Wool => (1, 4),
+        Id::DoubleStoneSlab | Id::StoneSlab | Id::WoodenStairs | Id::CobblestoneStairs => (1, 5),
+        Id::Bookshelf => (1, 6),
         // functionalBlock: chest, furnace, craftingTable, bed
-        BlockId::Chest | BlockId::LockedChest => (2, 0),
-        BlockId::Furnace | BlockId::LitFurnace => (2, 1),
-        BlockId::CraftingTable => (2, 2),
-        BlockId::Bed => (2, 3),
-        BlockId::Dispenser
-        | BlockId::NoteBlock
-        | BlockId::PoweredRail
-        | BlockId::DetectorRail
-        | BlockId::Rail
-        | BlockId::StandingSign
-        | BlockId::WallSign
-        | BlockId::WoodenDoor
-        | BlockId::IronDoor
-        | BlockId::Ladder
-        | BlockId::Jukebox
-        | BlockId::MobSpawner
-        | BlockId::Tnt
-        | BlockId::Cake => (2, 4),
+        Id::Chest | Id::LockedChest => (2, 0),
+        Id::Furnace | Id::LitFurnace => (2, 1),
+        Id::CraftingTable => (2, 2),
+        Id::Bed => (2, 3),
+        Id::Dispenser
+        | Id::NoteBlock
+        | Id::PoweredRail
+        | Id::DetectorRail
+        | Id::Rail
+        | Id::StandingSign
+        | Id::WallSign
+        | Id::WoodenDoor
+        | Id::IronDoor
+        | Id::Ladder
+        | Id::Jukebox
+        | Id::MobSpawner
+        | Id::Tnt
+        | Id::Cake => (2, 4),
         // redstone: wire, torch, repeater, piston, lever/button/pressurePlate
-        BlockId::RedstoneWire => (3, 0),
-        BlockId::Torch | BlockId::UnlitRedstoneTorch | BlockId::RedstoneTorch => (3, 1),
-        BlockId::Repeater | BlockId::PoweredRepeater => (3, 2),
-        BlockId::StickyPiston | BlockId::Piston | BlockId::PistonHead | BlockId::MovingPiston => {
-            (3, 3)
-        }
-        BlockId::Lever
-        | BlockId::StoneButton
-        | BlockId::StonePressurePlate
-        | BlockId::WoodenPressurePlate => (3, 4),
+        Id::RedstoneWire => (3, 0),
+        Id::Torch | Id::UnlitRedstoneTorch | Id::RedstoneTorch => (3, 1),
+        Id::Repeater | Id::PoweredRepeater => (3, 2),
+        Id::StickyPiston | Id::Piston | Id::PistonHead | Id::MovingPiston => (3, 3),
+        Id::Lever | Id::StoneButton | Id::StonePressurePlate | Id::WoodenPressurePlate => (3, 4),
         _ => (0, 9), // remaining natural/functional blocks
     }
 }

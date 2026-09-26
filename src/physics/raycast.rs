@@ -2,7 +2,7 @@
 
 use bevy::prelude::Vec3;
 
-use crate::block::id::BlockId;
+use crate::block::id::Id;
 use crate::block::properties::is_targetable;
 use crate::block::properties::is_torch;
 use crate::block::properties::selection_bounds;
@@ -56,7 +56,7 @@ pub struct BlockHit {
     pub y: i32,
     pub z: i32,
     pub face: BlockFace,
-    pub block: BlockId,
+    pub block: Id,
 }
 
 /// Walk the voxel grid from `origin` along `direction` and return the first
@@ -164,7 +164,7 @@ fn hit_at(
     if !is_targetable(block) {
         return None;
     }
-    if is_torch(block) || matches!(block, BlockId::SnowLayer | BlockId::Farmland) {
+    if is_torch(block) || matches!(block, Id::SnowLayer | Id::Farmland) {
         let (min, max) = selection_bounds(block);
         let block_origin = Vec3::new(x as f32, y as f32, z as f32);
         if !ray_intersects_box(

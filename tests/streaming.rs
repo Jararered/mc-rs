@@ -8,7 +8,7 @@ use bevy::camera::visibility::NoAutoAabb;
 use bevy::camera::visibility::NoFrustumCulling;
 use bevy::mesh::MeshPlugin;
 use bevy::prelude::*;
-use game::block::id::BlockId;
+use game::block::id::Id;
 use game::player::Player;
 use game::world::chunk::CHUNK_HEIGHT;
 use game::world::chunk::CHUNK_SIZE;
@@ -54,7 +54,7 @@ fn rendered_positions(app: &mut App) -> Vec<ChunkPos> {
     query.iter(app.world()).copied().collect()
 }
 
-fn block_at(app: &App, position: ChunkPos, x: usize, y: usize, z: usize) -> Option<BlockId> {
+fn block_at(app: &App, position: ChunkPos, x: usize, y: usize, z: usize) -> Option<Id> {
     app.world()
         .resource::<WorldChunks>()
         .get(position)
@@ -65,7 +65,7 @@ fn top_solid(chunk: &Chunk) -> (usize, usize, usize) {
     for y in (0..CHUNK_HEIGHT).rev() {
         for z in 0..CHUNK_SIZE {
             for x in 0..CHUNK_SIZE {
-                if chunk.get(x, y, z) != Some(BlockId::Air) {
+                if chunk.get(x, y, z) != Some(Id::Air) {
                     return (x, y, z);
                 }
             }
@@ -254,14 +254,14 @@ fn edited_chunk_remesh_is_dispatched_without_main_thread_meshing() {
         let mut chunks = app.world_mut().resource_mut::<WorldChunks>();
         let chunk = chunks.get_mut(origin).unwrap();
         let (x, y, z) = top_solid(&chunk.chunk);
-        chunk.chunk.set(x, y, z, BlockId::Air);
+        chunk.chunk.set(x, y, z, Id::Air);
         (x, y, z)
     };
     app.world_mut()
         .resource_mut::<WorldStreaming>()
         .request_remesh(origin);
     app.update();
-    assert_eq!(block_at(&app, origin, x, y, z), Some(BlockId::Air));
+    assert_eq!(block_at(&app, origin, x, y, z), Some(Id::Air));
     assert!(app.world().resource::<WorldStreaming>().meshing_job_count() > 0);
 
     // A second edit before the first job is applied must replace that job.
@@ -270,12 +270,12 @@ fn edited_chunk_remesh_is_dispatched_without_main_thread_meshing() {
         .get_mut(origin)
         .unwrap()
         .chunk
-        .set(x, y, z, BlockId::Stone);
+        .set(x, y, z, Id::Stone);
     app.world_mut()
         .resource_mut::<WorldStreaming>()
         .request_remesh(origin);
     app.update();
-    assert_eq!(block_at(&app, origin, x, y, z), Some(BlockId::Stone));
+    assert_eq!(block_at(&app, origin, x, y, z), Some(Id::Stone));
     assert!(app.world().resource::<WorldStreaming>().meshing_job_count() > 0);
 }
 
@@ -296,10 +296,10 @@ fn pressing_f4_regenerates_loaded_chunks_from_scratch() {
         let mut chunks = app.world_mut().resource_mut::<WorldChunks>();
         let chunk = chunks.get_mut(origin).unwrap();
         let (x, y, z) = top_solid(&chunk.chunk);
-        chunk.chunk.set(x, y, z, BlockId::Air);
+        chunk.chunk.set(x, y, z, Id::Air);
         (x, y, z)
     };
-    assert_eq!(block_at(&app, origin, x, y, z), Some(BlockId::Air));
+    assert_eq!(block_at(&app, origin, x, y, z), Some(Id::Air));
 
     app.world_mut()
         .resource_mut::<ButtonInput<KeyCode>>()
@@ -312,7 +312,7 @@ fn pressing_f4_regenerates_loaded_chunks_from_scratch() {
     // The chunk is dropped and regenerated, so the edit disappears while the
     // chunk stays rendered.
     assert!(run_until(&mut app, Duration::from_secs(5), |app| {
-        block_at(app, origin, x, y, z).is_some_and(|block| block != BlockId::Air)
+        block_at(app, origin, x, y, z).is_some_and(|block| block != Id::Air)
     }));
     assert!(rendered_positions(&mut app).contains(&origin));
 }

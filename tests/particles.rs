@@ -7,7 +7,7 @@ use bevy::state::app::StatesPlugin;
 use bevy::time::TimeUpdateStrategy;
 
 use game::app::state::AppScreen;
-use game::block::id::BlockId;
+use game::block::id::Id;
 use game::entity::particles::block::BlockParticlePlugin;
 use game::entity::particles::block::BlockParticles;
 use game::entity::particles::registry::ParticleSprite;
@@ -92,7 +92,7 @@ fn stone_hit() -> BlockHit {
         y: 64,
         z: 2,
         face: BlockFace::Up,
-        block: BlockId::Stone,
+        block: Id::Stone,
     }
 }
 
@@ -139,7 +139,7 @@ fn particle_colors(app: &mut App) -> Vec<[f32; 4]> {
 
 #[test]
 fn tall_grass_and_fern_break_and_hit_particles_use_biome_grass_tint() {
-    for block in [BlockId::TallGrass, BlockId::Fern] {
+    for block in [Id::TallGrass, Id::Fern] {
         for breaking in [true, false] {
             let mut app = test_app();
             add_climate_chunk(&mut app);
@@ -190,7 +190,7 @@ fn non_grass_particles_keep_neutral_or_foliage_tint() {
     app.world_mut()
         .resource_mut::<BlockParticles>()
         .emit_hit(BlockHit {
-            block: BlockId::Leaves,
+            block: Id::Leaves,
             ..stone_hit()
         });
     app.update();
@@ -208,7 +208,7 @@ fn grass_particles_use_standard_tint_when_climate_and_palette_are_unavailable() 
     app.world_mut()
         .resource_mut::<BlockParticles>()
         .emit_hit(BlockHit {
-            block: BlockId::TallGrass,
+            block: Id::TallGrass,
             ..stone_hit()
         });
     app.update();

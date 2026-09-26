@@ -1,6 +1,6 @@
 //! Inventory identities and Beta stack rules. Definitions do not imply that
 //! an item's use, crafting recipe, or rendering has been implemented.
-use crate::block::id::BlockId;
+use crate::block::id::Id;
 use num_enum::FromPrimitive;
 use num_enum::IntoPrimitive;
 
@@ -32,7 +32,7 @@ pub struct ItemDefinition {
     pub max_stack_size: u8,
     pub data: ItemData,
     /// Present for direct block items, not special items such as doors/buckets.
-    pub block: Option<BlockId>,
+    pub block: Option<Id>,
 }
 
 impl ItemDefinition {
@@ -177,7 +177,7 @@ const fn standalone(
 }
 
 impl ItemId {
-    pub fn from_block(block: BlockId) -> Option<Self> {
+    pub fn from_block(block: Id) -> Option<Self> {
         block
             .has_item_id()
             .then(|| Self::from(u16::from(block.as_u8())))
@@ -195,11 +195,11 @@ impl ItemId {
         }
     }
 
-    pub fn block(self) -> Option<BlockId> {
+    pub fn block(self) -> Option<Id> {
         let Self::BlockOrUnknown(raw) = self else {
             return None;
         };
-        let block = BlockId::from_u8(u8::try_from(raw).ok()?)?;
+        let block = Id::from_u8(u8::try_from(raw).ok()?)?;
         block.has_item_id().then_some(block)
     }
 
@@ -457,7 +457,7 @@ impl ItemId {
             Self::Brick => Some(standalone(self, "brick", 64, ItemData::None)),
             Self::ClayBall => Some(standalone(self, "clay_ball", 64, ItemData::None)),
             Self::SugarCane => Some(ItemDefinition {
-                block: Some(BlockId::SugarCane),
+                block: Some(Id::SugarCane),
                 ..standalone(self, "sugar_cane", 64, ItemData::None)
             }),
             Self::Paper => Some(standalone(self, "paper", 64, ItemData::None)),
@@ -489,7 +489,7 @@ impl ItemId {
 }
 
 /// Raw id ranges that contain an item: block items, the main item list, and records.
-const RAW_RANGES: [(u16, u16); 3] = [(1, BlockId::MAX_ITEM_ID as u16), (256, 359), (2256, 2257)];
+const RAW_RANGES: [(u16, u16); 3] = [(1, Id::MAX_ITEM_ID as u16), (256, 359), (2256, 2257)];
 
 /// Stateless immutable registry; lookups allocate nothing.
 pub struct ItemRegistry;

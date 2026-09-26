@@ -20,7 +20,7 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 
-use crate::block::id::BlockId;
+use crate::block::id::Id;
 use crate::block::properties::is_opaque_cube;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;
@@ -64,9 +64,9 @@ struct TreeWorld<'a> {
     target: ChunkPos,
     chunk: &'a mut Chunk,
     origin: [i32; 3],
-    ground: BlockId,
+    ground: Id,
     remote_chunks: &'a HashMap<ChunkPos, Chunk>,
-    overrides: &'a mut HashMap<(i32, i32, i32), BlockId>,
+    overrides: &'a mut HashMap<(i32, i32, i32), Id>,
 }
 
 impl TreeWorld<'_> {
@@ -76,13 +76,13 @@ impl TreeWorld<'_> {
             && (0..CHUNK_SIZE as i32).contains(&z)
     }
 
-    fn get(&self, x: i32, y: i32, z: i32) -> BlockId {
+    fn get(&self, x: i32, y: i32, z: i32) -> Id {
         let current = if let Some(block) = self.overrides.get(&(x, y, z)) {
             *block
         } else if Self::in_bounds(x, y, z) {
             self.chunk.get(x as usize, y as usize, z as usize).unwrap()
         } else if !(0..CHUNK_HEIGHT as i32).contains(&y) {
-            BlockId::Air
+            Id::Air
         } else {
             let world_x = self.target.x * CHUNK_SIZE as i32 + x;
             let world_z = self.target.z * CHUNK_SIZE as i32 + z;
@@ -96,7 +96,7 @@ impl TreeWorld<'_> {
                         world_z.rem_euclid(CHUNK_SIZE as i32) as usize,
                     )
                 })
-                .unwrap_or(BlockId::Air)
+                .unwrap_or(Id::Air)
         };
         if x == self.origin[0] && z == self.origin[2] && y == self.origin[1] - 1 {
             if is_log(current) || is_leaf(current) {
@@ -109,7 +109,7 @@ impl TreeWorld<'_> {
         }
     }
 
-    fn set(&mut self, x: i32, y: i32, z: i32, block: BlockId) {
+    fn set(&mut self, x: i32, y: i32, z: i32, block: Id) {
         let current = self.get(x, y, z);
         if is_log(block) {
             if is_log(current) {
@@ -119,20 +119,20 @@ impl TreeWorld<'_> {
                 let found = self.get(x, by, z);
                 if matches!(
                     found,
-                    BlockId::Wood
-                        | BlockId::BirchWood
-                        | BlockId::SpruceWood
-                        | BlockId::Leaves
-                        | BlockId::BirchLeaves
-                        | BlockId::SpruceLeaves
-                        | BlockId::Air
+                    Id::Wood
+                        | Id::BirchWood
+                        | Id::SpruceWood
+                        | Id::Leaves
+                        | Id::BirchLeaves
+                        | Id::SpruceLeaves
+                        | Id::Air
                 ) {
                     None
                 } else {
                     Some(found)
                 }
             });
-            if below == Some(BlockId::Sand) {
+            if below == Some(Id::Sand) {
                 return;
             }
         } else if is_leaf(block) && is_opaque_cube(current) {
@@ -150,22 +150,16 @@ impl TreeWorld<'_> {
     }
 }
 
-fn is_log(block: BlockId) -> bool {
-    matches!(
-        block,
-        BlockId::Wood | BlockId::BirchWood | BlockId::SpruceWood
-    )
+fn is_log(block: Id) -> bool {
+    matches!(block, Id::Wood | Id::BirchWood | Id::SpruceWood)
 }
 
-fn is_leaf(block: BlockId) -> bool {
-    matches!(
-        block,
-        BlockId::Leaves | BlockId::BirchLeaves | BlockId::SpruceLeaves
-    )
+fn is_leaf(block: Id) -> bool {
+    matches!(block, Id::Leaves | Id::BirchLeaves | Id::SpruceLeaves)
 }
 
-fn is_tree_space(block: BlockId) -> bool {
-    matches!(block, BlockId::Air) || is_leaf(block)
+fn is_tree_space(block: Id) -> bool {
+    matches!(block, Id::Air) || is_leaf(block)
 }
 
 /// Replay the reference placement loop for every chunk overlapping `position`
@@ -181,14 +175,12 @@ pub(super) fn decorate(
     // Ground heights and surface blocks are captured before any tree is placed
     // so placement sees the terrain rather than earlier trees.
     let mut heights = [[0u8; CHUNK_SIZE]; CHUNK_SIZE];
-    let mut grounds = [[BlockId::Air; CHUNK_SIZE]; CHUNK_SIZE];
+    let mut grounds = [[Id::Air; CHUNK_SIZE]; CHUNK_SIZE];
     for x in 0..CHUNK_SIZE {
         for z in 0..CHUNK_SIZE {
             let height = top_non_air(chunk, x, z);
             heights[x][z] = height as u8;
-            grounds[x][z] = chunk
-                .get(x, height.saturating_sub(1), z)
-                .unwrap_or(BlockId::Air);
+            grounds[x][z] = chunk.get(x, height.saturating_sub(1), z).unwrap_or(Id::Air);
         }
     }
 
@@ -233,10 +225,10 @@ fn populate(
     target: ChunkPos,
     source: ChunkPos,
     heights: &[[u8; CHUNK_SIZE]; CHUNK_SIZE],
-    grounds: &[[BlockId; CHUNK_SIZE]; CHUNK_SIZE],
-    remote_ground: &mut HashMap<(i32, i32), (i32, BlockId)>,
+    grounds: &[[Id; CHUNK_SIZE]; CHUNK_SIZE],
+    remote_ground: &mut HashMap<(i32, i32), (i32, Id)>,
     remote_chunks: &mut HashMap<ChunkPos, Chunk>,
-    tree_overrides: &mut HashMap<(i32, i32, i32), BlockId>,
+    tree_overrides: &mut HashMap<(i32, i32, i32), Id>,
     cactus_positions: &mut HashSet<(i32, i32, i32)>,
     reed_positions: &mut HashSet<(i32, i32, i32)>,
     pumpkin_positions: &mut HashSet<(i32, i32, i32)>,
@@ -292,7 +284,7 @@ fn populate(
             target,
             chunk,
             origin: [0, 0, 0],
-            ground: BlockId::Air,
+            ground: Id::Air,
             remote_chunks: &tree_chunks,
             overrides: tree_overrides,
         };
@@ -436,19 +428,10 @@ fn generate(kind: TreeKind, world: &mut TreeWorld, rand: &mut JavaRandom, origin
     let [x, y, z] = origin;
     match kind {
         TreeKind::Oak => {
-            generate_standard(world, rand, x, y, z, BlockId::Wood, BlockId::Leaves, 4);
+            generate_standard(world, rand, x, y, z, Id::Wood, Id::Leaves, 4);
         }
         TreeKind::Birch => {
-            generate_standard(
-                world,
-                rand,
-                x,
-                y,
-                z,
-                BlockId::BirchWood,
-                BlockId::BirchLeaves,
-                5,
-            );
+            generate_standard(world, rand, x, y, z, Id::BirchWood, Id::BirchLeaves, 5);
         }
         TreeKind::Spruce1 => {
             generate_taiga1(world, rand, x, y, z);
@@ -469,13 +452,13 @@ fn generate(kind: TreeKind, world: &mut TreeWorld, rand: &mut JavaRandom, origin
 fn ground_at(
     target: ChunkPos,
     heights: &[[u8; CHUNK_SIZE]; CHUNK_SIZE],
-    grounds: &[[BlockId; CHUNK_SIZE]; CHUNK_SIZE],
-    remote_ground: &mut HashMap<(i32, i32), (i32, BlockId)>,
+    grounds: &[[Id; CHUNK_SIZE]; CHUNK_SIZE],
+    remote_ground: &mut HashMap<(i32, i32), (i32, Id)>,
     remote_chunks: &mut HashMap<ChunkPos, Chunk>,
     remote_chunk: &impl Fn(ChunkPos) -> Chunk,
     world_x: i32,
     world_z: i32,
-) -> (i32, BlockId) {
+) -> (i32, Id) {
     let local_x = world_x - target.x * CHUNK_SIZE as i32;
     let local_z = world_z - target.z * CHUNK_SIZE as i32;
     if (0..CHUNK_SIZE as i32).contains(&local_x) && (0..CHUNK_SIZE as i32).contains(&local_z) {
@@ -498,9 +481,7 @@ fn ground_at(
         let height = top_non_air(chunk, x, z);
         let column = (
             height as i32,
-            chunk
-                .get(x, height.saturating_sub(1), z)
-                .unwrap_or(BlockId::Air),
+            chunk.get(x, height.saturating_sub(1), z).unwrap_or(Id::Air),
         );
         remote_ground.insert((world_x, world_z), column);
         column
@@ -510,7 +491,7 @@ fn ground_at(
 fn top_non_air(chunk: &Chunk, x: usize, z: usize) -> usize {
     (0..CHUNK_HEIGHT)
         .rev()
-        .find(|&y| chunk.get(x, y, z).unwrap() != BlockId::Air)
+        .find(|&y| chunk.get(x, y, z).unwrap() != Id::Air)
         .map_or(0, |y| y + 1)
 }
 
@@ -565,18 +546,16 @@ fn generate_standard(
     x: i32,
     y: i32,
     z: i32,
-    wood: BlockId,
-    leaves: BlockId,
+    wood: Id,
+    leaves: Id,
     base_height: i32,
 ) -> bool {
     let height = rand.next_int(3) as i32 + base_height;
     if y >= 1 && y + height < CHUNK_HEIGHT as i32 && standard_space_is_clear(world, x, y, z, height)
     {
         let below = world.get(x, y - 1, z);
-        if (below == BlockId::Grass || below == BlockId::Dirt)
-            && y < CHUNK_HEIGHT as i32 - height - 1
-        {
-            world.set(x, y - 1, z, BlockId::Dirt);
+        if (below == Id::Grass || below == Id::Dirt) && y < CHUNK_HEIGHT as i32 - height - 1 {
+            world.set(x, y - 1, z, Id::Dirt);
             for level in y - 3 + height..=y + height {
                 let offset = level - (y + height);
                 let radius = 1 - offset / 2;
@@ -596,7 +575,7 @@ fn generate_standard(
             }
             for level in 0..height {
                 let block = world.get(x, y + level, z);
-                if block == BlockId::Air || is_leaf(block) {
+                if block == Id::Air || is_leaf(block) {
                     world.set(x, y + level, z, wood);
                 }
             }
@@ -620,10 +599,8 @@ fn generate_taiga1(world: &mut TreeWorld, rand: &mut JavaRandom, x: i32, y: i32,
         && taiga_space_is_clear(world, x, y, z, height, trunk, max_radius)
     {
         let below = world.get(x, y - 1, z);
-        if (below == BlockId::Grass || below == BlockId::Dirt)
-            && y < CHUNK_HEIGHT as i32 - height - 1
-        {
-            world.set(x, y - 1, z, BlockId::Dirt);
+        if (below == Id::Grass || below == Id::Dirt) && y < CHUNK_HEIGHT as i32 - height - 1 {
+            world.set(x, y - 1, z, Id::Dirt);
             let mut radius = 0;
             let mut level = y + height;
             while level >= y + trunk {
@@ -634,7 +611,7 @@ fn generate_taiga1(world: &mut TreeWorld, rand: &mut JavaRandom, x: i32, y: i32,
                         if (dx.abs() != radius || dz.abs() != radius || radius <= 0)
                             && !world.is_opaque(lx, level, lz)
                         {
-                            world.set(lx, level, lz, BlockId::SpruceLeaves);
+                            world.set(lx, level, lz, Id::SpruceLeaves);
                         }
                     }
                 }
@@ -647,8 +624,8 @@ fn generate_taiga1(world: &mut TreeWorld, rand: &mut JavaRandom, x: i32, y: i32,
             }
             for level in 0..height - 1 {
                 let block = world.get(x, y + level, z);
-                if block == BlockId::Air || is_leaf(block) {
-                    world.set(x, y + level, z, BlockId::SpruceWood);
+                if block == Id::Air || is_leaf(block) {
+                    world.set(x, y + level, z, Id::SpruceWood);
                 }
             }
             true
@@ -671,10 +648,8 @@ fn generate_taiga2(world: &mut TreeWorld, rand: &mut JavaRandom, x: i32, y: i32,
         && taiga_space_is_clear(world, x, y, z, height, trunk, max_radius)
     {
         let below = world.get(x, y - 1, z);
-        if (below == BlockId::Grass || below == BlockId::Dirt)
-            && y < CHUNK_HEIGHT as i32 - height - 1
-        {
-            world.set(x, y - 1, z, BlockId::Dirt);
+        if (below == Id::Grass || below == Id::Dirt) && y < CHUNK_HEIGHT as i32 - height - 1 {
+            world.set(x, y - 1, z, Id::Dirt);
             let mut radius = rand.next_int(2) as i32;
             let mut threshold = 1;
             let mut next_radius = 0;
@@ -687,7 +662,7 @@ fn generate_taiga2(world: &mut TreeWorld, rand: &mut JavaRandom, x: i32, y: i32,
                         if (dx.abs() != radius || dz.abs() != radius || radius <= 0)
                             && !world.is_opaque(lx, level, lz)
                         {
-                            world.set(lx, level, lz, BlockId::SpruceLeaves);
+                            world.set(lx, level, lz, Id::SpruceLeaves);
                         }
                     }
                 }
@@ -705,8 +680,8 @@ fn generate_taiga2(world: &mut TreeWorld, rand: &mut JavaRandom, x: i32, y: i32,
             let trunk_height = rand.next_int(3) as i32;
             for level in 0..height - trunk_height {
                 let block = world.get(x, y + level, z);
-                if block == BlockId::Air || is_leaf(block) {
-                    world.set(x, y + level, z, BlockId::SpruceWood);
+                if block == Id::Air || is_leaf(block) {
+                    world.set(x, y + level, z, Id::SpruceWood);
                 }
             }
             true
@@ -781,7 +756,7 @@ impl BigTree {
         let base = self.base;
         let top = [base[0], base[1] + self.height - 1, base[2]];
         let below = world.get(base[0], base[1] - 1, base[2]);
-        if below != BlockId::Grass && below != BlockId::Dirt {
+        if below != Id::Grass && below != Id::Dirt {
             return false;
         }
         let distance = self.line_clearance(world, base, top);
@@ -943,10 +918,10 @@ impl BigTree {
                 }
                 pos[b] = center[b] + offset_b;
                 let existing = world.get(pos[0], pos[1], pos[2]);
-                if existing != BlockId::Air && existing != BlockId::Leaves {
+                if existing != Id::Air && existing != Id::Leaves {
                     continue;
                 }
-                world.set(pos[0], pos[1], pos[2], BlockId::Leaves);
+                world.set(pos[0], pos[1], pos[2], Id::Leaves);
             }
         }
     }
@@ -996,7 +971,7 @@ impl BigTree {
             pos[axis] = (from[axis] as f64 + offset as f64 + 0.5).floor() as i32;
             pos[a] = (from[a] as f64 + offset as f64 * slope_a + 0.5).floor() as i32;
             pos[b] = (from[b] as f64 + offset as f64 * slope_b + 0.5).floor() as i32;
-            world.set(pos[0], pos[1], pos[2], BlockId::Wood);
+            world.set(pos[0], pos[1], pos[2], Id::Wood);
             offset += step;
         }
     }

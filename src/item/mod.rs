@@ -1,7 +1,7 @@
 //! Item identities, definitions, and validated inventory stacks.
 pub mod registry;
 pub mod tools;
-use crate::block::id::BlockId;
+use crate::block::id::Id;
 pub use registry::ItemData;
 pub use registry::ItemDefinition;
 pub use registry::ItemId;
@@ -56,7 +56,7 @@ impl ItemStack {
 
     /// Direct block representation, not a mining-drop rule (stone may drop cobble).
     /// Torch attachment is discarded; species metadata is retained.
-    pub fn from_block(block: BlockId, count: u8) -> Result<Self, StackError> {
+    pub fn from_block(block: Id, count: u8) -> Result<Self, StackError> {
         let (item_block, data) = block.item_form();
         let Some(item) = ItemId::from_block(item_block) else {
             return Err(StackError::UnknownItem(ItemId::BlockOrUnknown(u16::from(
@@ -86,7 +86,7 @@ impl ItemStack {
 
     /// Direct placement candidate for implemented block states. Special items
     /// such as doors require their own use behavior.
-    pub fn runtime_block(self) -> Option<BlockId> {
+    pub fn runtime_block(self) -> Option<Id> {
         let block = self.definition().block?;
         block.placed(u8::try_from(self.data).ok()?)
     }

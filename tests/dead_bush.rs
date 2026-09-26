@@ -1,6 +1,6 @@
 use bevy::mesh::VertexAttributeValues;
 use bevy::prelude::Mesh;
-use game::block::id::BlockId;
+use game::block::id::Id;
 use game::block::properties::collision_bounds;
 use game::block::properties::is_crossed_plant;
 use game::block::properties::is_opaque_cube;
@@ -13,17 +13,17 @@ use game::world::textures::block_tile;
 
 #[test]
 fn dead_bush_uses_its_beta_sprite_tile_and_crossed_mesh() {
-    assert_eq!(block_tile(BlockId::DeadBush, 0, false), (7, 3));
-    assert!(is_crossed_plant(BlockId::DeadBush));
-    assert!(!is_opaque_cube(BlockId::DeadBush));
-    assert_eq!(collision_bounds(BlockId::DeadBush), None);
+    assert_eq!(block_tile(Id::DeadBush, 0, false), (7, 3));
+    assert!(is_crossed_plant(Id::DeadBush));
+    assert!(!is_opaque_cube(Id::DeadBush));
+    assert_eq!(collision_bounds(Id::DeadBush), None);
     assert_eq!(
-        selection_bounds(BlockId::DeadBush),
+        selection_bounds(Id::DeadBush),
         ([0.1, 0.0, 0.1], [0.9, 0.8, 0.9])
     );
 
     let mut chunk = Chunk::new();
-    chunk.set(4, 20, 4, BlockId::DeadBush);
+    chunk.set(4, 20, 4, Id::DeadBush);
     let meshes = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true, true);
     assert_eq!(meshes.opaque.count_vertices(), 0);
     let Some(VertexAttributeValues::Float32x3(positions)) =

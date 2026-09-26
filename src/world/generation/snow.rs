@@ -1,6 +1,6 @@
 //! Beta-style post-population snow cover.
 
-use crate::block::id::BlockId;
+use crate::block::id::Id;
 use crate::block::properties::blocks_movement;
 use crate::block::properties::is_crossed_plant;
 use crate::block::properties::is_torch;
@@ -31,18 +31,18 @@ pub(super) fn place_snow(chunk: &mut Chunk, biomes: &BiomeMap) {
             else {
                 continue;
             };
-            if surface_y >= CHUNK_HEIGHT || chunk.get(x, surface_y, z) != Some(BlockId::Air) {
+            if surface_y >= CHUNK_HEIGHT || chunk.get(x, surface_y, z) != Some(Id::Air) {
                 continue;
             }
 
             let support = chunk.get(x, surface_y - 1, z).unwrap();
-            if support == BlockId::Ice || !blocks_movement(support) {
+            if support == Id::Ice || !blocks_movement(support) {
                 continue;
             }
 
             let temperature = biomes.get(x, z).temperature - (surface_y as f64 - 64.0) / 64.0 * 0.3;
             if temperature < 0.5 {
-                chunk.set(x, surface_y, z, BlockId::SnowLayer);
+                chunk.set(x, surface_y, z, Id::SnowLayer);
             }
         }
     }
@@ -50,6 +50,6 @@ pub(super) fn place_snow(chunk: &mut Chunk, biomes: &BiomeMap) {
 
 /// The reference height query includes solid blocks and liquids, but excludes
 /// plants and torches that sit in the air above the surface.
-fn occupies_surface(block: BlockId) -> bool {
-    block != BlockId::Air && !is_crossed_plant(block) && !is_torch(block)
+fn occupies_surface(block: Id) -> bool {
+    block != Id::Air && !is_crossed_plant(block) && !is_torch(block)
 }

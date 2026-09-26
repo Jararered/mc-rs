@@ -3,7 +3,7 @@
 //! A block's faces own independent corner arrays, so moving one face does not
 //! require deforming the neighboring face's shared vertices.
 
-use crate::block::id::BlockId;
+use crate::block::id::Id;
 
 pub(crate) const FACE_TOP: usize = 0;
 pub(crate) const FACE_BOTTOM: usize = 1;
@@ -119,8 +119,8 @@ impl BlockFaceGeometry {
         geometry
     }
 
-    pub(crate) fn for_block(block: BlockId) -> Self {
-        if block == BlockId::Cactus {
+    pub(crate) fn for_block(block: Id) -> Self {
+        if block == Id::Cactus {
             Self::cactus()
         } else {
             Self::unit_cube()

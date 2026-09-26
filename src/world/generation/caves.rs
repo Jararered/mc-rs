@@ -1,5 +1,5 @@
 //! Beta 1.7.3 `MapGenBase` and `MapGenCaves`.
-use crate::block::id::BlockId;
+use crate::block::id::Id;
 use crate::random::JavaRandom;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::Chunk;
@@ -162,7 +162,7 @@ fn node(
                             if (0..CHUNK_HEIGHT as i32).contains(&y)
                                 && matches!(
                                     chunk.get(x as usize, y as usize, z as usize),
-                                    Some(BlockId::Water | BlockId::FlowingWater)
+                                    Some(Id::Water | Id::FlowingWater)
                                 )
                             {
                                 water = true;
@@ -187,31 +187,27 @@ fn node(
                                     continue;
                                 }
                                 let old = chunk.get(x as usize, y as usize, z as usize).unwrap();
-                                if old == BlockId::Grass {
+                                if old == Id::Grass {
                                     grass = true;
                                 }
-                                if matches!(old, BlockId::Stone | BlockId::Dirt | BlockId::Grass) {
+                                if matches!(old, Id::Stone | Id::Dirt | Id::Grass) {
                                     chunk.set(
                                         x as usize,
                                         y as usize,
                                         z as usize,
-                                        if y < 10 {
-                                            BlockId::FlowingLava
-                                        } else {
-                                            BlockId::Air
-                                        },
+                                        if y < 10 { Id::FlowingLava } else { Id::Air },
                                     );
                                     if y >= 10
                                         && grass
                                         && y > 0
                                         && chunk.get(x as usize, (y - 1) as usize, z as usize)
-                                            == Some(BlockId::Dirt)
+                                            == Some(Id::Dirt)
                                     {
                                         chunk.set(
                                             x as usize,
                                             (y - 1) as usize,
                                             z as usize,
-                                            BlockId::Grass,
+                                            Id::Grass,
                                         );
                                     }
                                 }

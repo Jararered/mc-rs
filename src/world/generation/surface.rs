@@ -1,4 +1,4 @@
-use crate::block::id::BlockId;
+use crate::block::id::Id;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::Chunk;
@@ -52,44 +52,36 @@ pub(super) fn apply_surface(
                 + random.next_double() * 0.25) as i32;
 
             let mut remaining = -1;
-            let mut filler = BlockId::Dirt;
+            let mut filler = Id::Dirt;
             for y in (0..CHUNK_HEIGHT).rev() {
                 let bedrock_roll = random.next_int(5) as usize;
                 if y <= bedrock_roll {
-                    chunk.set(x, y, z, BlockId::Bedrock);
+                    chunk.set(x, y, z, Id::Bedrock);
                     continue;
                 }
 
                 match chunk.get(x, y, z).unwrap() {
-                    BlockId::Air | BlockId::Water => {
+                    Id::Air | Id::Water => {
                         remaining = -1;
                     }
-                    BlockId::Stone if remaining == -1 => {
+                    Id::Stone if remaining == -1 => {
                         remaining = elevation;
                         if elevation <= 0 {
-                            filler = BlockId::Stone;
+                            filler = Id::Stone;
                             if y < SEA_LEVEL {
-                                chunk.set(x, y, z, BlockId::Water);
+                                chunk.set(x, y, z, Id::Water);
                             }
                         } else {
-                            let mut top = if desert_surface {
-                                BlockId::Sand
-                            } else {
-                                BlockId::Grass
-                            };
-                            filler = if desert_surface {
-                                BlockId::Sand
-                            } else {
-                                BlockId::Dirt
-                            };
+                            let mut top = if desert_surface { Id::Sand } else { Id::Grass };
+                            filler = if desert_surface { Id::Sand } else { Id::Dirt };
                             if y <= SEA_LEVEL + 1 {
                                 if gravelly {
-                                    top = BlockId::Gravel;
-                                    filler = BlockId::Gravel;
+                                    top = Id::Gravel;
+                                    filler = Id::Gravel;
                                 }
                                 if shore_sandy {
-                                    top = BlockId::Sand;
-                                    filler = BlockId::Sand;
+                                    top = Id::Sand;
+                                    filler = Id::Sand;
                                 }
                             }
                             // Beta only places the biome top (grass) at y >= 63.
@@ -102,12 +94,12 @@ pub(super) fn apply_surface(
                             }
                         }
                     }
-                    BlockId::Stone if remaining > 0 => {
+                    Id::Stone if remaining > 0 => {
                         remaining -= 1;
                         chunk.set(x, y, z, filler);
-                        if remaining == 0 && filler == BlockId::Sand {
+                        if remaining == 0 && filler == Id::Sand {
                             remaining = random.next_int(4) as i32;
-                            filler = BlockId::Sandstone;
+                            filler = Id::Sandstone;
                         }
                     }
                     _ => {}
@@ -115,9 +107,9 @@ pub(super) fn apply_surface(
             }
 
             if biomes.get(x, z).temperature < 0.5
-                && chunk.get(x, SEA_LEVEL - 1, z) == Some(BlockId::Water)
+                && chunk.get(x, SEA_LEVEL - 1, z) == Some(Id::Water)
             {
-                chunk.set(x, SEA_LEVEL - 1, z, BlockId::Ice);
+                chunk.set(x, SEA_LEVEL - 1, z, Id::Ice);
             }
         }
     }

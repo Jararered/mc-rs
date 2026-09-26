@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 
-use crate::block::id::BlockId;
+use crate::block::id::Id;
 use crate::block::properties::cactus_can_stay;
 use crate::random::JavaRandom;
 use crate::world::chunk::CHUNK_HEIGHT;
@@ -38,8 +38,7 @@ pub(super) fn place_cacti(
             let y = origin_y + rand.next_int(4) as i32 - rand.next_int(4) as i32;
             let z = origin_z + rand.next_int(8) as i32 - rand.next_int(8) as i32;
             if !(0..CHUNK_HEIGHT as i32).contains(&y)
-                || block_at(chunk, target, x, y, z, placed, remote_chunks, remote_chunk)
-                    != BlockId::Air
+                || block_at(chunk, target, x, y, z, placed, remote_chunks, remote_chunk) != Id::Air
             {
                 continue;
             }
@@ -108,7 +107,7 @@ pub(super) fn place_cacti(
                 }
                 placed.insert((x, cactus_y, z));
                 if let Some((local_x, local_z)) = local_column(target, x, z) {
-                    chunk.set(local_x, cactus_y as usize, local_z, BlockId::Cactus);
+                    chunk.set(local_x, cactus_y as usize, local_z, Id::Cactus);
                 }
             }
         }
@@ -125,12 +124,12 @@ fn block_at(
     placed: &HashSet<(i32, i32, i32)>,
     remote_chunks: &mut HashMap<ChunkPos, Chunk>,
     remote_chunk: &impl Fn(ChunkPos) -> Chunk,
-) -> BlockId {
+) -> Id {
     if !(0..CHUNK_HEIGHT as i32).contains(&y) {
-        return BlockId::Air;
+        return Id::Air;
     }
     if placed.contains(&(x, y, z)) {
-        return BlockId::Cactus;
+        return Id::Cactus;
     }
     let pos = ChunkPos {
         x: x.div_euclid(CHUNK_SIZE as i32),
@@ -139,15 +138,13 @@ fn block_at(
     let local_x = x.rem_euclid(CHUNK_SIZE as i32) as usize;
     let local_z = z.rem_euclid(CHUNK_SIZE as i32) as usize;
     if pos == target {
-        chunk
-            .get(local_x, y as usize, local_z)
-            .unwrap_or(BlockId::Air)
+        chunk.get(local_x, y as usize, local_z).unwrap_or(Id::Air)
     } else {
         remote_chunks
             .entry(pos)
             .or_insert_with(|| remote_chunk(pos))
             .get(local_x, y as usize, local_z)
-            .unwrap_or(BlockId::Air)
+            .unwrap_or(Id::Air)
     }
 }
 

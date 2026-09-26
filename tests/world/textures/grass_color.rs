@@ -1,5 +1,5 @@
 use bevy::prelude::Mesh;
-use game::block::id::BlockId;
+use game::block::id::Id;
 use game::world::chunk::Chunk;
 use game::world::chunk::ChunkPos;
 use game::world::generation::Biome;
@@ -45,8 +45,8 @@ fn grass_color_varies_with_climate_within_one_biome() {
 #[test]
 fn crossed_grass_mesh_uses_each_column_biome_grass_color() {
     let mut chunk = Chunk::new();
-    chunk.set(2, 64, 3, BlockId::TallGrass);
-    chunk.set(4, 64, 5, BlockId::Fern);
+    chunk.set(2, 64, 3, Id::TallGrass);
+    chunk.set(4, 64, 5, Id::Fern);
     let wet = Climate {
         temperature: 0.5,
         humidity: 0.5,

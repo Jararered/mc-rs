@@ -297,43 +297,35 @@ fn apply_water_quality(material: &mut StandardMaterial, graphics: GraphicsQualit
 }
 
 // The original terrain.png is a 16 by 16 grid of 16-pixel tiles.
-pub fn block_tile(
-    block: crate::block::id::BlockId,
-    face: usize,
-    fancy_graphics: bool,
-) -> (u8, u8) {
-    use crate::block::id::BlockId;
+pub fn block_tile(block: crate::block::id::Id, face: usize, fancy_graphics: bool) -> (u8, u8) {
+    use crate::block::id::Id;
 
     match block {
-        BlockId::Ladder
-        | BlockId::LadderNorth
-        | BlockId::LadderEast
-        | BlockId::LadderSouth
-        | BlockId::LadderWest => (3, 5),
-        BlockId::Furnace
-        | BlockId::FurnaceNorth
-        | BlockId::FurnaceEast
-        | BlockId::FurnaceSouth
-        | BlockId::FurnaceWest
-        | BlockId::LitFurnace
-        | BlockId::LitFurnaceNorth
-        | BlockId::LitFurnaceEast
-        | BlockId::LitFurnaceSouth
-        | BlockId::LitFurnaceWest
+        Id::Ladder | Id::LadderNorth | Id::LadderEast | Id::LadderSouth | Id::LadderWest => (3, 5),
+        Id::Furnace
+        | Id::FurnaceNorth
+        | Id::FurnaceEast
+        | Id::FurnaceSouth
+        | Id::FurnaceWest
+        | Id::LitFurnace
+        | Id::LitFurnaceNorth
+        | Id::LitFurnaceEast
+        | Id::LitFurnaceSouth
+        | Id::LitFurnaceWest
             if face == 0 || face == 1 =>
         {
             (14, 3)
         }
-        BlockId::Furnace
-        | BlockId::FurnaceNorth
-        | BlockId::FurnaceEast
-        | BlockId::FurnaceSouth
-        | BlockId::FurnaceWest
-        | BlockId::LitFurnace
-        | BlockId::LitFurnaceNorth
-        | BlockId::LitFurnaceEast
-        | BlockId::LitFurnaceSouth
-        | BlockId::LitFurnaceWest => {
+        Id::Furnace
+        | Id::FurnaceNorth
+        | Id::FurnaceEast
+        | Id::FurnaceSouth
+        | Id::FurnaceWest
+        | Id::LitFurnace
+        | Id::LitFurnaceNorth
+        | Id::LitFurnaceEast
+        | Id::LitFurnaceSouth
+        | Id::LitFurnaceWest => {
             let facing = block.furnace_facing().expect("matched furnace");
             if face == facing.face_index() {
                 if block.is_lit_furnace() {
@@ -345,35 +337,27 @@ pub fn block_tile(
                 (13, 2)
             }
         }
-        BlockId::Grass if face == 0 => (0, 0),
-        BlockId::Grass if face == 1 => (2, 0),
-        BlockId::Grass => (3, 0),
-        BlockId::Stone => (1, 0),
-        BlockId::Dirt => (2, 0),
-        BlockId::Farmland if face == 0 => farmland_top_tile(false),
-        BlockId::Farmland => (2, 0),
-        BlockId::Cobblestone => (0, 1),
-        BlockId::WoodenPlanks | BlockId::SprucePlanks | BlockId::BirchPlanks => (4, 0),
+        Id::Grass if face == 0 => (0, 0),
+        Id::Grass if face == 1 => (2, 0),
+        Id::Grass => (3, 0),
+        Id::Stone => (1, 0),
+        Id::Dirt => (2, 0),
+        Id::Farmland if face == 0 => farmland_top_tile(false),
+        Id::Farmland => (2, 0),
+        Id::Cobblestone => (0, 1),
+        Id::WoodenPlanks | Id::SprucePlanks | Id::BirchPlanks => (4, 0),
         // Beta BlockWorkbench: top 43, plank bottom 4, and two alternating
         // side tiles (59/60) based on the block face orientation.
-        BlockId::CraftingTable if face == 0 => (11, 2),
-        BlockId::CraftingTable if face == 1 => (4, 0),
-        BlockId::CraftingTable if face == 2 || face == 4 => (12, 3),
-        BlockId::CraftingTable => (11, 3),
-        BlockId::Pumpkin
-        | BlockId::PumpkinNorth
-        | BlockId::PumpkinEast
-        | BlockId::PumpkinSouth
-        | BlockId::PumpkinWest
+        Id::CraftingTable if face == 0 => (11, 2),
+        Id::CraftingTable if face == 1 => (4, 0),
+        Id::CraftingTable if face == 2 || face == 4 => (12, 3),
+        Id::CraftingTable => (11, 3),
+        Id::Pumpkin | Id::PumpkinNorth | Id::PumpkinEast | Id::PumpkinSouth | Id::PumpkinWest
             if face == 0 || face == 1 =>
         {
             (6, 6)
         }
-        BlockId::Pumpkin
-        | BlockId::PumpkinNorth
-        | BlockId::PumpkinEast
-        | BlockId::PumpkinSouth
-        | BlockId::PumpkinWest => {
+        Id::Pumpkin | Id::PumpkinNorth | Id::PumpkinEast | Id::PumpkinSouth | Id::PumpkinWest => {
             if block
                 .pumpkin_facing()
                 .is_some_and(|facing| facing.face_index() == face)
@@ -383,76 +367,68 @@ pub fn block_tile(
                 (6, 7)
             }
         }
-        BlockId::JackOLantern if face == 0 || face == 1 => (6, 6),
-        BlockId::JackOLantern if face == 3 => (8, 7),
-        BlockId::JackOLantern => (6, 7),
-        BlockId::Bedrock => (1, 1),
-        BlockId::Sand => (2, 1),
-        BlockId::Gravel => (3, 1),
-        BlockId::Wood if face == 0 || face == 1 => (5, 1),
-        BlockId::Wood => (4, 1),
-        BlockId::SpruceWood if face == 0 || face == 1 => (5, 1),
-        BlockId::SpruceWood => (4, 7),
-        BlockId::BirchWood if face == 0 || face == 1 => (5, 1),
-        BlockId::BirchWood => (5, 7),
+        Id::JackOLantern if face == 0 || face == 1 => (6, 6),
+        Id::JackOLantern if face == 3 => (8, 7),
+        Id::JackOLantern => (6, 7),
+        Id::Bedrock => (1, 1),
+        Id::Sand => (2, 1),
+        Id::Gravel => (3, 1),
+        Id::Wood if face == 0 || face == 1 => (5, 1),
+        Id::Wood => (4, 1),
+        Id::SpruceWood if face == 0 || face == 1 => (5, 1),
+        Id::SpruceWood => (4, 7),
+        Id::BirchWood if face == 0 || face == 1 => (5, 1),
+        Id::BirchWood => (5, 7),
         // Fancy leaves use the cutout tile; Fast uses the solid tile one column over.
-        BlockId::Leaves | BlockId::BirchLeaves => {
+        Id::Leaves | Id::BirchLeaves => {
             if fancy_graphics {
                 (4, 3)
             } else {
                 (5, 3)
             }
         }
-        BlockId::SpruceLeaves => {
+        Id::SpruceLeaves => {
             if fancy_graphics {
                 (4, 8)
             } else {
                 (5, 8)
             }
         }
-        BlockId::Sponge => (0, 3),
-        BlockId::GoldBlock => (7, 1),
-        BlockId::IronBlock => (6, 1),
-        BlockId::DiamondBlock => (8, 1),
-        BlockId::Bookshelf if face == 0 || face == 1 => (4, 0),
-        BlockId::Bookshelf => (3, 2),
-        BlockId::Tnt if face == 0 => (9, 0),
-        BlockId::Tnt if face == 1 => (10, 0),
-        BlockId::Tnt => (8, 0),
-        BlockId::Sandstone if face == 0 => (0, 11),
-        BlockId::Sandstone if face == 1 => (0, 13),
-        BlockId::Sandstone => (0, 12),
-        BlockId::LapisOre => (0, 10),
-        BlockId::LapisBlock => (0, 9),
-        BlockId::RedstoneOre | BlockId::LitRedstoneOre => (3, 3),
-        BlockId::GoldOre => (0, 2),
-        BlockId::IronOre => (1, 2),
-        BlockId::CoalOre => (2, 2),
-        BlockId::Bricks => (7, 0),
-        BlockId::MossyCobblestone => (4, 2),
-        BlockId::Obsidian => (5, 2),
-        BlockId::DiamondOre => (2, 3),
-        BlockId::SnowLayer | BlockId::Snow => (2, 4),
-        BlockId::Cactus if face == 0 => (5, 4),
-        BlockId::Cactus if face == 1 => (7, 4),
-        BlockId::Cactus => (6, 4),
-        BlockId::SugarCane => (9, 4),
-        BlockId::Clay => (8, 4),
-        BlockId::MobSpawner => (1, 4),
-        BlockId::ChestNorth
-        | BlockId::ChestEast
-        | BlockId::ChestSouth
-        | BlockId::ChestWest
-        | BlockId::Chest
+        Id::Sponge => (0, 3),
+        Id::GoldBlock => (7, 1),
+        Id::IronBlock => (6, 1),
+        Id::DiamondBlock => (8, 1),
+        Id::Bookshelf if face == 0 || face == 1 => (4, 0),
+        Id::Bookshelf => (3, 2),
+        Id::Tnt if face == 0 => (9, 0),
+        Id::Tnt if face == 1 => (10, 0),
+        Id::Tnt => (8, 0),
+        Id::Sandstone if face == 0 => (0, 11),
+        Id::Sandstone if face == 1 => (0, 13),
+        Id::Sandstone => (0, 12),
+        Id::LapisOre => (0, 10),
+        Id::LapisBlock => (0, 9),
+        Id::RedstoneOre | Id::LitRedstoneOre => (3, 3),
+        Id::GoldOre => (0, 2),
+        Id::IronOre => (1, 2),
+        Id::CoalOre => (2, 2),
+        Id::Bricks => (7, 0),
+        Id::MossyCobblestone => (4, 2),
+        Id::Obsidian => (5, 2),
+        Id::DiamondOre => (2, 3),
+        Id::SnowLayer | Id::Snow => (2, 4),
+        Id::Cactus if face == 0 => (5, 4),
+        Id::Cactus if face == 1 => (7, 4),
+        Id::Cactus => (6, 4),
+        Id::SugarCane => (9, 4),
+        Id::Clay => (8, 4),
+        Id::MobSpawner => (1, 4),
+        Id::ChestNorth | Id::ChestEast | Id::ChestSouth | Id::ChestWest | Id::Chest
             if face == 0 || face == 1 =>
         {
             (9, 1)
         }
-        BlockId::ChestNorth
-        | BlockId::ChestEast
-        | BlockId::ChestSouth
-        | BlockId::ChestWest
-        | BlockId::Chest => {
+        Id::ChestNorth | Id::ChestEast | Id::ChestSouth | Id::ChestWest | Id::Chest => {
             if block
                 .chest_facing()
                 .is_some_and(|facing| facing.face_index() == face)
@@ -462,23 +438,19 @@ pub fn block_tile(
                 (10, 1)
             }
         }
-        BlockId::Lava | BlockId::FlowingLava => (13, 14),
-        BlockId::Netherrack => (7, 6),
-        BlockId::Glowstone => (9, 6),
-        BlockId::Torch
-        | BlockId::TorchWest
-        | BlockId::TorchEast
-        | BlockId::TorchNorth
-        | BlockId::TorchSouth => (0, 5),
-        BlockId::Dandelion => (13, 0),
-        BlockId::Rose => (12, 0),
-        BlockId::DeadBush => (7, 3),
-        BlockId::RedMushroom => (12, 1),
-        BlockId::BrownMushroom => (13, 1),
-        BlockId::TallGrass => (7, 2),
-        BlockId::Fern => (8, 3),
-        BlockId::Water => water::WATER_STILL_TILE,
-        BlockId::Ice => (3, 4),
+        Id::Lava | Id::FlowingLava => (13, 14),
+        Id::Netherrack => (7, 6),
+        Id::Glowstone => (9, 6),
+        Id::Torch | Id::TorchWest | Id::TorchEast | Id::TorchNorth | Id::TorchSouth => (0, 5),
+        Id::Dandelion => (13, 0),
+        Id::Rose => (12, 0),
+        Id::DeadBush => (7, 3),
+        Id::RedMushroom => (12, 1),
+        Id::BrownMushroom => (13, 1),
+        Id::TallGrass => (7, 2),
+        Id::Fern => (8, 3),
+        Id::Water => water::WATER_STILL_TILE,
+        Id::Ice => (3, 4),
         _ => (1, 0),
     }
 }

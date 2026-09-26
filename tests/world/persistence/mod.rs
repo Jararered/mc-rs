@@ -10,7 +10,7 @@ use std::time::UNIX_EPOCH;
 use bevy::asset::AssetPlugin;
 use bevy::mesh::MeshPlugin;
 use bevy::prelude::*;
-use game::block::id::BlockId;
+use game::block::id::Id;
 use game::item::ItemStack;
 use game::player::Player;
 use game::world::chunk::CHUNK_HEIGHT;
@@ -122,10 +122,10 @@ fn chunk_round_trips_through_a_chunk_file() {
     let position = ChunkPos { x: -1, z: 2 };
     let mut generated = WorldGenerator::new(0).generate(position);
     for (x, facing) in [
-        (1, BlockId::PumpkinNorth),
-        (2, BlockId::PumpkinEast),
-        (3, BlockId::PumpkinSouth),
-        (4, BlockId::PumpkinWest),
+        (1, Id::PumpkinNorth),
+        (2, Id::PumpkinEast),
+        (3, Id::PumpkinSouth),
+        (4, Id::PumpkinWest),
     ] {
         generated.chunk.set(x, 70, 1, facing);
     }
@@ -133,10 +133,10 @@ fn chunk_round_trips_through_a_chunk_file() {
 
     let loaded = storage.load_chunk(position).expect("chunk should load");
     assert_same_blocks(&loaded.chunk, &generated.chunk);
-    assert_eq!(loaded.chunk.get(1, 70, 1), Some(BlockId::PumpkinNorth));
-    assert_eq!(loaded.chunk.get(2, 70, 1), Some(BlockId::PumpkinEast));
-    assert_eq!(loaded.chunk.get(3, 70, 1), Some(BlockId::PumpkinSouth));
-    assert_eq!(loaded.chunk.get(4, 70, 1), Some(BlockId::PumpkinWest));
+    assert_eq!(loaded.chunk.get(1, 70, 1), Some(Id::PumpkinNorth));
+    assert_eq!(loaded.chunk.get(2, 70, 1), Some(Id::PumpkinEast));
+    assert_eq!(loaded.chunk.get(3, 70, 1), Some(Id::PumpkinSouth));
+    assert_eq!(loaded.chunk.get(4, 70, 1), Some(Id::PumpkinWest));
     for z in 0..CHUNK_SIZE {
         for x in 0..CHUNK_SIZE {
             assert_eq!(loaded.heightmap.get(x, z), generated.heightmap.get(x, z));
@@ -153,8 +153,8 @@ fn chunk_round_trips_through_a_chunk_file() {
 
 #[test]
 fn legacy_species_bytes_stay_spruce_while_cake_uses_the_same_number() {
-    assert_eq!(BlockId::Cake.as_u8(), 92);
-    assert!(!BlockId::Cake.in_world());
+    assert_eq!(Id::Cake.as_u8(), 92);
+    assert!(!Id::Cake.in_world());
     let saves = temp_saves("legacy-spruce");
     let storage = WorldStorage::create(&saves, 0, "Legacy").unwrap();
     let position = ChunkPos::ZERO;
@@ -177,7 +177,7 @@ fn legacy_species_bytes_stay_spruce_while_cake_uses_the_same_number() {
             .chunk
             .blocks()
             .iter()
-            .all(|block| *block == BlockId::SpruceLeaves)
+            .all(|block| *block == Id::SpruceLeaves)
     );
 
     value["runs"] = serde_json::json!([[20, blocks as u16]]);
@@ -192,7 +192,7 @@ fn dropped_items_round_trip_inside_their_chunk() {
     let position = ChunkPos { x: 1, z: -1 };
     let mut generated = WorldGenerator::new(0).generate(position);
     generated.items.push(ChunkDroppedItem {
-        stack: ItemStack::from_block(BlockId::Cobblestone, 3).unwrap(),
+        stack: ItemStack::from_block(Id::Cobblestone, 3).unwrap(),
         position: [20.25, 70.0, -8.5],
         motion: [0.05, 0.2, -0.08],
         age_ticks: 12,
@@ -275,11 +275,11 @@ fn saving_one_chunk_keeps_the_others_in_its_region() {
 
     // Rewrite the first chunk with an edit and confirm the second is untouched.
     let mut edited = generator.generate(first);
-    edited.chunk.set(4, 70, 4, BlockId::GoldBlock);
+    edited.chunk.set(4, 70, 4, Id::GoldBlock);
     storage.save_chunk(first, &edited).unwrap();
 
     let reloaded = storage.load_chunk(first).unwrap();
-    assert_eq!(reloaded.chunk.get(4, 70, 4), Some(BlockId::GoldBlock));
+    assert_eq!(reloaded.chunk.get(4, 70, 4), Some(Id::GoldBlock));
     assert_same_blocks(
         &storage.load_chunk(second).unwrap().chunk,
         &generator.generate(second).chunk,

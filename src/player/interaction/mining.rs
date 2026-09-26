@@ -3,7 +3,7 @@
 //! The held stack is sampled every tick. Switching tools changes the rate and
 //! does not reset progress. Looking at a different block does.
 
-use crate::block::id::BlockId;
+use crate::block::id::Id;
 use crate::block::properties::is_breakable;
 use crate::item::ItemStack;
 use crate::item::tools::mine_step;
@@ -116,6 +116,6 @@ pub fn destroy_stage(damage: f32) -> Option<u8> {
 }
 
 /// Ticks of punching needed to break `block` by hand, or `None` if it cannot.
-pub fn hand_ticks_to_break(block: BlockId, on_ground: bool, in_water: bool) -> Option<u32> {
+pub fn hand_ticks_to_break(block: Id, on_ground: bool, in_water: bool) -> Option<u32> {
     ticks_to_break(block, None, on_ground, in_water)
 }

@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 
-use crate::block::id::BlockId;
+use crate::block::id::Id;
 use crate::random::JavaRandom;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;
@@ -36,13 +36,13 @@ pub(super) fn place_pumpkins(
         if !(0..CHUNK_HEIGHT as i32).contains(&y) || placed.contains(&position) {
             continue;
         }
-        if block_at(chunk, target, x, y, z, remote_chunks, remote_chunk) != BlockId::Air
-            || block_at(chunk, target, x, y - 1, z, remote_chunks, remote_chunk) != BlockId::Grass
+        if block_at(chunk, target, x, y, z, remote_chunks, remote_chunk) != Id::Air
+            || block_at(chunk, target, x, y - 1, z, remote_chunks, remote_chunk) != Id::Grass
         {
             continue;
         }
 
-        let pumpkin = BlockId::pumpkin_from_metadata(rand.next_int(4));
+        let pumpkin = Id::pumpkin_from_metadata(rand.next_int(4));
         placed.insert(position);
         if let Some((local_x, local_z)) = local_column(target, x, z) {
             chunk.set(local_x, y as usize, local_z, pumpkin);
@@ -58,9 +58,9 @@ fn block_at(
     z: i32,
     remote_chunks: &mut HashMap<ChunkPos, Chunk>,
     remote_chunk: &impl Fn(ChunkPos) -> Chunk,
-) -> BlockId {
+) -> Id {
     if !(0..CHUNK_HEIGHT as i32).contains(&y) {
-        return BlockId::Air;
+        return Id::Air;
     }
     let position = ChunkPos {
         x: x.div_euclid(CHUNK_SIZE as i32),
@@ -69,15 +69,13 @@ fn block_at(
     let local_x = x.rem_euclid(CHUNK_SIZE as i32) as usize;
     let local_z = z.rem_euclid(CHUNK_SIZE as i32) as usize;
     if position == target {
-        chunk
-            .get(local_x, y as usize, local_z)
-            .unwrap_or(BlockId::Air)
+        chunk.get(local_x, y as usize, local_z).unwrap_or(Id::Air)
     } else {
         remote_chunks
             .entry(position)
             .or_insert_with(|| remote_chunk(position))
             .get(local_x, y as usize, local_z)
-            .unwrap_or(BlockId::Air)
+            .unwrap_or(Id::Air)
     }
 }
 

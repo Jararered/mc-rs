@@ -1,8 +1,8 @@
 use bevy::mesh::VertexAttributeValues;
 use bevy::prelude::Mesh;
 use bevy::prelude::Vec3;
-use game::block::id::BlockId;
 use game::block::id::FurnaceFacing;
+use game::block::id::Id;
 use game::block::properties::hand_mine_progress_per_tick;
 use game::block::properties::hardness;
 use game::block::properties::harvestable_by_hand;
@@ -88,7 +88,7 @@ fn world_with(chunk: Chunk) -> WorldChunks {
     chunks
 }
 
-fn hit(x: i32, y: i32, z: i32, face: BlockFace, block: BlockId) -> BlockHit {
+fn hit(x: i32, y: i32, z: i32, face: BlockFace, block: Id) -> BlockHit {
     BlockHit {
         x,
         y,
@@ -101,64 +101,64 @@ fn hit(x: i32, y: i32, z: i32, face: BlockFace, block: BlockId) -> BlockHit {
 #[test]
 fn breaking_replaces_a_solid_block_with_air() {
     let mut chunk = Chunk::new();
-    chunk.set(8, 64, 8, BlockId::Dirt);
+    chunk.set(8, 64, 8, Id::Dirt);
     let mut chunks = world_with(chunk);
 
     assert!(break_block(
         &mut chunks,
-        hit(8, 64, 8, BlockFace::Up, BlockId::Dirt)
+        hit(8, 64, 8, BlockFace::Up, Id::Dirt)
     ));
-    assert_eq!(chunks.block_at(8, 64, 8), Some(BlockId::Air));
+    assert_eq!(chunks.block_at(8, 64, 8), Some(Id::Air));
     assert_eq!(chunks.get(ChunkPos::ZERO).unwrap().heightmap.get(8, 8), 0);
 }
 
 #[test]
 fn bedrock_cannot_be_broken() {
     let mut chunk = Chunk::new();
-    chunk.set(8, 0, 8, BlockId::Bedrock);
+    chunk.set(8, 0, 8, Id::Bedrock);
     let mut chunks = world_with(chunk);
 
     assert!(!break_block(
         &mut chunks,
-        hit(8, 0, 8, BlockFace::Up, BlockId::Bedrock)
+        hit(8, 0, 8, BlockFace::Up, Id::Bedrock)
     ));
-    assert_eq!(chunks.block_at(8, 0, 8), Some(BlockId::Bedrock));
+    assert_eq!(chunks.block_at(8, 0, 8), Some(Id::Bedrock));
 }
 
 #[test]
 fn placing_puts_torch_against_the_hit_face() {
     let mut chunk = Chunk::new();
-    chunk.set(8, 64, 8, BlockId::Dirt);
+    chunk.set(8, 64, 8, Id::Dirt);
     let mut chunks = world_with(chunk);
     let player = EntitySize::PLAYER.aabb(Vec3::new(8.5, 70.0, 8.5));
 
     assert!(place_block(
         &mut chunks,
-        hit(8, 64, 8, BlockFace::Up, BlockId::Dirt),
+        hit(8, 64, 8, BlockFace::Up, Id::Dirt),
         player
     ));
     assert_eq!(chunks.block_at(8, 65, 8), Some(PLACED_BLOCK));
-    assert_eq!(PLACED_BLOCK, BlockId::Torch);
+    assert_eq!(PLACED_BLOCK, Id::Torch);
     assert_eq!(chunks.get(ChunkPos::ZERO).unwrap().heightmap.get(8, 8), 65);
 }
 
 #[test]
 fn placed_furnace_front_faces_the_player_and_survives_lit_transitions() {
     let mut chunk = Chunk::new();
-    chunk.set(8, 64, 8, BlockId::Dirt);
+    chunk.set(8, 64, 8, Id::Dirt);
     let mut chunks = world_with(chunk);
     let player = Aabb::new(Vec3::new(0.0, 70.0, 0.0), Vec3::new(0.6, 71.8, 0.6));
 
     assert!(place_selected_block_facing(
         &mut chunks,
-        hit(8, 64, 8, BlockFace::Up, BlockId::Dirt),
+        hit(8, 64, 8, BlockFace::Up, Id::Dirt),
         player,
-        BlockId::Furnace,
+        Id::Furnace,
         FurnaceFacing::East,
     ));
     let furnace = chunks.block_at(8, 65, 8).unwrap();
-    assert_eq!(furnace, BlockId::FurnaceEast);
-    assert_eq!(furnace.with_furnace_lit(true), BlockId::LitFurnaceEast);
+    assert_eq!(furnace, Id::FurnaceEast);
+    assert_eq!(furnace.with_furnace_lit(true), Id::LitFurnaceEast);
     assert_eq!(
         furnace.with_furnace_lit(true).with_furnace_lit(false),
         furnace
@@ -168,149 +168,149 @@ fn placed_furnace_front_faces_the_player_and_survives_lit_transitions() {
 #[test]
 fn placed_ladder_attaches_to_the_clicked_wall_and_drops_as_a_ladder_item() {
     let mut chunk = Chunk::new();
-    chunk.set(8, 64, 8, BlockId::Stone);
+    chunk.set(8, 64, 8, Id::Stone);
     let mut chunks = world_with(chunk);
     let player = Aabb::new(Vec3::new(2.0, 70.0, 2.0), Vec3::new(2.6, 71.8, 2.6));
 
     assert!(place_selected_block_facing(
         &mut chunks,
-        hit(8, 64, 8, BlockFace::East, BlockId::Stone),
+        hit(8, 64, 8, BlockFace::East, Id::Stone),
         player,
-        BlockId::Ladder,
+        Id::Ladder,
         FurnaceFacing::South,
     ));
     let ladder = chunks.block_at(9, 64, 8).unwrap();
-    assert_eq!(ladder, BlockId::LadderWest);
-    assert_eq!(ladder.item_form(), (BlockId::Ladder, 0));
-    assert_eq!(ladder.item_form().0.placed(0), Some(BlockId::Ladder));
+    assert_eq!(ladder, Id::LadderWest);
+    assert_eq!(ladder.item_form(), (Id::Ladder, 0));
+    assert_eq!(ladder.item_form().0.placed(0), Some(Id::Ladder));
     assert!(break_block(
         &mut chunks,
-        hit(8, 64, 8, BlockFace::Up, BlockId::Stone)
+        hit(8, 64, 8, BlockFace::Up, Id::Stone)
     ));
-    assert_eq!(chunks.block_at(9, 64, 8), Some(BlockId::Air));
+    assert_eq!(chunks.block_at(9, 64, 8), Some(Id::Air));
 }
 
 #[test]
 fn placed_pumpkin_front_faces_the_player() {
     let mut chunk = Chunk::new();
-    chunk.set(8, 64, 8, BlockId::Grass);
+    chunk.set(8, 64, 8, Id::Grass);
     let mut chunks = world_with(chunk);
     let player = Aabb::new(Vec3::new(2.0, 70.0, 2.0), Vec3::new(2.6, 71.8, 2.6));
 
     assert!(place_selected_block_facing(
         &mut chunks,
-        hit(8, 64, 8, BlockFace::Up, BlockId::Grass),
+        hit(8, 64, 8, BlockFace::Up, Id::Grass),
         player,
-        BlockId::Pumpkin,
+        Id::Pumpkin,
         FurnaceFacing::East,
     ));
-    assert_eq!(chunks.block_at(8, 65, 8), Some(BlockId::PumpkinEast));
+    assert_eq!(chunks.block_at(8, 65, 8), Some(Id::PumpkinEast));
 }
 
 #[test]
 fn placing_torch_can_overlap_the_player() {
     let mut chunk = Chunk::new();
-    chunk.set(8, 64, 8, BlockId::Stone);
+    chunk.set(8, 64, 8, Id::Stone);
     let mut chunks = world_with(chunk);
     let player = EntitySize::PLAYER.aabb(Vec3::new(8.5, 65.0 + EntitySize::PLAYER.y_offset, 8.5));
 
     assert!(place_block(
         &mut chunks,
-        hit(8, 64, 8, BlockFace::Up, BlockId::Stone),
+        hit(8, 64, 8, BlockFace::Up, Id::Stone),
         player
     ));
-    assert_eq!(chunks.block_at(8, 65, 8), Some(BlockId::Torch));
+    assert_eq!(chunks.block_at(8, 65, 8), Some(Id::Torch));
 }
 
 #[test]
 fn placing_replaces_water_and_not_solid_blocks() {
     let mut chunk = Chunk::new();
-    chunk.set(8, 64, 8, BlockId::Stone);
-    chunk.set(8, 65, 8, BlockId::Water);
-    chunk.set(9, 64, 8, BlockId::Dirt);
+    chunk.set(8, 64, 8, Id::Stone);
+    chunk.set(8, 65, 8, Id::Water);
+    chunk.set(9, 64, 8, Id::Dirt);
     let mut chunks = world_with(chunk);
     let player = Aabb::new(Vec3::new(0.0, 70.0, 0.0), Vec3::new(0.6, 71.8, 0.6));
 
     assert!(place_block(
         &mut chunks,
-        hit(8, 64, 8, BlockFace::Up, BlockId::Stone),
+        hit(8, 64, 8, BlockFace::Up, Id::Stone),
         player
     ));
-    assert_eq!(chunks.block_at(8, 65, 8), Some(BlockId::Torch));
+    assert_eq!(chunks.block_at(8, 65, 8), Some(Id::Torch));
 
     assert!(!place_block(
         &mut chunks,
-        hit(8, 64, 8, BlockFace::East, BlockId::Stone),
+        hit(8, 64, 8, BlockFace::East, Id::Stone),
         player
     ));
-    assert_eq!(chunks.block_at(9, 64, 8), Some(BlockId::Dirt));
+    assert_eq!(chunks.block_at(9, 64, 8), Some(Id::Dirt));
 }
 
 #[test]
 fn torch_attaches_to_walls_and_drops_when_support_breaks() {
     let mut chunk = Chunk::new();
-    chunk.set(8, 64, 8, BlockId::Stone);
+    chunk.set(8, 64, 8, Id::Stone);
     let mut chunks = world_with(chunk);
     let player = Aabb::new(Vec3::ZERO, Vec3::ZERO);
 
     assert!(place_block(
         &mut chunks,
-        hit(8, 64, 8, BlockFace::East, BlockId::Stone),
+        hit(8, 64, 8, BlockFace::East, Id::Stone),
         player,
     ));
-    assert_eq!(chunks.block_at(9, 64, 8), Some(BlockId::TorchWest));
+    assert_eq!(chunks.block_at(9, 64, 8), Some(Id::TorchWest));
     assert!(break_block(
         &mut chunks,
-        hit(8, 64, 8, BlockFace::Up, BlockId::Stone),
+        hit(8, 64, 8, BlockFace::Up, Id::Stone),
     ));
-    assert_eq!(chunks.block_at(9, 64, 8), Some(BlockId::Air));
+    assert_eq!(chunks.block_at(9, 64, 8), Some(Id::Air));
 }
 
 #[test]
 fn torch_requires_a_support_face() {
     let mut chunk = Chunk::new();
-    chunk.set(8, 64, 8, BlockId::Stone);
+    chunk.set(8, 64, 8, Id::Stone);
     let mut chunks = world_with(chunk);
     let player = Aabb::new(Vec3::ZERO, Vec3::ZERO);
     assert!(!place_block(
         &mut chunks,
-        hit(8, 64, 8, BlockFace::Down, BlockId::Stone),
+        hit(8, 64, 8, BlockFace::Down, Id::Stone),
         player,
     ));
-    assert_eq!(chunks.block_at(8, 63, 8), Some(BlockId::Air));
+    assert_eq!(chunks.block_at(8, 63, 8), Some(Id::Air));
 }
 
 #[test]
 fn usual_blocks_use_beta_hand_break_times() {
     let grounded = |block| hand_ticks_to_break(block, true, false);
-    assert_eq!(grounded(BlockId::Dirt), Some(15));
-    assert_eq!(grounded(BlockId::Grass), Some(18));
-    assert_eq!(grounded(BlockId::Sand), Some(15));
-    assert_eq!(grounded(BlockId::Gravel), Some(18));
-    assert_eq!(grounded(BlockId::Leaves), Some(6));
-    assert_eq!(grounded(BlockId::Wood), Some(60));
-    assert_eq!(grounded(BlockId::WoodenPlanks), Some(60));
-    assert_eq!(grounded(BlockId::Stone), Some(150));
-    assert_eq!(grounded(BlockId::Cobblestone), Some(200));
-    assert_eq!(grounded(BlockId::CoalOre), Some(300));
-    assert_eq!(grounded(BlockId::Netherrack), Some(40));
-    assert_eq!(grounded(BlockId::Obsidian), Some(1000));
-    assert_eq!(grounded(BlockId::Tnt), Some(1));
-    assert_eq!(grounded(BlockId::Bedrock), None);
+    assert_eq!(grounded(Id::Dirt), Some(15));
+    assert_eq!(grounded(Id::Grass), Some(18));
+    assert_eq!(grounded(Id::Sand), Some(15));
+    assert_eq!(grounded(Id::Gravel), Some(18));
+    assert_eq!(grounded(Id::Leaves), Some(6));
+    assert_eq!(grounded(Id::Wood), Some(60));
+    assert_eq!(grounded(Id::WoodenPlanks), Some(60));
+    assert_eq!(grounded(Id::Stone), Some(150));
+    assert_eq!(grounded(Id::Cobblestone), Some(200));
+    assert_eq!(grounded(Id::CoalOre), Some(300));
+    assert_eq!(grounded(Id::Netherrack), Some(40));
+    assert_eq!(grounded(Id::Obsidian), Some(1000));
+    assert_eq!(grounded(Id::Tnt), Some(1));
+    assert_eq!(grounded(Id::Bedrock), None);
 }
 
 #[test]
 fn airborne_and_water_only_slow_blocks_harvestable_by_hand() {
-    assert!(harvestable_by_hand(BlockId::Dirt));
-    assert!(!harvestable_by_hand(BlockId::Stone));
-    assert_eq!(hand_ticks_to_break(BlockId::Dirt, false, false), Some(75));
-    assert_eq!(hand_ticks_to_break(BlockId::Dirt, true, true), Some(75));
-    assert_eq!(hand_ticks_to_break(BlockId::Stone, false, true), Some(150));
+    assert!(harvestable_by_hand(Id::Dirt));
+    assert!(!harvestable_by_hand(Id::Stone));
+    assert_eq!(hand_ticks_to_break(Id::Dirt, false, false), Some(75));
+    assert_eq!(hand_ticks_to_break(Id::Dirt, true, true), Some(75));
+    assert_eq!(hand_ticks_to_break(Id::Stone, false, true), Some(150));
 }
 
 #[test]
 fn punching_accumulates_until_the_block_breaks() {
-    let dirt = hit(8, 64, 8, BlockFace::Up, BlockId::Dirt);
+    let dirt = hit(8, 64, 8, BlockFace::Up, Id::Dirt);
     let mut mining = MiningState::default();
     assert!(mining.tick(Some(dirt), None, true, false).is_none());
     let mut ticks = 0;
@@ -327,25 +327,20 @@ fn punching_accumulates_until_the_block_breaks() {
 
 #[test]
 fn hardness_zero_breaks_on_the_click() {
-    let tnt = hit(4, 10, 4, BlockFace::North, BlockId::Tnt);
+    let tnt = hit(4, 10, 4, BlockFace::North, Id::Tnt);
     let mut mining = MiningState::default();
     assert!(mining.try_instant(tnt, None, true, false).is_some());
     assert!(
         mining
-            .try_instant(
-                hit(4, 10, 4, BlockFace::North, BlockId::Dirt),
-                None,
-                true,
-                false
-            )
+            .try_instant(hit(4, 10, 4, BlockFace::North, Id::Dirt), None, true, false)
             .is_none()
     );
 }
 
 #[test]
 fn looking_at_a_new_block_resets_mining_progress() {
-    let dirt = hit(8, 64, 8, BlockFace::Up, BlockId::Dirt);
-    let grass = hit(8, 65, 8, BlockFace::Up, BlockId::Grass);
+    let dirt = hit(8, 64, 8, BlockFace::Up, Id::Dirt);
+    let grass = hit(8, 65, 8, BlockFace::Up, Id::Grass);
     let mut mining = MiningState::default();
     mining.tick(Some(dirt), None, true, false);
     for _ in 0..10 {
@@ -354,8 +349,8 @@ fn looking_at_a_new_block_resets_mining_progress() {
     assert!(mining.damage() > 0.0);
     mining.tick(Some(grass), None, true, false);
     assert_eq!(mining.damage(), 0.0);
-    assert!((hardness(BlockId::Grass) - 0.6).abs() < f32::EPSILON);
-    assert!(hand_mine_progress_per_tick(BlockId::Dirt, true, false) > 0.0);
+    assert!((hardness(Id::Grass) - 0.6).abs() < f32::EPSILON);
+    assert!(hand_mine_progress_per_tick(Id::Dirt, true, false) > 0.0);
 }
 
 #[test]
@@ -369,7 +364,7 @@ fn destroy_stage_follows_beta_damage_partial_time() {
 
 #[test]
 fn mining_reset_clears_the_destroy_overlay_stage() {
-    let dirt = hit(8, 64, 8, BlockFace::Up, BlockId::Dirt);
+    let dirt = hit(8, 64, 8, BlockFace::Up, Id::Dirt);
     let mut mining = MiningState::default();
     mining.tick(Some(dirt), None, true, false);
     for _ in 0..10 {
@@ -391,7 +386,7 @@ fn mining_reset_clears_the_destroy_overlay_stage() {
 
 #[test]
 fn diamond_pick_breaks_stone_in_six_damaging_ticks() {
-    let stone = hit(8, 64, 8, BlockFace::Up, BlockId::Stone);
+    let stone = hit(8, 64, 8, BlockFace::Up, Id::Stone);
     let pick = Some(ItemStack::new(ItemId::DiamondPickaxe, 1).unwrap());
     let mut mining = MiningState::default();
     assert!(mining.tick(Some(stone), pick, true, false).is_none());
@@ -409,7 +404,7 @@ fn diamond_pick_breaks_stone_in_six_damaging_ticks() {
 
 #[test]
 fn shears_break_leaves_on_the_click() {
-    let leaves = hit(3, 70, 3, BlockFace::Up, BlockId::Leaves);
+    let leaves = hit(3, 70, 3, BlockFace::Up, Id::Leaves);
     let shears = Some(ItemStack::new(ItemId::Shears, 1).unwrap());
     let mut mining = MiningState::default();
     assert!(mining.try_instant(leaves, shears, true, false).is_some());
@@ -419,7 +414,7 @@ fn shears_break_leaves_on_the_click() {
 
 #[test]
 fn switching_tools_keeps_mining_progress() {
-    let stone = hit(8, 64, 8, BlockFace::Up, BlockId::Stone);
+    let stone = hit(8, 64, 8, BlockFace::Up, Id::Stone);
     let wood = Some(ItemStack::new(ItemId::WoodenPickaxe, 1).unwrap());
     let diamond = Some(ItemStack::new(ItemId::DiamondPickaxe, 1).unwrap());
     let mut mining = MiningState::default();

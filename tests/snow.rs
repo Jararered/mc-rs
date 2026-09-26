@@ -1,6 +1,6 @@
 use bevy::mesh::VertexAttributeValues;
 use bevy::prelude::*;
-use game::block::id::BlockId;
+use game::block::id::Id;
 use game::block::properties::collision_bounds;
 use game::block::properties::is_opaque_cube;
 use game::block::properties::selection_bounds;
@@ -38,25 +38,25 @@ fn generated(chunk: Chunk) -> GeneratedChunk {
 
 #[test]
 fn snow_layer_is_non_opaque_and_has_one_eighth_selection_and_collision_height() {
-    assert!(!is_opaque_cube(BlockId::SnowLayer));
-    assert!(is_opaque_cube(BlockId::Snow));
-    assert_eq!(light_opacity(BlockId::SnowLayer), 0);
-    assert_eq!(light_opacity(BlockId::Snow), 15);
+    assert!(!is_opaque_cube(Id::SnowLayer));
+    assert!(is_opaque_cube(Id::Snow));
+    assert_eq!(light_opacity(Id::SnowLayer), 0);
+    assert_eq!(light_opacity(Id::Snow), 15);
     assert_eq!(
-        selection_bounds(BlockId::SnowLayer),
+        selection_bounds(Id::SnowLayer),
         ([0.0; 3], [1.0, 0.125, 1.0])
     );
     assert_eq!(
-        collision_bounds(BlockId::SnowLayer),
+        collision_bounds(Id::SnowLayer),
         Some(([0.0; 3], [1.0, 0.125, 1.0]))
     );
-    assert_eq!(collision_bounds(BlockId::Snow), Some(([0.0; 3], [1.0; 3])));
+    assert_eq!(collision_bounds(Id::Snow), Some(([0.0; 3], [1.0; 3])));
 }
 
 #[test]
 fn snow_layer_mesh_is_one_eighth_block_high() {
     let mut chunk = Chunk::new();
-    chunk.set(8, 64, 8, BlockId::SnowLayer);
+    chunk.set(8, 64, 8, Id::SnowLayer);
     let mesh = mesh_chunk(&chunk, &Skylight::from_chunk(&chunk));
     let Some(VertexAttributeValues::Float32x3(positions)) =
         mesh.attribute(Mesh::ATTRIBUTE_POSITION.id)
@@ -78,8 +78,8 @@ fn snow_layer_mesh_is_one_eighth_block_high() {
 #[test]
 fn a_snow_layer_does_not_hide_the_neighboring_full_block_side() {
     let mut chunk = Chunk::new();
-    chunk.set(8, 64, 8, BlockId::Stone);
-    chunk.set(9, 64, 8, BlockId::SnowLayer);
+    chunk.set(8, 64, 8, Id::Stone);
+    chunk.set(9, 64, 8, Id::SnowLayer);
     let mesh = mesh_chunk(&chunk, &Skylight::from_chunk(&chunk));
     let Some(VertexAttributeValues::Float32x3(positions)) =
         mesh.attribute(Mesh::ATTRIBUTE_POSITION.id)
@@ -117,13 +117,13 @@ fn a_snow_layer_does_not_hide_the_neighboring_full_block_side() {
 #[test]
 fn snow_layer_ray_and_entity_collision_stop_at_its_top() {
     let mut chunk = Chunk::new();
-    chunk.set(8, 64, 8, BlockId::SnowLayer);
+    chunk.set(8, 64, 8, Id::SnowLayer);
     let mut chunks = WorldChunks::default();
     chunks.insert(ChunkPos::ZERO, generated(chunk));
 
     assert!(
         raycast_blocks(&chunks, Vec3::new(7.0, 64.06, 8.5), Vec3::X, BLOCK_REACH)
-            .is_some_and(|hit| hit.block == BlockId::SnowLayer)
+            .is_some_and(|hit| hit.block == Id::SnowLayer)
     );
     assert!(raycast_blocks(&chunks, Vec3::new(7.0, 64.5, 8.5), Vec3::X, BLOCK_REACH).is_none());
 

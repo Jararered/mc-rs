@@ -1,6 +1,6 @@
 use bevy::mesh::VertexAttributeValues;
 use bevy::prelude::Mesh;
-use game::block::id::BlockId;
+use game::block::id::Id;
 use game::block::properties::collision_bounds;
 use game::block::properties::is_crossed_plant;
 use game::block::properties::is_opaque_cube;
@@ -13,8 +13,8 @@ use game::world::textures::block_tile;
 #[test]
 fn mushrooms_use_crossed_sprite_meshes_and_beta_atlas_tiles() {
     let mut chunk = Chunk::new();
-    chunk.set(4, 20, 4, BlockId::BrownMushroom);
-    chunk.set(8, 20, 8, BlockId::RedMushroom);
+    chunk.set(4, 20, 4, Id::BrownMushroom);
+    chunk.set(8, 20, 8, Id::RedMushroom);
 
     let meshes = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true, true);
     let Some(VertexAttributeValues::Float32x3(positions)) =
@@ -23,13 +23,13 @@ fn mushrooms_use_crossed_sprite_meshes_and_beta_atlas_tiles() {
         panic!("mushrooms should render in the masked plant mesh");
     };
     assert_eq!(positions.len(), 16, "two crossed quads per mushroom");
-    assert_eq!(block_tile(BlockId::BrownMushroom, 0, false), (13, 1));
-    assert_eq!(block_tile(BlockId::RedMushroom, 0, false), (12, 1));
+    assert_eq!(block_tile(Id::BrownMushroom, 0, false), (13, 1));
+    assert_eq!(block_tile(Id::RedMushroom, 0, false), (12, 1));
 }
 
 #[test]
 fn mushrooms_are_small_noncolliding_nonopaque_plants() {
-    for mushroom in [BlockId::BrownMushroom, BlockId::RedMushroom] {
+    for mushroom in [Id::BrownMushroom, Id::RedMushroom] {
         assert!(is_crossed_plant(mushroom));
         assert!(!is_opaque_cube(mushroom));
         assert_eq!(collision_bounds(mushroom), None);
@@ -43,7 +43,7 @@ fn mushrooms_are_small_noncolliding_nonopaque_plants() {
 #[test]
 fn mushroom_mesh_is_raised_by_two_pixels() {
     let mut chunk = Chunk::new();
-    chunk.set(4, 20, 4, BlockId::BrownMushroom);
+    chunk.set(4, 20, 4, Id::BrownMushroom);
     let meshes = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true, true);
     let Some(VertexAttributeValues::Float32x3(positions)) =
         meshes.masked.attribute(Mesh::ATTRIBUTE_POSITION.id)

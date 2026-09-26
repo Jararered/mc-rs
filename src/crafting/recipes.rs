@@ -2,7 +2,7 @@
 
 use std::sync::OnceLock;
 
-use crate::block::id::BlockId;
+use crate::block::id::Id;
 use crate::item::ItemId;
 use crate::item::ItemStack;
 
@@ -150,7 +150,7 @@ impl RecipeBook {
     }
 }
 
-fn b(id: BlockId) -> ItemId {
+fn b(id: Id) -> ItemId {
     ItemId::from_block(id).expect("air is not an item")
 }
 fn i(id: ItemId) -> Ingredient {
@@ -199,7 +199,7 @@ impl RecipeBook {
 pub fn beta_recipe_book() -> &'static RecipeBook {
     static BOOK: OnceLock<RecipeBook> = OnceLock::new();
     BOOK.get_or_init(|| {
-        use BlockId as B;
+        use Id as B;
         use ItemId as I;
         let mut r = RecipeBook::default();
         let materials = [

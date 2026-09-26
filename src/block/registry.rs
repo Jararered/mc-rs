@@ -7,8 +7,8 @@ use super::plants;
 use super::rotation;
 use super::terrain;
 use super::utility;
-use crate::block::id::BlockId;
 use crate::block::definition::BlockDefinition;
+use crate::block::id::Id;
 
 const fn build_definition_table() -> [&'static dyn BlockDefinition; 256] {
     let mut table = [&utility::DEFINITION as &dyn BlockDefinition; 256];
@@ -145,8 +145,8 @@ const fn build_definition_table() -> [&'static dyn BlockDefinition; 256] {
 
 static DEFINITIONS: [&dyn BlockDefinition; 256] = build_definition_table();
 
-pub(crate) fn definition(state: BlockId) -> &'static dyn BlockDefinition {
-    if matches!(state, BlockId::Unknown(_)) {
+pub(crate) fn definition(state: Id) -> &'static dyn BlockDefinition {
+    if matches!(state, Id::Unknown(_)) {
         &utility::DEFINITION
     } else {
         DEFINITIONS[state.as_u8() as usize]

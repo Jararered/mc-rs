@@ -1,5 +1,5 @@
 //! Beta `ChunkProviderGenerate.populate` underground passes.
-use crate::block::id::BlockId;
+use crate::block::id::Id;
 use crate::random::JavaRandom;
 use crate::world::chest::Chest;
 use crate::world::chunk::CHUNK_HEIGHT;
@@ -29,9 +29,9 @@ struct WorldView<'a> {
 }
 
 impl WorldView<'_> {
-    fn get(&mut self, x: i32, y: i32, z: i32) -> BlockId {
+    fn get(&mut self, x: i32, y: i32, z: i32) -> Id {
         if !(0..CHUNK_HEIGHT as i32).contains(&y) {
-            return BlockId::Air;
+            return Id::Air;
         }
         let pos = ChunkPos {
             x: x.div_euclid(16),
@@ -49,7 +49,7 @@ impl WorldView<'_> {
         cached.get(lx, y as usize, lz).unwrap()
     }
 
-    fn set(&mut self, x: i32, y: i32, z: i32, block: BlockId) {
+    fn set(&mut self, x: i32, y: i32, z: i32, block: Id) {
         if !(0..CHUNK_HEIGHT as i32).contains(&y) {
             return;
         }
@@ -81,7 +81,7 @@ impl WorldView<'_> {
         let local_x = x.rem_euclid(16) as usize;
         let local_y = y as usize;
         let local_z = z.rem_euclid(16) as usize;
-        self.chunk.set(local_x, local_y, local_z, BlockId::Chest);
+        self.chunk.set(local_x, local_y, local_z, Id::Chest);
         self.chunk
             .insert_chest(Chunk::index(local_x, local_y, local_z), chest);
     }
@@ -118,7 +118,7 @@ fn populate_source(world: &mut WorldView<'_>, source: ChunkPos, random: &mut Jav
         let x = ox + random.next_int(16) as i32 + 8;
         let y = random.next_int(128) as i32;
         let z = oz + random.next_int(16) as i32 + 8;
-        lake(world, random, x, y, z, BlockId::Water);
+        lake(world, random, x, y, z, Id::Water);
     }
     if random.next_int(8) == 0 {
         let x = ox + random.next_int(16) as i32 + 8;
@@ -126,7 +126,7 @@ fn populate_source(world: &mut WorldView<'_>, source: ChunkPos, random: &mut Jav
         let y = random.next_int(y_bound) as i32;
         let z = oz + random.next_int(16) as i32 + 8;
         if y < 64 || random.next_int(10) == 0 {
-            lake(world, random, x, y, z, BlockId::Lava);
+            lake(world, random, x, y, z, Id::Lava);
         }
     }
     for _ in 0..8 {
@@ -139,30 +139,30 @@ fn populate_source(world: &mut WorldView<'_>, source: ChunkPos, random: &mut Jav
         let x = ox + random.next_int(16) as i32;
         let y = random.next_int(128) as i32;
         let z = oz + random.next_int(16) as i32;
-        if matches!(world.get(x, y, z), BlockId::Water | BlockId::FlowingWater) {
-            vein(world, random, x, y, z, 32, BlockId::Clay, BlockId::Sand);
+        if matches!(world.get(x, y, z), Id::Water | Id::FlowingWater) {
+            vein(world, random, x, y, z, 32, Id::Clay, Id::Sand);
         }
     }
-    const ORES: [(u32, u32, u32, BlockId); 8] = [
-        (20, 128, 32, BlockId::Dirt),
-        (10, 128, 32, BlockId::Gravel),
-        (20, 128, 16, BlockId::CoalOre),
-        (20, 64, 8, BlockId::IronOre),
-        (2, 32, 8, BlockId::GoldOre),
-        (8, 16, 7, BlockId::RedstoneOre),
-        (1, 16, 7, BlockId::DiamondOre),
-        (1, 0, 6, BlockId::LapisOre),
+    const ORES: [(u32, u32, u32, Id); 8] = [
+        (20, 128, 32, Id::Dirt),
+        (10, 128, 32, Id::Gravel),
+        (20, 128, 16, Id::CoalOre),
+        (20, 64, 8, Id::IronOre),
+        (2, 32, 8, Id::GoldOre),
+        (8, 16, 7, Id::RedstoneOre),
+        (1, 16, 7, Id::DiamondOre),
+        (1, 0, 6, Id::LapisOre),
     ];
     for (count, max_y, size, block) in ORES {
         for _ in 0..count {
             let x = ox + random.next_int(16) as i32;
-            let y = if block == BlockId::LapisOre {
+            let y = if block == Id::LapisOre {
                 random.next_int(16) as i32 + random.next_int(16) as i32
             } else {
                 random.next_int(max_y) as i32
             };
             let z = oz + random.next_int(16) as i32;
-            vein(world, random, x, y, z, size, block, BlockId::Stone);
+            vein(world, random, x, y, z, size, block, Id::Stone);
         }
     }
 }
@@ -174,8 +174,8 @@ fn vein(
     y: i32,
     z: i32,
     size: u32,
-    block: BlockId,
-    replace: BlockId,
+    block: Id,
+    replace: Id,
 ) {
     let angle = random.next_float() * PI;
     let dx = (angle.sin() * size as f32 / 8.0) as f64;
@@ -221,11 +221,11 @@ fn lake(
     x: i32,
     mut y: i32,
     z: i32,
-    liquid: BlockId,
+    liquid: Id,
 ) {
     let x = x - 8;
     let z = z - 8;
-    while y > 0 && world.get(x, y, z) == BlockId::Air {
+    while y > 0 && world.get(x, y, z) == Id::Air {
         y -= 1;
     }
     y -= 4;
@@ -272,10 +272,7 @@ fn lake(
                     if by >= 4
                         && matches!(
                             old,
-                            BlockId::Water
-                                | BlockId::FlowingWater
-                                | BlockId::Lava
-                                | BlockId::FlowingLava
+                            Id::Water | Id::FlowingWater | Id::Lava | Id::FlowingLava
                         )
                     {
                         return;
@@ -295,7 +292,7 @@ fn lake(
                         x + bx,
                         y + by,
                         z + bz,
-                        if by >= 4 { BlockId::Air } else { liquid },
+                        if by >= 4 { Id::Air } else { liquid },
                     );
                 }
             }
@@ -304,18 +301,18 @@ fn lake(
     for bx in 0..16 {
         for bz in 0..16 {
             for by in 4..8 {
-                if inside(bx, by, bz) && world.get(x + bx, y + by - 1, z + bz) == BlockId::Dirt {
+                if inside(bx, by, bz) && world.get(x + bx, y + by - 1, z + bz) == Id::Dirt {
                     // Sky exposure approximates Beta's saved skylight during population.
                     if (y + by..CHUNK_HEIGHT as i32)
-                        .all(|above| world.get(x + bx, above, z + bz) == BlockId::Air)
+                        .all(|above| world.get(x + bx, above, z + bz) == Id::Air)
                     {
-                        world.set(x + bx, y + by - 1, z + bz, BlockId::Grass);
+                        world.set(x + bx, y + by - 1, z + bz, Id::Grass);
                     }
                 }
             }
         }
     }
-    if liquid == BlockId::Lava {
+    if liquid == Id::Lava {
         for bx in 0..16 {
             for bz in 0..16 {
                 for by in 0..8 {
@@ -330,7 +327,7 @@ fn lake(
                         && (by < 4 || random.next_int(2) != 0)
                         && solid(world.get(x + bx, y + by, z + bz))
                     {
-                        world.set(x + bx, y + by, z + bz, BlockId::Stone);
+                        world.set(x + bx, y + by, z + bz, Id::Stone);
                     }
                 }
             }
@@ -338,14 +335,10 @@ fn lake(
     }
 }
 
-fn solid(block: BlockId) -> bool {
+fn solid(block: Id) -> bool {
     !matches!(
         block,
-        BlockId::Air
-            | BlockId::Water
-            | BlockId::FlowingWater
-            | BlockId::Lava
-            | BlockId::FlowingLava
+        Id::Air | Id::Water | Id::FlowingWater | Id::Lava | Id::FlowingLava
     )
 }
 
@@ -362,8 +355,8 @@ fn dungeon(world: &mut WorldView<'_>, random: &mut JavaRandom, x: i32, y: i32, z
                 }
                 if (bx == x - rx - 1 || bx == x + rx + 1 || bz == z - rz - 1 || bz == z + rz + 1)
                     && by == y
-                    && block == BlockId::Air
-                    && world.get(bx, by + 1, bz) == BlockId::Air
+                    && block == Id::Air
+                    && world.get(bx, by + 1, bz) == Id::Air
                 {
                     openings += 1;
                 }
@@ -383,12 +376,12 @@ fn dungeon(world: &mut WorldView<'_>, random: &mut JavaRandom, x: i32, y: i32, z
                     || by == y - 1
                     || by == y + 3;
                 if !edge || (by >= 0 && !solid(world.get(bx, by - 1, bz))) {
-                    world.set(bx, by, bz, BlockId::Air);
+                    world.set(bx, by, bz, Id::Air);
                 } else if solid(world.get(bx, by, bz)) {
                     let block = if by == y - 1 && random.next_int(4) != 0 {
-                        BlockId::MossyCobblestone
+                        Id::MossyCobblestone
                     } else {
-                        BlockId::Cobblestone
+                        Id::Cobblestone
                     };
                     world.set(bx, by, bz, block);
                 }
@@ -399,7 +392,7 @@ fn dungeon(world: &mut WorldView<'_>, random: &mut JavaRandom, x: i32, y: i32, z
         for _ in 0..3 {
             let bx = x + random.next_int((rx * 2 + 1) as u32) as i32 - rx;
             let bz = z + random.next_int((rz * 2 + 1) as u32) as i32 - rz;
-            if world.get(bx, y, bz) != BlockId::Air {
+            if world.get(bx, y, bz) != Id::Air {
                 continue;
             }
             let neighbors = [
@@ -415,6 +408,6 @@ fn dungeon(world: &mut WorldView<'_>, random: &mut JavaRandom, x: i32, y: i32, z
             }
         }
     }
-    world.set(x, y, z, BlockId::MobSpawner);
+    world.set(x, y, z, Id::MobSpawner);
     let _ = random.next_int(4);
 }

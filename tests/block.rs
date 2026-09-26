@@ -8,9 +8,9 @@ use bevy::asset::AssetPlugin;
 use bevy::mesh::MeshPlugin;
 use bevy::prelude::*;
 
-use game::block::id::BlockId;
 use game::block::definition::BlockProperties;
 use game::block::definition::{self};
+use game::block::id::Id;
 
 /// Edge length of a single block, in world units.
 const BLOCK_SIZE: f32 = 1.0;
@@ -56,7 +56,7 @@ fn engine_generates_a_single_cuboid_block() {
 fn every_known_block_value_resolves_to_its_static_definition() {
     let mut found = 0;
     for raw in 0..=u8::MAX {
-        let Some(block) = BlockId::from_u8(raw) else {
+        let Some(block) = Id::from_u8(raw) else {
             continue;
         };
         found += 1;
@@ -67,7 +67,7 @@ fn every_known_block_value_resolves_to_its_static_definition() {
         assert_eq!(behavior.name(block), block.name());
         assert_ne!(behavior.name(block), "unknown", "{block:?}");
         assert_eq!(behavior.in_world(block), block.in_world());
-        assert_eq!(BlockId::from_u8(block.as_u8()), Some(block));
+        assert_eq!(Id::from_u8(block.as_u8()), Some(block));
         assert_eq!(
             behavior.opaque_cube(block),
             properties.opaque_cube,
@@ -100,7 +100,7 @@ fn every_known_block_value_resolves_to_its_static_definition() {
 
 #[test]
 fn unknown_block_values_use_a_safe_fallback_definition() {
-    for unknown in [BlockId::Unknown(180), BlockId::Unknown(201)] {
+    for unknown in [Id::Unknown(180), Id::Unknown(201)] {
         let behavior = definition::definition(unknown);
         let properties = behavior.properties(unknown);
 

@@ -6,7 +6,7 @@ use std::time::UNIX_EPOCH;
 use bevy::mesh::VertexAttributeValues;
 use bevy::prelude::Mesh;
 use bevy::prelude::Vec3;
-use game::block::id::BlockId;
+use game::block::id::Id;
 use game::block::properties::collision_bounds;
 use game::block::properties::hardness;
 use game::block::properties::is_opaque_cube;
@@ -70,7 +70,7 @@ fn world_with(chunk: Chunk) -> WorldChunks {
     chunks
 }
 
-fn hit(x: i32, block: BlockId, face: BlockFace) -> BlockHit {
+fn hit(x: i32, block: Id, face: BlockFace) -> BlockHit {
     BlockHit {
         x,
         y: 64,
@@ -127,21 +127,21 @@ fn hoe_tills_dirt_from_any_face_and_grass_from_all_but_bottom() {
     for (index, face) in faces.into_iter().enumerate() {
         let dirt_x = index as i32 + 1;
         let grass_x = index as i32 + 8;
-        chunk.set(dirt_x as usize, 64, 8, BlockId::Dirt);
-        chunk.set(grass_x as usize, 64, 8, BlockId::Grass);
+        chunk.set(dirt_x as usize, 64, 8, Id::Dirt);
+        chunk.set(grass_x as usize, 64, 8, Id::Grass);
         let mut chunks = world_with(chunk.clone());
 
-        assert!(till_block(&mut chunks, hit(dirt_x, BlockId::Dirt, face)));
-        assert_eq!(chunks.block_at(dirt_x, 64, 8), Some(BlockId::Farmland));
+        assert!(till_block(&mut chunks, hit(dirt_x, Id::Dirt, face)));
+        assert_eq!(chunks.block_at(dirt_x, 64, 8), Some(Id::Farmland));
 
-        let grass_tilled = till_block(&mut chunks, hit(grass_x, BlockId::Grass, face));
+        let grass_tilled = till_block(&mut chunks, hit(grass_x, Id::Grass, face));
         assert_eq!(grass_tilled, face != BlockFace::Down);
         assert_eq!(
             chunks.block_at(grass_x, 64, 8),
             Some(if grass_tilled {
-                BlockId::Farmland
+                Id::Farmland
             } else {
-                BlockId::Grass
+                Id::Grass
             })
         );
     }
@@ -150,60 +150,48 @@ fn hoe_tills_dirt_from_any_face_and_grass_from_all_but_bottom() {
 #[test]
 fn dirt_can_be_tilled_when_covered_but_grass_cannot() {
     let mut chunk = Chunk::new();
-    chunk.set(8, 64, 8, BlockId::Dirt);
-    chunk.set(8, 65, 8, BlockId::Stone);
-    chunk.set(9, 64, 8, BlockId::Grass);
-    chunk.set(9, 65, 8, BlockId::Stone);
+    chunk.set(8, 64, 8, Id::Dirt);
+    chunk.set(8, 65, 8, Id::Stone);
+    chunk.set(9, 64, 8, Id::Grass);
+    chunk.set(9, 65, 8, Id::Stone);
     let mut chunks = world_with(chunk);
 
-    assert!(till_block(
-        &mut chunks,
-        hit(8, BlockId::Dirt, BlockFace::Up)
-    ));
+    assert!(till_block(&mut chunks, hit(8, Id::Dirt, BlockFace::Up)));
     assert!(!till_block(
         &mut chunks,
-        hit(9, BlockId::Grass, BlockFace::North)
+        hit(9, Id::Grass, BlockFace::North)
     ));
+    assert!(!till_block(&mut chunks, hit(8, Id::Stone, BlockFace::Up)));
     assert!(!till_block(
         &mut chunks,
-        hit(8, BlockId::Stone, BlockFace::Up)
+        hit(8, Id::Farmland, BlockFace::Up)
     ));
-    assert!(!till_block(
-        &mut chunks,
-        hit(8, BlockId::Farmland, BlockFace::Up)
-    ));
-    assert_eq!(chunks.block_at(8, 64, 8), Some(BlockId::Farmland));
-    assert_eq!(chunks.block_at(9, 64, 8), Some(BlockId::Grass));
+    assert_eq!(chunks.block_at(8, 64, 8), Some(Id::Farmland));
+    assert_eq!(chunks.block_at(9, 64, 8), Some(Id::Grass));
 }
 
 #[test]
 fn tilling_rejects_unsupported_blocks_and_bottom_clicks_on_grass() {
     let mut chunk = Chunk::new();
-    chunk.set(8, 64, 8, BlockId::Stone);
-    chunk.set(9, 64, 8, BlockId::Grass);
+    chunk.set(8, 64, 8, Id::Stone);
+    chunk.set(9, 64, 8, Id::Grass);
     let mut chunks = world_with(chunk);
 
+    assert!(!till_block(&mut chunks, hit(8, Id::Stone, BlockFace::Up)));
+    assert!(!till_block(&mut chunks, hit(9, Id::Grass, BlockFace::Down)));
     assert!(!till_block(
         &mut chunks,
-        hit(8, BlockId::Stone, BlockFace::Up)
+        hit(9, Id::Farmland, BlockFace::Up)
     ));
-    assert!(!till_block(
-        &mut chunks,
-        hit(9, BlockId::Grass, BlockFace::Down)
-    ));
-    assert!(!till_block(
-        &mut chunks,
-        hit(9, BlockId::Farmland, BlockFace::Up)
-    ));
-    assert_eq!(chunks.block_at(8, 64, 8), Some(BlockId::Stone));
-    assert_eq!(chunks.block_at(9, 64, 8), Some(BlockId::Grass));
+    assert_eq!(chunks.block_at(8, 64, 8), Some(Id::Stone));
+    assert_eq!(chunks.block_at(9, 64, 8), Some(Id::Grass));
 }
 
 #[test]
 fn successful_hoe_use_spends_durability_without_charging_failed_attempts() {
     let mut chunk = Chunk::new();
-    chunk.set(8, 64, 8, BlockId::Dirt);
-    chunk.set(9, 64, 8, BlockId::Stone);
+    chunk.set(8, 64, 8, Id::Dirt);
+    chunk.set(9, 64, 8, Id::Stone);
     let mut chunks = world_with(chunk);
     let mut hotbar = Hotbar::default();
     hotbar.slots[0] = Some(ItemStack::new(ItemId::WoodenHoe, 1).unwrap());
@@ -211,65 +199,62 @@ fn successful_hoe_use_spends_durability_without_charging_failed_attempts() {
     assert!(till_with_selected_hoe(
         &mut chunks,
         &mut hotbar,
-        hit(8, BlockId::Dirt, BlockFace::Up)
+        hit(8, Id::Dirt, BlockFace::Up)
     ));
     assert_eq!(hotbar.selected_stack().unwrap().data(), 1);
     assert!(!till_with_selected_hoe(
         &mut chunks,
         &mut hotbar,
-        hit(8, BlockId::Farmland, BlockFace::Up)
+        hit(8, Id::Farmland, BlockFace::Up)
     ));
     assert!(!till_with_selected_hoe(
         &mut chunks,
         &mut hotbar,
-        hit(9, BlockId::Stone, BlockFace::Up)
+        hit(9, Id::Stone, BlockFace::Up)
     ));
     assert_eq!(hotbar.selected_stack().unwrap().data(), 1);
     hotbar.slots[0] = Some(ItemStack::new(ItemId::WoodenShovel, 1).unwrap());
     let mut chunk = Chunk::new();
-    chunk.set(10, 64, 8, BlockId::Dirt);
+    chunk.set(10, 64, 8, Id::Dirt);
     let mut chunks = world_with(chunk);
     assert!(!till_with_selected_hoe(
         &mut chunks,
         &mut hotbar,
-        hit(10, BlockId::Dirt, BlockFace::East)
+        hit(10, Id::Dirt, BlockFace::East)
     ));
-    assert_eq!(chunks.block_at(10, 64, 8), Some(BlockId::Dirt));
+    assert_eq!(chunks.block_at(10, 64, 8), Some(Id::Dirt));
 }
 
 #[test]
 fn farmland_has_beta_properties_tiles_and_dirt_drop() {
-    assert!(BlockId::Farmland.in_world());
-    assert_eq!(BlockId::Farmland.placed(0), Some(BlockId::Farmland));
-    assert!(!is_opaque_cube(BlockId::Farmland));
-    assert_eq!(hardness(BlockId::Farmland), 0.6);
-    assert_eq!(light_opacity(BlockId::Farmland), 15);
+    assert!(Id::Farmland.in_world());
+    assert_eq!(Id::Farmland.placed(0), Some(Id::Farmland));
+    assert!(!is_opaque_cube(Id::Farmland));
+    assert_eq!(hardness(Id::Farmland), 0.6);
+    assert_eq!(light_opacity(Id::Farmland), 15);
+    assert_eq!(collision_bounds(Id::Farmland), Some(([0.0; 3], [1.0; 3])));
     assert_eq!(
-        collision_bounds(BlockId::Farmland),
-        Some(([0.0; 3], [1.0; 3]))
-    );
-    assert_eq!(
-        selection_bounds(BlockId::Farmland),
+        selection_bounds(Id::Farmland),
         ([0.0; 3], [1.0, 15.0 / 16.0, 1.0])
     );
     assert_eq!(farmland_top_tile(false), (7, 5));
     assert_eq!(farmland_top_tile(true), (6, 5));
-    assert_eq!(block_tile(BlockId::Farmland, 0, false), (7, 5));
+    assert_eq!(block_tile(Id::Farmland, 0, false), (7, 5));
     for face in [1, 2, 3, 4, 5] {
-        assert_eq!(block_tile(BlockId::Farmland, face, false), (2, 0));
+        assert_eq!(block_tile(Id::Farmland, face, false), (2, 0));
     }
     let shovel = ItemStack::new(ItemId::WoodenShovel, 1).unwrap();
-    assert_eq!(str_vs_block(Some(shovel), BlockId::Farmland), 2.0);
+    assert_eq!(str_vs_block(Some(shovel), Id::Farmland), 2.0);
     assert_eq!(
-        player_break_drops(BlockId::Farmland, None, &mut Rolls),
-        vec![ItemStack::from_block(BlockId::Dirt, 1).unwrap()]
+        player_break_drops(Id::Farmland, None, &mut Rolls),
+        vec![ItemStack::from_block(Id::Dirt, 1).unwrap()]
     );
 }
 
 #[test]
 fn farmland_mesh_and_ray_selection_stop_at_fifteen_sixteenths() {
     let mut chunk = Chunk::new();
-    chunk.set(8, 64, 8, BlockId::Farmland);
+    chunk.set(8, 64, 8, Id::Farmland);
     let chunks = world_with(chunk.clone());
     let mesh = mesh_chunk(&chunk, &Skylight::from_chunk(&chunk));
     let Some(VertexAttributeValues::Float32x3(positions)) =
@@ -290,7 +275,7 @@ fn farmland_mesh_and_ray_selection_stop_at_fifteen_sixteenths() {
 
     assert!(
         raycast_blocks(&chunks, Vec3::new(7.0, 64.9, 8.5), Vec3::X, BLOCK_REACH)
-            .is_some_and(|hit| hit.block == BlockId::Farmland)
+            .is_some_and(|hit| hit.block == Id::Farmland)
     );
     assert!(raycast_blocks(&chunks, Vec3::new(7.0, 64.95, 8.5), Vec3::X, BLOCK_REACH).is_none());
 }
@@ -298,8 +283,8 @@ fn farmland_mesh_and_ray_selection_stop_at_fifteen_sixteenths() {
 #[test]
 fn farmland_nearby_water_uses_the_wet_top_tile() {
     let mut chunk = Chunk::new();
-    chunk.set(8, 64, 8, BlockId::Farmland);
-    chunk.set(4, 64, 8, BlockId::Water);
+    chunk.set(8, 64, 8, Id::Farmland);
+    chunk.set(4, 64, 8, Id::Water);
 
     let mesh = mesh_chunk(&chunk, &Skylight::from_chunk(&chunk));
 
@@ -310,7 +295,7 @@ fn farmland_nearby_water_uses_the_wet_top_tile() {
 #[test]
 fn dry_farmland_uses_the_dry_top_tile() {
     let mut chunk = Chunk::new();
-    chunk.set(8, 64, 8, BlockId::Farmland);
+    chunk.set(8, 64, 8, Id::Farmland);
 
     let mesh = mesh_chunk(&chunk, &Skylight::from_chunk(&chunk));
 
@@ -321,8 +306,8 @@ fn dry_farmland_uses_the_dry_top_tile() {
 #[test]
 fn farmland_does_not_hide_a_neighboring_full_block_side() {
     let mut chunk = Chunk::new();
-    chunk.set(8, 64, 8, BlockId::Stone);
-    chunk.set(9, 64, 8, BlockId::Farmland);
+    chunk.set(8, 64, 8, Id::Stone);
+    chunk.set(9, 64, 8, Id::Farmland);
     let mesh = mesh_chunk(&chunk, &Skylight::from_chunk(&chunk));
     let Some(VertexAttributeValues::Float32x3(positions)) =
         mesh.attribute(Mesh::ATTRIBUTE_POSITION)
@@ -368,12 +353,12 @@ fn farmland_round_trips_through_persistence() {
     let storage = WorldStorage::create(&saves, 0, "Farmland").unwrap();
     let position = ChunkPos::ZERO;
     let mut generated = generated(Chunk::new());
-    generated.chunk.set(8, 64, 8, BlockId::Farmland);
+    generated.chunk.set(8, 64, 8, Id::Farmland);
     generated.heightmap = Heightmap::from_chunk(&generated.chunk);
 
     storage.save_chunk(position, &generated).unwrap();
     let loaded = storage.load_chunk(position).unwrap();
-    assert_eq!(loaded.chunk.get(8, 64, 8), Some(BlockId::Farmland));
+    assert_eq!(loaded.chunk.get(8, 64, 8), Some(Id::Farmland));
     assert_eq!(loaded.heightmap.get(8, 8), 65);
     fs::remove_dir_all(saves).unwrap();
 }

@@ -15,7 +15,7 @@ use super::appearance::Appearance;
 use super::appearance::Shape;
 use super::appearance::block_appearance;
 use super::appearance::item_tile;
-use crate::block::id::BlockId;
+use crate::block::id::Id;
 use crate::item::ItemData;
 use crate::item::ItemRegistry;
 use crate::item::ItemStack;
@@ -224,7 +224,7 @@ fn render_block_icon(source: &Source, id: u8, data: u16) -> Vec<u8> {
     let mut out = vec![0; (ICON_SIZE * ICON_SIZE * 4) as usize];
     match appearance.shape {
         Shape::Cube => {
-            let bounds = if id == BlockId::Farmland.as_u8() {
+            let bounds = if id == Id::Farmland.as_u8() {
                 [0.0, 0.0, 0.0, 1.0, 0.9375, 1.0] // Farmland
             } else {
                 [0.0, 0.0, 0.0, 1.0, 1.0, 1.0]
@@ -232,7 +232,7 @@ fn render_block_icon(source: &Source, id: u8, data: u16) -> Vec<u8> {
             draw_box(&mut out, source, appearance, bounds);
         }
         Shape::Slab => {
-            let bounds = if id == BlockId::Cake.as_u8() {
+            let bounds = if id == Id::Cake.as_u8() {
                 [0.0625, 0.0, 0.0625, 0.9375, 0.5, 0.9375] // Cake
             } else {
                 [0.0, 0.0, 0.0, 1.0, 0.5, 1.0]
@@ -241,16 +241,14 @@ fn render_block_icon(source: &Source, id: u8, data: u16) -> Vec<u8> {
         }
         Shape::Thin => {
             let bounds = match id {
-                id if id == BlockId::StonePressurePlate.as_u8()
-                    || id == BlockId::WoodenPressurePlate.as_u8() =>
+                id if id == Id::StonePressurePlate.as_u8()
+                    || id == Id::WoodenPressurePlate.as_u8() =>
                 {
                     [0.0, 0.375, 0.0, 1.0, 0.625, 1.0]
                 } // Pressure plates
-                id if id == BlockId::StoneButton.as_u8() => {
-                    [0.3125, 0.375, 0.375, 0.6875, 0.625, 0.625]
-                } // Button
-                id if id == BlockId::SnowLayer.as_u8() => [0.0, 0.0, 0.0, 1.0, 0.125, 1.0], // Snow layer
-                id if id == BlockId::Trapdoor.as_u8() => [0.0, 0.40625, 0.0, 1.0, 0.59375, 1.0], // Trapdoor
+                id if id == Id::StoneButton.as_u8() => [0.3125, 0.375, 0.375, 0.6875, 0.625, 0.625], // Button
+                id if id == Id::SnowLayer.as_u8() => [0.0, 0.0, 0.0, 1.0, 0.125, 1.0], // Snow layer
+                id if id == Id::Trapdoor.as_u8() => [0.0, 0.40625, 0.0, 1.0, 0.59375, 1.0], // Trapdoor
                 _ => [0.0, 0.0, 0.0, 1.0, 0.125, 1.0],
             };
             draw_box(&mut out, source, appearance, bounds);
@@ -411,7 +409,7 @@ fn triangle(
 }
 
 /// Useful for comparing native block states with the Beta item appearance.
-pub fn rasterize_icon(source: &[u8], width: u32, block: BlockId) -> Vec<u8> {
+pub fn rasterize_icon(source: &[u8], width: u32, block: Id) -> Vec<u8> {
     let stride = width / 16;
     let image = Source {
         pixels: source.to_vec(),

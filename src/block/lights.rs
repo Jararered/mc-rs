@@ -1,102 +1,96 @@
 use crate::block::definition::BlockDefinition;
 use crate::block::definition::BlockProperties;
-use crate::block::id::BlockId;
+use crate::block::id::Id;
 
 pub(super) struct Definition;
 pub(super) static DEFINITION: Definition = Definition;
 
 impl BlockDefinition for Definition {
-    fn name(&self, state: BlockId) -> &'static str {
+    fn name(&self, state: Id) -> &'static str {
         match state {
-            BlockId::Torch => "torch",
-            BlockId::Fire => "fire",
-            BlockId::UnlitRedstoneTorch => "unlit_redstone_torch",
-            BlockId::RedstoneTorch => "redstone_torch",
-            BlockId::Glowstone => "glowstone",
-            BlockId::JackOLantern => "jack_olantern",
-            BlockId::TorchWest => "torch_west",
-            BlockId::TorchEast => "torch_east",
-            BlockId::TorchNorth => "torch_north",
-            BlockId::TorchSouth => "torch_south",
-            BlockId::Unknown(_) => "unknown",
+            Id::Torch => "torch",
+            Id::Fire => "fire",
+            Id::UnlitRedstoneTorch => "unlit_redstone_torch",
+            Id::RedstoneTorch => "redstone_torch",
+            Id::Glowstone => "glowstone",
+            Id::JackOLantern => "jack_olantern",
+            Id::TorchWest => "torch_west",
+            Id::TorchEast => "torch_east",
+            Id::TorchNorth => "torch_north",
+            Id::TorchSouth => "torch_south",
+            Id::Unknown(_) => "unknown",
             _ => "unknown",
         }
     }
 
-    fn in_world(&self, state: BlockId) -> bool {
+    fn in_world(&self, state: Id) -> bool {
         matches!(
             state,
-            BlockId::Torch
-                | BlockId::Glowstone
-                | BlockId::JackOLantern
-                | BlockId::TorchWest
-                | BlockId::TorchEast
-                | BlockId::TorchNorth
-                | BlockId::TorchSouth
+            Id::Torch
+                | Id::Glowstone
+                | Id::JackOLantern
+                | Id::TorchWest
+                | Id::TorchEast
+                | Id::TorchNorth
+                | Id::TorchSouth
         )
     }
 
-    fn properties(&self, state: BlockId) -> BlockProperties {
+    fn properties(&self, state: Id) -> BlockProperties {
         properties(state)
     }
 
-    fn opaque_cube(&self, state: BlockId) -> bool {
+    fn opaque_cube(&self, state: Id) -> bool {
         !is_torch(state)
     }
 
-    fn light_opacity(&self, state: BlockId) -> u8 {
+    fn light_opacity(&self, state: Id) -> u8 {
         if is_torch(state) { 0 } else { 15 }
     }
 
-    fn light_emission(&self, state: BlockId) -> u8 {
-        if matches!(state, BlockId::Glowstone | BlockId::JackOLantern) || is_torch(state) {
+    fn light_emission(&self, state: Id) -> u8 {
+        if matches!(state, Id::Glowstone | Id::JackOLantern) || is_torch(state) {
             15
         } else {
             0
         }
     }
 
-    fn torch(&self, state: BlockId) -> bool {
+    fn torch(&self, state: Id) -> bool {
         is_torch(state)
     }
 }
 
-fn properties(state: BlockId) -> BlockProperties {
+fn properties(state: Id) -> BlockProperties {
     match state {
-        BlockId::Torch
-        | BlockId::TorchWest
-        | BlockId::TorchEast
-        | BlockId::TorchNorth
-        | BlockId::TorchSouth => BlockProperties {
-            torch: true,
-            light_emission: 15,
-            selection_bounds: crate::block::properties::torch_selection_bounds(state),
-            ..BlockProperties::non_colliding(0.0)
-        },
-        BlockId::Fire => BlockProperties::solid(0.0),
-        BlockId::UnlitRedstoneTorch => BlockProperties::solid(0.0),
-        BlockId::RedstoneTorch => BlockProperties::solid(0.0),
-        BlockId::Glowstone => BlockProperties {
+        Id::Torch | Id::TorchWest | Id::TorchEast | Id::TorchNorth | Id::TorchSouth => {
+            BlockProperties {
+                torch: true,
+                light_emission: 15,
+                selection_bounds: crate::block::properties::torch_selection_bounds(state),
+                ..BlockProperties::non_colliding(0.0)
+            }
+        }
+        Id::Fire => BlockProperties::solid(0.0),
+        Id::UnlitRedstoneTorch => BlockProperties::solid(0.0),
+        Id::RedstoneTorch => BlockProperties::solid(0.0),
+        Id::Glowstone => BlockProperties {
             harvestable_by_hand: false,
             light_emission: 15,
             ..BlockProperties::solid(0.3)
         },
-        BlockId::JackOLantern => BlockProperties {
+        Id::JackOLantern => BlockProperties {
             light_emission: 15,
             ..BlockProperties::solid(1.0)
         },
-        BlockId::Unknown(_) => BlockProperties::unknown(),
+        Id::Unknown(_) => BlockProperties::unknown(),
         _ => BlockProperties::unknown(),
     }
 }
 
-fn is_torch(state: BlockId) -> bool {
+fn is_torch(state: Id) -> bool {
     matches!(
         state,
-        BlockId::Torch
-            | BlockId::TorchWest
-            | BlockId::TorchEast
-            | BlockId::TorchNorth
-            | BlockId::TorchSouth
+        Id::Torch | Id::TorchWest | Id::TorchEast | Id::TorchNorth | Id::TorchSouth
     )
 }

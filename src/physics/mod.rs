@@ -604,7 +604,7 @@ fn player_is_on_ladder(aabb: Aabb, chunks: &WorldChunks) -> bool {
         .is_some_and(|block| block.is_ladder())
 }
 
-fn block_under_player(chunks: &WorldChunks, aabb: Aabb) -> Option<crate::block::id::BlockId> {
+fn block_under_player(chunks: &WorldChunks, aabb: Aabb) -> Option<crate::block::id::Id> {
     let x = ((aabb.min.x + aabb.max.x) * 0.5).floor() as i32;
     let y = aabb.min.y.floor() as i32 - 1;
     let z = ((aabb.min.z + aabb.max.z) * 0.5).floor() as i32;
@@ -644,17 +644,17 @@ fn cancel_collided_motion(motion: &mut Vec3, collision: CollisionState) {
     }
 }
 
-fn is_water(block: crate::block::id::BlockId) -> bool {
+fn is_water(block: crate::block::id::Id) -> bool {
     matches!(
         block,
-        crate::block::id::BlockId::Water | crate::block::id::BlockId::FlowingWater
+        crate::block::id::Id::Water | crate::block::id::Id::FlowingWater
     )
 }
 
-fn is_lava(block: crate::block::id::BlockId) -> bool {
+fn is_lava(block: crate::block::id::Id) -> bool {
     matches!(
         block,
-        crate::block::id::BlockId::Lava | crate::block::id::BlockId::FlowingLava
+        crate::block::id::Id::Lava | crate::block::id::Id::FlowingLava
     )
 }
 
@@ -693,10 +693,10 @@ fn water_flow_vector(
     x: i32,
     y: i32,
     z: i32,
-    block: crate::block::id::BlockId,
+    block: crate::block::id::Id,
     chunks: &WorldChunks,
 ) -> Vec3 {
-    use crate::block::id::BlockId;
+    use crate::block::id::Id;
 
     let level = fluid_decay(block);
     let neighbors = [
@@ -708,7 +708,7 @@ fn water_flow_vector(
     let mut flow = Vec3::ZERO;
 
     for (nx, nz, direction) in neighbors {
-        let neighbor = chunks.block_at(nx, y, nz).unwrap_or(BlockId::Air);
+        let neighbor = chunks.block_at(nx, y, nz).unwrap_or(Id::Air);
         if is_water(neighbor) {
             flow += direction * (fluid_decay(neighbor) - level) as f32;
         } else if !crate::block::properties::blocks_movement(neighbor)
@@ -724,17 +724,17 @@ fn water_flow_vector(
     flow.normalize_or_zero()
 }
 
-fn fluid_decay(block: crate::block::id::BlockId) -> i32 {
-    use crate::block::id::BlockId;
+fn fluid_decay(block: crate::block::id::Id) -> i32 {
+    use crate::block::id::Id;
 
     match block {
-        BlockId::FlowingWater | BlockId::FlowingLava => 1,
-        BlockId::Water | BlockId::Lava => 0,
+        Id::FlowingWater | Id::FlowingLava => 1,
+        Id::Water | Id::Lava => 0,
         _ => 0,
     }
 }
 
-fn liquid_surface_y(block: crate::block::id::BlockId, y: i32) -> f32 {
+fn liquid_surface_y(block: crate::block::id::Id, y: i32) -> f32 {
     y as f32 + 1.0 - (fluid_decay(block) as f32 + 1.0) / 9.0
 }
 
@@ -753,7 +753,7 @@ fn intersects_liquid(aabb: Aabb, chunks: &WorldChunks) -> bool {
 fn contains_liquid_material(
     area: Aabb,
     chunks: &WorldChunks,
-    matches: impl Fn(crate::block::id::BlockId) -> bool,
+    matches: impl Fn(crate::block::id::Id) -> bool,
 ) -> bool {
     let (min_x, max_x, min_y, max_y, min_z, max_z) = block_range(area);
     for x in min_x..max_x {

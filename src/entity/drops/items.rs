@@ -12,7 +12,7 @@ use bevy::render::render_resource::PrimitiveTopology;
 
 use crate::app::settings::GameSettings;
 use crate::app::state::AppScreen;
-use crate::block::id::BlockId;
+use crate::block::id::Id;
 use crate::block::properties::is_crossed_plant;
 use crate::block::properties::is_opaque_cube;
 use crate::block::properties::is_torch;
@@ -346,8 +346,8 @@ pub fn apply_item_gravity(mut motion: Vec3) -> Vec3 {
     motion
 }
 
-pub fn item_slipperiness(block: Option<BlockId>) -> f32 {
-    if block == Some(BlockId::Ice) {
+pub fn item_slipperiness(block: Option<Id>) -> f32 {
+    if block == Some(Id::Ice) {
         ICE_SLIPPERINESS
     } else {
         DEFAULT_SLIPPERINESS
@@ -482,7 +482,7 @@ pub fn item_piece_transform(
 
 /// Full cubes we already mesh in the world. Torch and ladder items use Beta's
 /// flat item sprite path rather than their in-world block render types.
-pub fn dropped_block_model(stack: ItemStack) -> Option<BlockId> {
+pub fn dropped_block_model(stack: ItemStack) -> Option<Id> {
     let block = stack.runtime_block()?;
     if block.is_ladder() || is_torch(block) || is_crossed_plant(block) {
         None
@@ -603,7 +603,7 @@ fn mark_chunk_pos(persistence: &mut Option<ResMut<WorldPersistence>>, position: 
     }
 }
 
-fn block_under_item(chunks: &WorldChunks, position: Vec3, size: EntitySize) -> Option<BlockId> {
+fn block_under_item(chunks: &WorldChunks, position: Vec3, size: EntitySize) -> Option<Id> {
     let feet = size.aabb(position).min.y;
     let y = feet.floor() as i32 - 1;
     chunks.block_at(position.x.floor() as i32, y, position.z.floor() as i32)
@@ -959,7 +959,7 @@ fn spawn_block_pieces(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     parent: Entity,
-    block: BlockId,
+    block: Id,
     fancy: bool,
     tints: ([f32; 3], [f32; 3]),
     terrain: Option<&TerrainMaterial>,

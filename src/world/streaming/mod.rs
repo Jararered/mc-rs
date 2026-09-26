@@ -146,6 +146,16 @@ pub fn within_radius(position: ChunkPosition, center: ChunkPosition, radius: i32
         && (i64::from(position.z) - i64::from(center.z)).abs() <= i64::from(radius)
 }
 
+/// Order chunk work by squared distance from `center`, then by coordinates for
+/// deterministic ordering among equally distant positions.
+pub fn sort_by_distance(positions: &mut [ChunkPosition], center: ChunkPosition) {
+    positions.sort_by_key(|position| {
+        let dx = i128::from(position.x) - i128::from(center.x);
+        let dz = i128::from(position.z) - i128::from(center.z);
+        (dx * dx + dz * dz, position.x, position.z)
+    });
+}
+
 pub fn positions_in_radius(center: ChunkPosition, radius: i32) -> Vec<ChunkPosition> {
     let mut positions = Vec::with_capacity(((radius * 2 + 1) * (radius * 2 + 1)) as usize);
     for z in -radius..=radius {

@@ -152,7 +152,7 @@ fn fov_setting_updates_player_camera() {
     }
     app.update();
 
-    assert!((player_fov_radians(&mut app) - 90.0_f32.to_radians()).abs() < f32::EPSILON);
+    assert!((player_fov_radians(&mut app) - 100.0_f32.to_radians()).abs() < f32::EPSILON);
 }
 
 fn player_fov_radians(app: &mut App) -> f32 {

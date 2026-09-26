@@ -32,7 +32,6 @@ use crate::inventory::shift_click_slot;
 use crate::inventory::slot_accepts_drag;
 use crate::inventory::sort_container_slots;
 use crate::inventory::sort_main_inventory;
-use crate::item::ItemData;
 use crate::item::ItemStack;
 use crate::player::Player;
 use crate::random::ItemRng;
@@ -44,6 +43,7 @@ use crate::ui::icons::overlay::count_label;
 use crate::ui::icons::overlay::count_line_height;
 use crate::ui::icons::overlay::count_shadow;
 use crate::ui::icons::overlay::count_text_font;
+use crate::ui::icons::overlay::durability_bar;
 use crate::ui::icons::overlay::durability_track;
 use crate::ui::icons::overlay::icon_size;
 use crate::ui::icons::overlay::place_stack_label;
@@ -2084,17 +2084,4 @@ fn slot_stack(
             .and_then(|furnace| furnace.slots.get(i).copied().flatten()),
         Slot::Armor(i) => inventory.armor[i],
     }
-}
-
-pub(super) fn durability_bar(stack: ItemStack) -> Option<(f32, u8, u8)> {
-    let ItemData::Durability(max) = stack.definition().data else {
-        return None;
-    };
-    if stack.data() == 0 || max == 0 {
-        return None;
-    }
-    let fraction = stack.data() as f32 / max as f32;
-    let width = (13.0 - fraction * 13.0).round().clamp(0.0, 13.0) * SCALE;
-    let green = (255.0 - fraction * 255.0).round().clamp(0.0, 255.0) as u8;
-    Some((width, 255 - green, green))
 }

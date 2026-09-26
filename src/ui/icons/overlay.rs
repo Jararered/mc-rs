@@ -11,6 +11,7 @@ use bevy::text::FontSmoothing;
 use bevy::text::LineBreak;
 use bevy::text::LineHeight;
 
+use crate::item::ItemData;
 use crate::item::ItemStack;
 
 /// GUI pixels per screen pixel. Beta auto-scale is applied by drawing the
@@ -104,6 +105,21 @@ pub fn durability_track(icon_left: f32, icon_top: f32, foreground: bool) -> (f32
         13.0 * GUI_SCALE,
         height * GUI_SCALE,
     )
+}
+
+/// Durability fill width and red/green color for a worn item, or `None` when
+/// the item has no durability or has not yet taken damage.
+pub fn durability_bar(stack: ItemStack) -> Option<(f32, u8, u8)> {
+    let ItemData::Durability(max) = stack.definition().data else {
+        return None;
+    };
+    if stack.data() == 0 || max == 0 {
+        return None;
+    }
+    let fraction = stack.data() as f32 / max as f32;
+    let width = (13.0 - fraction * 13.0).round().clamp(0.0, 13.0) * GUI_SCALE;
+    let green = (255.0 - fraction * 255.0).round().clamp(0.0, 255.0) as u8;
+    Some((width, 255 - green, green))
 }
 
 pub fn icon_size() -> f32 {

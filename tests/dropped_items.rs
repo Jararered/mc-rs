@@ -1,11 +1,17 @@
 use bevy::mesh::Mesh;
 use bevy::mesh::VertexAttributeValues;
+use bevy::prelude::App;
+use bevy::prelude::Commands;
+use bevy::prelude::Local;
+use bevy::prelude::MinimalPlugins;
 use bevy::prelude::Vec3;
 use game::block::id::Id;
+use game::entity::DroppedItem;
 use game::entity::EntitySize;
 use game::entity::drops::blocks::DropRoll;
 use game::entity::drops::blocks::natural_drops;
 use game::entity::drops::blocks::player_break_drops;
+use game::entity::drops::items::ItemMotion;
 use game::entity::drops::items::block_drop_position;
 use game::entity::drops::items::dropped_block_model;
 use game::entity::drops::items::hotbar_icon_scale;
@@ -21,12 +27,14 @@ use game::entity::drops::items::item_spin_yaw;
 use game::entity::drops::items::item_stack_copies;
 use game::entity::drops::items::item_visual_yaw;
 use game::entity::drops::items::pickup_position;
+use game::entity::drops::items::spawn_chest_drops;
 use game::entity::drops::items::thrown_item_motion;
 use game::inventory::Hotbar;
 use game::inventory::Inventory;
 use game::inventory::MAIN_SLOTS;
 use game::item::ItemId;
 use game::item::ItemStack;
+use game::random::ItemRng;
 use game::world::meshing::dropped_block_meshes;
 
 struct Rolls<'a> {
@@ -348,16 +356,65 @@ fn stack_copies_follow_beta_thresholds() {
     assert_eq!(item_stack_copies(2), 2);
     assert_eq!(item_stack_copies(6), 3);
     assert_eq!(item_stack_copies(21), 4);
-    let cube = item_pile_offsets(2, true, 0.25);
-    let sprite = item_pile_offsets(2, false, 0.5);
+    let cube = item_pile_offsets(4, true, 0.25);
+    let sprite = item_pile_offsets(4, false, 0.5);
     assert_eq!(cube[0], Vec3::ZERO);
     assert_eq!(sprite[0], Vec3::ZERO);
     assert!(cube[1].abs().max_element() <= 0.8 + 1e-4);
     assert!(sprite[1].abs().max_element() <= 0.3 + 1e-4);
     assert_ne!(cube[1], Vec3::ZERO);
-    assert_eq!(
-        item_pile_offsets(3, true, 0.25),
-        item_pile_offsets(3, true, 0.25)
+    let expected_cube = [
+        Vec3::ZERO,
+        Vec3::new(0.384_598_08, 0.132_893, -0.098_600_39),
+        Vec3::new(-0.013_737_393, 0.409_901_05, 0.727_431_95),
+        Vec3::new(-0.142_347_34, -0.445_375_53, 0.360_687_73),
+    ];
+    let expected_sprite = [
+        Vec3::ZERO,
+        Vec3::new(0.144_224_29, 0.049_834_874, -0.036_975_145),
+        Vec3::new(-0.005_151_522_3, 0.153_712_9, 0.272_787),
+        Vec3::new(-0.053_380_255, -0.167_015_84, 0.135_257_9),
+    ];
+    assert!(
+        cube.iter()
+            .zip(expected_cube)
+            .all(|(actual, expected)| actual.abs_diff_eq(expected, 1.0e-6))
+    );
+    assert!(
+        sprite
+            .iter()
+            .zip(expected_sprite)
+            .all(|(actual, expected)| actual.abs_diff_eq(expected, 1.0e-6))
+    );
+}
+
+fn spawn_test_chest_drops(mut commands: Commands, mut rng: Local<ItemRng>) {
+    spawn_chest_drops(
+        &mut commands,
+        &mut rng,
+        bevy::prelude::IVec3::new(3, 64, -2),
+        [ItemStack::from_block(Id::Dirt, 10).unwrap()],
+    );
+}
+
+#[test]
+fn chest_drop_motion_uses_gaussian_scatter() {
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins)
+        .add_systems(bevy::prelude::Startup, spawn_test_chest_drops);
+    app.update();
+
+    let mut query = app.world_mut().query::<(&DroppedItem, &ItemMotion)>();
+    let spawned: Vec<_> = query
+        .iter(app.world())
+        .map(|(item, motion)| (item.0.count(), motion.0))
+        .collect();
+    assert_eq!(spawned.len(), 1);
+    assert_eq!(spawned[0].0, 10);
+    assert!(
+        spawned[0]
+            .1
+            .abs_diff_eq(Vec3::new(0.029_262_662, 0.161_215_96, 0.034_433_41), 1.0e-6)
     );
 }
 

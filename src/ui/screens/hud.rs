@@ -6,7 +6,6 @@ use bevy::text::FontSize;
 use bevy::text::FontSource;
 use bevy::text::LineHeight;
 
-use super::inventory::durability_bar;
 use crate::app::state::AppScreen;
 use crate::entity::CollisionState;
 use crate::entity::EntitySize;
@@ -25,6 +24,7 @@ use crate::ui::icons::blocks::BlockIcons;
 use crate::ui::icons::overlay::GUI_SCALE;
 use crate::ui::icons::overlay::UiFont;
 use crate::ui::icons::overlay::count_label;
+use crate::ui::icons::overlay::durability_bar;
 use crate::ui::icons::overlay::durability_track;
 use crate::ui::icons::overlay::icon_size;
 use crate::ui::icons::overlay::place_stack_label;
@@ -353,7 +353,7 @@ fn spawn_hotbar(
 }
 
 /// Slot position for a 16×16 item icon inside the hotbar texture.
-fn hotbar_item_rect(index: usize) -> (f32, f32) {
+pub fn hotbar_item_rect(index: usize) -> (f32, f32) {
     (
         (HOTBAR_ICON_INSET + index as f32 * HOTBAR_SLOT_STEP) * HUD_SCALE,
         HOTBAR_ICON_INSET * HUD_SCALE,
@@ -596,7 +596,9 @@ fn update_hotbar_bars(
     }
 }
 
-fn hotbar_selector_left(selected: usize) -> f32 {
+/// Left edge of the selected hotbar frame, clamping invalid indices to the
+/// final slot.
+pub fn hotbar_selector_left(selected: usize) -> f32 {
     (selected.min(HOTBAR_SLOTS - 1) as f32 * HOTBAR_SLOT_STEP - 1.0) * HUD_SCALE
 }
 

@@ -462,7 +462,7 @@ fn ensure_sky(
                 double_sided: true,
                 ..default()
             }),
-            sunrise_mesh: meshes.add(sunrise_mesh([0.0; 4])),
+            sunrise_mesh: meshes.add(sunrise_fan_mesh([0.0; 4])),
         };
         commands.insert_resource(created.clone());
         created
@@ -508,7 +508,7 @@ fn ensure_sky(
 
     let sun_mesh = meshes.add(textured_quad(SUN_DISTANCE, SUN_SIZE, SUN_UVS));
     let moon_mesh = meshes.add(textured_quad(-SUN_DISTANCE, MOON_SIZE, MOON_UVS));
-    let star_mesh = meshes.add(star_mesh());
+    let star_mesh = meshes.add(star_field_mesh());
     commands
         .spawn((
             Name::new("Sky"),
@@ -707,7 +707,7 @@ fn update_atmosphere(
             transform.rotation = rotation;
             *visibility = Visibility::Inherited;
             if let Some(mut mesh) = meshes.get_mut(&assets.sunrise_mesh) {
-                *mesh = sunrise_mesh(rgba);
+                *mesh = sunrise_fan_mesh(rgba);
             }
         } else {
             *visibility = Visibility::Hidden;
@@ -796,7 +796,8 @@ fn textured_quad(y: f32, size: f32, uvs: [[f32; 2]; 4]) -> Mesh {
     )
 }
 
-fn sunrise_mesh(rgba: [f32; 4]) -> Mesh {
+/// Build the colored sunrise fan around the horizon used by the sky.
+pub fn sunrise_fan_mesh(rgba: [f32; 4]) -> Mesh {
     let mut positions = vec![[0.0, 100.0, 0.0]];
     let mut colors = vec![[rgba[0], rgba[1], rgba[2], rgba[3]]];
     let segments = 16;
@@ -821,7 +822,8 @@ fn sunrise_mesh(rgba: [f32; 4]) -> Mesh {
     )
 }
 
-fn star_mesh() -> Mesh {
+/// Build the deterministic sphere of twinkling star quads used by the sky.
+pub fn star_field_mesh() -> Mesh {
     let mut random = JavaRandom::new(10_842);
     let mut positions = Vec::new();
     let mut indices = Vec::new();

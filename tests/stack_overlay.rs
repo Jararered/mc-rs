@@ -1,6 +1,9 @@
+use game::item::ItemId;
+use game::item::ItemStack;
 use game::ui::icons::overlay::GUI_SCALE;
 use game::ui::icons::overlay::count_frame;
 use game::ui::icons::overlay::count_origin;
+use game::ui::icons::overlay::durability_bar;
 use game::ui::icons::overlay::durability_track;
 
 #[test]
@@ -30,4 +33,17 @@ fn durability_bar_starts_at_the_beta_overlay_origin() {
     assert_eq!(height, 2.0 * GUI_SCALE);
     assert_eq!((fill_left, fill_top), (left, top));
     assert_eq!(fill_height, GUI_SCALE);
+}
+
+#[test]
+fn durability_bar_scales_width_and_color_with_wear() {
+    let fresh = ItemStack::new(ItemId::WoodenPickaxe, 1).unwrap();
+    let half_worn = ItemStack::with_data(ItemId::WoodenPickaxe, 1, 29).unwrap();
+    let fully_worn = ItemStack::with_data(ItemId::WoodenPickaxe, 1, 59).unwrap();
+    let coal = ItemStack::new(ItemId::Coal, 1).unwrap();
+
+    assert_eq!(durability_bar(fresh), None);
+    assert_eq!(durability_bar(coal), None);
+    assert_eq!(durability_bar(half_worn), Some((14.0, 125, 130)));
+    assert_eq!(durability_bar(fully_worn), Some((0.0, 255, 0)));
 }

@@ -28,6 +28,7 @@ use super::positions_in_radius;
 use super::render::apply_chunk_meshes;
 use super::render::despawn_rendered_chunk;
 use super::render::spawn_chunk;
+use super::sort_by_distance;
 use super::within_radius;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
@@ -441,12 +442,4 @@ pub(crate) fn stream_chunks(
     for position in to_mesh {
         spawn_mesh_job(&mut streaming, &chunks, position);
     }
-}
-
-fn sort_by_distance(positions: &mut [ChunkPosition], center: ChunkPosition) {
-    positions.sort_by_key(|position| {
-        let dx = i64::from(position.x) - i64::from(center.x);
-        let dz = i64::from(position.z) - i64::from(center.z);
-        (dx * dx + dz * dz, position.x, position.z)
-    });
 }

@@ -81,16 +81,36 @@ fn vertices(app: &App, handle: &Handle<Mesh>) -> usize {
 #[test]
 fn empty_arm_swaps_to_modeled_and_flat_blocks() {
     let mut app = app();
+    let arm_rest = visual(&mut app, "Right arm").2;
     assert_eq!(visual(&mut app, "Right arm").0, Visibility::Visible);
+    assert!(arm_rest.translation.abs_diff_eq(
+        Vec3::new(0.503_955_66, -0.818_565_13, -0.663_293_36),
+        1.0e-5
+    ));
+    assert!(arm_rest.rotation.abs_diff_eq(
+        Quat::from_xyzw(-0.150_383_73, 0.664_463_1, -0.492_403_9, 0.541_675_27),
+        1.0e-5
+    ));
     assert_eq!(visual(&mut app, "Held stack").0, Visibility::Hidden);
     select(&mut app, 53, 0); // stairs: two boxes
     for _ in 0..7 {
         app.update();
     }
     assert_eq!(visual(&mut app, "Right arm").0, Visibility::Hidden);
-    let (visible, mesh, _) = visual(&mut app, "Held stack");
+    let (visible, mesh, held_rest) = visual(&mut app, "Held stack");
     assert_eq!(visible, Visibility::Visible);
     assert_eq!(vertices(&app, &mesh), 48);
+    assert!(
+        held_rest
+            .translation
+            .abs_diff_eq(Vec3::new(0.56, -0.52, -0.72), 1.0e-5)
+    );
+    assert!(
+        held_rest
+            .rotation
+            .abs_diff_eq(Quat::from_rotation_y(45.0_f32.to_radians()), 1.0e-5)
+    );
+    assert!(held_rest.scale.abs_diff_eq(Vec3::splat(0.4), 1.0e-5));
     select(&mut app, 50, 0); // torch: extruded terrain sprite
     for _ in 0..7 {
         app.update();

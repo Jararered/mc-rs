@@ -6,53 +6,6 @@ pub(super) struct Definition;
 pub(super) static DEFINITION: Definition = Definition;
 
 impl BlockDefinition for Definition {
-    fn name(&self, state: Id) -> &'static str {
-        match state {
-            Id::Air => "air",
-            Id::Stone => "stone",
-            Id::Grass => "grass",
-            Id::Dirt => "dirt",
-            Id::Cobblestone => "cobblestone",
-            Id::WoodenPlanks => "wooden_planks",
-            Id::Bedrock => "bedrock",
-            Id::Sand => "sand",
-            Id::Gravel => "gravel",
-            Id::Sponge => "sponge",
-            Id::Glass => "glass",
-            Id::Sandstone => "sandstone",
-            Id::NoteBlock => "note_block",
-            Id::Wool => "wool",
-            Id::GoldBlock => "gold_block",
-            Id::IronBlock => "iron_block",
-            Id::DoubleStoneSlab => "double_stone_slab",
-            Id::StoneSlab => "stone_slab",
-            Id::Bricks => "bricks",
-            Id::Tnt => "tnt",
-            Id::Bookshelf => "bookshelf",
-            Id::MossyCobblestone => "mossy_cobblestone",
-            Id::Obsidian => "obsidian",
-            Id::MobSpawner => "mob_spawner",
-            Id::WoodenStairs => "wooden_stairs",
-            Id::CobblestoneStairs => "cobblestone_stairs",
-            Id::DiamondBlock => "diamond_block",
-            Id::CraftingTable => "crafting_table",
-            Id::Farmland => "farmland",
-            Id::SnowLayer => "snow_layer",
-            Id::Ice => "ice",
-            Id::Snow => "snow",
-            Id::Clay => "clay",
-            Id::Jukebox => "jukebox",
-            Id::Fence => "fence",
-            Id::SoulSand => "soul_sand",
-            Id::Cake => "cake",
-            Id::LockedChest => "locked_chest",
-            Id::Trapdoor => "trapdoor",
-            Id::Netherrack => "netherrack",
-            Id::Unknown(_) => "unknown",
-            _ => "unknown",
-        }
-    }
-
     fn in_world(&self, state: Id) -> bool {
         matches!(
             state,

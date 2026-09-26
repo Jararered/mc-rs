@@ -6,17 +6,6 @@ pub(super) struct Definition;
 pub(super) static DEFINITION: Definition = Definition;
 
 impl BlockDefinition for Definition {
-    fn name(&self, state: Id) -> &'static str {
-        match state {
-            Id::FlowingWater => "flowing_water",
-            Id::Water => "water",
-            Id::FlowingLava => "flowing_lava",
-            Id::Lava => "lava",
-            Id::Unknown(_) => "unknown",
-            _ => "unknown",
-        }
-    }
-
     fn in_world(&self, state: Id) -> bool {
         matches!(
             state,

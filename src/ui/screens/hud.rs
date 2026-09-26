@@ -189,7 +189,7 @@ fn update_debug_overlay(
     );
     let below = chunks
         .block_at(bx, (feet_y - 0.01).floor() as i32, bz)
-        .map_or("unloaded", |block| block.name());
+        .map_or_else(|| "unloaded".to_string(), |block| format!("{block:?}"));
     let chunk = ChunkPos::from_block(bx, bz);
     let target = camera
         .single()
@@ -204,7 +204,7 @@ fn update_debug_overlay(
         })
         .map_or_else(
             || "none".to_string(),
-            |hit| format!("{} at {} / {} / {}", hit.block.name(), hit.x, hit.y, hit.z),
+            |hit| format!("{:?} at {} / {} / {}", hit.block, hit.x, hit.y, hit.z),
         );
     let flight = if flying.is_some() { "ON" } else { "OFF" };
     text.0 = format!(
@@ -442,12 +442,12 @@ fn spawn_hotbar_item(
 fn hotbar_label(stack: Option<ItemStack>) -> String {
     stack
         .map(|stack| {
-            let name = stack.definition().name;
-            let short = name.split('_').next().unwrap_or(name);
+            let label = stack.item().to_string();
+            let short = &label[..label.len().min(5)];
             if stack.count() > 1 {
-                format!("{}\n{}", &short[..short.len().min(5)], stack.count())
+                format!("{short}\n{}", stack.count())
             } else {
-                short[..short.len().min(5)].to_string()
+                short.to_string()
             }
         })
         .unwrap_or_default()

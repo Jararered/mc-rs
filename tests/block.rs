@@ -64,8 +64,6 @@ fn every_known_block_value_resolves_to_its_static_definition() {
         let behavior = definition::definition(block);
         let properties = behavior.properties(block);
         assert_eq!(definition::properties(block), properties, "{block:?}");
-        assert_eq!(behavior.name(block), block.name());
-        assert_ne!(behavior.name(block), "unknown", "{block:?}");
         assert_eq!(behavior.in_world(block), block.in_world());
         assert_eq!(Id::from_u8(block.as_u8()), Some(block));
         assert_eq!(
@@ -104,7 +102,6 @@ fn unknown_block_values_use_a_safe_fallback_definition() {
         let behavior = definition::definition(unknown);
         let properties = behavior.properties(unknown);
 
-        assert_eq!(behavior.name(unknown), "unknown");
         assert!(!behavior.in_world(unknown));
         assert_eq!(properties.hardness, 0.0);
         assert_eq!(

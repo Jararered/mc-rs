@@ -79,7 +79,6 @@ impl BlockProperties {
 /// variants can share an implementation while preserving their distinct
 /// behavior.
 pub trait BlockDefinition: Sync {
-    fn name(&self, state: Id) -> &'static str;
     fn in_world(&self, state: Id) -> bool;
     fn properties(&self, state: Id) -> BlockProperties;
 

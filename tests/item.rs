@@ -60,7 +60,6 @@ fn registries_cover_beta_ranges_without_registering_holes_or_air_items() {
         );
         if let Some(item) = item {
             assert_eq!(item.id.as_u16(), raw);
-            assert!(!item.name.is_empty());
             assert!((1..=64).contains(&item.max_stack_size));
         }
     }
@@ -68,7 +67,6 @@ fn registries_cover_beta_ranges_without_registering_holes_or_air_items() {
         match Id::from_u8(raw) {
             Some(block) => {
                 assert_eq!(block.as_u8(), raw);
-                assert!(!block.name().is_empty());
             }
             None => assert!(raw > 96 && !(200..=208).contains(&raw) && !(209..=218).contains(&raw)),
         }
@@ -92,7 +90,20 @@ fn known_beta_identities_do_not_use_the_native_variant_ids() {
     assert_eq!(ItemId::RecordCat.as_u16(), 2257);
     assert_eq!(ItemId::from_block(Id::Stone).unwrap().as_u16(), 1);
     assert!(ItemId::from_block(Id::SpruceWood).is_none());
-    assert_eq!(ItemRegistry::get(257).unwrap().name, "iron_pickaxe");
+    assert_eq!(
+        ItemRegistry::get(257).unwrap().id.to_string(),
+        "IronPickaxe"
+    );
+}
+
+#[test]
+fn item_ids_format_as_their_rust_variants() {
+    assert_eq!(ItemId::from_block(Id::Stone).unwrap().to_string(), "Stone");
+    assert_eq!(ItemId::IronPickaxe.to_string(), "IronPickaxe");
+    assert_eq!(
+        ItemId::BlockOrUnknown(999).to_string(),
+        "BlockOrUnknown(999)"
+    );
 }
 
 #[test]

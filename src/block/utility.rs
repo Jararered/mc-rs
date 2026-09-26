@@ -6,35 +6,6 @@ pub(super) struct Definition;
 pub(super) static DEFINITION: Definition = Definition;
 
 impl BlockDefinition for Definition {
-    fn name(&self, state: Id) -> &'static str {
-        match state {
-            Id::Bed => "bed",
-            Id::Cobweb => "cobweb",
-            Id::DetectorRail => "detector_rail",
-            Id::Dispenser => "dispenser",
-            Id::IronDoor => "iron_door",
-            Id::Lever => "lever",
-            Id::MovingPiston => "moving_piston",
-            Id::NetherPortal => "nether_portal",
-            Id::Piston => "piston",
-            Id::PistonHead => "piston_head",
-            Id::PoweredRail => "powered_rail",
-            Id::PoweredRepeater => "powered_repeater",
-            Id::Rail => "rail",
-            Id::RedstoneWire => "redstone_wire",
-            Id::Repeater => "repeater",
-            Id::StandingSign => "standing_sign",
-            Id::StickyPiston => "sticky_piston",
-            Id::StoneButton => "stone_button",
-            Id::StonePressurePlate => "stone_pressure_plate",
-            Id::WallSign => "wall_sign",
-            Id::WoodenDoor => "wooden_door",
-            Id::WoodenPressurePlate => "wooden_pressure_plate",
-            Id::Unknown(_) => "unknown",
-            _ => "unknown",
-        }
-    }
-
     fn in_world(&self, state: Id) -> bool {
         matches!(state, Id::Dispenser)
     }

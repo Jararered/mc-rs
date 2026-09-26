@@ -1724,11 +1724,11 @@ fn highlight_slots(
 fn stack_text(stack: Option<ItemStack>) -> String {
     stack
         .map(|stack| {
-            let name = stack.definition().name.replace('_', " ");
+            let label = stack.item().to_string();
             if stack.count() > 1 {
-                format!("{name}\n{}", stack.count())
+                format!("{label}\n{}", stack.count())
             } else {
-                name
+                label
             }
         })
         .unwrap_or_default()

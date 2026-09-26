@@ -168,10 +168,6 @@ impl Id {
         }
     }
 
-    pub fn name(self) -> &'static str {
-        super::definition::definition(self).name(self)
-    }
-
     /// Blocks the simulation generates, meshes, and saves. Catalog-only values
     /// such as glass and cake are inventory identities.
     pub fn in_world(self) -> bool {

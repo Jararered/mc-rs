@@ -49,6 +49,7 @@ fn generated(chunk: Chunk) -> GeneratedChunk {
         biomes: plains(),
         chunk,
         items: Vec::new(),
+        populated: true,
     }
 }
 

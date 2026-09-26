@@ -318,13 +318,13 @@ fn pressing_f4_regenerates_loaded_chunks_from_scratch() {
 }
 
 #[test]
-fn generation_radius_is_one_ring_beyond_the_render_distance() {
+fn generation_radius_is_two_rings_beyond_the_render_distance() {
     let center = ChunkPosition { x: 3, z: -2 };
     let generated = positions_in_radius(center, LOAD_RADIUS + GENERATE_MARGIN);
     let rendered = positions_in_radius(center, LOAD_RADIUS);
-    assert_eq!(GENERATE_MARGIN, 1);
+    assert_eq!(GENERATE_MARGIN, 2);
     assert_eq!(rendered.len(), 81);
-    assert_eq!(generated.len(), 121);
+    assert_eq!(generated.len(), 169);
     for position in &rendered {
         assert!(generated.contains(position));
     }

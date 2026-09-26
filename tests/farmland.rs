@@ -60,6 +60,7 @@ fn generated(chunk: Chunk) -> GeneratedChunk {
         ),
         chunk,
         items: Vec::new(),
+        populated: true,
     }
 }
 

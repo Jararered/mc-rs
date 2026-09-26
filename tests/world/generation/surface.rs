@@ -55,7 +55,11 @@ fn desert_biome_columns_use_sand_as_top_and_filler() {
                 continue;
             }
             desert_columns += 1;
-            let top = generated.heightmap.get(x, z) as usize;
+            // Cacti stand on the sand.
+            let mut top = generated.heightmap.get(x, z) as usize;
+            while generated.chunk.get(x, top - 1, z) == Some(Id::Cactus) {
+                top -= 1;
+            }
             assert_eq!(generated.chunk.get(x, top - 1, z), Some(Id::Sand));
             assert_eq!(generated.chunk.get(x, top - 2, z), Some(Id::Sand));
 

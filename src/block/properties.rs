@@ -41,9 +41,7 @@ pub fn plant_grows_on(block: Id) -> bool {
 /// provided each horizontal neighbour has a non-solid material.
 pub fn cactus_can_stay(below: Id, neighbors: [Id; 4]) -> bool {
     matches!(below, Id::Sand | Id::Cactus)
-        && neighbors
-            .into_iter()
-            .all(|block| !has_solid_material(block))
+        && neighbors.into_iter().all(|block| !is_solid_material(block))
 }
 
 /// Beta reed placement/growth rule. A cane segment stacks on another segment;
@@ -54,9 +52,9 @@ pub fn sugar_cane_can_stay(below: Id, adjacent_water: [bool; 4]) -> bool {
             && adjacent_water.into_iter().any(|is_water| is_water))
 }
 
-/// Beta's `Material.isSolid`, used for cactus clearance. Transparent glass and
-/// ice still count as solid materials; fluids and logic/plant blocks do not.
-fn has_solid_material(block: Id) -> bool {
+/// Beta's `Material.isSolid`. Transparent glass, ice, and leaves still count as
+/// solid materials; air, fluids, fire, and logic/plant blocks do not.
+pub fn is_solid_material(block: Id) -> bool {
     if block.is_ladder() {
         return false;
     }

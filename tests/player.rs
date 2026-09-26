@@ -83,6 +83,7 @@ fn world_with(chunk: Chunk) -> WorldChunks {
             biomes: plains(),
             chunk,
             items: Vec::new(),
+            populated: true,
         },
     );
     chunks
@@ -109,7 +110,10 @@ fn breaking_replaces_a_solid_block_with_air() {
         hit(8, 64, 8, BlockFace::Up, Id::Dirt)
     ));
     assert_eq!(chunks.block_at(8, 64, 8), Some(Id::Air));
-    assert_eq!(chunks.get(ChunkPosition::ZERO).unwrap().heightmap.get(8, 8), 0);
+    assert_eq!(
+        chunks.get(ChunkPosition::ZERO).unwrap().heightmap.get(8, 8),
+        0
+    );
 }
 
 #[test]
@@ -139,7 +143,10 @@ fn placing_puts_torch_against_the_hit_face() {
     ));
     assert_eq!(chunks.block_at(8, 65, 8), Some(PLACED_BLOCK));
     assert_eq!(PLACED_BLOCK, Id::Torch);
-    assert_eq!(chunks.get(ChunkPosition::ZERO).unwrap().heightmap.get(8, 8), 65);
+    assert_eq!(
+        chunks.get(ChunkPosition::ZERO).unwrap().heightmap.get(8, 8),
+        65
+    );
 }
 
 #[test]

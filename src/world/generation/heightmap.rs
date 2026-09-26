@@ -5,7 +5,8 @@ use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::Chunk;
 
-/// First air/water position above solid terrain in each column.
+/// First air/water position above the ground in each column, ignoring
+/// vegetation: the surface the player spawns on.
 pub struct Heightmap {
     heights: [u8; CHUNK_SIZE * CHUNK_SIZE],
 }
@@ -55,10 +56,19 @@ impl Heightmap {
 }
 
 /// Blocks that raise the ground surface. Plants and torches stand in the air
-/// cell above that surface.
+/// cell above that surface, and tree logs and leaves above it.
 fn occupies_column(block: Id) -> bool {
-    !matches!(block, Id::Air | Id::Water)
-        && !block.is_ladder()
+    !matches!(
+        block,
+        Id::Air
+            | Id::Water
+            | Id::Wood
+            | Id::BirchWood
+            | Id::SpruceWood
+            | Id::Leaves
+            | Id::BirchLeaves
+            | Id::SpruceLeaves
+    ) && !block.is_ladder()
         && !is_torch(block)
         && !is_crossed_plant(block)
 }

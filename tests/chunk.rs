@@ -568,6 +568,7 @@ fn set_block_updates_the_column_heightmap() {
             ),
             chunk,
             items: Vec::new(),
+            populated: true,
         },
     );
     assert_eq!(

@@ -18,6 +18,8 @@ use crate::inventory::Hotbar;
 mod interaction;
 mod model;
 
+pub use interaction::bucket::BucketUse;
+pub use interaction::bucket::use_bucket;
 pub use interaction::editing::PLACED_BLOCK;
 pub use interaction::editing::break_block;
 pub use interaction::editing::place_block;

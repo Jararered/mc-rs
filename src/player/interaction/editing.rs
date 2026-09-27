@@ -55,6 +55,7 @@ use crate::world::persistence::WorldPersistence;
 use crate::world::streaming::WorldStreaming;
 use crate::world::tick::WorldTick;
 
+use super::bucket::use_bucket;
 use super::mining::MiningState;
 use super::overlay::BlockFocus;
 use crate::player::Player;
@@ -162,12 +163,8 @@ pub(crate) fn interact_blocks(
             * camera_transform
                 .map(|camera| camera.translation)
                 .unwrap_or(Vec3::ZERO);
-    let hit = raycast_blocks(
-        &chunks,
-        view_origin,
-        view_rotation * Vec3::NEG_Z,
-        BLOCK_REACH,
-    );
+    let view_direction = view_rotation * Vec3::NEG_Z;
+    let hit = raycast_blocks(&chunks, view_origin, view_direction, BLOCK_REACH);
     if right_click && !inventory_screen.open && hit.is_some_and(|hit| hit.block.is_furnace()) {
         let hit = hit.expect("checked above");
         close_crafting_interface(
@@ -333,7 +330,36 @@ pub(crate) fn interact_blocks(
                 },
             );
         }
-        if let Some(hit) = hit
+        // `ItemBucket.onItemRightClick` runs whether or not the shared ray
+        // found a block, and raycasts for itself with its own fluid rule, so
+        // a lone water source with air behind it is still scoopable.
+        let used_bucket = hotbar
+            .selected_stack()
+            .and_then(|stack| use_bucket(&mut chunks, view_origin, view_direction, stack));
+        if let Some(used) = used_bucket {
+            // `ItemBucket` returns a new stack rather than decrementing, so
+            // `PlayerController.sendUseItem` spots the change by identity.
+            let selected = hotbar.selected;
+            hotbar.slots[selected] = Some(used.result);
+            push_event(
+                &mut block_ticks,
+                BlockEvent::Changed {
+                    position: used.position,
+                    previous: used.previous,
+                    metadata: used.previous_metadata,
+                },
+            );
+            // Water dims light by three levels; lava both blocks and emits at
+            // fifteen.
+            notify_edit(
+                &mut streaming,
+                &mut persistence,
+                used.position.x,
+                used.position.y,
+                used.position.z,
+                true,
+            );
+        } else if let Some(hit) = hit
             && let Some(stack) = hotbar.selected_stack()
         {
             let target = hit.face.neighbor(hit.x, hit.y, hit.z);

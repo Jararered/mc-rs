@@ -2,6 +2,7 @@
 
 use bevy::prelude::Vec3;
 
+use crate::block::fluids::is_liquid;
 use crate::block::id::Id;
 use crate::block::properties::is_targetable;
 use crate::block::properties::is_torch;
@@ -67,6 +68,29 @@ pub fn raycast_blocks(
     direction: Vec3,
     max_distance: f32,
 ) -> Option<BlockHit> {
+    raycast(chunks, origin, direction, max_distance, false)
+}
+
+/// The same walk, but stopping on a fluid source as well. Beta's
+/// `World.rayTraceBlocks` takes a `hitFluids` flag that only
+/// `BlockFluid.canCollideCheck` reads, and an empty bucket sets it so a
+/// bucket can see the water it is aimed at.
+pub fn raycast_blocks_including_liquids(
+    chunks: &WorldChunks,
+    origin: Vec3,
+    direction: Vec3,
+    max_distance: f32,
+) -> Option<BlockHit> {
+    raycast(chunks, origin, direction, max_distance, true)
+}
+
+fn raycast(
+    chunks: &WorldChunks,
+    origin: Vec3,
+    direction: Vec3,
+    max_distance: f32,
+    hit_liquids: bool,
+) -> Option<BlockHit> {
     let direction = direction.normalize_or_zero();
     if direction == Vec3::ZERO || !(max_distance > 0.0) {
         return None;
@@ -85,6 +109,7 @@ pub fn raycast_blocks(
         origin,
         direction,
         max_distance,
+        hit_liquids,
     ) {
         return Some(hit);
     }
@@ -143,7 +168,17 @@ pub fn raycast_blocks(
         if t > max_distance {
             return None;
         }
-        if let Some(hit) = hit_at(chunks, x, y, z, face, origin, direction, max_distance) {
+        if let Some(hit) = hit_at(
+            chunks,
+            x,
+            y,
+            z,
+            face,
+            origin,
+            direction,
+            max_distance,
+            hit_liquids,
+        ) {
             return Some(hit);
         }
     }
@@ -159,9 +194,17 @@ fn hit_at(
     origin: Vec3,
     direction: Vec3,
     max_distance: f32,
+    hit_liquids: bool,
 ) -> Option<BlockHit> {
     let block = chunks.block_at(x, y, z)?;
-    if !is_targetable(block) {
+    if is_liquid(block) {
+        // `BlockFluid.canCollideCheck`: a liquid stops the ray only when the
+        // caller asked for fluids and the cell holds a source. Spread fluid
+        // is see-through even for an empty bucket.
+        if !hit_liquids || chunks.metadata_at(x, y, z) != 0 {
+            return None;
+        }
+    } else if !is_targetable(block) {
         return None;
     }
     if is_torch(block) || matches!(block, Id::SnowLayer | Id::Farmland | Id::Crops) {

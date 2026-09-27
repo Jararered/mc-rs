@@ -1,7 +1,11 @@
+use bevy::prelude::Vec3;
 use game::block::fluids::Fluid;
 use game::block::fluids::corner_height;
 use game::block::fluids::percent_air;
 use game::block::id::Id;
+use game::item::ItemId;
+use game::item::ItemStack;
+use game::player::use_bucket;
 use game::world::block_ticks::BlockEvent;
 
 use super::TestWorld;
@@ -194,6 +198,76 @@ fn flowing_water_washes_away_plants_and_torches_as_items() {
     assert!(dropped.contains(&Id::Torch), "{dropped:?}");
     assert!(dropped.contains(&Id::Dandelion), "{dropped:?}");
     assert!(Fluid::of(world.block(at(9, 64, 8))).is_some());
+}
+
+/// A bucket write, reported the way `interact_blocks` reports a player edit.
+fn report(world: &mut TestWorld, used: game::player::BucketUse) {
+    world
+        .ticks
+        .block_changed(used.position, used.previous, used.previous_metadata);
+    world.process_events();
+}
+
+fn bucket(item: ItemId) -> ItemStack {
+    ItemStack::new(item, 1).expect("buckets are registered with a stack size of one")
+}
+
+/// A bucket pours `FlowingWater` and the tick pass hardens it, which is only
+/// reachable because `BlockFlowing.onBlockAdded` schedules the first tick.
+#[test]
+fn a_poured_bucket_settles_into_a_spreading_pool() {
+    let mut world = floored(1);
+    // A wall for the ray to stop on; the bucket fills the cell in front of it.
+    world.set(at(8, 64, 7), Id::Stone);
+
+    let used = use_bucket(
+        &mut world.chunks,
+        Vec3::new(8.5, 64.5, 10.5),
+        Vec3::NEG_Z,
+        bucket(ItemId::WaterBucket),
+    )
+    .expect("the wall is in reach");
+    assert_eq!(used.position, at(8, 64, 8));
+    report(&mut world, used);
+
+    assert_eq!(
+        world.block(at(8, 64, 8)),
+        Id::FlowingWater,
+        "a bucket pours the flowing block"
+    );
+    world.run(200);
+    assert_eq!(
+        world.block(at(8, 64, 8)),
+        Id::Water,
+        "then it hardens to still"
+    );
+    assert_eq!(fluid_level(&world, 9, 64, 8, Fluid::Water), Some(1));
+}
+
+/// Scooping reports the removal, so the rest of the pool wakes up and dries.
+#[test]
+fn a_scooped_source_lets_its_pool_dry_up() {
+    let mut world = floored(1);
+    world.place(at(8, 64, 8), Id::FlowingWater);
+    world.run(200);
+    assert_eq!(fluid_level(&world, 9, 64, 8, Fluid::Water), Some(1));
+
+    let used = use_bucket(
+        &mut world.chunks,
+        Vec3::new(8.5, 64.5, 8.5),
+        Vec3::Y,
+        bucket(ItemId::Bucket),
+    )
+    .expect("the source is in reach");
+    assert_eq!(used.previous, Id::Water);
+    assert_eq!(used.result.item(), ItemId::WaterBucket);
+    report(&mut world, used);
+    assert_eq!(world.block(at(8, 64, 8)), Id::Air);
+
+    world.run(400);
+    for x in 0..16 {
+        assert_eq!(world.block(at(x, 64, 8)), Id::Air, "x = {x}");
+    }
 }
 
 #[test]

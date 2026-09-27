@@ -84,10 +84,8 @@ impl JavaRandom {
 fn java_string_hash(text: &str) -> i32 {
     let mut hash: i32 = 0;
     for unit in text.encode_utf16() {
-        // Java widens each UTF-16 code unit to a signed 32-bit int, so a
-        // surrogate in a non-BMP character contributes as a negative value.
-        let unit = i32::from(unit) - 0x1_0000 * i32::from(unit >= 0x8000);
-        hash = hash.wrapping_mul(31).wrapping_add(unit);
+        // Java `char` is an unsigned UTF-16 code unit, including surrogates.
+        hash = hash.wrapping_mul(31).wrapping_add(i32::from(unit));
     }
     hash
 }

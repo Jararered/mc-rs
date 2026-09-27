@@ -6,7 +6,7 @@ use crate::block::fluids::is_liquid;
 use crate::block::id::Id;
 use crate::block::properties::is_targetable;
 use crate::block::properties::is_torch;
-use crate::block::properties::selection_bounds;
+use crate::block::properties::selection_bounds_at;
 use crate::world::chunk::WorldChunks;
 
 /// Survival-style block reach. Creative in Beta used 5; this matches the default
@@ -199,8 +199,28 @@ fn hit_at(
     if !is_targetable(block) && !(include_liquid && is_liquid(block)) {
         return None;
     }
-    if is_torch(block) || matches!(block, Id::SnowLayer | Id::Farmland | Id::Crops) {
-        let (min, max) = selection_bounds(block);
+    if is_torch(block)
+        || matches!(
+            block,
+            Id::SnowLayer
+                | Id::Farmland
+                | Id::Crops
+                | Id::RedstoneWire
+                | Id::Repeater
+                | Id::PoweredRepeater
+                | Id::Lever
+                | Id::StoneButton
+                | Id::StonePressurePlate
+                | Id::WoodenPressurePlate
+                | Id::WoodenDoor
+                | Id::IronDoor
+                | Id::Trapdoor
+                | Id::Rail
+                | Id::PoweredRail
+                | Id::DetectorRail
+        )
+    {
+        let (min, max) = selection_bounds_at(block, chunks.metadata_at(x, y, z));
         let block_origin = Vec3::new(x as f32, y as f32, z as f32);
         if !ray_intersects_box(
             origin,

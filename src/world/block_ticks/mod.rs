@@ -41,6 +41,7 @@ use bevy::prelude::Resource;
 
 use crate::block::definition;
 use crate::block::id::Id;
+use crate::item::ItemStack;
 use crate::random::JavaRandom;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::Chunk;
@@ -102,6 +103,15 @@ pub enum BlockEvent {
     Walked { position: IVec3 },
 }
 
+/// A lightweight 20 Hz entity snapshot used by plates and detector rails.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct RedstoneOccupant {
+    pub min: [f32; 3],
+    pub max: [f32; 3],
+    pub living: bool,
+    pub minecart: bool,
+}
+
 /// A block or metadata write made by the tick pass.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BlockChange {
@@ -146,6 +156,24 @@ pub enum TickEffect {
     /// Spawn a falling block entity for `block`, which is still at
     /// `position`.
     FallingBlock { position: IVec3, block: Id },
+    /// A note-block instrument 0..4, pitch 0..24.
+    Note {
+        position: IVec3,
+        instrument: u8,
+        pitch: u8,
+    },
+    /// A TNT entity with Beta's 80-tick fuse, or an explosion-shortened fuse.
+    PrimedTnt { position: IVec3, fuse: u8 },
+    /// The one item removed by `TileEntityDispenser.getRandomStackFromInventory`.
+    Dispense {
+        position: IVec3,
+        facing: u8,
+        stack: ItemStack,
+    },
+    /// A block-local inventory was broken by an explosion.
+    DropStack { position: IVec3, stack: ItemStack },
+    /// Move an entity out of the cell newly occupied by a piston extension.
+    PistonPush { position: IVec3, direction: IVec3 },
 }
 
 /// The block update state of the loaded world.
@@ -161,6 +189,8 @@ pub struct BlockTicks {
     changes: Vec<BlockChange>,
     effects: Vec<TickEffect>,
     deferred: VecDeque<(IVec3, Id)>,
+    torch_updates: VecDeque<(IVec3, u64)>,
+    occupants: Vec<RedstoneOccupant>,
     /// Reused random tick candidates.
     candidates: Vec<IVec3>,
 }
@@ -186,8 +216,15 @@ impl BlockTicks {
             changes: Vec::new(),
             effects: Vec::new(),
             deferred: VecDeque::new(),
+            torch_updates: VecDeque::new(),
+            occupants: Vec::new(),
             candidates: Vec::with_capacity(RANDOM_TICKS_PER_CHUNK),
         }
+    }
+
+    /// Replace the entity snapshot before each block-tick pass.
+    pub fn set_occupants(&mut self, occupants: Vec<RedstoneOccupant>) {
+        self.occupants = occupants;
     }
 
     /// The last world tick processed.
@@ -228,6 +265,15 @@ impl BlockTicks {
         });
     }
 
+    /// Prime TNT destroyed by an explosion with a shortened fuse.
+    pub fn prime_tnt(&mut self, position: IVec3, fuse: u8) {
+        self.effects.push(TickEffect::PrimedTnt { position, fuse });
+    }
+
+    pub fn drop_stack(&mut self, position: IVec3, stack: ItemStack) {
+        self.effects.push(TickEffect::DropStack { position, stack });
+    }
+
     pub fn has_pending_events(&self) -> bool {
         !self.events.is_empty()
     }
@@ -257,6 +303,7 @@ impl BlockTicks {
         self.time = time;
         let mut world = self.world(chunks, light, time);
         world.run_scheduled();
+        world.tick_entity_contacts();
         world.flush_deferred();
         for &chunk in random_chunks {
             world.random_tick_chunk(chunk);
@@ -343,6 +390,7 @@ impl BlockTicks {
     /// Forget every pending tick and event, as regenerating the world does.
     pub fn clear(&mut self) {
         self.scheduler.clear();
+        self.torch_updates.clear();
         self.events.clear();
         self.changes.clear();
         self.effects.clear();

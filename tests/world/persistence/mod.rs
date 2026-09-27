@@ -194,6 +194,28 @@ fn block_metadata_and_pending_ticks_round_trip_through_a_chunk_file() {
 }
 
 #[test]
+fn dispenser_inventory_round_trips_with_its_block() {
+    use game::item::ItemId;
+    let saves = temp_saves("dispenser");
+    let storage = WorldStorage::create(&saves, 0, "Dispenser").unwrap();
+    let mut generated = WorldGenerator::new(0).generate_base(ChunkPosition::ZERO);
+    generated
+        .chunk
+        .set_with_metadata(4, 90, 5, Id::Dispenser, 2);
+    let index = Chunk::index(4, 90, 5);
+    generated.chunk.dispenser_mut(index).unwrap().slots[8] =
+        Some(ItemStack::new(ItemId::Arrow, 13).unwrap());
+    storage.save_chunk(ChunkPosition::ZERO, &generated).unwrap();
+    let loaded = storage.load_chunk(ChunkPosition::ZERO).unwrap();
+    assert_eq!(loaded.chunk.metadata(4, 90, 5), 2);
+    assert_eq!(
+        loaded.chunk.dispenser(index).unwrap().slots[8],
+        Some(ItemStack::new(ItemId::Arrow, 13).unwrap())
+    );
+    fs::remove_dir_all(saves).unwrap();
+}
+
+#[test]
 fn legacy_species_bytes_stay_spruce_while_cake_uses_the_same_number() {
     assert_eq!(Id::Cake.as_u8(), 92);
     assert!(!Id::Cake.in_world());
@@ -209,6 +231,7 @@ fn legacy_species_bytes_stay_spruce_while_cake_uses_the_same_number() {
         .join(chunk_file_name(position));
     let mut value: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
     let blocks = CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE;
+    value["format_version"] = serde_json::json!(1);
     value["runs"] = serde_json::json!([[92, blocks as u16]]);
     fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
     let loaded = storage
@@ -636,4 +659,45 @@ fn a_chunk_unloaded_while_its_write_is_in_flight_keeps_the_newer_edit() {
         .load_chunk(ChunkPosition::ZERO)
         .expect("the chunk should be on disk");
     assert_eq!(reloaded.chunk.get(4, 120, 4), Some(Id::GoldBlock));
+}
+
+#[test]
+fn version_two_redstone_ids_do_not_use_the_legacy_species_decoder() {
+    let saves = temp_saves("v2-redstone");
+    let storage = WorldStorage::create(&saves, 0, "Redstone").unwrap();
+    let mut generated = WorldGenerator::new(0).generate(ChunkPosition::ZERO);
+    for (x, block) in [
+        (1, Id::Repeater),
+        (2, Id::PoweredRepeater),
+        (3, Id::Trapdoor),
+    ] {
+        generated.chunk.set(x, 80, 4, block);
+        generated.chunk.set_metadata(x, 80, 4, 11);
+    }
+    storage.save_chunk(ChunkPosition::ZERO, &generated).unwrap();
+    let loaded = storage.load_chunk(ChunkPosition::ZERO).unwrap();
+    assert_eq!(loaded.chunk.get(1, 80, 4), Some(Id::Repeater));
+    assert_eq!(loaded.chunk.get(2, 80, 4), Some(Id::PoweredRepeater));
+    assert_eq!(loaded.chunk.get(3, 80, 4), Some(Id::Trapdoor));
+    assert_eq!(loaded.chunk.metadata(2, 80, 4), 11);
+    fs::remove_dir_all(saves).unwrap();
+}
+
+#[test]
+fn note_block_pitch_and_power_state_survive_a_save() {
+    let saves = temp_saves("note-state");
+    let storage = WorldStorage::create(&saves, 0, "Music").unwrap();
+    let pos = ChunkPosition::ZERO;
+    let mut generated = WorldGenerator::new(0).generate(pos);
+    generated.chunk.set(4, 90, 5, Id::NoteBlock);
+    let index = Chunk::index(4, 90, 5);
+    let note = generated.chunk.note_mut(index).unwrap();
+    note.pitch = 17;
+    note.previous_powered = true;
+    storage.save_chunk(pos, &generated).unwrap();
+    let mut loaded = storage.load_chunk(pos).unwrap();
+    let note = loaded.chunk.note_mut(index).unwrap();
+    assert_eq!(note.pitch, 17);
+    assert!(note.previous_powered);
+    fs::remove_dir_all(saves).unwrap();
 }

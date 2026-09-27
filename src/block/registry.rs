@@ -50,7 +50,6 @@ const fn build_definition_table() -> [&'static dyn BlockDefinition; 256] {
     table[88] = &terrain::DEFINITION;
     table[92] = &terrain::DEFINITION;
     table[95] = &terrain::DEFINITION;
-    table[96] = &terrain::DEFINITION;
     table[87] = &terrain::DEFINITION;
     table[14] = &ores::DEFINITION;
     table[15] = &ores::DEFINITION;

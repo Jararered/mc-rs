@@ -34,8 +34,8 @@ pub fn player_break_drops_with_metadata(
 ) -> Vec<ItemStack> {
     let mut drops = Vec::new();
     // `BlockTNT.onBlockDestroyedByPlayer` runs even when the harvest drop is empty.
-    // There is no primed metadata, so a player break always returns the block.
-    if block == Id::Tnt {
+    // Flint and steel marks the block primed before removal instead of dropping it.
+    if block == Id::Tnt && metadata & 1 == 0 {
         push_block(&mut drops, Id::Tnt, 1);
     }
     if can_harvest(tool, block) {
@@ -132,8 +132,9 @@ fn push_natural(drops: &mut Vec<ItemStack>, block: Id, metadata: u8, rolls: &mut
         Id::UnlitRedstoneTorch => push_block(drops, Id::RedstoneTorch, 1),
         Id::RedstoneWire => push_item(drops, ItemId::Redstone, 0, 1),
         Id::StandingSign | Id::WallSign => push_item(drops, ItemId::Sign, 0, 1),
-        Id::WoodenDoor => push_item(drops, ItemId::WoodenDoor, 0, 1),
-        Id::IronDoor => push_item(drops, ItemId::IronDoor, 0, 1),
+        Id::WoodenDoor if metadata & 8 == 0 => push_item(drops, ItemId::WoodenDoor, 0, 1),
+        Id::IronDoor if metadata & 8 == 0 => push_item(drops, ItemId::IronDoor, 0, 1),
+        Id::WoodenDoor | Id::IronDoor => {}
         Id::SugarCane => push_item(drops, ItemId::SugarCane, 0, 1),
         Id::Bed => push_item(drops, ItemId::Bed, 0, 1),
         Id::Repeater | Id::PoweredRepeater => push_item(drops, ItemId::Repeater, 0, 1),

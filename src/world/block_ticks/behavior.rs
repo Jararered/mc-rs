@@ -16,6 +16,23 @@ use super::world::TickWorld;
 /// torch facing or every leaf species, and receives the value it was called
 /// for through the world. See `docs/BLOCK_TICKS.md` for a walkthrough.
 pub trait BlockBehavior: Sync {
+    /// Beta `Block.canProvidePower`. This is distinct from the directionally
+    /// queried output (repeaters output power but return false here).
+    fn can_provide_power(&self) -> bool {
+        false
+    }
+
+    /// Beta `Block.isPoweringTo` (weak power), with sides 0 down, 1 up,
+    /// 2 north, 3 south, 4 west, 5 east.
+    fn weak_power(&self, _world: &mut TickWorld, _position: IVec3, _side: u8) -> bool {
+        false
+    }
+
+    /// Beta `Block.isIndirectlyPoweringTo` (strong power).
+    fn strong_power(&self, world: &mut TickWorld, position: IVec3, side: u8) -> bool {
+        self.weak_power(world, position, side)
+    }
+
     /// Beta `Block.tickOnLoad`: whether the world's random ticks reach this
     /// block. Random ticks call [`Self::update_tick`], like scheduled ticks.
     fn ticks_randomly(&self, _block: Id) -> bool {
@@ -55,6 +72,9 @@ pub trait BlockBehavior: Sync {
 
     /// Beta `Block.blockActivated`: the player right-clicked this block.
     fn activated(&self, _world: &mut TickWorld, _position: IVec3) {}
+
+    /// Beta `Block.onEntityCollidedWithBlock`, used by plates and rails.
+    fn entity_collided(&self, _world: &mut TickWorld, _position: IVec3) {}
 
     /// Beta `Block.onEntityWalking`: an entity took a step on this block.
     fn entity_walked(&self, _world: &mut TickWorld, _position: IVec3) {}

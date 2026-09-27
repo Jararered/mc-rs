@@ -9,8 +9,11 @@ use crate::item::ItemStack;
 
 pub mod drops;
 pub mod falling_block;
+pub mod minecart;
 pub mod particles;
+pub mod projectile;
 pub mod shadow;
+pub mod tnt;
 
 /// An independently simulated inventory stack lying in the world.
 #[derive(Component, Clone, Copy, Debug)]

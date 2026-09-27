@@ -9,6 +9,7 @@ use crate::block::id::Id;
 use crate::block::properties::is_crossed_plant;
 use crate::block::properties::is_opaque_cube;
 use crate::block::properties::is_torch;
+use crate::block::properties::state_bounds;
 use crate::block::properties::torch_normal;
 use crate::block::properties::torch_point;
 use crate::world::chunk::CHUNK_HEIGHT;
@@ -384,7 +385,23 @@ impl BlockGeometry {
 
     /// Build the same post for floor and wall attachments, then rotate its
     /// vertices and normals together so the cap follows the shaft.
-    fn push_torch(&mut self, origin: [f32; 3], block: Id) {
+    fn push_torch(&mut self, origin: [f32; 3], block: Id, metadata: u8) {
+        let render_pose = if matches!(block, Id::RedstoneTorch | Id::UnlitRedstoneTorch) {
+            match metadata {
+                1 => Id::TorchWest,
+                2 => Id::TorchEast,
+                3 => Id::TorchNorth,
+                4 => Id::TorchSouth,
+                _ => Id::Torch,
+            }
+        } else {
+            block
+        };
+        let tile = match block {
+            Id::RedstoneTorch => (3, 6),
+            Id::UnlitRedstoneTorch => (3, 7),
+            _ => (0, 5),
+        };
         let unit_cube = BlockFaceGeometry::unit_cube();
         for (face_index, face) in FACES.iter().enumerate() {
             if face_index == FACE_BOTTOM {
@@ -392,7 +409,7 @@ impl BlockGeometry {
             }
             let corners = unit_cube.face(face_index).corners.map(|corner| {
                 torch_point(
-                    block,
+                    render_pose,
                     [
                         0.5 + (corner[0] - 0.5) * 0.125,
                         corner[1] * 0.625,
@@ -402,23 +419,23 @@ impl BlockGeometry {
             });
             let texels = if face_index == FACE_TOP {
                 [
-                    AtlasTexel::new(0, 5, 7, 6),
-                    AtlasTexel::new(0, 5, 7, 8),
-                    AtlasTexel::new(0, 5, 9, 8),
-                    AtlasTexel::new(0, 5, 9, 6),
+                    AtlasTexel::new(tile.0, tile.1, 7, 6),
+                    AtlasTexel::new(tile.0, tile.1, 7, 8),
+                    AtlasTexel::new(tile.0, tile.1, 9, 8),
+                    AtlasTexel::new(tile.0, tile.1, 9, 6),
                 ]
             } else {
                 // Only columns 7..8 and rows 6..15 contain the torch.
                 // Sampling the whole transparent tile shrinks the shaft to
                 // two pixels on a face that is already physically narrow.
-                face_texels(0, 5, face_index).map(|texel| {
+                face_texels(tile.0, tile.1, face_index).map(|texel| {
                     let [u, v] = texel.texel;
-                    AtlasTexel::new(0, 5, 7 + u / 16 * 2, 6 + v / 16 * 10)
+                    AtlasTexel::new(tile.0, tile.1, 7 + u / 16 * 2, 6 + v / 16 * 10)
                 })
             };
             self.push_block_quad(
                 origin,
-                torch_normal(block, face.normal),
+                torch_normal(render_pose, face.normal),
                 corners,
                 texels,
                 [1.0; 3],
@@ -761,7 +778,9 @@ impl<'a> Mesher<'a> {
                     }
                     let origin = [x as f32, (y - y_origin) as f32, z as f32];
                     if is_torch(block) {
-                        meshes.grass_overlay.push_torch(origin, block);
+                        meshes
+                            .grass_overlay
+                            .push_torch(origin, block, chunk.metadata(x, y, z));
                         continue;
                     }
                     if block.is_ladder() {
@@ -801,7 +820,12 @@ impl<'a> Mesher<'a> {
                     } else {
                         None
                     };
-                    let block_geometry = if block.is_chest() {
+                    let shape = state_bounds(block, chunk.metadata(x, y, z));
+                    let block_geometry = if let Some((min, max)) = shape {
+                        BlockFaceGeometry::from_bounds([
+                            min[0], min[1], min[2], max[0], max[1], max[2],
+                        ])
+                    } else if block.is_chest() {
                         chest_geometry(chest_pair)
                     } else {
                         BlockFaceGeometry::for_block(block)
@@ -821,7 +845,7 @@ impl<'a> Mesher<'a> {
                             continue;
                         }
                         let neighbor = neighbors.get(chunk, nx, ny, nz);
-                        if neighbor_hides_face(block, neighbor, fancy_graphics) {
+                        if shape.is_none() && neighbor_hides_face(block, neighbor, fancy_graphics) {
                             continue;
                         }
 
@@ -836,7 +860,7 @@ impl<'a> Mesher<'a> {
                                 self.tints.as_ref().map(|tints| tints.foliage[column]),
                             )
                         };
-                        let layer = if block == Id::Cactus {
+                        let layer = if block == Id::Cactus || shape.is_some() {
                             &mut meshes.masked
                         } else if fancy_graphics && is_leaf(block) {
                             &mut meshes.cutout
@@ -851,6 +875,24 @@ impl<'a> Mesher<'a> {
                             && chunk.metadata(x, y, z) > 0;
                         let tile_override = wet_farmland_top
                             .then(|| farmland_top_tile(true))
+                            .or_else(|| {
+                                (block == Id::Dispenser && (2..=5).contains(&face_index)).then(
+                                    || {
+                                        let front = match chunk.metadata(x, y, z) {
+                                            2 => 5,
+                                            3 => 4,
+                                            4 => 3,
+                                            5 => 2,
+                                            _ => 4,
+                                        };
+                                        if front == face_index {
+                                            (14, 2)
+                                        } else {
+                                            (13, 2)
+                                        }
+                                    },
+                                )
+                            })
                             .or(chest_tile);
                         let shading = CornerShading {
                             light: face_corner_light(skylight, x, y, z, face, face_geometry),
@@ -918,6 +960,24 @@ pub fn same_appearance(block: Id, metadata: u8, other: Id, other_metadata: u8) -
     let key = |block: Id, metadata: u8| match Fluid::of(block) {
         Some(fluid) => (fluid.still(), metadata),
         None => match block {
+            Id::RedstoneWire
+            | Id::Repeater
+            | Id::PoweredRepeater
+            | Id::Lever
+            | Id::StoneButton
+            | Id::StonePressurePlate
+            | Id::WoodenPressurePlate
+            | Id::WoodenDoor
+            | Id::IronDoor
+            | Id::Trapdoor
+            | Id::PoweredRail
+            | Id::DetectorRail
+            | Id::Rail
+            | Id::Piston
+            | Id::StickyPiston
+            | Id::PistonHead
+            | Id::MovingPiston => (block, metadata),
+            Id::Dispenser => (block, metadata),
             Id::Crops => (block, metadata),
             Id::Farmland => (block, u8::from(metadata > 0)),
             _ => (block, 0),
@@ -1150,6 +1210,8 @@ fn neighbor_hides_face(block: Id, neighbor: Option<Id>, fancy_graphics: bool) ->
         || neighbor == Id::MobSpawner
         || neighbor.is_chest()
         || neighbor.is_ladder()
+        || state_bounds(neighbor, 0).is_some()
+        || matches!(neighbor, Id::Lever | Id::StoneButton)
         || is_torch(neighbor)
         || is_crossed_plant(neighbor)
     {

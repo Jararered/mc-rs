@@ -592,3 +592,45 @@ fn destroy_overlay_samples_the_terrain_atlas_crack_tiles() {
         );
     }
 }
+
+#[test]
+fn placed_redstone_controls_keep_support_orientation_and_doors_fill_two_cells() {
+    let mut chunk = Chunk::new();
+    chunk.set(8, 64, 8, Id::Stone);
+    chunk.set(10, 64, 8, Id::Stone);
+    let mut chunks = world_with(chunk);
+    let player = Aabb::new(Vec3::new(0.0, 70.0, 0.0), Vec3::new(0.6, 71.8, 0.6));
+    assert!(place_selected_block_facing(
+        &mut chunks,
+        hit(8, 64, 8, BlockFace::Up, Id::Stone),
+        player,
+        Id::WoodenDoor,
+        FurnaceFacing::North,
+    ));
+    assert_eq!(chunks.block_at(8, 65, 8), Some(Id::WoodenDoor));
+    assert_eq!(chunks.block_at(8, 66, 8), Some(Id::WoodenDoor));
+    assert_eq!(chunks.metadata_at(8, 66, 8) & 8, 8);
+    assert!(place_selected_block_facing(
+        &mut chunks,
+        hit(10, 64, 8, BlockFace::Up, Id::Stone),
+        player,
+        Id::Repeater,
+        FurnaceFacing::East,
+    ));
+    assert_eq!(chunks.metadata_at(10, 65, 8), 1);
+    assert!(place_selected_block_facing(
+        &mut chunks,
+        hit(8, 64, 8, BlockFace::East, Id::Stone),
+        player,
+        Id::Lever,
+        FurnaceFacing::East,
+    ));
+    assert_eq!(chunks.metadata_at(9, 64, 8), 1);
+    assert!(!place_selected_block_facing(
+        &mut chunks,
+        hit(10, 64, 8, BlockFace::Up, Id::Stone),
+        player,
+        Id::StoneButton,
+        FurnaceFacing::East,
+    ));
+}

@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use game::block::id::Id;
 use game::block::properties::collision_bounds;
+use game::block::properties::collision_bounds_at;
 use game::block::properties::is_opaque_cube;
 use game::block::properties::selection_bounds;
 use game::physics::Aabb;
@@ -37,7 +38,7 @@ fn generated(chunk: Chunk) -> GeneratedChunk {
 }
 
 #[test]
-fn snow_layer_is_non_opaque_and_has_one_eighth_selection_and_collision_height() {
+fn snow_layer_is_non_opaque_and_only_thick_layers_collide() {
     assert!(!is_opaque_cube(Id::SnowLayer));
     assert!(is_opaque_cube(Id::Snow));
     assert_eq!(light_opacity(Id::SnowLayer), 0);
@@ -46,9 +47,10 @@ fn snow_layer_is_non_opaque_and_has_one_eighth_selection_and_collision_height() 
         selection_bounds(Id::SnowLayer),
         ([0.0; 3], [1.0, 0.125, 1.0])
     );
+    assert_eq!(collision_bounds(Id::SnowLayer), None);
     assert_eq!(
-        collision_bounds(Id::SnowLayer),
-        Some(([0.0; 3], [1.0, 0.125, 1.0]))
+        collision_bounds_at(Id::SnowLayer, 3),
+        Some(([0.0; 3], [1.0, 0.5, 1.0]))
     );
     assert_eq!(collision_bounds(Id::Snow), Some(([0.0; 3], [1.0; 3])));
 }
@@ -104,7 +106,7 @@ fn a_snow_layer_does_not_hide_the_neighboring_full_block_side() {
 }
 
 #[test]
-fn snow_layer_ray_and_entity_collision_stop_at_its_top() {
+fn snow_layer_ray_and_thick_layer_collision_follow_their_bounds() {
     let mut chunk = Chunk::new();
     chunk.set(8, 64, 8, Id::SnowLayer);
     let mut chunks = WorldChunks::default();
@@ -119,7 +121,9 @@ fn snow_layer_ray_and_entity_collision_stop_at_its_top() {
     let above_layer = Aabb::new(Vec3::new(8.2, 64.2, 8.2), Vec3::new(8.8, 64.4, 8.8));
     assert!(colliding_aabbs(&chunks, above_layer).is_empty());
     let intersects_layer = Aabb::new(Vec3::new(8.2, 64.1, 8.2), Vec3::new(8.8, 64.2, 8.8));
+    assert!(colliding_aabbs(&chunks, intersects_layer).is_empty());
+    chunks.set_metadata(8, 64, 8, 3);
     let collisions = colliding_aabbs(&chunks, intersects_layer);
     assert_eq!(collisions.len(), 1);
-    assert!((collisions[0].max.y - 64.125).abs() < f32::EPSILON);
+    assert!((collisions[0].max.y - 64.5).abs() < f32::EPSILON);
 }

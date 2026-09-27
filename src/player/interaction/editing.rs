@@ -28,6 +28,9 @@ use crate::entity::drops::blocks::player_break_drops_with_metadata;
 use crate::entity::drops::items::spawn_block_drop;
 use crate::entity::drops::items::spawn_chest_drops;
 use crate::entity::drops::items::spawn_thrown_item;
+use crate::entity::minecart::Minecart;
+use crate::entity::minecart::ray_box_distance;
+use crate::entity::minecart::spawn_minecart;
 use crate::entity::particles::block::BlockParticles;
 use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
@@ -91,7 +94,10 @@ pub(crate) fn interact_blocks(
         ),
         With<Player>,
     >,
-    camera: Query<&Transform, With<PlayerCamera>>,
+    (camera, minecarts): (
+        Query<&Transform, With<PlayerCamera>>,
+        Query<(Entity, &Transform, &EntitySize), With<Minecart>>,
+    ),
     mut chunks: ResMut<WorldChunks>,
     mut streaming: Option<ResMut<WorldStreaming>>,
     (mut persistence, mut block_ticks): (
@@ -165,12 +171,49 @@ pub(crate) fn interact_blocks(
             * camera_transform
                 .map(|camera| camera.translation)
                 .unwrap_or(Vec3::ZERO);
-    let hit = raycast_blocks(
-        &chunks,
-        view_origin,
-        view_rotation * Vec3::NEG_Z,
-        BLOCK_REACH,
-    );
+    let direction = view_rotation * Vec3::NEG_Z;
+    let hit = raycast_blocks(&chunks, view_origin, direction, BLOCK_REACH);
+    if mouse.just_pressed(MouseButton::Left) && !inventory_screen.open {
+        let block_distance = hit
+            .and_then(|hit| {
+                ray_box_distance(
+                    view_origin,
+                    direction,
+                    Aabb::from_block(hit.x, hit.y, hit.z),
+                    BLOCK_REACH,
+                )
+            })
+            .unwrap_or(BLOCK_REACH);
+        let cart = minecarts
+            .iter()
+            .filter_map(|(entity, transform, size)| {
+                let distance = ray_box_distance(
+                    view_origin,
+                    direction,
+                    size.aabb(transform.translation),
+                    block_distance,
+                )?;
+                Some((entity, transform.translation, distance))
+            })
+            .min_by(|a, b| a.2.total_cmp(&b.2));
+        if let Some((entity, position, _)) = cart {
+            commands.entity(entity).despawn();
+            if let Ok(stack) = ItemStack::new(ItemId::Minecart, 1) {
+                spawn_block_drop(
+                    &mut commands,
+                    &mut item_rng,
+                    position.floor().as_ivec3(),
+                    stack,
+                );
+            }
+            if let Some(persistence) = persistence.as_deref_mut() {
+                persistence.mark_dirty(ChunkPosition::from_world(position.x, position.z));
+            }
+            state.mining.reset();
+            *focus = BlockFocus::default();
+            return;
+        }
+    }
     if right_click && !inventory_screen.open && hit.is_some_and(|hit| hit.block.is_furnace()) {
         let hit = hit.expect("checked above");
         close_crafting_interface(
@@ -196,17 +239,21 @@ pub(crate) fn interact_blocks(
         *focus = BlockFocus::default();
         return;
     }
-    if right_click && !inventory_screen.open && hit.is_some_and(|hit| hit.block.is_chest()) {
+    if right_click
+        && !inventory_screen.open
+        && hit.is_some_and(|hit| hit.block.is_chest() || hit.block == Id::Dispenser)
+    {
         let hit = hit.expect("checked above");
-        let Some(group) = chunks.chest_group_at(hit.x, hit.y, hit.z) else {
+        let Some(group) = chunks.container_group_at(hit.x, hit.y, hit.z) else {
             state.mining.reset();
             *focus = BlockFocus::default();
             return;
         };
-        let blocked = [Some(group.first), group.second]
-            .into_iter()
-            .flatten()
-            .any(|(x, y, z)| chunks.block_at(x, y + 1, z).is_some_and(is_opaque_cube));
+        let blocked = !group.dispenser
+            && [Some(group.first), group.second]
+                .into_iter()
+                .flatten()
+                .any(|(x, y, z)| chunks.block_at(x, y + 1, z).is_some_and(is_opaque_cube));
         if blocked {
             state.mining.reset();
             *focus = BlockFocus::default();
@@ -278,6 +325,16 @@ pub(crate) fn interact_blocks(
 
     if left_held {
         if left_click && let Some(hit) = hit {
+            if hit.block == Id::Tnt
+                && hotbar
+                    .selected_stack()
+                    .is_some_and(|stack| stack.item() == ItemId::FlintAndSteel)
+            {
+                chunks.set_metadata(hit.x, hit.y, hit.z, 1);
+                if let Some(persistence) = persistence.as_deref_mut() {
+                    persistence.mark_dirty(ChunkPosition::from_block(hit.x, hit.z));
+                }
+            }
             // `Block.onBlockClicked`, when the player starts to dig.
             push_event(
                 &mut block_ticks,
@@ -325,6 +382,39 @@ pub(crate) fn interact_blocks(
     }
 
     let can_place = right_click || (right_held && state.place_delay <= 0 && !left_held);
+    if right_click
+        && !inventory_screen.open
+        && let Some(hit) = hit
+        && matches!(hit.block, Id::Rail | Id::PoweredRail | Id::DetectorRail)
+        && hotbar
+            .selected_stack()
+            .is_some_and(|stack| stack.item() == ItemId::Minecart)
+    {
+        spawn_minecart(&mut commands, IVec3::new(hit.x, hit.y, hit.z));
+        let selected = hotbar.selected;
+        hotbar.slots[selected] = hotbar.slots[selected].and_then(|stack| {
+            ItemStack::with_data(stack.item(), stack.count() - 1, stack.data()).ok()
+        });
+        state.place_delay = PLACE_DELAY_TICKS;
+        focus.hit = Some(hit);
+        focus.mining_damage = state.mining.damage();
+        return;
+    }
+    // Beta calls blockActivated before using the held item; successful
+    // activations consume the click rather than placing into the next cell.
+    let consumes_use = hit.is_some_and(|hit| {
+        matches!(
+            hit.block,
+            Id::Lever
+                | Id::StoneButton
+                | Id::Repeater
+                | Id::PoweredRepeater
+                | Id::WoodenDoor
+                | Id::IronDoor
+                | Id::Trapdoor
+                | Id::NoteBlock
+        )
+    });
     if can_place {
         state.place_delay = PLACE_DELAY_TICKS;
         if let Some(hit) = hit {
@@ -336,7 +426,8 @@ pub(crate) fn interact_blocks(
                 },
             );
         }
-        if hotbar
+        if consumes_use { /* the queued activation handles the click */
+        } else if hotbar
             .selected_stack()
             .is_some_and(|stack| stack.item() == ItemId::Bucket)
             && let Some((x, y, z, previous, fluid)) =
@@ -363,7 +454,14 @@ pub(crate) fn interact_blocks(
             let target = hit.face.neighbor(hit.x, hit.y, hit.z);
             let replaced = chunks.block_at(target.0, target.1, target.2);
             let replaced_metadata = chunks.metadata_at(target.0, target.1, target.2);
-            let placed = stack.runtime_block().is_some_and(|block| {
+            let candidate = match stack.item() {
+                ItemId::Redstone => Some(Id::RedstoneWire),
+                ItemId::Repeater => Some(Id::Repeater),
+                ItemId::WoodenDoor => Some(Id::WoodenDoor),
+                ItemId::IronDoor => Some(Id::IronDoor),
+                _ => stack.runtime_block(),
+            };
+            let placed = candidate.is_some_and(|block| {
                 place_selected_block_facing(
                     &mut chunks,
                     hit,
@@ -393,6 +491,17 @@ pub(crate) fn interact_blocks(
                     );
                 }
                 notify_edit(&mut streaming, &mut persistence, x, y, z, true);
+                if matches!(candidate, Some(Id::WoodenDoor | Id::IronDoor)) {
+                    push_event(
+                        &mut block_ticks,
+                        BlockEvent::Changed {
+                            position: IVec3::new(x, y + 1, z),
+                            previous: Id::Air,
+                            metadata: 0,
+                        },
+                    );
+                    notify_edit(&mut streaming, &mut persistence, x, y + 1, z, true);
+                }
             } else if stack.item() == ItemId::Seeds && plant_seeds(&mut chunks, hit) {
                 let selected = hotbar.selected;
                 hotbar.slots[selected] =
@@ -595,6 +704,10 @@ fn apply_break(
         .chest_at(hit.x, hit.y, hit.z)
         .map(|chest| chest.slots.into_iter().flatten().collect::<Vec<_>>())
         .unwrap_or_default();
+    let dispenser_drops = chunks
+        .dispenser_at(hit.x, hit.y, hit.z)
+        .map(|dispenser| dispenser.slots.into_iter().flatten().collect::<Vec<_>>())
+        .unwrap_or_default();
     let light_edit = is_torch(hit.block)
         || hit.block.is_lit_furnace()
         || attached
@@ -611,6 +724,12 @@ fn apply_break(
             spawn_block_drop(commands, rng, IVec3::new(hit.x, hit.y, hit.z), stack);
         }
         spawn_chest_drops(commands, rng, IVec3::new(hit.x, hit.y, hit.z), chest_drops);
+        spawn_chest_drops(
+            commands,
+            rng,
+            IVec3::new(hit.x, hit.y, hit.z),
+            dispenser_drops,
+        );
         for stack in player_break_drops_with_metadata(hit.block, metadata, tool, rng) {
             spawn_block_drop(commands, rng, IVec3::new(hit.x, hit.y, hit.z), stack);
         }
@@ -725,6 +844,33 @@ pub fn place_selected_block_facing(
     if !is_replaceable(current) {
         return false;
     }
+    if matches!(
+        selected,
+        Id::RedstoneWire | Id::Repeater | Id::StonePressurePlate | Id::WoodenPressurePlate
+    ) && !chunks.block_at(x, y - 1, z).is_some_and(is_opaque_cube)
+    {
+        return false;
+    }
+    if matches!(selected, Id::Lever | Id::StoneButton | Id::RedstoneTorch)
+        && !is_opaque_cube(hit.block)
+    {
+        return false;
+    }
+    if selected == Id::StoneButton && matches!(hit.face, BlockFace::Up | BlockFace::Down) {
+        return false;
+    }
+    if selected == Id::Trapdoor && matches!(hit.face, BlockFace::Up | BlockFace::Down) {
+        return false;
+    }
+    if matches!(selected, Id::WoodenDoor | Id::IronDoor) {
+        if hit.face != BlockFace::Up
+            || y + 1 >= CHUNK_HEIGHT as i32
+            || !chunks.block_at(x, y - 1, z).is_some_and(is_opaque_cube)
+            || !chunks.block_at(x, y + 1, z).is_some_and(is_replaceable)
+        {
+            return false;
+        }
+    }
     if selected == Id::Chest && !chest_can_place_at(chunks, x, y, z) {
         return false;
     }
@@ -805,9 +951,68 @@ pub fn place_selected_block_facing(
     {
         return false;
     }
-    chunks
+    if !chunks
         .set_block(x, y, z, block)
         .is_some_and(|previous| previous != block)
+    {
+        return false;
+    }
+    let meta = match selected {
+        Id::Lever => Some(match hit.face {
+            BlockFace::Up => 5,
+            BlockFace::West => 2,
+            BlockFace::East => 1,
+            BlockFace::North => 4,
+            BlockFace::South => 3,
+            BlockFace::Down => 5,
+        }),
+        Id::StoneButton | Id::RedstoneTorch => Some(match hit.face {
+            BlockFace::West => 2,
+            BlockFace::East => 1,
+            BlockFace::North => 4,
+            BlockFace::South => 3,
+            _ => 5,
+        }),
+        Id::Trapdoor => Some(match hit.face {
+            BlockFace::North => 1,
+            BlockFace::South => 0,
+            BlockFace::West => 3,
+            BlockFace::East => 2,
+            _ => 0,
+        }),
+        Id::Repeater => Some(match furnace_facing {
+            FurnaceFacing::North => 0,
+            FurnaceFacing::East => 1,
+            FurnaceFacing::South => 2,
+            FurnaceFacing::West => 3,
+        }),
+        Id::Piston | Id::StickyPiston => Some(match furnace_facing {
+            FurnaceFacing::North => 2,
+            FurnaceFacing::East => 5,
+            FurnaceFacing::South => 3,
+            FurnaceFacing::West => 4,
+        }),
+        Id::Dispenser => Some(match furnace_facing {
+            FurnaceFacing::North => 2,
+            FurnaceFacing::East => 5,
+            FurnaceFacing::South => 3,
+            FurnaceFacing::West => 4,
+        }),
+        Id::WoodenDoor | Id::IronDoor => Some(match furnace_facing {
+            FurnaceFacing::North => 1,
+            FurnaceFacing::East => 2,
+            FurnaceFacing::South => 3,
+            FurnaceFacing::West => 0,
+        }),
+        _ => None,
+    };
+    if let Some(meta) = meta {
+        chunks.set_metadata(x, y, z, meta);
+    }
+    if matches!(selected, Id::WoodenDoor | Id::IronDoor) {
+        chunks.set_block_with_metadata(x, y + 1, z, block, 8 | meta.unwrap_or(0));
+    }
+    true
 }
 
 fn ladder_facing(

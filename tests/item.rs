@@ -131,12 +131,16 @@ fn native_save_values_and_supported_states_round_trip() {
                 assert_eq!(placed, Some(Id::Chest));
             } else if block.is_ladder() && block != Id::Ladder {
                 assert_eq!(placed, Some(Id::Ladder));
+            } else if matches!(block, Id::PistonHead | Id::MovingPiston) {
+                assert_eq!(placed, Some(Id::Piston));
+            } else if matches!(block, Id::PoweredRepeater | Id::UnlitRedstoneTorch) {
+                assert_eq!(placed, Some(item_block));
             } else if block.in_world() {
                 assert_eq!(placed, Some(block));
             }
         }
     }
-    for id in [Id::Cake, Id::Trapdoor, Id::Glass] {
+    for id in [Id::Cake, Id::Glass] {
         assert_eq!(id.placed(0), None);
         assert!(!id.in_world());
         assert_eq!(

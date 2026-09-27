@@ -19,7 +19,7 @@ use crate::block::fluids::flow_vector;
 use crate::block::fluids::is_lava;
 use crate::block::fluids::is_water;
 use crate::block::fluids::percent_air;
-use crate::block::properties::collision_bounds;
+use crate::block::properties::collision_bounds_at;
 use crate::block::properties::slipperiness;
 use crate::entity::CollisionState;
 use crate::entity::DroppedItem;
@@ -387,7 +387,9 @@ pub fn colliding_aabbs(chunks: &WorldChunks, area: Aabb) -> Vec<Aabb> {
                 }
                 let block = if y < 0 {
                     Aabb::from_block(x, y, z)
-                } else if let Some((min, max)) = chunks.block_at(x, y, z).and_then(collision_bounds)
+                } else if let Some((min, max)) = chunks
+                    .block_at(x, y, z)
+                    .and_then(|block| collision_bounds_at(block, chunks.metadata_at(x, y, z)))
                 {
                     let origin = Vec3::new(x as f32, y as f32, z as f32);
                     Aabb::new(

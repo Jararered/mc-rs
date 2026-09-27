@@ -16,6 +16,8 @@ impl BlockDefinition for Definition {
                 | Id::TorchEast
                 | Id::TorchNorth
                 | Id::TorchSouth
+                | Id::RedstoneTorch
+                | Id::UnlitRedstoneTorch
         )
     }
 
@@ -32,7 +34,11 @@ impl BlockDefinition for Definition {
     }
 
     fn light_emission(&self, id: Id) -> u8 {
-        if matches!(id, Id::Glowstone | Id::JackOLantern) || is_torch(id) {
+        if id == Id::RedstoneTorch {
+            7
+        } else if id == Id::UnlitRedstoneTorch {
+            0
+        } else if matches!(id, Id::Glowstone | Id::JackOLantern) || is_torch(id) {
             15
         } else {
             0
@@ -55,8 +61,12 @@ fn properties(id: Id) -> BlockProperties {
             }
         }
         Id::Fire => BlockProperties::solid(0.0),
-        Id::UnlitRedstoneTorch => BlockProperties::solid(0.0),
-        Id::RedstoneTorch => BlockProperties::solid(0.0),
+        Id::UnlitRedstoneTorch | Id::RedstoneTorch => BlockProperties {
+            torch: true,
+            light_emission: if id == Id::RedstoneTorch { 7 } else { 0 },
+            selection_bounds: ([0.375, 0.0, 0.375], [0.625, 0.625, 0.625]),
+            ..BlockProperties::non_colliding(0.0)
+        },
         Id::Glowstone => BlockProperties {
             harvestable_by_hand: false,
             light_emission: 15,
@@ -74,6 +84,12 @@ fn properties(id: Id) -> BlockProperties {
 fn is_torch(id: Id) -> bool {
     matches!(
         id,
-        Id::Torch | Id::TorchWest | Id::TorchEast | Id::TorchNorth | Id::TorchSouth
+        Id::Torch
+            | Id::TorchWest
+            | Id::TorchEast
+            | Id::TorchNorth
+            | Id::TorchSouth
+            | Id::RedstoneTorch
+            | Id::UnlitRedstoneTorch
     )
 }

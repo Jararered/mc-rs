@@ -2,6 +2,7 @@ pub mod block_ticks;
 pub mod chest;
 pub mod chunk;
 pub mod clouds;
+pub mod dispenser;
 pub mod furnace;
 pub mod generation;
 pub mod lighting;

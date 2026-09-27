@@ -207,6 +207,36 @@ pub fn spawn_chest_drops(
     }
 }
 
+/// `BlockDispenser.dispenseItem` for an ordinary item: eject it from the
+/// front at roughly 0.2 blocks/tick, with a small random spread.
+pub fn spawn_dispensed_item(
+    commands: &mut Commands,
+    rng: &mut ItemRng,
+    cell: IVec3,
+    facing: u8,
+    stack: ItemStack,
+) {
+    let dir = match facing {
+        2 => Vec3::NEG_Z,
+        3 => Vec3::Z,
+        4 => Vec3::NEG_X,
+        _ => Vec3::X,
+    };
+    let position = cell.as_vec3() + Vec3::new(0.5, 0.2, 0.5) + dir * 0.6;
+    let (x, y) = gaussian_pair(rng);
+    let (z, _) = gaussian_pair(rng);
+    let motion = dir * (0.2 + rng.unit() * 0.1) + Vec3::new(x, y, z) * 0.045 + Vec3::Y * 0.2;
+    spawn_item(
+        commands,
+        position,
+        stack,
+        motion,
+        PICKUP_DELAY_TICKS,
+        rng.unit() * std::f32::consts::TAU,
+        rng.next_u64(),
+    );
+}
+
 fn gaussian_pair(rng: &mut ItemRng) -> (f32, f32) {
     let first = rng.unit().max(f32::MIN_POSITIVE);
     let second = rng.unit();

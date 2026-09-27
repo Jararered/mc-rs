@@ -480,6 +480,37 @@ pub fn block_tile(block: crate::block::id::Id, face: usize, fancy_graphics: bool
         Id::LapisOre => (0, 10),
         Id::LapisBlock => (0, 9),
         Id::RedstoneOre | Id::LitRedstoneOre => (3, 3),
+        Id::RedstoneWire => (4, 10),
+        Id::Repeater => {
+            if face == 0 {
+                (3, 8)
+            } else {
+                (3, 7)
+            }
+        }
+        Id::PoweredRepeater => {
+            if face == 0 {
+                (3, 9)
+            } else {
+                (3, 7)
+            }
+        }
+        Id::RedstoneTorch => (3, 6),
+        Id::UnlitRedstoneTorch => (3, 7),
+        Id::StoneButton | Id::StonePressurePlate => (1, 0),
+        Id::WoodenPressurePlate => (4, 0),
+        Id::Lever => (0, 6),
+        Id::WoodenDoor => (1, 6),
+        Id::IronDoor => (2, 6),
+        Id::Trapdoor => (4, 5),
+        Id::Rail => (0, 8),
+        Id::PoweredRail => (3, 11),
+        Id::DetectorRail => (3, 12),
+        Id::Piston => (11, 6),
+        Id::StickyPiston => (10, 6),
+        Id::Dispenser if face == 0 || face == 1 => (14, 3),
+        Id::Dispenser if face == 4 => (14, 2),
+        Id::Dispenser => (13, 2),
         Id::GoldOre => (0, 2),
         Id::IronOre => (1, 2),
         Id::CoalOre => (2, 2),

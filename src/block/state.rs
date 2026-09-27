@@ -196,6 +196,9 @@ impl Id {
             Self::BirchPlanks => (Self::WoodenPlanks, 2),
             Self::SpruceLeaves => (Self::Leaves, 1),
             Self::BirchLeaves => (Self::Leaves, 2),
+            Self::UnlitRedstoneTorch => (Self::RedstoneTorch, 0),
+            Self::PoweredRepeater => (Self::Repeater, 0),
+            Self::PistonHead | Self::MovingPiston => (Self::Piston, 0),
             Self::Torch
             | Self::TorchWest
             | Self::TorchEast

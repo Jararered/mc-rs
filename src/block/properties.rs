@@ -27,6 +27,91 @@ pub fn collision_bounds(block: Id) -> Option<([f32; 3], [f32; 3])> {
     definition::properties(block).collision_bounds
 }
 
+/// Beta metadata-dependent shapes shared by collision, selection and meshing.
+pub fn state_bounds(block: Id, meta: u8) -> Option<([f32; 3], [f32; 3])> {
+    let m = meta & 3;
+    let slab = |axis: usize, high: bool, thickness: f32| {
+        let mut min = [0.0; 3];
+        let mut max = [1.0; 3];
+        if high {
+            min[axis] = 1.0 - thickness;
+        } else {
+            max[axis] = thickness;
+        }
+        (min, max)
+    };
+    match block {
+        Id::SnowLayer if meta & 7 >= 3 => Some(slab(1, false, 0.5)),
+        Id::Piston | Id::StickyPiston if meta & 8 != 0 => Some(match meta & 7 {
+            0 => slab(1, true, 0.75),
+            1 => slab(1, false, 0.75),
+            2 => slab(2, true, 0.75),
+            3 => slab(2, false, 0.75),
+            4 => slab(0, true, 0.75),
+            _ => slab(0, false, 0.75),
+        }),
+        Id::PistonHead => Some(match meta & 7 {
+            0 => slab(1, false, 0.25),
+            1 => slab(1, true, 0.25),
+            2 => slab(2, false, 0.25),
+            3 => slab(2, true, 0.25),
+            4 => slab(0, false, 0.25),
+            _ => slab(0, true, 0.25),
+        }),
+        Id::StoneButton => Some(match meta & 7 {
+            1 => slab(0, false, 0.125),
+            2 => slab(0, true, 0.125),
+            3 => slab(2, false, 0.125),
+            _ => slab(2, true, 0.125),
+        }),
+        Id::WoodenDoor | Id::IronDoor => {
+            let facing = if meta & 4 != 0 { (m + 1) & 3 } else { m };
+            Some(match facing {
+                0 => slab(2, false, 3.0 / 16.0),
+                1 => slab(0, true, 3.0 / 16.0),
+                2 => slab(2, true, 3.0 / 16.0),
+                _ => slab(0, false, 3.0 / 16.0),
+            })
+        }
+        Id::Trapdoor => Some(if meta & 4 == 0 {
+            slab(1, false, 3.0 / 16.0)
+        } else {
+            match m {
+                0 => slab(2, true, 3.0 / 16.0),
+                1 => slab(2, false, 3.0 / 16.0),
+                2 => slab(0, true, 3.0 / 16.0),
+                _ => slab(0, false, 3.0 / 16.0),
+            }
+        }),
+        Id::RedstoneWire => Some(slab(1, false, 1.0 / 16.0)),
+        Id::Repeater | Id::PoweredRepeater => Some(slab(1, false, 2.0 / 16.0)),
+        Id::StonePressurePlate | Id::WoodenPressurePlate => Some((
+            [1.0 / 16.0, 0.0, 1.0 / 16.0],
+            [
+                15.0 / 16.0,
+                if meta == 0 { 1.0 / 16.0 } else { 0.5 / 16.0 },
+                15.0 / 16.0,
+            ],
+        )),
+        Id::Rail | Id::PoweredRail | Id::DetectorRail => Some(slab(1, false, 1.0 / 16.0)),
+        _ => None,
+    }
+}
+
+pub fn collision_bounds_at(block: Id, meta: u8) -> Option<([f32; 3], [f32; 3])> {
+    if block == Id::SnowLayer {
+        state_bounds(block, meta)
+    } else if blocks_movement(block) {
+        state_bounds(block, meta).or_else(|| collision_bounds(block))
+    } else {
+        None
+    }
+}
+
+pub fn selection_bounds_at(block: Id, meta: u8) -> ([f32; 3], [f32; 3]) {
+    state_bounds(block, meta).unwrap_or_else(|| selection_bounds(block))
+}
+
 /// Crossed sprites with no collision: flowers, mushrooms, plants, and reeds.
 pub fn is_crossed_plant(block: Id) -> bool {
     definition::properties(block).crossed_plant

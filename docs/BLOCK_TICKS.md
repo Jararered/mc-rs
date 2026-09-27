@@ -123,6 +123,12 @@ compact `Id` value; metadata is for state that changes while simulating.
 | Farmland | Moisture 0–7 (wet texture when > 0) |
 | Cactus, sugar cane | Growth counter 0–15 |
 | Leaves | Bit 8 (`CHECK_DECAY`): look for a log on the next random tick |
+| Redstone wire | Power level 0–15 |
+| Buttons, levers | Support direction and powered bit |
+| Repeaters | Facing in bits 0–1; delay in bits 2–3 |
+| Doors | Facing, open bit, and upper-half bit |
+| Pistons | Facing and extended bit |
+| Rails | Track shape and detector/powered bit |
 
 ## Adding update behavior to a block
 
@@ -244,6 +250,11 @@ instead of Java's runtime-seeded `World.rand`.
 - **Weather.** Nothing is rained on, so farmland only hydrates from water
   and snow never accumulates. Put rain in `TickWorld::rained_on` and the
   snowfall half of `freeze_column`.
-- **Saplings** (not in the world) and **redstone** blocks.
+- **Saplings** (not in the world). Wire, torches, switches, repeaters, doors,
+  trapdoors, plates, pistons, rails, note blocks, TNT, and dispensers now have
+  update behaviors. Dispensers persist nine slots and fire arrows, eggs,
+  snowballs, or ordinary items. Pistons currently move blocks immediately
+  and displace bodies at the destination rather than animating their motion.
+  Minecarts and fused TNT are not yet persisted when their chunks unload.
 - Presentation-only hooks: `randomDisplayTick`, redstone ore sparkles, lava
   fizz and smoke, and fluid sounds.

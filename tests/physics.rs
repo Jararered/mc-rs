@@ -573,7 +573,7 @@ fn player_has_air_control_and_momentum_decays_without_input() {
 
 #[test]
 fn player_steps_onto_low_obstacles_but_not_full_blocks() {
-    fn move_over(obstacle: Id) -> game::physics::Movement {
+    fn move_over(obstacle: Id, metadata: u8) -> game::physics::Movement {
         let mut chunk = Chunk::new();
         for z in 0..CHUNK_SIZE {
             for x in 0..CHUNK_SIZE {
@@ -581,17 +581,21 @@ fn player_steps_onto_low_obstacles_but_not_full_blocks() {
             }
         }
         chunk.set(9, 65, 8, obstacle);
+        chunk.set_metadata(9, 65, 8, metadata);
         let mut chunks = WorldChunks::default();
         chunks.insert(ChunkPosition::ZERO, generated(chunk));
         let aabb = EntitySize::PLAYER.aabb(Vec3::new(8.5, 65.0 + EntitySize::PLAYER.y_offset, 8.5));
         move_entity(aabb, Vec3::new(0.5, 0.0, 0.0), 0.5, true, &chunks)
     }
 
-    let snow_step = move_over(Id::SnowLayer);
+    let snow_step = move_over(Id::SnowLayer, 3);
     assert!(snow_step.displacement.x > 0.2);
-    assert!((snow_step.aabb.min.y - 65.125).abs() < 1e-4);
+    assert!((snow_step.aabb.min.y - 65.5).abs() < 1e-4);
 
-    let full_block = move_over(Id::Stone);
+    let thin_snow = move_over(Id::SnowLayer, 0);
+    assert!((thin_snow.aabb.min.y - 65.0).abs() < 1e-4);
+
+    let full_block = move_over(Id::Stone, 0);
     assert!(full_block.displacement.x <= 0.2 + 1e-4);
 }
 

@@ -66,8 +66,11 @@ use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::Chunk;
 use crate::world::chunk::ChunkPosition;
+use crate::world::chunk::NoteState;
 use crate::world::chunk::PendingTick;
 use crate::world::chunk::WorldChunks;
+use crate::world::dispenser::DISPENSER_SLOTS;
+use crate::world::dispenser::Dispenser;
 use crate::world::furnace::FURNACE_SLOTS;
 use crate::world::furnace::Furnace;
 use crate::world::generation::Biome;
@@ -83,7 +86,7 @@ pub const SAVES_DIRECTORY: &str = "saves";
 /// Chunks per region along each axis. `regions0,0` covers chunks 0..15.
 pub const REGION_SIZE: i32 = 16;
 /// On-disk format version, written into both the manifest and every chunk file.
-pub const FORMAT_VERSION: u32 = 1;
+pub const FORMAT_VERSION: u32 = 2;
 
 const MANIFEST_FILE: &str = "level.json";
 const PLAYER_FILE: &str = "player.json";
@@ -334,7 +337,7 @@ impl WorldStorage {
         let path = self.root.join(PLAYER_FILE);
         match fs::read(&path) {
             Ok(bytes) => match serde_json::from_slice::<StoredPlayer>(&bytes) {
-                Ok(player) if player.format_version == FORMAT_VERSION => Some(player),
+                Ok(player) if (1..=FORMAT_VERSION).contains(&player.format_version) => Some(player),
                 Ok(_) => {
                     warn!("Ignoring player save with unsupported format");
                     None
@@ -451,6 +454,7 @@ impl WorldStorage {
     fn touch(&self) -> io::Result<()> {
         let mut manifest = self.manifest.lock().unwrap();
         manifest.last_played_unix_millis = unix_millis();
+        manifest.format_version = FORMAT_VERSION;
         write_manifest_file(&self.root, &manifest)
     }
 }
@@ -472,6 +476,10 @@ struct StoredChunk {
     /// Absent on chunks saved before chest inventories were added.
     #[serde(default)]
     chests: Vec<StoredChest>,
+    #[serde(default)]
+    dispensers: Vec<StoredDispenser>,
+    #[serde(default)]
+    notes: Vec<StoredNote>,
     /// Absent on chunks saved before population ran across chunks. Those were
     /// decorated in full when generated.
     #[serde(default = "populated_default")]
@@ -513,6 +521,19 @@ struct StoredFurnace {
 struct StoredChest {
     index: u16,
     slots: [Option<StoredStack>; CHEST_SLOTS],
+}
+
+#[derive(Serialize, Deserialize)]
+struct StoredDispenser {
+    index: u16,
+    slots: [Option<StoredStack>; DISPENSER_SLOTS],
+}
+
+#[derive(Serialize, Deserialize)]
+struct StoredNote {
+    index: u16,
+    pitch: u8,
+    previous_powered: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -599,6 +620,25 @@ impl StoredChunk {
                     slots: chest.slots.map(|stack| stack.map(StoredStack::from_stack)),
                 })
                 .collect(),
+            dispensers: generated
+                .chunk
+                .dispensers()
+                .map(|(index, dispenser)| StoredDispenser {
+                    index: index as u16,
+                    slots: dispenser
+                        .slots
+                        .map(|slot| slot.map(StoredStack::from_stack)),
+                })
+                .collect(),
+            notes: generated
+                .chunk
+                .notes()
+                .map(|(index, note)| StoredNote {
+                    index: index as u16,
+                    pitch: note.pitch,
+                    previous_powered: note.previous_powered,
+                })
+                .collect(),
             populated: generated.populated,
             metadata: generated
                 .chunk
@@ -623,13 +663,13 @@ impl StoredChunk {
     }
 
     fn into_generated(self) -> Option<GeneratedChunk> {
-        if self.format_version != FORMAT_VERSION {
+        if !(1..=FORMAT_VERSION).contains(&self.format_version) {
             return None;
         }
         if self.heightmap.len() != COLUMNS_PER_CHUNK || self.biomes.len() != COLUMNS_PER_CHUNK {
             return None;
         }
-        let blocks = decode_blocks(&self.runs)?;
+        let blocks = decode_blocks(&self.runs, self.format_version)?;
 
         let mut heights = [0u8; COLUMNS_PER_CHUNK];
         heights.copy_from_slice(&self.heightmap);
@@ -706,6 +746,42 @@ impl StoredChunk {
             chunk.insert_chest(index, Chest { slots });
         }
 
+        for dispenser in self.dispensers {
+            let index = usize::from(dispenser.index);
+            if index >= BLOCKS_PER_CHUNK {
+                continue;
+            }
+            let y = index / (CHUNK_SIZE * CHUNK_SIZE);
+            let z = index / CHUNK_SIZE % CHUNK_SIZE;
+            let x = index % CHUNK_SIZE;
+            if chunk.get(x, y, z) == Some(Id::Dispenser) {
+                chunk.insert_dispenser(
+                    index,
+                    Dispenser {
+                        slots: dispenser
+                            .slots
+                            .map(|slot| slot.and_then(StoredStack::into_stack)),
+                    },
+                );
+            }
+        }
+
+        for note in self.notes {
+            let index = usize::from(note.index);
+            let y = index / (CHUNK_SIZE * CHUNK_SIZE);
+            let z = index / CHUNK_SIZE % CHUNK_SIZE;
+            let x = index % CHUNK_SIZE;
+            if y < CHUNK_HEIGHT && chunk.get(x, y, z) == Some(Id::NoteBlock) {
+                chunk.insert_note(
+                    index,
+                    NoteState {
+                        pitch: note.pitch.min(24),
+                        previous_powered: note.previous_powered,
+                    },
+                );
+            }
+        }
+
         Some(GeneratedChunk {
             chunk,
             heightmap: Heightmap::from_heights(heights),
@@ -762,7 +838,7 @@ fn encode_blocks(blocks: &[u8]) -> Vec<(u8, u16)> {
     runs
 }
 
-fn decode_blocks(runs: &[(u8, u16)]) -> Option<Vec<Id>> {
+fn decode_blocks(runs: &[(u8, u16)], version: u32) -> Option<Vec<Id>> {
     let total: usize = runs.iter().map(|(_, length)| *length as usize).sum();
     if total != BLOCKS_PER_CHUNK {
         return None;
@@ -772,16 +848,16 @@ fn decode_blocks(runs: &[(u8, u16)]) -> Option<Vec<Id>> {
         // Bytes 92..=99 are the older chunk encoding of species and torch
         // facing. 92..=96 are also cake through trapdoor, so this remap runs
         // before `from_u8`.
-        let block = match *value {
-            92 => Id::SpruceLeaves,
-            93 => Id::BirchLeaves,
-            94 => Id::SpruceWood,
-            95 => Id::BirchWood,
-            96 => Id::TorchWest,
-            97 => Id::TorchEast,
-            98 => Id::TorchNorth,
-            99 => Id::TorchSouth,
-            value => Id::from_u8(value)?,
+        let block = match (version, *value) {
+            (1, 92) => Id::SpruceLeaves,
+            (1, 93) => Id::BirchLeaves,
+            (1, 94) => Id::SpruceWood,
+            (1, 95) => Id::BirchWood,
+            (1, 96) => Id::TorchWest,
+            (1, 97) => Id::TorchEast,
+            (1, 98) => Id::TorchNorth,
+            (1, 99) => Id::TorchSouth,
+            (_, value) => Id::from_u8(value)?,
         };
         if !block.in_world() {
             return None;

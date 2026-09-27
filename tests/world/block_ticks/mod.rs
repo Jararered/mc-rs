@@ -7,6 +7,7 @@ mod fluids;
 mod leaves;
 mod misc;
 mod plants;
+mod redstone;
 mod soil;
 mod systems;
 
@@ -176,7 +177,12 @@ impl TestWorld {
                     block,
                     metadata,
                 } => Some((position, block, metadata)),
-                TickEffect::FallingBlock { .. } => None,
+                TickEffect::FallingBlock { .. }
+                | TickEffect::Note { .. }
+                | TickEffect::PrimedTnt { .. } => None,
+                TickEffect::Dispense { .. } => None,
+                TickEffect::DropStack { .. } => None,
+                TickEffect::PistonPush { .. } => None,
             })
             .collect()
     }

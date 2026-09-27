@@ -56,7 +56,6 @@ const SCALE: f32 = GUI_SCALE;
 const SLOT_SIZE: f32 = 16.0;
 const SLOT_STEP: f32 = 18.0;
 const CHEST_HALF_SLOTS: usize = 27;
-const DOUBLE_CHEST_SLOTS: usize = CHEST_HALF_SLOTS * 2;
 
 pub struct InventoryGuiPlugin;
 
@@ -203,7 +202,7 @@ fn validate_chest(
         return;
     };
     let delta = transform.translation - Vec3::new(x as f32 + 0.5, y as f32 + 0.5, z as f32 + 0.5);
-    if chunks.chest_group_at(x, y, z) == screen.chest_group && delta.length_squared() <= 64.0 {
+    if chunks.container_group_at(x, y, z) == screen.chest_group && delta.length_squared() <= 64.0 {
         return;
     }
     screen.open = false;
@@ -596,7 +595,9 @@ fn spawn(
                     chest_panel_label(
                         panel,
                         font,
-                        if chest_rows == 3 {
+                        if chest_rows == 1 {
+                            "Dispenser"
+                        } else if chest_rows == 3 {
                             "Chest"
                         } else {
                             "Large chest"
@@ -1521,11 +1522,14 @@ fn collect_open_inventory(
     }
 }
 
-fn read_chest_group_slots(
-    chunks: &WorldChunks,
-    group: ChestGroup,
-) -> [Option<ItemStack>; DOUBLE_CHEST_SLOTS] {
-    let mut slots = [None; DOUBLE_CHEST_SLOTS];
+fn read_chest_group_slots(chunks: &WorldChunks, group: ChestGroup) -> Vec<Option<ItemStack>> {
+    let mut slots = vec![None; group.slot_count()];
+    if group.dispenser {
+        if let Some(dispenser) = chunks.dispenser_at(group.first.0, group.first.1, group.first.2) {
+            slots.copy_from_slice(&dispenser.slots);
+        }
+        return slots;
+    }
     if let Some(chest) = chunks.chest_at(group.first.0, group.first.1, group.first.2) {
         slots[..CHEST_HALF_SLOTS].copy_from_slice(&chest.slots);
     }
@@ -1540,8 +1544,16 @@ fn read_chest_group_slots(
 fn write_chest_group_slots(
     chunks: &mut WorldChunks,
     group: ChestGroup,
-    slots: &[Option<ItemStack>; DOUBLE_CHEST_SLOTS],
+    slots: &[Option<ItemStack>],
 ) {
+    if group.dispenser {
+        if let Some(dispenser) =
+            chunks.dispenser_at_mut(group.first.0, group.first.1, group.first.2)
+        {
+            dispenser.slots.copy_from_slice(slots);
+        }
+        return;
+    }
     if let Some(chest) = chunks.chest_at_mut(group.first.0, group.first.1, group.first.2) {
         chest.slots.copy_from_slice(&slots[..CHEST_HALF_SLOTS]);
     }

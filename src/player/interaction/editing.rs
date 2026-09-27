@@ -8,6 +8,7 @@ use bevy::window::CursorGrabMode;
 use bevy::window::CursorOptions;
 use bevy::window::PrimaryWindow;
 
+use crate::block::fluids::Fluid;
 use crate::block::fluids::is_water;
 use crate::block::id::FurnaceFacing;
 use crate::block::id::Id;
@@ -16,6 +17,7 @@ use crate::block::properties::is_breakable;
 use crate::block::properties::is_crossed_plant;
 use crate::block::properties::is_opaque_cube;
 use crate::block::properties::is_replaceable;
+use crate::block::properties::is_solid_material;
 use crate::block::properties::is_torch;
 use crate::block::properties::plant_grows_on;
 use crate::block::properties::sugar_cane_can_stay;
@@ -39,6 +41,7 @@ use crate::physics::BLOCK_REACH;
 use crate::physics::BlockFace;
 use crate::physics::BlockHit;
 use crate::physics::raycast_blocks;
+use crate::physics::raycast_blocks_or_liquid;
 use crate::random::ItemRng;
 use crate::ui::InventoryScreen;
 use crate::ui::WorkbenchUiSession;
@@ -333,7 +336,28 @@ pub(crate) fn interact_blocks(
                 },
             );
         }
-        if let Some(hit) = hit
+        if hotbar
+            .selected_stack()
+            .is_some_and(|stack| stack.item() == ItemId::Bucket)
+            && let Some((x, y, z, previous, fluid)) =
+                pick_up_fluid(&mut chunks, view_origin, view_rotation * Vec3::NEG_Z)
+        {
+            let filled = match fluid {
+                Fluid::Water => ItemId::WaterBucket,
+                Fluid::Lava => ItemId::LavaBucket,
+            };
+            let selected = hotbar.selected;
+            hotbar.slots[selected] = ItemStack::new(filled, 1).ok();
+            push_event(
+                &mut block_ticks,
+                BlockEvent::Changed {
+                    position: IVec3::new(x, y, z),
+                    previous,
+                    metadata: 0,
+                },
+            );
+            notify_edit(&mut streaming, &mut persistence, x, y, z, false);
+        } else if let Some(hit) = hit
             && let Some(stack) = hotbar.selected_stack()
         {
             let target = hit.face.neighbor(hit.x, hit.y, hit.z);
@@ -399,6 +423,24 @@ pub(crate) fn interact_blocks(
                     },
                 );
                 notify_edit(&mut streaming, &mut persistence, hit.x, hit.y, hit.z, false);
+            } else if let Some(fluid) = match stack.item() {
+                ItemId::WaterBucket => Some(Fluid::Water),
+                ItemId::LavaBucket => Some(Fluid::Lava),
+                _ => None,
+            } && let Some((x, y, z, previous, previous_metadata)) =
+                place_fluid(&mut chunks, hit, fluid)
+            {
+                let selected = hotbar.selected;
+                hotbar.slots[selected] = ItemStack::new(ItemId::Bucket, 1).ok();
+                push_event(
+                    &mut block_ticks,
+                    BlockEvent::Changed {
+                        position: IVec3::new(x, y, z),
+                        previous,
+                        metadata: previous_metadata,
+                    },
+                );
+                notify_edit(&mut streaming, &mut persistence, x, y, z, false);
             }
         }
     }
@@ -459,6 +501,46 @@ pub fn till_block(chunks: &mut WorldChunks, hit: BlockHit) -> bool {
     chunks
         .set_block(hit.x, hit.y, hit.z, Id::Farmland)
         .is_some_and(|previous| previous == hit.block)
+}
+
+/// `ItemBucket.onItemRightClick` when empty: pick up the water or lava
+/// source the camera ray hits first. Unlike the normal block pick, this
+/// raycast also stops on fluid so it can target one at all. Flowing
+/// (non-source) fluid, a solid block, or nothing in reach leaves the bucket
+/// empty, matching Beta's `getBlockMetadata(...) == 0` gate.
+pub fn pick_up_fluid(
+    chunks: &mut WorldChunks,
+    origin: Vec3,
+    direction: Vec3,
+) -> Option<(i32, i32, i32, Id, Fluid)> {
+    let hit = raycast_blocks_or_liquid(chunks, origin, direction, BLOCK_REACH)?;
+    let fluid = Fluid::of(hit.block)?;
+    if chunks.metadata_at(hit.x, hit.y, hit.z) != 0 {
+        return None;
+    }
+    let previous = chunks.set_block(hit.x, hit.y, hit.z, Id::Air)?;
+    Some((hit.x, hit.y, hit.z, previous, fluid))
+}
+
+/// `ItemBucket.onItemRightClick` when full: empty the held fluid into the
+/// non-solid cell beside the hit face, the same target a torch would attach
+/// to but without requiring a solid block behind it.
+pub fn place_fluid(
+    chunks: &mut WorldChunks,
+    hit: BlockHit,
+    fluid: Fluid,
+) -> Option<(i32, i32, i32, Id, u8)> {
+    let (x, y, z) = hit.face.neighbor(hit.x, hit.y, hit.z);
+    if y < 0 || y >= CHUNK_HEIGHT as i32 {
+        return None;
+    }
+    let current = chunks.block_at(x, y, z)?;
+    if is_solid_material(current) {
+        return None;
+    }
+    let metadata = chunks.metadata_at(x, y, z);
+    let previous = chunks.set_block(x, y, z, fluid.still())?;
+    Some((x, y, z, previous, metadata))
 }
 
 /// Queue a block event for the next tick pass.

@@ -2,6 +2,7 @@
 
 use bevy::prelude::Vec3;
 
+use crate::block::fluids::is_liquid;
 use crate::block::id::Id;
 use crate::block::properties::is_targetable;
 use crate::block::properties::is_torch;
@@ -67,6 +68,28 @@ pub fn raycast_blocks(
     direction: Vec3,
     max_distance: f32,
 ) -> Option<BlockHit> {
+    raycast(chunks, origin, direction, max_distance, false)
+}
+
+/// Like [`raycast_blocks`], but also stops at water and lava, matching
+/// Beta's `World.rayTraceBlocks_do(vec1, vec2, true)`. An empty bucket uses
+/// this to target a fluid to pick up; other items use [`raycast_blocks`].
+pub fn raycast_blocks_or_liquid(
+    chunks: &WorldChunks,
+    origin: Vec3,
+    direction: Vec3,
+    max_distance: f32,
+) -> Option<BlockHit> {
+    raycast(chunks, origin, direction, max_distance, true)
+}
+
+fn raycast(
+    chunks: &WorldChunks,
+    origin: Vec3,
+    direction: Vec3,
+    max_distance: f32,
+    include_liquid: bool,
+) -> Option<BlockHit> {
     let direction = direction.normalize_or_zero();
     if direction == Vec3::ZERO || !(max_distance > 0.0) {
         return None;
@@ -85,6 +108,7 @@ pub fn raycast_blocks(
         origin,
         direction,
         max_distance,
+        include_liquid,
     ) {
         return Some(hit);
     }
@@ -143,7 +167,17 @@ pub fn raycast_blocks(
         if t > max_distance {
             return None;
         }
-        if let Some(hit) = hit_at(chunks, x, y, z, face, origin, direction, max_distance) {
+        if let Some(hit) = hit_at(
+            chunks,
+            x,
+            y,
+            z,
+            face,
+            origin,
+            direction,
+            max_distance,
+            include_liquid,
+        ) {
             return Some(hit);
         }
     }
@@ -159,9 +193,10 @@ fn hit_at(
     origin: Vec3,
     direction: Vec3,
     max_distance: f32,
+    include_liquid: bool,
 ) -> Option<BlockHit> {
     let block = chunks.block_at(x, y, z)?;
-    if !is_targetable(block) {
+    if !is_targetable(block) && !(include_liquid && is_liquid(block)) {
         return None;
     }
     if is_torch(block) || matches!(block, Id::SnowLayer | Id::Farmland | Id::Crops) {

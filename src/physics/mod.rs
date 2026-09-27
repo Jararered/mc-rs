@@ -9,6 +9,7 @@ pub use raycast::BLOCK_REACH;
 pub use raycast::BlockFace;
 pub use raycast::BlockHit;
 pub use raycast::raycast_blocks;
+pub use raycast::raycast_blocks_or_liquid;
 
 use bevy::prelude::*;
 

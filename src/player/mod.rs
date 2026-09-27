@@ -20,7 +20,9 @@ mod model;
 
 pub use interaction::editing::PLACED_BLOCK;
 pub use interaction::editing::break_block;
+pub use interaction::editing::pick_up_fluid;
 pub use interaction::editing::place_block;
+pub use interaction::editing::place_fluid;
 pub use interaction::editing::place_selected_block;
 pub use interaction::editing::place_selected_block_facing;
 pub use interaction::editing::plant_seeds;

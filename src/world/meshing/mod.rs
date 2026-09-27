@@ -30,6 +30,8 @@ use crate::world::textures::crop_tile;
 use crate::world::textures::farmland_top_tile;
 
 pub(crate) mod geometry;
+mod piston;
+mod redstone;
 mod vertex;
 
 pub use self::vertex::ATTRIBUTE_BLOCK_VERTEX;
@@ -777,6 +779,14 @@ impl<'a> Mesher<'a> {
                         continue;
                     }
                     let origin = [x as f32, (y - y_origin) as f32, z as f32];
+                    if block == Id::RedstoneWire {
+                        self.push_redstone_wire(&mut meshes.masked, origin, x, y, z);
+                        continue;
+                    }
+                    if matches!(block, Id::Piston | Id::StickyPiston | Id::PistonHead) {
+                        self.push_piston(&mut meshes.opaque, origin, x, y, z, block);
+                        continue;
+                    }
                     if is_torch(block) {
                         meshes
                             .grass_overlay

@@ -506,8 +506,11 @@ pub fn block_tile(block: crate::block::id::Id, face: usize, fancy_graphics: bool
         Id::Rail => (0, 8),
         Id::PoweredRail => (3, 11),
         Id::DetectorRail => (3, 12),
-        Id::Piston => (11, 6),
-        Id::StickyPiston => (10, 6),
+        Id::Piston | Id::StickyPiston if face == 0 => {
+            (if block == Id::StickyPiston { 10 } else { 11 }, 6)
+        }
+        Id::Piston | Id::StickyPiston if face == 1 => (13, 6),
+        Id::Piston | Id::StickyPiston => (12, 6),
         Id::Dispenser if face == 0 || face == 1 => (14, 3),
         Id::Dispenser if face == 4 => (14, 2),
         Id::Dispenser => (13, 2),

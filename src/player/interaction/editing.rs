@@ -524,7 +524,8 @@ pub fn pick_up_fluid(
 
 /// `ItemBucket.onItemRightClick` when full: empty the held fluid into the
 /// non-solid cell beside the hit face, the same target a torch would attach
-/// to but without requiring a solid block behind it.
+/// to but without requiring a solid block behind it. Use the flowing block
+/// value so `onBlockAdded` schedules its first spread tick.
 pub fn place_fluid(
     chunks: &mut WorldChunks,
     hit: BlockHit,
@@ -539,7 +540,7 @@ pub fn place_fluid(
         return None;
     }
     let metadata = chunks.metadata_at(x, y, z);
-    let previous = chunks.set_block(x, y, z, fluid.still())?;
+    let previous = chunks.set_block(x, y, z, fluid.flowing())?;
     Some((x, y, z, previous, metadata))
 }
 

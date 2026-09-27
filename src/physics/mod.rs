@@ -47,6 +47,8 @@ const TERMINAL_VELOCITY: f32 = 78.4;
 const MAX_STEP_SECS: f32 = 0.05;
 /// Covers the f32 error from converting a player's feet to eye height and back.
 const CONTACT_EPSILON: f32 = 1e-4;
+/// `World.handleMaterialAcceleration`: current added to motion each world tick.
+pub const WATER_CURRENT_PER_TICK: f32 = 0.014;
 
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum PhysicsSet {
@@ -476,7 +478,7 @@ fn integrate_player(
             let (in_water, water_flow) = water_state(aabb, &chunks);
             let in_lava = !in_water && lava_contains(aabb, &chunks);
             if in_water {
-                motion += water_flow * 0.014;
+                motion += water_flow * WATER_CURRENT_PER_TICK;
             }
 
             if in_water || in_lava {
@@ -705,14 +707,20 @@ fn cancel_collided_motion(motion: &mut Vec3, collision: CollisionState) {
     }
 }
 
-/// Water immersion and flow over the player's central body band, as
-/// `World.handleMaterialAcceleration` reads it: a cell counts once the band
-/// reaches its fluid surface.
+/// Water immersion over the player's trimmed central body band. Other
+/// physical entities use their entire AABB in [`water_current`].
 fn water_state(aabb: Aabb, chunks: &WorldChunks) -> (bool, Vec3) {
-    let area = Aabb::new(
+    let band = Aabb::new(
         aabb.min + Vec3::new(0.001, 0.401, 0.001),
         aabb.max - Vec3::new(0.001, 0.401, 0.001),
     );
+    water_current(band, chunks)
+}
+
+/// `World.handleMaterialAcceleration` for water: whether the AABB reaches a
+/// water surface and the normalized sum of its cells' flow directions. Pass
+/// the player's trimmed band or a non-player entity's full collision box.
+pub fn water_current(area: Aabb, chunks: &WorldChunks) -> (bool, Vec3) {
     let (min_x, max_x, min_y, max_y, min_z, max_z) = block_range(area);
     let mut immersed = false;
     let mut flow = Vec3::ZERO;
@@ -724,7 +732,9 @@ fn water_state(aabb: Aabb, chunks: &WorldChunks) -> (bool, Vec3) {
                     continue;
                 }
                 let surface = liquid_surface_y(chunks.metadata_at(x, y, z), y);
-                if area.max.y < surface || area.min.y >= y as f32 + 1.0 {
+                // A body entirely *below* the surface is submerged too;
+                // comparing its top against the surface would miss items.
+                if area.min.y >= surface || area.max.y <= y as f32 {
                     continue;
                 }
                 immersed = true;
@@ -797,6 +807,7 @@ fn block_range(area: Aabb) -> (i32, i32, i32, i32, i32, i32) {
 
 fn integrate_bodies(
     time: Res<Time>,
+    tick: Res<WorldTick>,
     chunks: Res<WorldChunks>,
     mut bodies: Query<
         (
@@ -833,6 +844,12 @@ fn integrate_bodies(
             continue;
         }
 
+        // Generic bodies (future mobs included) use blocks/second. Convert
+        // Beta's per-tick current to that unit, once per emitted world tick.
+        if tick.ticks_this_frame() > 0 {
+            velocity.0 += water_current(size.aabb(transform.translation), &chunks).1
+                * (WATER_CURRENT_PER_TICK * tick.ticks_this_frame() as f32 / TICK_SECONDS);
+        }
         if let Some(gravity) = gravity {
             velocity.0.y -= gravity.0 * dt;
             velocity.0.y = velocity.0.y.max(-TERMINAL_VELOCITY);

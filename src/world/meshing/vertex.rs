@@ -36,6 +36,8 @@ use crate::world::lighting::unpack;
 use crate::world::textures::ATLAS_GRID;
 use crate::world::textures::ATLAS_PAD_TEXELS;
 use crate::world::textures::ATLAS_TILE_PX;
+use crate::world::textures::LAVA_FLOW_TILE;
+use crate::world::textures::WATER_FLOW_TILE;
 
 /// The only vertex attribute of block meshes: four packed words per vertex.
 pub const ATTRIBUTE_BLOCK_VERTEX: MeshVertexAttribute =
@@ -58,8 +60,8 @@ pub const SHADE_Z: f32 = 0.8;
 /// A light sample from a block that emits full light, regardless of the sky.
 pub const FULL_BRIGHT: [u8; 4] = [15; 4];
 
-/// A point in an atlas tile, in Beta texels. `texel` runs `0..=16` so a quad
-/// can reach the far edge of its tile.
+/// A point in an atlas tile, in Beta texels. Ordinary faces use `0..=16`;
+/// flowing-fluid tops span `0..31` across the repeated 2×2 atlas tiles.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct AtlasTexel {
     pub tile: [u8; 2],
@@ -80,8 +82,12 @@ impl AtlasTexel {
         let stride = (ATLAS_TILE_PX + 2 * ATLAS_PAD_TEXELS) as f32;
         let atlas = ATLAS_GRID as f32 * stride;
         let pad = ATLAS_PAD_TEXELS as f32;
+        let flowing = self.tile == [WATER_FLOW_TILE.0, WATER_FLOW_TILE.1]
+            || self.tile == [LAVA_FLOW_TILE.0, LAVA_FLOW_TILE.1];
         std::array::from_fn(|axis| {
-            (f32::from(self.tile[axis]) * stride + pad + f32::from(self.texel[axis])) / atlas
+            let texel = f32::from(self.texel[axis]);
+            let step = if flowing && texel >= 16.0 { 1.0 } else { 0.0 };
+            ((f32::from(self.tile[axis]) + step) * stride + pad + texel - step * 16.0) / atlas
         })
     }
 }

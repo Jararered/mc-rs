@@ -26,7 +26,9 @@ use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
 use crate::item::ItemStack;
 use crate::physics::PhysicsSet;
+use crate::physics::WATER_CURRENT_PER_TICK;
 use crate::physics::move_entity;
+use crate::physics::water_current;
 use crate::player::Player;
 use crate::random::ItemRng;
 use crate::random::JavaRandom;
@@ -555,6 +557,8 @@ fn tick_dropped_items(
                 commands.entity(entity).despawn();
                 break;
             }
+            motion.0 +=
+                water_current(size.aabb(transform.translation), &chunks).1 * WATER_CURRENT_PER_TICK;
             motion.0 = apply_item_gravity(motion.0);
             push_out_of_blocks(
                 &chunks,

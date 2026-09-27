@@ -139,3 +139,38 @@ fn sand_drops_straight_down_when_its_surroundings_are_not_loaded() {
         "it replaces the water it sinks into"
     );
 }
+
+#[test]
+fn falling_blocks_are_carried_by_water_each_tick() {
+    let mut world = TestWorld::new(1);
+    world.set(at(8, 70, 8), Id::Water);
+    world.set_with_metadata(at(9, 70, 8), Id::FlowingWater, 1);
+    let mut block = FallingBlock {
+        block: Id::Sand,
+        fall_ticks: 0,
+        motion: Vec3::ZERO,
+        on_ground: false,
+    };
+    let mut center = Vec3::new(8.5, 70.5, 8.5);
+    let mut edits = Vec::new();
+    assert_eq!(
+        step_falling_block(
+            &mut block,
+            &mut center,
+            &mut world.chunks,
+            &mut world.ticks,
+            &mut edits,
+        ),
+        FallingStep::Falling
+    );
+    assert!((center.x - 8.514).abs() < 1e-5);
+    assert!(block.motion.x > 0.0);
+    step_falling_block(
+        &mut block,
+        &mut center,
+        &mut world.chunks,
+        &mut world.ticks,
+        &mut edits,
+    );
+    assert!(center.x > 8.54, "catch-up ticks apply a fresh current");
+}

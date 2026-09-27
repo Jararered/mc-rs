@@ -15,7 +15,9 @@ use crate::entity::PreviousTick;
 use crate::entity::drops::items::spawn_block_drop;
 use crate::item::ItemStack;
 use crate::physics::Aabb;
+use crate::physics::WATER_CURRENT_PER_TICK;
 use crate::physics::move_entity;
+use crate::physics::water_current;
 use crate::random::ItemRng;
 use crate::world::block_ticks::BlockTicks;
 use crate::world::block_ticks::behaviors::falling::can_fall_below;
@@ -89,11 +91,12 @@ pub fn step_falling_block(
     edits: &mut Vec<IVec3>,
 ) -> FallingStep {
     falling.fall_ticks += 1;
-    falling.motion.y -= GRAVITY_PER_TICK;
     let aabb = Aabb::new(
         *center - Vec3::splat(HALF_EXTENT),
         *center + Vec3::splat(HALF_EXTENT),
     );
+    falling.motion += water_current(aabb, chunks).1 * WATER_CURRENT_PER_TICK;
+    falling.motion.y -= GRAVITY_PER_TICK;
     let movement = move_entity(aabb, falling.motion, 0.0, falling.on_ground, chunks);
     *center = (movement.aabb.min + movement.aabb.max) * 0.5;
     falling.on_ground = movement.collision.on_ground;

@@ -20,6 +20,7 @@ use game::physics::PhysicsPlugin;
 use game::physics::move_entity;
 use game::physics::move_entity_with_sneak;
 use game::physics::raycast_blocks;
+use game::physics::water_current;
 use game::player::Player;
 use game::player::PlayerMovementInput;
 use game::world::chunk::CHUNK_SIZE;
@@ -654,4 +655,67 @@ fn raycast_skips_water_and_hits_the_block_behind_it() {
 fn raycast_misses_when_nothing_is_in_range() {
     let chunks = WorldChunks::default();
     assert!(raycast_blocks(&chunks, Vec3::new(8.5, 70.0, 8.5), Vec3::NEG_Y, 4.0).is_none());
+}
+
+fn current_world() -> WorldChunks {
+    let mut chunk = Chunk::new();
+    chunk.set(8, 64, 8, Id::Stone);
+    chunk.set(9, 64, 8, Id::Stone);
+    chunk.set(8, 65, 8, Id::Water);
+    chunk.set_with_metadata(9, 65, 8, Id::FlowingWater, 1);
+    let mut chunks = WorldChunks::default();
+    chunks.insert(ChunkPosition::ZERO, generated(chunk));
+    chunks
+}
+
+#[test]
+fn water_current_pushes_submerged_small_bodies_but_not_dry_ones() {
+    let chunks = current_world();
+    let immersed = EntitySize::DROPPED_ITEM.aabb(Vec3::new(8.5, 65.5, 8.5));
+    assert_eq!(water_current(immersed, &chunks), (true, Vec3::X));
+    let dry = EntitySize::DROPPED_ITEM.aabb(Vec3::new(8.5, 66.5, 8.5));
+    assert_eq!(water_current(dry, &chunks), (false, Vec3::ZERO));
+}
+
+#[test]
+fn water_current_pushes_player_and_generic_physics_bodies() {
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins)
+        .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs_f32(
+            0.05,
+        )))
+        .insert_resource(current_world())
+        .add_plugins(PhysicsPlugin);
+    let player = app
+        .world_mut()
+        .spawn((
+            Player,
+            Transform::from_xyz(8.5, 65.0 + EntitySize::PLAYER.y_offset, 8.5),
+            Velocity(Vec3::ZERO),
+            EntitySize::PLAYER,
+            CollisionState::default(),
+            PlayerMovementInput::default(),
+        ))
+        .id();
+    let body = app
+        .world_mut()
+        .spawn((
+            Transform::from_xyz(8.5, 65.5, 8.5),
+            Velocity(Vec3::ZERO),
+            EntitySize::DROPPED_ITEM,
+            CollisionState::default(),
+        ))
+        .id();
+    app.update(); // Initialize frame time without advancing the world tick.
+    app.world_mut().resource_mut::<WorldTick>().advance(0.05);
+    app.update();
+    let player_velocity = app.world().entity(player).get::<Velocity>().unwrap().0;
+    let body_velocity = app.world().entity(body).get::<Velocity>().unwrap().0;
+    assert!(player_velocity.x > 0.0);
+    assert!((body_velocity.x - 0.28).abs() < 1e-4);
+
+    app.world_mut().resource_mut::<WorldTick>().advance(0.1); // two ticks
+    app.update();
+    let body_velocity = app.world().entity(body).get::<Velocity>().unwrap().0;
+    assert!((body_velocity.x - 0.84).abs() < 1e-4);
 }

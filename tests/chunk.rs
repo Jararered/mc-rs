@@ -25,6 +25,7 @@ use game::world::meshing::WATER_ALPHA;
 use game::world::meshing::mesh_chunk;
 use game::world::meshing::mesh_chunk_with_neighbors;
 use game::world::meshing::mesh_chunk_with_settings;
+use game::world::meshing::unpack_vertex;
 use game::world::textures::atlas_tile_uvs;
 use game::world::textures::block_tile;
 
@@ -442,6 +443,55 @@ fn flowing_water_slopes_toward_its_lower_levels_and_uses_the_flow_tile() {
         uvs.iter()
             .any(|uv| (u0..=u1).contains(&uv[0]) && (v0..=v1).contains(&uv[1])),
         "moving water draws the flowing tile"
+    );
+}
+
+#[test]
+fn diagonal_water_uses_the_full_flow_angle_inside_repeated_atlas_tiles() {
+    let mut corners = Vec::new();
+    for directions in [[(1i32, 0i32), (0, 1)], [(-1, 0), (0, -1)]] {
+        let mut chunk = Chunk::new();
+        chunk.set_with_metadata(8, 1, 8, Id::FlowingWater, 0);
+        for (dx, dz) in directions {
+            chunk.set_with_metadata((8 + dx) as usize, 1, (8 + dz) as usize, Id::FlowingWater, 1);
+        }
+        let meshes = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true);
+        let quad = meshes
+            .water
+            .vertices()
+            .chunks_exact(4)
+            .find(|quad| {
+                quad.iter().all(|vertex| {
+                    vertex.normal[1] > 0.99
+                        && (8.0..=9.0).contains(&vertex.position[0])
+                        && (8.0..=9.0).contains(&vertex.position[2])
+                })
+            })
+            .expect("diagonal current has a top face");
+        let (u0, v0, _, _) = atlas_tile_uvs(14, 12);
+        let (_, _, u1, v1) = atlas_tile_uvs(15, 13);
+        for vertex in quad {
+            let texel = vertex.texel;
+            assert_eq!(texel, unpack_vertex(vertex.pack()).texel);
+            assert_eq!(texel.tile, [14, 12]);
+            assert!((5..=27).contains(&texel.texel[0]));
+            assert!((5..=27).contains(&texel.texel[1]));
+            let [u, v] = texel.uv();
+            assert!((u0..=u1).contains(&u) && (v0..=v1).contains(&v));
+        }
+        corners.push(
+            quad.iter()
+                .map(|vertex| vertex.texel.texel)
+                .collect::<Vec<_>>(),
+        );
+    }
+    // With diagonal flow, opposite corners land near 5 and 27 texels,
+    // not at the 8/24 corners produced by a quarter-turn approximation.
+    assert!(corners[0].iter().flatten().any(|&texel| texel == 5));
+    assert!(corners[0].iter().flatten().any(|&texel| texel == 27));
+    assert_ne!(
+        corners[0], corners[1],
+        "opposite currents rotate differently"
     );
 }
 

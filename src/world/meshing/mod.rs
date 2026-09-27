@@ -419,22 +419,7 @@ impl BlockGeometry {
                     ],
                 )
             });
-            let texels = if face_index == FACE_TOP {
-                [
-                    AtlasTexel::new(tile.0, tile.1, 7, 6),
-                    AtlasTexel::new(tile.0, tile.1, 7, 8),
-                    AtlasTexel::new(tile.0, tile.1, 9, 8),
-                    AtlasTexel::new(tile.0, tile.1, 9, 6),
-                ]
-            } else {
-                // Only columns 7..8 and rows 6..15 contain the torch.
-                // Sampling the whole transparent tile shrinks the shaft to
-                // two pixels on a face that is already physically narrow.
-                face_texels(tile.0, tile.1, face_index).map(|texel| {
-                    let [u, v] = texel.texel;
-                    AtlasTexel::new(tile.0, tile.1, 7 + u / 16 * 2, 6 + v / 16 * 10)
-                })
-            };
+            let texels = torch_texels(tile, face_index);
             self.push_block_quad(
                 origin,
                 torch_normal(render_pose, face.normal),
@@ -783,6 +768,10 @@ impl<'a> Mesher<'a> {
                         self.push_redstone_wire(&mut meshes.masked, origin, x, y, z);
                         continue;
                     }
+                    if matches!(block, Id::Repeater | Id::PoweredRepeater) {
+                        self.push_repeater(&mut meshes.masked, origin, x, y, z, block);
+                        continue;
+                    }
                     if matches!(block, Id::Piston | Id::StickyPiston | Id::PistonHead) {
                         self.push_piston(&mut meshes.opaque, origin, x, y, z, block);
                         continue;
@@ -976,9 +965,8 @@ fn fluid_top_texels(
 }
 
 /// Whether the mesher draws two block states identically, including how
-/// they shape their neighbors' faces. Metadata only shows in fluid levels,
-/// crop stages, and whether farmland is wet; a flowing fluid and its still
-/// block draw alike.
+/// they shape their neighbors' faces. Keep metadata for orientation, delay,
+/// growth and shape-dependent states; flowing and still fluids draw alike.
 pub fn same_appearance(block: Id, metadata: u8, other: Id, other_metadata: u8) -> bool {
     let key = |block: Id, metadata: u8| match Fluid::of(block) {
         Some(fluid) => (fluid.still(), metadata),
@@ -1224,19 +1212,21 @@ fn neighbor_hides_face(
     face: usize,
     fancy_graphics: bool,
 ) -> bool {
-    // An extended base does not fill the face toward its head. The block
-    // behind that recess must keep its face or the gap shows the sky.
+    // The recessed quarter of an extended base also leaves a strip along
+    // every perpendicular side. Only its back covers a whole neighbor face.
     if matches!(neighbor, Id::Piston | Id::StickyPiston)
         && metadata & 8 != 0
         && let Some((min, max)) = state_bounds(neighbor, metadata)
-        && !match face {
+        && !(match face {
             FACE_TOP => min[1] == 0.0,
             FACE_BOTTOM => max[1] == 1.0,
             FACE_EAST => min[0] == 0.0,
             FACE_WEST => max[0] == 1.0,
             FACE_SOUTH => min[2] == 0.0,
             _ => max[2] == 1.0,
-        }
+        } && (0..3)
+            .filter(|&axis| FACES[face].neighbor[axis] == 0)
+            .all(|axis| min[axis] == 0.0 && max[axis] == 1.0))
     {
         return false;
     }
@@ -1281,6 +1271,23 @@ fn face_texels(tile_x: u8, tile_y: u8, face: usize) -> [AtlasTexel; 4] {
         _ => [[0, 16], [16, 16], [16, 0], [0, 0]],
     };
     tile_texels(tile_x, tile_y, corners)
+}
+
+/// Sample just the visible shaft and tip of a torch atlas tile.
+fn torch_texels(tile: (u8, u8), face_index: usize) -> [AtlasTexel; 4] {
+    if face_index == FACE_TOP {
+        return [
+            AtlasTexel::new(tile.0, tile.1, 7, 6),
+            AtlasTexel::new(tile.0, tile.1, 7, 8),
+            AtlasTexel::new(tile.0, tile.1, 9, 8),
+            AtlasTexel::new(tile.0, tile.1, 9, 6),
+        ];
+    }
+    // The transparent tile has only a two-pixel-wide, ten-pixel-tall torch.
+    face_texels(tile.0, tile.1, face_index).map(|texel| {
+        let [u, v] = texel.texel;
+        AtlasTexel::new(tile.0, tile.1, 7 + u / 16 * 2, 6 + v / 16 * 10)
+    })
 }
 
 fn tile_texels(tile_x: u8, tile_y: u8, corners: [[u8; 2]; 4]) -> [AtlasTexel; 4] {

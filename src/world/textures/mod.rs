@@ -481,20 +481,11 @@ pub fn block_tile(block: crate::block::id::Id, face: usize, fancy_graphics: bool
         Id::LapisBlock => (0, 9),
         Id::RedstoneOre | Id::LitRedstoneOre => (3, 3),
         Id::RedstoneWire => (4, 10),
-        Id::Repeater => {
-            if face == 0 {
-                (3, 8)
-            } else {
-                (3, 7)
-            }
-        }
-        Id::PoweredRepeater => {
-            if face == 0 {
-                (3, 9)
-            } else {
-                (3, 7)
-            }
-        }
+        Id::Repeater | Id::PoweredRepeater => match face {
+            0 => (3, if block == Id::Repeater { 8 } else { 9 }),
+            1 => (3, if block == Id::Repeater { 7 } else { 6 }),
+            _ => (5, 0),
+        },
         Id::RedstoneTorch => (3, 6),
         Id::UnlitRedstoneTorch => (3, 7),
         Id::StoneButton | Id::StonePressurePlate => (1, 0),

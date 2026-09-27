@@ -287,4 +287,123 @@ fn extended_piston_recess_does_not_cull_stone_across_chunk_boundary() {
     assert!(stone_face_visible(&east));
     east.set_metadata(0, Y, Z, 4);
     assert!(!stone_face_visible(&east));
+    // East is now perpendicular to the piston facing, so the recessed
+    // quarter of its side must expose the stone across the chunk boundary.
+    east.set_metadata(0, Y, Z, 1 | 8);
+    assert!(stone_face_visible(&east));
+    east.set_metadata(0, Y, Z, 1);
+    assert!(!stone_face_visible(&east));
+}
+
+#[test]
+fn repeaters_rotate_the_plate_and_move_two_torches_with_delay_and_power() {
+    use game::world::textures::block_tile;
+
+    for block in [Id::Repeater, Id::PoweredRepeater] {
+        let top_tile = if block == Id::Repeater {
+            [3, 8]
+        } else {
+            [3, 9]
+        };
+        let torch_tile = if block == Id::Repeater {
+            [3, 7]
+        } else {
+            [3, 6]
+        };
+        assert_eq!(block_tile(block, 1, false), (torch_tile[0], torch_tile[1]));
+        assert_eq!(block_tile(block, 2, false), (5, 0));
+        for facing in 0..4_u8 {
+            for delay in 0..4_u8 {
+                let mut chunk = Chunk::new();
+                chunk.set(X, Y, Z, block);
+                chunk.set_metadata(X, Y, Z, facing | delay << 2);
+                let meshes = mesh(&chunk);
+                let quads: Vec<_> = meshes.masked.vertices().chunks_exact(4).collect();
+                assert_eq!(quads.len(), 15, "{block:?}, facing {facing}, delay {delay}");
+                assert!(meshes.opaque.is_empty());
+
+                let plate = quads[0];
+                assert!(plate.iter().all(|v| v.normal == [0.0, 1.0, 0.0]
+                    && v.position[1] == Y as f32 + 2.0 / 16.0
+                    && v.texel.tile == top_tile));
+                let expected_top_uvs = match facing {
+                    0 => [[0, 0], [0, 16], [16, 16], [16, 0]],
+                    1 => [[0, 16], [16, 16], [16, 0], [0, 0]],
+                    2 => [[16, 16], [16, 0], [0, 0], [0, 16]],
+                    _ => [[16, 0], [0, 0], [0, 16], [16, 16]],
+                };
+                assert_eq!(
+                    plate.iter().map(|v| v.texel.texel).collect::<Vec<_>>(),
+                    expected_top_uvs
+                );
+                assert!(quads[1..5].iter().all(|quad| quad.iter().all(|v| {
+                    v.texel.tile == [5, 0] && v.position[1] <= Y as f32 + 2.0 / 16.0
+                })));
+                let cap_centers: Vec<_> = [quads[5], quads[10]]
+                    .map(|quad| {
+                        assert!(quad.iter().all(|v| {
+                            v.normal == [0.0, 1.0, 0.0]
+                                && v.position[1] == Y as f32 + 7.0 / 16.0
+                                && v.texel.tile == torch_tile
+                        }));
+                        [
+                            quad.iter().map(|v| v.position[0]).sum::<f32>() / 4.0 - X as f32,
+                            quad.iter().map(|v| v.position[2]).sum::<f32>() / 4.0 - Z as f32,
+                        ]
+                    })
+                    .into();
+                let movable = [-1.0, 1.0, 3.0, 5.0][delay as usize] / 16.0;
+                let offsets = match facing {
+                    0 => [[0.0, -5.0 / 16.0], [0.0, movable]],
+                    1 => [[5.0 / 16.0, 0.0], [-movable, 0.0]],
+                    2 => [[0.0, 5.0 / 16.0], [0.0, -movable]],
+                    _ => [[-5.0 / 16.0, 0.0], [movable, 0.0]],
+                };
+                assert_eq!(cap_centers, offsets.map(|[dx, dz]| [0.5 + dx, 0.5 + dz]));
+                assert!(
+                    quads[5..]
+                        .iter()
+                        .all(|quad| { quad.iter().all(|v| v.texel.tile == torch_tile) })
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn extended_piston_exposes_neighbors_along_all_sides_but_not_the_back() {
+    let directions: [[i32; 3]; 6] = [
+        [0, -1, 0],
+        [0, 1, 0],
+        [0, 0, -1],
+        [0, 0, 1],
+        [-1, 0, 0],
+        [1, 0, 0],
+    ];
+    for block in [Id::Piston, Id::StickyPiston] {
+        for (facing, forward) in directions.iter().enumerate() {
+            for adjacent in directions {
+                let mut chunk = Chunk::new();
+                chunk.set(X, Y, Z, block);
+                chunk.set_metadata(X, Y, Z, facing as u8 | 8);
+                chunk.set(
+                    (X as i32 + adjacent[0]) as usize,
+                    (Y as i32 + adjacent[1]) as usize,
+                    (Z as i32 + adjacent[2]) as usize,
+                    Id::Stone,
+                );
+                let meshes = mesh(&chunk);
+                let stone_face = meshes.opaque.vertices().chunks_exact(4).any(|quad| {
+                    quad.iter().all(|v| {
+                        v.normal == adjacent.map(|n| -(n as f32)) && v.texel.tile == [1, 0]
+                    })
+                });
+                assert_eq!(
+                    stone_face,
+                    adjacent != forward.map(|n| -n),
+                    "{block:?} facing {facing} adjacent {adjacent:?}"
+                );
+            }
+        }
+    }
 }

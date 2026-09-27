@@ -3,8 +3,9 @@
 //!
 //! Each hash covers every block of one chunk, species included. The saved
 //! world ran for 606 ticks after generating, in which gravel placed by
-//! population fell, springs flowed, and lava settled or hardened; this
-//! generator also places no springs. Air, fluids, gravel, and obsidian are
+//! population fell, springs flowed, and lava settled or hardened. Spring
+//! lava uses the world RNG (not the population RNG), so the exact spread
+//! differs between server runs. Air, fluids, gravel, and obsidian are
 //! therefore hashed alike. The server populated its spawn area `x`-major, as
 //! [`WorldGenerator::generate_area`] does.
 

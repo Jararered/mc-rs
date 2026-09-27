@@ -179,7 +179,7 @@ fn block_metadata_and_pending_ticks_round_trip_through_a_chunk_file() {
     assert_eq!(loaded.chunk.pending_ticks(), &[tick]);
 
     // A chunk without metadata stores none and loads all zeroes.
-    let plain = WorldGenerator::new(0).generate(ChunkPosition { x: 4, z: -2 });
+    let plain = WorldGenerator::new(0).generate_base(ChunkPosition { x: 4, z: -2 });
     assert!(plain.chunk.raw_metadata().is_none());
     storage
         .save_chunk(ChunkPosition { x: 4, z: -2 }, &plain)

@@ -23,10 +23,15 @@ fn underground_generation_is_deterministic_and_order_independent() {
                 .map(|(index, chest)| (index, chest.slots))
                 .collect::<Vec<_>>();
             chests.sort_unstable_by_key(|(index, _)| *index);
-            (generated.chunk.blocks().to_vec(), chests)
+            (
+                generated.chunk.blocks().to_vec(),
+                generated.chunk.raw_metadata().map(|data| data.to_vec()),
+                generated.chunk.pending_ticks().to_vec(),
+                chests,
+            )
         })
         .collect();
-    for (pos, (expected_blocks, expected_chests)) in
+    for (pos, (expected_blocks, expected_metadata, expected_ticks, expected_chests)) in
         positions.into_iter().rev().zip(forward.into_iter().rev())
     {
         let generated = second.generate(pos);
@@ -37,6 +42,8 @@ fn underground_generation_is_deterministic_and_order_independent() {
             .collect::<Vec<_>>();
         chests.sort_unstable_by_key(|(index, _)| *index);
         assert_eq!(generated.chunk.blocks(), expected_blocks);
+        assert_eq!(generated.chunk.raw_metadata(), expected_metadata.as_deref());
+        assert_eq!(generated.chunk.pending_ticks(), expected_ticks);
         assert_eq!(chests, expected_chests);
     }
 }

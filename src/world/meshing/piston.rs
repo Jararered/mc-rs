@@ -56,10 +56,31 @@ impl Mesher<'_> {
             if y as i32 + dy < 0 {
                 continue;
             }
-            let adjacent =
-                self.neighbors
-                    .get(self.chunk, x as i32 + dx, y as i32 + dy, z as i32 + dz);
-            if neighbor_hides_face(block, adjacent, self.fancy_graphics) {
+            let (nx, ny, nz) = (x as i32 + dx, y as i32 + dy, z as i32 + dz);
+            let adjacent = self
+                .neighbors
+                .get(self.chunk, nx, ny, nz)
+                .unwrap_or(Id::Air);
+            let neighbor_meta = if matches!(adjacent, Id::Piston | Id::StickyPiston) {
+                self.neighbors.cell(self.chunk, nx, ny, nz).1
+            } else {
+                0
+            };
+            let axis = AXIS[face_index];
+            let at_boundary = if face.neighbor[axis] > 0 {
+                max[axis] == 1.0
+            } else {
+                min[axis] == 0.0
+            };
+            if at_boundary
+                && neighbor_hides_face(
+                    block,
+                    adjacent,
+                    neighbor_meta,
+                    face_index,
+                    self.fancy_graphics,
+                )
+            {
                 continue;
             }
             let tile = if face_index == facing {
@@ -73,9 +94,13 @@ impl Mesher<'_> {
             } else {
                 (12, 6)
             };
-            let texels = face_geometry
-                .corners
-                .map(|corner| piston_texel(tile, face_index, corner));
+            let texels = face_geometry.corners.map(|corner| {
+                if face_index == facing || face_index == OPPOSITE[facing] {
+                    piston_texel(tile, face_index, corner)
+                } else {
+                    piston_side_texel(tile, direction, face_index, corner)
+                }
+            });
             let shading = CornerShading {
                 light: face_corner_light(self.skylight, x, y, z, face, face_geometry),
                 ao: face_corner_ao(self.chunk, self.neighbors, x, y, z, face, face_geometry),
@@ -143,6 +168,32 @@ fn piston_texel(tile: (u8, u8), face: usize, [x, y, z]: [f32; 3]) -> AtlasTexel 
         1 => (z, x),
         2 | 3 => (z, 1.0 - y),
         _ => (x, 1.0 - y),
+    };
+    AtlasTexel::new(
+        tile.0,
+        tile.1,
+        (u * 16.0).round() as u8,
+        (v * 16.0).round() as u8,
+    )
+}
+
+fn piston_side_texel(
+    tile: (u8, u8),
+    direction: usize,
+    face: usize,
+    corner: [f32; 3],
+) -> AtlasTexel {
+    // Texture 108 has the head rim in its first four V texels. Rotate the
+    // side texture so V always measures distance away from the piston face.
+    let depth_axis = AXIS[PISTON_FACE[direction]];
+    let width_axis = (0..3)
+        .find(|&axis| axis != depth_axis && FACES[face].normal[axis] == 0.0)
+        .unwrap();
+    let u = corner[width_axis];
+    let v = if direction % 2 == 0 {
+        corner[depth_axis]
+    } else {
+        1.0 - corner[depth_axis]
     };
     AtlasTexel::new(
         tile.0,

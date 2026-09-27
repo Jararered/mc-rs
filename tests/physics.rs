@@ -9,6 +9,7 @@ use game::block::properties::is_breakable;
 use game::block::properties::is_replaceable;
 use game::block::properties::is_targetable;
 use game::block::properties::selection_bounds;
+use game::block::properties::selection_bounds_at;
 use game::entity::CollisionState;
 use game::entity::EntitySize;
 use game::entity::Gravity;
@@ -189,6 +190,59 @@ fn raycast_only_hits_the_torch_near_its_visible_shaft() {
     );
     assert!(raycast_blocks(&chunks, Vec3::new(8.8, 64.4, 7.0), Vec3::Z, BLOCK_REACH).is_none());
     assert!(raycast_blocks(&chunks, Vec3::new(8.5, 64.9, 7.0), Vec3::Z, BLOCK_REACH).is_none());
+}
+
+#[test]
+fn wall_redstone_torches_are_targetable_at_their_actual_mounting_side() {
+    for block in [Id::RedstoneTorch, Id::UnlitRedstoneTorch] {
+        for (metadata, near, direction, bounds) in [
+            (
+                1,
+                Vec3::new(7.0, 64.5, 8.5),
+                Vec3::X,
+                ([0.0, 0.2, 0.35], [0.3, 0.8, 0.65]),
+            ),
+            (
+                2,
+                Vec3::new(10.0, 64.5, 8.5),
+                Vec3::NEG_X,
+                ([0.7, 0.2, 0.35], [1.0, 0.8, 0.65]),
+            ),
+            (
+                3,
+                Vec3::new(8.5, 64.5, 7.0),
+                Vec3::Z,
+                ([0.35, 0.2, 0.0], [0.65, 0.8, 0.3]),
+            ),
+            (
+                4,
+                Vec3::new(8.5, 64.5, 10.0),
+                Vec3::NEG_Z,
+                ([0.35, 0.2, 0.7], [0.65, 0.8, 1.0]),
+            ),
+        ] {
+            let mut chunk = Chunk::new();
+            chunk.set(8, 64, 8, block);
+            chunk.set_metadata(8, 64, 8, metadata);
+            let mut chunks = WorldChunks::default();
+            chunks.insert(ChunkPosition::ZERO, generated(chunk));
+            assert_eq!(selection_bounds_at(block, metadata), bounds);
+            assert!(
+                raycast_blocks(&chunks, near, direction, BLOCK_REACH)
+                    .is_some_and(|hit| hit.block == block)
+            );
+            let (off_side, across) = if metadata <= 2 {
+                (Vec3::new(8.5, 64.5, 7.0), Vec3::Z)
+            } else {
+                (Vec3::new(7.0, 64.5, 8.5), Vec3::X)
+            };
+            assert!(raycast_blocks(&chunks, off_side, across, BLOCK_REACH).is_none());
+        }
+    }
+    assert_eq!(
+        selection_bounds_at(Id::RedstoneTorch, 5),
+        ([0.4, 0.0, 0.4], [0.6, 0.6, 0.6])
+    );
 }
 
 #[test]

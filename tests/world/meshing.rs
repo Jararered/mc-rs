@@ -2,6 +2,8 @@ use game::block::id::Id;
 use game::world::chunk::Chunk;
 use game::world::lighting::Skylight;
 use game::world::meshing::BlockLighting;
+use game::world::meshing::ChunkNeighbors;
+use game::world::meshing::mesh_chunk_with_neighbors;
 use game::world::meshing::mesh_chunk_with_settings;
 use game::world::meshing::unpack_vertex;
 
@@ -136,6 +138,12 @@ fn piston_faces_use_front_back_side_and_inner_tiles_for_every_facing() {
             );
             assert_eq!(tiles[OPPOSITE[front]], [13, 6]);
             assert_eq!(tiles.iter().filter(|tile| **tile == [12, 6]).count(), 4);
+            for (face, quad) in retracted.opaque.vertices().chunks_exact(4).enumerate() {
+                if face != front && face != OPPOSITE[front] {
+                    assert_eq!(quad.iter().map(|v| v.texel.texel[1]).min(), Some(0));
+                    assert_eq!(quad.iter().map(|v| v.texel.texel[1]).max(), Some(16));
+                }
+            }
 
             chunk.set_metadata(X, Y, Z, facing | 8);
             let extended = mesh(&chunk);
@@ -148,6 +156,12 @@ fn piston_faces_use_front_back_side_and_inner_tiles_for_every_facing() {
             assert_eq!(tiles.len(), 6, "extended {block:?} facing {facing}");
             assert_eq!(tiles[front], [14, 6]);
             assert_eq!(tiles[OPPOSITE[front]], [13, 6]);
+            for (face, quad) in extended.opaque.vertices().chunks_exact(4).enumerate() {
+                if face != front && face != OPPOSITE[front] {
+                    assert_eq!(quad.iter().map(|v| v.texel.texel[1]).min(), Some(4));
+                    assert_eq!(quad.iter().map(|v| v.texel.texel[1]).max(), Some(16));
+                }
+            }
         }
     }
 }
@@ -162,6 +176,14 @@ fn piston_head_has_a_four_sided_rod_reaching_into_the_base() {
         let quads: Vec<_> = meshes.opaque.vertices().chunks_exact(4).collect();
         assert_eq!(quads.len(), 10, "facing {facing}");
         assert_eq!(quads[PISTON_FACE[facing as usize]][0].texel.tile, [11, 6]);
+        for (face, quad) in quads[..6].iter().enumerate() {
+            if face != PISTON_FACE[facing as usize]
+                && face != OPPOSITE[PISTON_FACE[facing as usize]]
+            {
+                assert_eq!(quad.iter().map(|v| v.texel.texel[1]).min(), Some(0));
+                assert_eq!(quad.iter().map(|v| v.texel.texel[1]).max(), Some(4));
+            }
+        }
         assert!(
             quads[6..]
                 .iter()
@@ -206,4 +228,63 @@ fn sticky_piston_head_uses_the_sticky_face_of_its_base() {
             .chunks_exact(4)
             .any(|quad| { quad[0].normal == [1.0, 0.0, 0.0] && quad[0].texel.tile == [10, 6] })
     );
+}
+
+#[test]
+fn stone_faces_remain_visible_across_an_extended_pistons_recess() {
+    let mut chunk = Chunk::new();
+    chunk.set(X, Y, Z, Id::Piston);
+    chunk.set(X + 1, Y, Z, Id::Stone);
+    chunk.set_metadata(X, Y, Z, 5 | 8);
+    let extended = mesh(&chunk);
+    let stone_face = |meshes: &game::world::meshing::ChunkMeshes| {
+        meshes.opaque.vertices().chunks_exact(4).any(|quad| {
+            quad.iter().all(|v| {
+                v.normal == [-1.0, 0.0, 0.0]
+                    && v.position[0] == (X + 1) as f32
+                    && v.texel.tile == [1, 0]
+            })
+        })
+    };
+    assert!(stone_face(&extended));
+    assert!(extended.opaque.vertices().chunks_exact(4).any(|quad| {
+        quad.iter().all(|v| {
+            v.normal == [1.0, 0.0, 0.0]
+                && v.position[0] == X as f32 + 0.75
+                && v.texel.tile == [14, 6]
+        })
+    }));
+
+    chunk.set_metadata(X, Y, Z, 5);
+    assert!(!stone_face(&mesh(&chunk)));
+}
+
+#[test]
+fn extended_piston_recess_does_not_cull_stone_across_chunk_boundary() {
+    let mut center = Chunk::new();
+    center.set(15, Y, Z, Id::Stone);
+    let mut east = Chunk::new();
+    east.set(0, Y, Z, Id::Piston);
+    east.set_metadata(0, Y, Z, 4 | 8);
+    let light = Skylight::from_chunk(&center);
+    let stone_face_visible = |east: &Chunk| {
+        mesh_chunk_with_neighbors(
+            &center,
+            &ChunkNeighbors {
+                east: Some(east),
+                ..Default::default()
+            },
+            &light,
+        )
+        .vertices()
+        .chunks_exact(4)
+        .any(|quad| {
+            quad.iter().all(|v| {
+                v.normal == [1.0, 0.0, 0.0] && v.position[0] == 16.0 && v.texel.tile == [1, 0]
+            })
+        })
+    };
+    assert!(stone_face_visible(&east));
+    east.set_metadata(0, Y, Z, 4);
+    assert!(!stone_face_visible(&east));
 }

@@ -84,6 +84,13 @@ pub fn state_bounds(block: Id, meta: u8) -> Option<([f32; 3], [f32; 3])> {
             }
         }),
         Id::RedstoneWire => Some(slab(1, false, 1.0 / 16.0)),
+        Id::RedstoneTorch | Id::UnlitRedstoneTorch => Some(match meta & 7 {
+            1 => ([0.0, 0.2, 0.35], [0.3, 0.8, 0.65]),
+            2 => ([0.7, 0.2, 0.35], [1.0, 0.8, 0.65]),
+            3 => ([0.35, 0.2, 0.0], [0.65, 0.8, 0.3]),
+            4 => ([0.35, 0.2, 0.7], [0.65, 0.8, 1.0]),
+            _ => ([0.4, 0.0, 0.4], [0.6, 0.6, 0.6]),
+        }),
         Id::Repeater | Id::PoweredRepeater => Some(slab(1, false, 2.0 / 16.0)),
         Id::StonePressurePlate | Id::WoodenPressurePlate => Some((
             [1.0 / 16.0, 0.0, 1.0 / 16.0],

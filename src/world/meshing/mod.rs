@@ -854,8 +854,21 @@ impl<'a> Mesher<'a> {
                         if ny < 0 {
                             continue;
                         }
-                        let neighbor = neighbors.get(chunk, nx, ny, nz);
-                        if shape.is_none() && neighbor_hides_face(block, neighbor, fancy_graphics) {
+                        let neighbor = neighbors.get(chunk, nx, ny, nz).unwrap_or(Id::Air);
+                        let neighbor_meta = if matches!(neighbor, Id::Piston | Id::StickyPiston) {
+                            neighbors.cell(chunk, nx, ny, nz).1
+                        } else {
+                            0
+                        };
+                        if shape.is_none()
+                            && neighbor_hides_face(
+                                block,
+                                neighbor,
+                                neighbor_meta,
+                                face_index,
+                                fancy_graphics,
+                            )
+                        {
                             continue;
                         }
 
@@ -1204,10 +1217,29 @@ fn double_chest_tile(block: Id, pair_direction: [i32; 3], face: usize) -> (u8, u
 /// are cutout, so leaf-to-leaf faces stay visible and solid faces towards a
 /// canopy are not covered. Water never hides a neighbour, so lake beds and
 /// walls stay visible under the surface plane.
-fn neighbor_hides_face(block: Id, neighbor: Option<Id>, fancy_graphics: bool) -> bool {
-    let Some(neighbor) = neighbor else {
+fn neighbor_hides_face(
+    block: Id,
+    neighbor: Id,
+    metadata: u8,
+    face: usize,
+    fancy_graphics: bool,
+) -> bool {
+    // An extended base does not fill the face toward its head. The block
+    // behind that recess must keep its face or the gap shows the sky.
+    if matches!(neighbor, Id::Piston | Id::StickyPiston)
+        && metadata & 8 != 0
+        && let Some((min, max)) = state_bounds(neighbor, metadata)
+        && !match face {
+            FACE_TOP => min[1] == 0.0,
+            FACE_BOTTOM => max[1] == 1.0,
+            FACE_EAST => min[0] == 0.0,
+            FACE_WEST => max[0] == 1.0,
+            FACE_SOUTH => min[2] == 0.0,
+            _ => max[2] == 1.0,
+        }
+    {
         return false;
-    };
+    }
     if neighbor == Id::Air
         || neighbor == Id::SnowLayer
         || neighbor == Id::Cactus

@@ -6,9 +6,10 @@ use bevy::prelude::*;
 use bevy::render::render_resource::PrimitiveTopology;
 
 use crate::app::state::AppScreen;
-use crate::block::properties::selection_bounds;
+use crate::block::properties::selection_bounds_at;
 use crate::physics::BlockHit;
 use crate::physics::PhysicsSet;
+use crate::world::chunk::WorldChunks;
 use crate::world::textures::BlockMaterial;
 use crate::world::textures::TerrainMaterial;
 use crate::world::textures::atlas_tile_uvs;
@@ -165,6 +166,7 @@ fn sync_crack_texture(
 
 fn update_block_overlays(
     focus: Res<BlockFocus>,
+    chunks: Res<WorldChunks>,
     overlays: Option<ResMut<BlockOverlays>>,
     meshes: Option<ResMut<Assets<Mesh>>>,
     mut views: Query<(&mut Transform, &mut Visibility)>,
@@ -175,7 +177,7 @@ fn update_block_overlays(
     };
 
     let block_transform = focus.hit.map(|hit| {
-        let (min, max) = selection_bounds(hit.block);
+        let (min, max) = selection_bounds_at(hit.block, chunks.metadata_at(hit.x, hit.y, hit.z));
         let min = Vec3::from_array(min);
         let max = Vec3::from_array(max);
         Transform::from_translation(
@@ -221,14 +223,18 @@ fn hide_block_overlays(overlays: Option<Res<BlockOverlays>>, mut visible: Query<
 ///
 /// `Gizmos` needs `GizmoPlugin` (part of `DefaultPlugins`), which headless
 /// tests built on `MinimalPlugins` don't add, so this stays optional.
-fn draw_selection_outline(focus: Res<BlockFocus>, gizmos: Option<Gizmos>) {
+fn draw_selection_outline(
+    focus: Res<BlockFocus>,
+    chunks: Res<WorldChunks>,
+    gizmos: Option<Gizmos>,
+) {
     let Some(mut gizmos) = gizmos else {
         return;
     };
     let Some(hit) = focus.hit else {
         return;
     };
-    let (min, max) = selection_bounds(hit.block);
+    let (min, max) = selection_bounds_at(hit.block, chunks.metadata_at(hit.x, hit.y, hit.z));
     let min = Vec3::from_array(min);
     let max = Vec3::from_array(max);
     let center = Vec3::new(hit.x as f32, hit.y as f32, hit.z as f32) + (min + max) * 0.5;

@@ -11,6 +11,7 @@ mod population;
 mod pumpkin;
 mod reeds;
 mod snow;
+pub mod springs;
 mod surface;
 mod terrain;
 mod trees;

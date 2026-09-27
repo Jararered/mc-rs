@@ -60,6 +60,47 @@ fn grass_covered_by_an_opaque_block_dies_back_to_dirt() {
     assert_eq!(world.block(at(8, 63, 8)), Id::Dirt);
 }
 
+/// The Java condition checks both light *at the water cell* and its opacity.
+/// A water column with a stone roof is dark enough for grass to die back.
+#[test]
+fn grass_under_dark_still_or_flowing_water_dies_back_to_dirt() {
+    let grass = at(8, 63, 8);
+    let above = at(8, 64, 8);
+    for water in [Id::Water, Id::FlowingWater] {
+        let mut world = dirt_field();
+        world.set(grass, Id::Grass);
+        world.fill(at(0, 64, 0), at(15, 64, 15), water);
+        world.fill(at(0, 65, 0), at(15, 65, 15), Id::Stone);
+        world.relight();
+        let light = world
+            .ticks
+            .world(&mut world.chunks, &mut world.light, NOON)
+            .light(above);
+        assert!(light < 4, "{water:?} above grass has light {light}");
+        world.random_ticks(grass, 80);
+        assert_eq!(world.block(grass), Id::Dirt, "under {water:?}");
+    }
+}
+
+#[test]
+fn sunlit_water_does_not_turn_grass_into_dirt() {
+    let grass = at(8, 63, 8);
+    let above = at(8, 64, 8);
+    for water in [Id::Water, Id::FlowingWater] {
+        let mut world = dirt_field();
+        world.set(grass, Id::Grass);
+        world.set(above, water);
+        world.relight();
+        let light = world
+            .ticks
+            .world(&mut world.chunks, &mut world.light, NOON)
+            .light(above);
+        assert!(light >= 4, "{water:?} above grass has light {light}");
+        world.random_ticks(grass, 80);
+        assert_eq!(world.block(grass), Id::Grass, "under sunlit {water:?}");
+    }
+}
+
 #[test]
 fn farmland_near_water_stays_moist_and_dries_out_without_it() {
     let mut world = dirt_field();

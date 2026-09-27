@@ -2,19 +2,9 @@
 //!
 //! One pass per chunk, on one random sequence, in the reference's order:
 //! lakes, lava lakes, dungeons, clay, ores, trees, flowers, tall grass, dead
-//! bushes, roses, mushrooms, reeds, pumpkins, cactus, and snow. Every feature
+//! bushes, roses, mushrooms, reeds, pumpkins, cactus, springs, and snow. Every feature
 //! reads and writes the live [`PopulationWorld`], so later features see
 //! earlier ones exactly as Beta's do.
-//!
-//! `WorldGenLiquids` springs are not generated yet. Beta flows them at once
-//! with `scheduledUpdatesAreImmediate`, across whatever chunks happen to be
-//! loaded; here a spring would start from a pending block tick saved with
-//! its chunk (see `docs/BLOCK_TICKS.md`). They are the last random consumers
-//! before snow, which draws nothing, so the rest of a pass is unchanged.
-//! Their water is missing for later passes, though: clay starts only in
-//! water and dungeons reject it, so a later pass that meets spring water in
-//! Beta draws a different sequence. In the reference server world that is
-//! 3 of 576 passes.
 
 use crate::block::id::Id;
 use crate::random::JavaRandom;
@@ -30,7 +20,6 @@ use super::plants::flower_patch;
 use super::plants::tall_grass_patch;
 use super::pumpkin::pumpkin_patch;
 use super::reeds::reed_patch;
-use super::snow::place_snow;
 use super::terrain::TerrainGenerator;
 use super::trees::generate_tree;
 use super::trees::select_tree;
@@ -54,9 +43,9 @@ pub(super) fn source_random(seed: u64, source: ChunkPosition) -> JavaRandom {
 /// Populate `world.origin()`.
 pub(super) fn populate(
     world: &mut PopulationWorld,
-    seed: u64,
     terrain: &TerrainGenerator,
     biomes: &BiomeGenerator,
+    rand: &mut JavaRandom,
 ) {
     let source = world.origin();
     let ox = source.x * 16;
@@ -64,13 +53,12 @@ pub(super) fn populate(
     let biome = biomes
         .climate_at(f64::from(ox + 16), f64::from(oz + 16))
         .biome;
-    let mut rand = source_random(seed, source);
 
     if rand.next_int(4) == 0 {
         let x = ox + rand.next_int(16) as i32 + 8;
         let y = rand.next_int(128) as i32;
         let z = oz + rand.next_int(16) as i32 + 8;
-        lake(world, &mut rand, x, y, z, Id::Water);
+        lake(world, rand, x, y, z, Id::Water);
     }
     if rand.next_int(8) == 0 {
         let x = ox + rand.next_int(16) as i32 + 8;
@@ -78,20 +66,20 @@ pub(super) fn populate(
         let y = rand.next_int(bound) as i32;
         let z = oz + rand.next_int(16) as i32 + 8;
         if y < 64 || rand.next_int(10) == 0 {
-            lake(world, &mut rand, x, y, z, Id::Lava);
+            lake(world, rand, x, y, z, Id::Lava);
         }
     }
     for _ in 0..8 {
         let x = ox + rand.next_int(16) as i32 + 8;
         let y = rand.next_int(128) as i32;
         let z = oz + rand.next_int(16) as i32 + 8;
-        dungeon(world, &mut rand, x, y, z);
+        dungeon(world, rand, x, y, z);
     }
     for _ in 0..10 {
         let x = ox + rand.next_int(16) as i32;
         let y = rand.next_int(128) as i32;
         let z = oz + rand.next_int(16) as i32;
-        clay(world, &mut rand, x, y, z, 32);
+        clay(world, rand, x, y, z, 32);
     }
     const ORES: [(u32, u32, u32, Id); 7] = [
         (20, 128, 32, Id::Dirt),
@@ -107,14 +95,14 @@ pub(super) fn populate(
             let x = ox + rand.next_int(16) as i32;
             let y = rand.next_int(max_y) as i32;
             let z = oz + rand.next_int(16) as i32;
-            vein(world, &mut rand, x, y, z, size, block);
+            vein(world, rand, x, y, z, size, block);
         }
     }
     {
         let x = ox + rand.next_int(16) as i32;
         let y = rand.next_int(16) as i32 + rand.next_int(16) as i32;
         let z = oz + rand.next_int(16) as i32;
-        vein(world, &mut rand, x, y, z, 6, Id::LapisOre);
+        vein(world, rand, x, y, z, 6, Id::LapisOre);
     }
 
     let density = terrain
@@ -134,9 +122,9 @@ pub(super) fn populate(
     for _ in 0..trees {
         let x = ox + rand.next_int(16) as i32 + 8;
         let z = oz + rand.next_int(16) as i32 + 8;
-        let kind = select_tree(biome, &mut rand);
+        let kind = select_tree(biome, rand);
         let y = world.height(x, z);
-        generate_tree(kind, world, &mut rand, x, y, z);
+        generate_tree(kind, world, rand, x, y, z);
     }
 
     let dandelions = match biome {
@@ -149,7 +137,7 @@ pub(super) fn populate(
         let x = ox + rand.next_int(16) as i32 + 8;
         let y = rand.next_int(128) as i32;
         let z = oz + rand.next_int(16) as i32 + 8;
-        flower_patch(world, &mut rand, x, y, z, Id::Dandelion);
+        flower_patch(world, rand, x, y, z, Id::Dandelion);
     }
 
     let grass = match biome {
@@ -168,7 +156,7 @@ pub(super) fn populate(
         let x = ox + rand.next_int(16) as i32 + 8;
         let y = rand.next_int(128) as i32;
         let z = oz + rand.next_int(16) as i32 + 8;
-        tall_grass_patch(world, &mut rand, x, y, z, block);
+        tall_grass_patch(world, rand, x, y, z, block);
     }
 
     if biome == Biome::Desert {
@@ -176,7 +164,7 @@ pub(super) fn populate(
             let x = ox + rand.next_int(16) as i32 + 8;
             let y = rand.next_int(128) as i32;
             let z = oz + rand.next_int(16) as i32 + 8;
-            dead_bush_patch(world, &mut rand, x, y, z);
+            dead_bush_patch(world, rand, x, y, z);
         }
     }
 
@@ -185,7 +173,7 @@ pub(super) fn populate(
             let x = ox + rand.next_int(16) as i32 + 8;
             let y = rand.next_int(128) as i32;
             let z = oz + rand.next_int(16) as i32 + 8;
-            flower_patch(world, &mut rand, x, y, z, block);
+            flower_patch(world, rand, x, y, z, block);
         }
     }
 
@@ -193,14 +181,14 @@ pub(super) fn populate(
         let x = ox + rand.next_int(16) as i32 + 8;
         let y = rand.next_int(128) as i32;
         let z = oz + rand.next_int(16) as i32 + 8;
-        reed_patch(world, &mut rand, x, y, z);
+        reed_patch(world, rand, x, y, z);
     }
 
     if rand.next_int(32) == 0 {
         let x = ox + rand.next_int(16) as i32 + 8;
         let y = rand.next_int(128) as i32;
         let z = oz + rand.next_int(16) as i32 + 8;
-        pumpkin_patch(world, &mut rand, x, y, z);
+        pumpkin_patch(world, rand, x, y, z);
     }
 
     if biome == Biome::Desert {
@@ -208,11 +196,9 @@ pub(super) fn populate(
             let x = ox + rand.next_int(16) as i32 + 8;
             let y = rand.next_int(128) as i32;
             let z = oz + rand.next_int(16) as i32 + 8;
-            cactus_patch(world, &mut rand, x, y, z);
+            cactus_patch(world, rand, x, y, z);
         }
     }
-
-    place_snow(world, biomes);
 }
 
 /// `WorldGenMinable`: an ellipsoid chain replacing stone.

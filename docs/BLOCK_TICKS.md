@@ -222,6 +222,14 @@ saved writes a copy of its pending ticks, and loading schedules them
 again. Beta dropped such ticks,
 which could leave water frozen mid-flow; this is a deliberate difference.
 
+## Generated springs
+
+Overworld `WorldGenLiquids` attempts run after cactus and before snow, with
+Beta's population RNG. They place flowing water or lava, notify neighbors,
+then directly update the source with immediate scheduled updates. Later pending
+ticks travel with their chunks. Immediate spread only sees population's four loaded chunks; nested fluid draws use a reproducibly seeded world RNG
+instead of Java's runtime-seeded `World.rand`.
+
 ## Not implemented yet
 
 - **Fire.** Still lava's random tick walks toward flammable blocks as Beta's
@@ -229,8 +237,6 @@ which could leave water frozen mid-flow; this is a deliberate difference.
 - **Weather.** Nothing is rained on, so farmland only hydrates from water
   and snow never accumulates. Put rain in `TickWorld::rained_on` and the
   snowfall half of `freeze_column`.
-- **Saplings** (not in the world), **redstone** blocks, **buckets**, and
-  **world-generation springs** (`WorldGenLiquids`), which would schedule
-  their first tick through pending chunk ticks.
+- **Saplings** (not in the world) and **redstone** blocks.
 - Presentation-only hooks: `randomDisplayTick`, redstone ore sparkles, lava
   fizz and smoke, and fluid sounds.

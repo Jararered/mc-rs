@@ -10,6 +10,8 @@ use super::biome::BiomeMap;
 use super::caves;
 use super::heightmap::Heightmap;
 use super::population;
+use super::snow::place_snow;
+use super::springs;
 use super::surface::apply_surface;
 use super::terrain::TerrainGenerator;
 use super::world::PopulationWorld;
@@ -92,16 +94,43 @@ impl WorldGenerator {
     ) -> [GeneratedChunk; 4] {
         let [a, b, c, d] = chunks;
         let mut rest = [
-            (a.heightmap, a.biomes, a.items, a.populated),
-            (b.heightmap, b.biomes, b.items, b.populated),
-            (c.heightmap, c.biomes, c.items, c.populated),
-            (d.heightmap, d.biomes, d.items, d.populated),
+            (a.biomes, a.items, a.populated),
+            (b.biomes, b.items, b.populated),
+            (c.biomes, c.items, c.populated),
+            (d.biomes, d.items, d.populated),
         ]
         .into_iter();
         let mut world = PopulationWorld::new(source, [a.chunk, b.chunk, c.chunk, d.chunk]);
-        population::populate(&mut world, self.seed, &self.terrain, &self.biomes);
+        let mut rand = population::source_random(self.seed, source);
+        population::populate(&mut world, &self.terrain, &self.biomes, &mut rand);
+
+        // `WorldGenLiquids` calls the block update system during population,
+        // before snow. Temporarily give it the same four live chunks that
+        // every preceding feature used, preserving metadata and pending ticks.
+        let generated = world.into_chunks().map(|chunk| {
+            let (biomes, items, populated) = rest.next().unwrap();
+            GeneratedChunk {
+                heightmap: Heightmap::from_chunk(&chunk),
+                chunk,
+                biomes,
+                items,
+                populated,
+            }
+        });
+        let generated = springs::populate(source, self.seed, &mut rand, generated);
+
+        let [a, b, c, d] = generated;
+        let mut rest = [
+            (a.biomes, a.items, a.populated),
+            (b.biomes, b.items, b.populated),
+            (c.biomes, c.items, c.populated),
+            (d.biomes, d.items, d.populated),
+        ]
+        .into_iter();
+        let mut world = PopulationWorld::new(source, [a.chunk, b.chunk, c.chunk, d.chunk]);
+        place_snow(&mut world, &self.biomes);
         let mut populated = world.into_chunks().map(|chunk| {
-            let (_, biomes, items, populated) = rest.next().unwrap();
+            let (biomes, items, populated) = rest.next().unwrap();
             GeneratedChunk {
                 heightmap: Heightmap::from_chunk(&chunk),
                 chunk,

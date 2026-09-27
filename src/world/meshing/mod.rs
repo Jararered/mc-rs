@@ -883,8 +883,7 @@ impl<'a> Mesher<'a> {
 }
 
 /// A fluid's top texture. Still fluid uses the still tile; moving fluid uses
-/// the flowing tile turned toward `BlockFluid.getFlowDirection`, to the
-/// nearest quarter turn so the texture stays inside one atlas tile.
+/// the flowing 2×2 tiles rotated toward `BlockFluid.getFlowDirection`.
 fn fluid_top_texels(
     fluid: Fluid,
     x: i32,
@@ -899,19 +898,15 @@ fn fluid_top_texels(
         return face_texels(still.0, still.1, FACE_TOP);
     }
     let angle = flow_z.atan2(flow_x) - std::f32::consts::FRAC_PI_2;
-    let quarter = (angle / std::f32::consts::FRAC_PI_2).round() as i32;
-    let (cos, sin) = match quarter.rem_euclid(4) {
-        0 => (1, 0),
-        1 => (0, 1),
-        2 => (-1, 0),
-        _ => (0, -1),
-    };
+    let (sin, cos) = angle.sin_cos();
     // The top face's corners in `UNIT_FACE_CORNERS` order, as -1/+1 offsets
     // from the block center.
     [(-1, -1), (-1, 1), (1, 1), (1, -1)].map(|(dx, dz): (i32, i32)| {
-        let u = 8 + 8 * (dx * cos + dz * sin);
-        let v = 8 + 8 * (dz * cos - dx * sin);
-        AtlasTexel::new(flow.0, flow.1, u as u8, v as u8)
+        // Beta centers the flow texture at texel 16 of its repeated 2×2
+        // region. The 5-bit packed texels cover the full rotated footprint.
+        let u = 16.0 + 8.0 * (dx as f32 * cos + dz as f32 * sin);
+        let v = 16.0 + 8.0 * (dz as f32 * cos - dx as f32 * sin);
+        AtlasTexel::new(flow.0, flow.1, u.round() as u8, v.round() as u8)
     })
 }
 

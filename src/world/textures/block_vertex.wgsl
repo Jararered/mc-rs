@@ -82,7 +82,13 @@ fn decode_block_vertex(packed: vec4<u32>, settings: BlockShadingSettings) -> Dec
     let texel = vec2<f32>(vec2(u & 31u, v & 31u));
     let pad = f32(#{ATLAS_PAD_TEXELS});
     let stride = f32(#{ATLAS_TILE_PX}) + 2.0 * pad;
-    out.uv = (tile * stride + pad + texel) / (f32(#{ATLAS_GRID}) * stride);
+    // Beta repeats the flowing-fluid frame over 2×2 tiles. Local texels
+    // 16..31 must land in the *next padded tile*, not the intervening gutter
+    // or the unrelated still-water tile. Keep this in step with AtlasTexel::uv.
+    let flowing = (u >> 5u) == 14u && ((v >> 5u) == 12u || (v >> 5u) == 14u);
+    let step = floor(texel / 16.0) * select(0.0, 1.0, flowing);
+    out.uv = ((tile + step) * stride + pad + texel - step * 16.0)
+        / (f32(#{ATLAS_GRID}) * stride);
 
     let srgb = vec3<f32>(vec3(packed.z & 0xffu, (packed.z >> 8u) & 0xffu, (packed.z >> 16u) & 0xffu));
     var tint = srgb_to_linear(srgb / 255.0);

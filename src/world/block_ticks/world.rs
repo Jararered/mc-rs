@@ -548,7 +548,7 @@ impl<'a> TickWorld<'a> {
     }
 
     /// Deliver notifications that were queued past the nesting limit.
-    pub(super) fn flush_deferred(&mut self) {
+    pub(crate) fn flush_deferred(&mut self) {
         // A pathological chain could keep refilling the queue; leave the rest
         // for the next tick rather than stall a frame.
         for _ in 0..4096 {

@@ -489,3 +489,109 @@ fn take_selected_drops_one_item() {
 fn colors_of(mesh: &BlockGeometry) -> Vec<[f32; 4]> {
     mesh.colors(BlockLighting::default())
 }
+
+#[test]
+fn dropped_items_drift_with_water_once_per_world_tick() {
+    use bevy::asset::AssetPlugin;
+    use bevy::mesh::MeshPlugin;
+    use bevy::prelude::*;
+    use bevy::state::app::StatesPlugin;
+    use game::app::settings::GameSettings;
+    use game::app::state::AppScreen;
+    use game::entity::CollisionState;
+    use game::entity::DroppedItem;
+    use game::entity::PreviousTick;
+    use game::entity::drops::items::DroppedItemPlugin;
+    use game::entity::drops::items::DroppedItemState;
+    use game::entity::drops::items::ItemMotion;
+    use game::world::chunk::Chunk;
+    use game::world::chunk::ChunkPosition;
+    use game::world::chunk::WorldChunks;
+    use game::world::generation::Biome;
+    use game::world::generation::BiomeMap;
+    use game::world::generation::Climate;
+    use game::world::generation::GeneratedChunk;
+    use game::world::generation::Heightmap;
+    use game::world::tick::WorldTick;
+
+    let mut chunk = Chunk::new();
+    chunk.set(8, 65, 8, Id::Water);
+    chunk.set_with_metadata(9, 65, 8, Id::FlowingWater, 1);
+    let mut chunks = WorldChunks::default();
+    chunks.insert(
+        ChunkPosition::ZERO,
+        GeneratedChunk {
+            heightmap: Heightmap::from_chunk(&chunk),
+            chunk,
+            biomes: BiomeMap::from_cells(
+                [Climate {
+                    temperature: 0.5,
+                    humidity: 0.5,
+                    biome: Biome::Plains,
+                }; 16 * 16],
+            ),
+            items: Vec::new(),
+            populated: true,
+        },
+    );
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        AssetPlugin::default(),
+        MeshPlugin,
+        StatesPlugin,
+    ))
+    .init_asset::<StandardMaterial>()
+    .init_state::<AppScreen>()
+    .init_resource::<GameSettings>()
+    .init_resource::<WorldTick>()
+    .insert_resource(chunks)
+    .add_plugins(DroppedItemPlugin);
+    app.update();
+    app.world_mut()
+        .resource_mut::<NextState<AppScreen>>()
+        .set(AppScreen::Playing);
+    app.update();
+
+    let spawn = |app: &mut App, y: f32| {
+        app.world_mut()
+            .spawn((
+                DroppedItem(ItemStack::from_block(Id::Cobblestone, 1).unwrap()),
+                DroppedItemState::new(100, 0.0, 3),
+                Transform::from_xyz(8.5, y, 8.5),
+                PreviousTick(Vec3::new(8.5, y, 8.5)),
+                ItemMotion(Vec3::ZERO),
+                CollisionState::default(),
+                EntitySize::DROPPED_ITEM,
+            ))
+            .id()
+    };
+    let wet = spawn(&mut app, 65.5);
+    let dry = spawn(&mut app, 66.5);
+    app.world_mut().resource_mut::<WorldTick>().advance(0.05);
+    app.update();
+    let wet_pos = app
+        .world()
+        .entity(wet)
+        .get::<Transform>()
+        .unwrap()
+        .translation;
+    let dry_pos = app
+        .world()
+        .entity(dry)
+        .get::<Transform>()
+        .unwrap()
+        .translation;
+    assert!((wet_pos.x - 8.514).abs() < 1e-4);
+    assert_eq!(dry_pos.x, 8.5);
+
+    app.world_mut().resource_mut::<WorldTick>().advance(0.1);
+    app.update();
+    let wet_pos = app
+        .world()
+        .entity(wet)
+        .get::<Transform>()
+        .unwrap()
+        .translation;
+    assert!(wet_pos.x > 8.54, "two catch-up ticks apply two more pushes");
+}

@@ -80,7 +80,7 @@ The current game has a walking, sprinting, sneaking, and jumping player with vox
 - Chunks store Beta's 4-bit block metadata (`Chunk::metadata`, `WorldChunks::metadata_at`). It holds simulation state such as fluid levels, crop stages, farmland moisture, and leaf decay flags; species and facings stay in the compact `Id`. Writing a different block resets it to 0. If metadata changes how a block is drawn, update `meshing::same_appearance` along with the mesher.
 - Ticks read light from `LightCache`, which streaming fills from each chunk's mesh job. Random ticks only reach chunks that are finished and lit.
 - Pending scheduled ticks are saved with their chunk and resume with their remaining delay. Scheduled ticks near unloaded chunks wait rather than being dropped.
-- Not yet simulated: fire, weather (rain and snowfall), saplings, redstone, and world-generation springs.
+- Not yet simulated: fire, weather (rain and snowfall), saplings, and redstone. Overworld water and lava springs generate and immediately flow during population.
 
 # Data and performance rules
 

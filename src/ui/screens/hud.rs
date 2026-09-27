@@ -156,6 +156,7 @@ fn spawn_hud(
 }
 
 fn update_debug_overlay(
+    chat: Option<Res<crate::ui::ChatState>>,
     keys: Option<Res<ButtonInput<KeyCode>>>,
     mut visible: ResMut<DebugVisible>,
     player: Query<(&Transform, &CollisionState, Option<&Flying>), With<Player>>,
@@ -163,7 +164,9 @@ fn update_debug_overlay(
     chunks: Res<WorldChunks>,
     mut overlay: Query<(&mut Text, &mut Visibility), With<DebugOverlay>>,
 ) {
-    if keys.is_some_and(|keys| keys.just_pressed(KeyCode::F3)) {
+    if !chat.is_some_and(|chat| chat.suppress_controls)
+        && keys.is_some_and(|keys| keys.just_pressed(KeyCode::F3))
+    {
         visible.0 = !visible.0;
     }
     let Ok((mut text, mut visibility)) = overlay.single_mut() else {

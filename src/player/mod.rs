@@ -71,13 +71,13 @@ impl Plugin for PlayerPlugin {
             .add_systems(
                 Update,
                 (
-                    look_player,
-                    interaction::editing::interact_blocks,
-                    update_mouse_capture,
-                    toggle_flying,
-                    adjust_fly_speed,
+                    look_player.run_if(chat_controls_active),
+                    interaction::editing::interact_blocks.run_if(chat_controls_active),
+                    update_mouse_capture.run_if(chat_controls_active),
+                    toggle_flying.run_if(chat_controls_active),
+                    adjust_fly_speed.run_if(chat_controls_active),
                     apply_player_input,
-                    select_hotbar,
+                    select_hotbar.run_if(chat_controls_active),
                 )
                     .chain()
                     .in_set(PhysicsSet::ApplyInput)
@@ -343,6 +343,10 @@ fn default_spawn_transform(chunks: &WorldChunks) -> Transform {
     Transform::from_xyz(8.5, eye, 8.5).looking_at(Vec3::new(8.5, eye, 16.5), Vec3::Y)
 }
 
+fn chat_controls_active(chat: Option<Res<crate::ui::ChatState>>) -> bool {
+    chat.is_none_or(|chat| !chat.suppress_controls)
+}
+
 fn capture_mouse(mut windows: Query<(&Window, &mut CursorOptions), With<PrimaryWindow>>) {
     if let Ok((window, mut cursor)) = windows.single_mut()
         && window.focused
@@ -448,6 +452,7 @@ fn look_player(
 }
 
 fn apply_player_input(
+    chat: Option<Res<crate::ui::ChatState>>,
     keys: Res<ButtonInput<KeyCode>>,
     windows: Query<(&Window, &CursorOptions), With<PrimaryWindow>>,
     mut player: Query<
@@ -469,7 +474,8 @@ fn apply_player_input(
     };
     let locked = windows
         .single()
-        .is_ok_and(|(window, cursor)| window.focused && cursor.grab_mode == CursorGrabMode::Locked);
+        .is_ok_and(|(window, cursor)| window.focused && cursor.grab_mode == CursorGrabMode::Locked)
+        && chat_controls_active(chat);
 
     if flying.is_some() {
         // Flying mode: full 3D movement along the camera axes

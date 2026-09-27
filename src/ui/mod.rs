@@ -8,10 +8,12 @@ use bevy::prelude::*;
 pub mod icons;
 pub mod screens;
 
+pub use screens::chat::ChatPlugin;
 pub use screens::hud::HudPlugin;
 pub use screens::inventory::InventoryGuiPlugin;
 pub use screens::menu::MenuPlugin;
 
+pub(crate) use screens::chat::ChatState;
 pub(crate) use screens::inventory::InventoryScreen;
 pub(crate) use screens::inventory::WorkbenchUiSession;
 pub(crate) use screens::inventory::close_crafting_interface;

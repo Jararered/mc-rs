@@ -1,6 +1,7 @@
 use bevy::mesh::VertexAttributeValues;
 use bevy::prelude::Mesh;
 use bevy::prelude::Vec3;
+use game::block::fluids::Fluid;
 use game::block::id::FurnaceFacing;
 use game::block::id::Id;
 use game::block::properties::hand_mine_progress_per_tick;
@@ -23,7 +24,9 @@ use game::player::destroy_overlay_mesh;
 use game::player::destroy_stage;
 use game::player::double_crack_intensity;
 use game::player::hand_ticks_to_break;
+use game::player::pick_up_fluid;
 use game::player::place_block;
+use game::player::place_fluid;
 use game::player::place_selected_block_facing;
 use game::world::chunk::CHUNK_SIZE;
 use game::world::chunk::Chunk;
@@ -269,6 +272,109 @@ fn torch_attaches_to_walls_and_drops_when_support_breaks() {
         hit(8, 64, 8, BlockFace::Up, Id::Stone),
     ));
     assert_eq!(chunks.block_at(9, 64, 8), Some(Id::Air));
+}
+
+#[test]
+fn empty_bucket_picks_up_a_water_source_and_leaves_air() {
+    let mut chunk = Chunk::new();
+    chunk.set(8, 64, 8, Id::Water);
+    let mut chunks = world_with(chunk);
+
+    let (x, y, z, previous, fluid) =
+        pick_up_fluid(&mut chunks, Vec3::new(8.5, 66.0, 8.5), Vec3::NEG_Y)
+            .expect("a water source should be picked up");
+    assert_eq!((x, y, z), (8, 64, 8));
+    assert_eq!(previous, Id::Water);
+    assert_eq!(fluid, Fluid::Water);
+    assert_eq!(chunks.block_at(8, 64, 8), Some(Id::Air));
+}
+
+#[test]
+fn empty_bucket_picks_up_a_lava_source() {
+    let mut chunk = Chunk::new();
+    chunk.set(8, 64, 8, Id::Lava);
+    let mut chunks = world_with(chunk);
+
+    let (.., fluid) = pick_up_fluid(&mut chunks, Vec3::new(8.5, 66.0, 8.5), Vec3::NEG_Y)
+        .expect("a lava source should be picked up");
+    assert_eq!(fluid, Fluid::Lava);
+    assert_eq!(chunks.block_at(8, 64, 8), Some(Id::Air));
+}
+
+#[test]
+fn empty_bucket_leaves_flowing_water_in_place() {
+    let mut chunk = Chunk::new();
+    chunk.set_with_metadata(8, 64, 8, Id::FlowingWater, 3);
+    let mut chunks = world_with(chunk);
+
+    assert!(pick_up_fluid(&mut chunks, Vec3::new(8.5, 66.0, 8.5), Vec3::NEG_Y).is_none());
+    assert_eq!(chunks.block_at(8, 64, 8), Some(Id::FlowingWater));
+    assert_eq!(chunks.metadata_at(8, 64, 8), 3);
+}
+
+#[test]
+fn empty_bucket_stays_empty_when_aimed_at_a_solid_block() {
+    let mut chunk = Chunk::new();
+    chunk.set(8, 64, 8, Id::Stone);
+    let mut chunks = world_with(chunk);
+
+    assert!(pick_up_fluid(&mut chunks, Vec3::new(8.5, 66.0, 8.5), Vec3::NEG_Y).is_none());
+    assert_eq!(chunks.block_at(8, 64, 8), Some(Id::Stone));
+}
+
+#[test]
+fn water_bucket_fills_the_non_solid_cell_beside_the_hit_face() {
+    let mut chunk = Chunk::new();
+    chunk.set(8, 64, 8, Id::Stone);
+    let mut chunks = world_with(chunk);
+
+    let (x, y, z, previous, metadata) = place_fluid(
+        &mut chunks,
+        hit(8, 64, 8, BlockFace::Up, Id::Stone),
+        Fluid::Water,
+    )
+    .expect("air above a solid block accepts the fluid");
+    assert_eq!((x, y, z), (8, 65, 8));
+    assert_eq!(previous, Id::Air);
+    assert_eq!(metadata, 0);
+    assert_eq!(chunks.block_at(8, 65, 8), Some(Id::Water));
+    assert_eq!(chunks.metadata_at(8, 65, 8), 0);
+}
+
+#[test]
+fn water_bucket_overwrites_non_solid_blocks_without_dropping_them() {
+    let mut chunk = Chunk::new();
+    chunk.set(8, 64, 8, Id::Grass);
+    chunk.set(8, 65, 8, Id::TallGrass);
+    let mut chunks = world_with(chunk);
+
+    let (x, y, z, previous, _) = place_fluid(
+        &mut chunks,
+        hit(8, 64, 8, BlockFace::Up, Id::Grass),
+        Fluid::Water,
+    )
+    .expect("tall grass is not a solid material");
+    assert_eq!((x, y, z), (8, 65, 8));
+    assert_eq!(previous, Id::TallGrass);
+    assert_eq!(chunks.block_at(8, 65, 8), Some(Id::Water));
+}
+
+#[test]
+fn lava_bucket_cannot_fill_a_solid_block() {
+    let mut chunk = Chunk::new();
+    chunk.set(8, 64, 8, Id::Stone);
+    chunk.set(9, 64, 8, Id::Dirt);
+    let mut chunks = world_with(chunk);
+
+    assert!(
+        place_fluid(
+            &mut chunks,
+            hit(8, 64, 8, BlockFace::East, Id::Stone),
+            Fluid::Lava,
+        )
+        .is_none()
+    );
+    assert_eq!(chunks.block_at(9, 64, 8), Some(Id::Dirt));
 }
 
 #[test]

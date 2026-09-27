@@ -347,6 +347,7 @@ fn load_texture(mut commands: Commands, assets: Res<AssetServer>) {
 }
 
 fn toggle(
+    chat: Option<Res<crate::ui::ChatState>>,
     mut commands: Commands,
     keys: Res<ButtonInput<KeyCode>>,
     mut screen: ResMut<InventoryScreen>,
@@ -359,6 +360,9 @@ fn toggle(
     mut windows: Query<(&Window, &mut CursorOptions), With<PrimaryWindow>>,
     mut item_rng: Local<ItemRng>,
 ) {
+    if chat.is_some_and(|chat| chat.suppress_controls) {
+        return;
+    }
     if screen.open && roots.is_empty() {
         let background = if screen.furnace {
             &texture.furnace

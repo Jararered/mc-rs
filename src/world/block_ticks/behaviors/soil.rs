@@ -10,7 +10,8 @@ use crate::world::block_ticks::TickWorld;
 use super::fluid::is_water;
 
 /// Beta `BlockGrass`. Random ticks turn grass under a dark, light-blocking
-/// block back into dirt, and let well-lit grass spread onto nearby dirt.
+/// block (including water, when the light above falls below 4) back into
+/// dirt, and let well-lit grass spread onto nearby dirt.
 pub struct Grass;
 pub static GRASS: Grass = Grass;
 

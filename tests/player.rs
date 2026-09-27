@@ -216,6 +216,85 @@ fn placed_pumpkin_front_faces_the_player() {
 }
 
 #[test]
+fn normal_and_sticky_pistons_can_be_placed_facing_up_and_down() {
+    for block in [Id::Piston, Id::StickyPiston] {
+        let mut floor = Chunk::new();
+        floor.set(8, 64, 8, Id::Stone);
+        let mut chunks = world_with(floor);
+        // Standing one block above the placement cell makes the piston face up.
+        let above =
+            EntitySize::PLAYER.aabb(Vec3::new(8.5, 66.0 + EntitySize::PLAYER.y_offset, 8.5));
+        assert!(place_selected_block_facing(
+            &mut chunks,
+            hit(8, 64, 8, BlockFace::Up, Id::Stone),
+            above,
+            block,
+            FurnaceFacing::West,
+        ));
+        assert_eq!(chunks.block_at(8, 65, 8), Some(block));
+        assert_eq!(chunks.metadata_at(8, 65, 8), 1, "{block:?} should face up");
+
+        let mut ceiling = Chunk::new();
+        ceiling.set(8, 70, 8, Id::Stone);
+        let mut chunks = world_with(ceiling);
+        let below =
+            EntitySize::PLAYER.aabb(Vec3::new(8.5, 65.0 + EntitySize::PLAYER.y_offset, 8.5));
+        assert!(place_selected_block_facing(
+            &mut chunks,
+            hit(8, 70, 8, BlockFace::Down, Id::Stone),
+            below,
+            block,
+            FurnaceFacing::East,
+        ));
+        assert_eq!(chunks.block_at(8, 69, 8), Some(block));
+        assert_eq!(
+            chunks.metadata_at(8, 69, 8),
+            0,
+            "{block:?} should face down"
+        );
+    }
+}
+
+#[test]
+fn piston_placement_still_uses_horizontal_facing_when_near_eye_level_or_far_away() {
+    for block in [Id::Piston, Id::StickyPiston] {
+        for (facing, metadata) in [
+            (FurnaceFacing::North, 2),
+            (FurnaceFacing::East, 5),
+            (FurnaceFacing::South, 3),
+            (FurnaceFacing::West, 4),
+        ] {
+            let mut chunk = Chunk::new();
+            chunk.set(8, 64, 8, Id::Stone);
+            let mut chunks = world_with(chunk);
+            // Next to the piston, not inside its target cell, and at eye level.
+            let beside =
+                EntitySize::PLAYER.aabb(Vec3::new(9.5, 63.0 + EntitySize::PLAYER.y_offset, 9.5));
+            assert!(place_selected_block_facing(
+                &mut chunks,
+                hit(8, 64, 8, BlockFace::East, Id::Stone),
+                beside,
+                block,
+                facing,
+            ));
+            assert_eq!(chunks.metadata_at(9, 64, 8), metadata);
+        }
+        let mut chunk = Chunk::new();
+        chunk.set(8, 64, 8, Id::Stone);
+        let mut chunks = world_with(chunk);
+        let far = EntitySize::PLAYER.aabb(Vec3::new(10.0, 66.0 + EntitySize::PLAYER.y_offset, 8.5));
+        assert!(place_selected_block_facing(
+            &mut chunks,
+            hit(8, 64, 8, BlockFace::Up, Id::Stone),
+            far,
+            block,
+            FurnaceFacing::West,
+        ));
+        assert_eq!(chunks.metadata_at(8, 65, 8), 4);
+    }
+}
+
+#[test]
 fn placing_torch_can_overlap_the_player() {
     let mut chunk = Chunk::new();
     chunk.set(8, 64, 8, Id::Stone);

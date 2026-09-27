@@ -986,12 +986,9 @@ pub fn place_selected_block_facing(
             FurnaceFacing::South => 2,
             FurnaceFacing::West => 3,
         }),
-        Id::Piston | Id::StickyPiston => Some(match furnace_facing {
-            FurnaceFacing::North => 2,
-            FurnaceFacing::East => 5,
-            FurnaceFacing::South => 3,
-            FurnaceFacing::West => 4,
-        }),
+        Id::Piston | Id::StickyPiston => {
+            Some(piston_placement_facing(player, (x, y, z), furnace_facing))
+        }
         Id::Dispenser => Some(match furnace_facing {
             FurnaceFacing::North => 2,
             FurnaceFacing::East => 5,
@@ -1061,6 +1058,34 @@ fn chest_can_place_at(chunks: &WorldChunks, x: i32, y: i32, z: i32) -> bool {
             .chest_group_at(neighbor.0, neighbor.1, neighbor.2)
             .is_some_and(|group| !group.is_double()),
         _ => false,
+    }
+}
+
+/// BlockPistonBase.determineOrientation: when close to the placed block, the
+/// player's placement height takes priority over horizontal facing. The
+/// collision box starts at the feet, so `min.y + 1.82` is Beta's placement
+/// height (`posY + 1.82 - yOffset`).
+fn piston_placement_facing(
+    player: Aabb,
+    (x, y, z): (i32, i32, i32),
+    horizontal: FurnaceFacing,
+) -> u8 {
+    let player_x = (player.min.x + player.max.x) * 0.5;
+    let player_z = (player.min.z + player.max.z) * 0.5;
+    if (player_x - x as f32).abs() < 2.0 && (player_z - z as f32).abs() < 2.0 {
+        let placement_height = player.min.y + 1.82;
+        if placement_height - y as f32 > 2.0 {
+            return 1; // Up
+        }
+        if y as f32 - placement_height > 0.0 {
+            return 0; // Down
+        }
+    }
+    match horizontal {
+        FurnaceFacing::North => 2,
+        FurnaceFacing::East => 5,
+        FurnaceFacing::South => 3,
+        FurnaceFacing::West => 4,
     }
 }
 

@@ -7,15 +7,21 @@ use game::app::settings::GameSettings;
 use game::player::Player;
 use game::world::clouds::CLOUD_HEIGHT;
 use game::world::clouds::cloud_color;
+use game::world::clouds::cloud_half_extent_blocks;
 use game::world::clouds::cloud_render_y;
 use game::world::clouds::cloud_scroll_blocks;
 use game::world::clouds::fancy_cloud_anchor;
+use game::world::clouds::fancy_cloud_cells;
 use game::world::clouds::fancy_cloud_mesh;
 use game::world::clouds::fast_cloud_anchor;
 use game::world::clouds::fast_cloud_mesh;
 use game::world::clouds::fast_cloud_uv;
+use game::world::clouds::fast_cloud_uv_offset;
 use game::world::plugin::WorldPlugin;
 use game::world::textures::TintedMaterial;
+
+/// Blocks a fancy cell spans: 8 texels at 12 blocks each.
+const FANCY_CELL_BLOCKS: f32 = 96.0;
 
 fn attribute(mesh: &bevy::mesh::Mesh, id: bevy::mesh::MeshVertexAttribute) -> Vec<[f32; 3]> {
     let VertexAttributeValues::Float32x3(values) = mesh.attribute(id.id).unwrap() else {
@@ -37,13 +43,32 @@ fn uvs(mesh: &bevy::mesh::Mesh) -> Vec<[f32; 2]> {
     values.clone()
 }
 
-#[test]
-fn cloud_follow_runs_beside_the_player() {
+fn extent(mesh: &bevy::mesh::Mesh) -> (f32, f32, f32, f32) {
+    let points = positions(mesh);
+    let fold =
+        |select: fn(&[f32; 3]) -> f32| points.iter().map(select).fold(f32::INFINITY, f32::min);
+    let fold_max =
+        |select: fn(&[f32; 3]) -> f32| points.iter().map(select).fold(f32::NEG_INFINITY, f32::max);
+    (
+        fold(|p| p[0]),
+        fold_max(|p| p[0]),
+        fold(|p| p[2]),
+        fold_max(|p| p[2]),
+    )
+}
+
+fn cloud_app() -> App {
     let mut app = App::new();
     app.add_plugins((MinimalPlugins, AssetPlugin::default(), MeshPlugin))
         .init_asset::<Image>()
         .init_asset::<StandardMaterial>()
         .add_plugins(WorldPlugin);
+    app
+}
+
+#[test]
+fn cloud_follow_runs_beside_the_player() {
+    let mut app = cloud_app();
     app.world_mut()
         .spawn((Player, Transform::from_xyz(10.0, 70.0, -4.0)));
     app.update();
@@ -71,32 +96,32 @@ fn cloud_follow_runs_beside_the_player() {
     );
     assert_cloud_anchor(&placed, 400.0, 48.0, CLOUD_HEIGHT);
 
-    let mut materials = app
+    let materials = app
         .world_mut()
-        .query::<(&Name, &MeshMaterial3d<TintedMaterial>)>();
-    let handles: Vec<_> = materials
+        .query::<(&Name, &MeshMaterial3d<TintedMaterial>)>()
         .iter(app.world())
         .filter_map(|(name, material)| {
             let name = name.as_str();
             (name == "Fast clouds" || name == "Fancy clouds")
                 .then(|| (name.to_string(), material.0.clone()))
         })
-        .collect();
+        .collect::<Vec<_>>();
     let assets = app.world().resource::<Assets<TintedMaterial>>();
     let (_, fancy_uv) = fancy_cloud_anchor(400.0, 48.0, 0.0, CLOUD_HEIGHT);
-    for (name, handle) in handles {
+    let fast_uv = fast_cloud_uv_offset(400.0, 48.0, 0.0);
+    for (name, handle) in materials {
         let material = &assets.get(&handle).unwrap().base;
         assert!(
             matches!(material.alpha_mode, AlphaMode::Mask(cutoff) if (cutoff - 0.5).abs() < 1e-5),
             "{name} should cut out empty texels and stay opaque"
         );
         assert!((material.base_color.alpha() - 1.0).abs() < 1e-5);
-        // The fast sheet is world-locked by where it is placed, so its UVs
-        // never move; the fancy window shifts whole texels.
+        // Both sheets stay world-locked: the fast one through its own UV
+        // offset, the fancy one through the shifted texel window.
         let expected = if name == "Fancy clouds" {
             fancy_uv
         } else {
-            Vec2::ZERO
+            fast_uv
         };
         let uv = material.uv_transform.translation;
         assert!(
@@ -112,7 +137,7 @@ fn assert_cloud_anchor(placed: &[(String, Vec3)], player_x: f32, player_z: f32, 
         let expected = if name == "Fancy clouds" {
             fancy_place
         } else {
-            fast_cloud_anchor(player_x, player_z, 0.0, cloud_y)
+            fast_cloud_anchor(player_x, player_z, cloud_y)
         };
         assert!(
             (translation.x - expected.x).abs() < 1e-3
@@ -125,11 +150,7 @@ fn assert_cloud_anchor(placed: &[(String, Vec3)], player_x: f32, player_z: f32, 
 
 #[test]
 fn cloud_height_setting_moves_both_sheets() {
-    let mut app = App::new();
-    app.add_plugins((MinimalPlugins, AssetPlugin::default(), MeshPlugin))
-        .init_asset::<Image>()
-        .init_asset::<StandardMaterial>()
-        .add_plugins(WorldPlugin);
+    let mut app = cloud_app();
     app.world_mut()
         .spawn((Player, Transform::from_xyz(10.0, 70.0, -4.0)));
     app.update();
@@ -154,7 +175,7 @@ fn cloud_height_setting_moves_both_sheets() {
 
     // The fancy columns keep their four-block thickness above the new height.
     let anchor = cloud_render_y(200.0);
-    let points = positions(&fancy_cloud_mesh());
+    let points = positions(&fancy_cloud_mesh(1));
     let min_y = points.iter().map(|p| p[1]).fold(f32::INFINITY, f32::min);
     let max_y = points
         .iter()
@@ -169,11 +190,9 @@ fn cloud_pattern_stays_put_when_the_player_moves() {
     // A fixed world point samples the same texel wherever the sheet sits.
     let point = (700.0, -300.0);
     let texel = |player_x, player_z, scroll| {
-        let uv = fast_cloud_uv(
-            fast_cloud_anchor(player_x, player_z, scroll, CLOUD_HEIGHT),
-            point.0,
-            point.1,
-        );
+        let sheet = fast_cloud_anchor(player_x, player_z, CLOUD_HEIGHT);
+        let offset = fast_cloud_uv_offset(player_x, player_z, scroll);
+        let uv = fast_cloud_uv(sheet, offset, point.0, point.1);
         Vec2::new(uv.x.rem_euclid(1.0), uv.y.rem_euclid(1.0))
     };
     let before = texel(10.0, -4.0, 0.0);
@@ -189,16 +208,13 @@ fn cloud_pattern_stays_put_when_the_player_moves() {
 }
 
 #[test]
-fn fast_cloud_sheet_always_covers_the_view() {
-    for (x, z, scroll) in [
-        (0.0, 0.0, 0.0),
-        (1023.0, -1023.0, 0.0),
-        (1024.5, 3000.0, 1500.0),
-        (-40_000.0, 77_777.0, 2047.9),
-    ] {
-        let sheet = fast_cloud_anchor(x, z, scroll, CLOUD_HEIGHT);
-        assert!((sheet.x - x).abs() <= 1024.0 + 1e-2);
-        assert!((sheet.z - z).abs() <= 1024.0 + 1e-2);
+fn fast_cloud_sheet_is_centered_on_the_player() {
+    // The sheet no longer slides a whole texture period away from the player,
+    // so it can be exactly the size of the view.
+    for (x, z) in [(0.0, 0.0), (1023.0, -1023.0), (-40_000.0, 77_777.0)] {
+        let sheet = fast_cloud_anchor(x, z, CLOUD_HEIGHT);
+        assert!((sheet.x - x).abs() < 1e-2);
+        assert!((sheet.z - z).abs() < 1e-2);
         assert!((sheet.y - CLOUD_HEIGHT).abs() < 1e-5);
     }
 }
@@ -215,6 +231,95 @@ fn cloud_places(app: &mut App) -> Vec<(String, Vec3)> {
         .collect()
 }
 
+fn cloud_mesh_handles(app: &mut App) -> (Handle<Mesh>, Handle<Mesh>) {
+    let mut clouds = app.world_mut().query::<(&Name, &Mesh3d)>();
+    let mut fast = None;
+    let mut fancy = None;
+    for (name, mesh) in clouds.iter(app.world()) {
+        match name.as_str() {
+            "Fast clouds" => fast = Some(mesh.0.clone()),
+            "Fancy clouds" => fancy = Some(mesh.0.clone()),
+            _ => {}
+        }
+    }
+    (
+        fast.expect("a fast sheet should be spawned"),
+        fancy.expect("a fancy sheet should be spawned"),
+    )
+}
+
+fn assert_fast_sheet(app: &App, handle: &Handle<Mesh>, render_chunks: i32) {
+    let half = cloud_half_extent_blocks(render_chunks);
+    let assets = app.world().resource::<Assets<Mesh>>();
+    let mesh = assets.get(handle).unwrap();
+    let (min_x, max_x, min_z, max_z) = extent(mesh);
+    assert!(
+        (min_x + half).abs() < 1e-3
+            && (max_x - half).abs() < 1e-3
+            && (min_z + half).abs() < 1e-3
+            && (max_z - half).abs() < 1e-3,
+        "the fast sheet should span {half} blocks either side, got {min_x}..{max_x}, {min_z}..{max_z}"
+    );
+    // Baked UVs are `local / 2048`; the material supplies the rest.
+    let coords = uvs(mesh);
+    for (uv, point) in coords.iter().zip(positions(mesh)) {
+        assert!((uv[0] - point[0] / 2048.0).abs() < 1e-6);
+        assert!((uv[1] - point[2] / 2048.0).abs() < 1e-6);
+    }
+}
+
+fn assert_fancy_window(app: &App, handle: &Handle<Mesh>, render_chunks: i32) {
+    let half = cloud_half_extent_blocks(render_chunks);
+    let cells = fancy_cloud_cells(half);
+    let assets = app.world().resource::<Assets<Mesh>>();
+    let mesh = assets.get(handle).unwrap();
+    let (min_x, max_x, min_z, max_z) = extent(mesh);
+    assert!(
+        (min_x + cells as f32 * FANCY_CELL_BLOCKS).abs() < 1e-2
+            && (max_x - (cells + 1) as f32 * FANCY_CELL_BLOCKS).abs() < 1e-2
+            && (min_z + cells as f32 * FANCY_CELL_BLOCKS).abs() < 1e-2
+            && (max_z - (cells + 1) as f32 * FANCY_CELL_BLOCKS).abs() < 1e-2,
+        "{cells} cells should span the window, got {min_x}..{max_x}, {min_z}..{max_z}"
+    );
+    assert!(
+        cells as f32 * FANCY_CELL_BLOCKS - 12.0 >= half,
+        "the snapped window should still reach the render distance"
+    );
+}
+
+#[test]
+fn cloud_geometry_follows_the_render_distance() {
+    let mut app = cloud_app();
+    app.world_mut()
+        .spawn((Player, Transform::from_xyz(10.0, 70.0, -4.0)));
+    app.update();
+
+    let (fast, fancy) = cloud_mesh_handles(&mut app);
+    assert_fast_sheet(&app, &fast, 4);
+    assert_fancy_window(&app, &fancy, 4);
+
+    for render_chunks in [16, 8, 32] {
+        {
+            let mut settings = app.world_mut().resource_mut::<GameSettings>();
+            settings.render_distance = render_chunks;
+        }
+        app.update();
+        let (next_fast, next_fancy) = cloud_mesh_handles(&mut app);
+        assert_ne!(
+            fast.id(),
+            next_fast.id(),
+            "the fast sheet should be rebuilt at {render_chunks} chunks"
+        );
+        assert_ne!(
+            fancy.id(),
+            next_fancy.id(),
+            "the fancy window should be rebuilt at {render_chunks} chunks"
+        );
+        assert_fast_sheet(&app, &next_fast, render_chunks);
+        assert_fancy_window(&app, &next_fancy, render_chunks);
+    }
+}
+
 #[test]
 fn cloud_color_tracks_daylight() {
     let noon = cloud_color(1.0);
@@ -228,60 +333,76 @@ fn cloud_color_tracks_daylight() {
 
 #[test]
 fn cloud_scroll_advances_and_wraps() {
-    assert!((cloud_scroll_blocks(0, 0.0)).abs() < 1e-5);
+    assert!(cloud_scroll_blocks(0, 0.0).abs() < 1e-5);
     assert!((cloud_scroll_blocks(1, 0.0) - 0.03).abs() < 1e-4);
     let wrapped = cloud_scroll_blocks(1_000_000, 0.0);
     assert!((0.0..2048.0).contains(&wrapped));
 }
 
 #[test]
-fn fast_clouds_cover_a_flat_sheet_at_the_camera() {
-    let mesh = fast_cloud_mesh();
-    let points = positions(&mesh);
-    let min_x = points.iter().map(|p| p[0]).fold(f32::INFINITY, f32::min);
-    let max_x = points
-        .iter()
-        .map(|p| p[0])
-        .fold(f32::NEG_INFINITY, f32::max);
-    let max_y = points
-        .iter()
-        .map(|p| p[1])
-        .fold(f32::NEG_INFINITY, f32::max);
-    assert!((min_x + 2048.0).abs() < 1e-3);
-    assert!((max_x - 2048.0).abs() < 1e-3);
-    assert!(max_y.abs() < 1e-5);
-    assert!((CLOUD_HEIGHT - 108.33).abs() < 1e-5);
-    let coords = uvs(&mesh);
-    let min_u = coords.iter().map(|uv| uv[0]).fold(f32::INFINITY, f32::min);
-    let max_u = coords
-        .iter()
-        .map(|uv| uv[0])
-        .fold(f32::NEG_INFINITY, f32::max);
-    assert!(min_u.abs() < 1e-5);
-    assert!((max_u - 2.0).abs() < 1e-5, "two texture periods across");
+fn fast_clouds_cover_the_render_distance() {
+    for chunks in [4, 8, 16, 32] {
+        let half = cloud_half_extent_blocks(chunks);
+        assert!(
+            (half - chunks as f32 * 16.0).abs() < 1e-5,
+            "clouds should reach as far as the loaded world"
+        );
+        let mesh = fast_cloud_mesh(half);
+        let (min_x, max_x, min_z, max_z) = extent(&mesh);
+        assert!((min_x + half).abs() < 1e-3 && (max_x - half).abs() < 1e-3);
+        assert!((min_z + half).abs() < 1e-3 && (max_z - half).abs() < 1e-3);
+        let points = positions(&mesh);
+        let max_y = points
+            .iter()
+            .map(|p| p[1])
+            .fold(f32::NEG_INFINITY, f32::max);
+        assert!(max_y.abs() < 1e-5, "the fast sheet is flat");
+        assert!((CLOUD_HEIGHT - 108.33).abs() < 1e-5);
+        // Baked UVs are `local / 2048`; the material's offset completes them.
+        // They stay far from a whole period, so the world-locked sample keeps
+        // its precision at any render distance.
+        for (uv, point) in uvs(&mesh).iter().zip(&points) {
+            assert!((uv[0] - point[0] / 2048.0).abs() < 1e-6);
+            assert!((uv[1] - point[2] / 2048.0).abs() < 1e-6);
+        }
+        assert!(half / 2048.0 <= 0.25, "baked uvs stay small");
+    }
 }
 
 #[test]
-fn fancy_clouds_are_four_blocks_thick() {
-    let points = positions(&fancy_cloud_mesh());
-    let max_y = points
-        .iter()
-        .map(|p| p[1])
-        .fold(f32::NEG_INFINITY, f32::max);
-    let min_y = points.iter().map(|p| p[1]).fold(f32::INFINITY, f32::min);
-    assert!(min_y.abs() < 1e-4);
-    assert!((max_y - 4.0).abs() < 1e-3);
-    let max_x = points
-        .iter()
-        .map(|p| p[0])
-        .fold(f32::NEG_INFINITY, f32::max);
-    let min_x = points.iter().map(|p| p[0]).fold(f32::INFINITY, f32::min);
-    assert!((min_x + 192.0).abs() < 1e-2);
-    assert!((max_x - 384.0).abs() < 1e-2);
-    let has_side = points.iter().any(|point| {
-        let column = (point[0] / 12.0).round();
-        (point[0] - column * 12.0).abs() < 1e-2 && (column as i32).rem_euclid(8) != 0
-    });
-    assert!(has_side, "fancy clouds should include column sides");
-    assert!(points.len() > positions(&fast_cloud_mesh()).len());
+fn fancy_clouds_cover_the_render_distance() {
+    for chunks in [4, 8, 16, 32] {
+        let half = cloud_half_extent_blocks(chunks);
+        let cells = fancy_cloud_cells(half);
+        assert!(cells >= 1);
+        let mesh = fancy_cloud_mesh(cells);
+        let points = positions(&mesh);
+        let max_y = points
+            .iter()
+            .map(|p| p[1])
+            .fold(f32::NEG_INFINITY, f32::max);
+        let min_y = points.iter().map(|p| p[1]).fold(f32::INFINITY, f32::min);
+        assert!(min_y.abs() < 1e-4, "columns sit on the sheet");
+        assert!((max_y - 4.0).abs() < 1e-3, "columns are four blocks thick");
+        let (min_x, max_x, min_z, max_z) = extent(&mesh);
+        assert!((min_x + cells as f32 * FANCY_CELL_BLOCKS).abs() < 1e-2);
+        assert!((max_x - (cells + 1) as f32 * FANCY_CELL_BLOCKS).abs() < 1e-2);
+        assert!((min_z + cells as f32 * FANCY_CELL_BLOCKS).abs() < 1e-2);
+        assert!((max_z - (cells + 1) as f32 * FANCY_CELL_BLOCKS).abs() < 1e-2);
+        assert!(
+            cells as f32 * FANCY_CELL_BLOCKS - 12.0 >= half,
+            "{cells} cells should cover {half} blocks"
+        );
+        let has_side = points.iter().any(|point| {
+            let column = (point[0] / 12.0).round();
+            (point[0] - column * 12.0).abs() < 1e-2 && (column as i32).rem_euclid(8) != 0
+        });
+        assert!(has_side, "fancy clouds should include column sides");
+        // One draw call, even at the longest view distance.
+        assert!(
+            points.len() < 24_000,
+            "{cells} cells is {} vertices",
+            points.len()
+        );
+    }
 }

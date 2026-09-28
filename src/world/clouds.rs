@@ -6,6 +6,12 @@
 //! are opaque. Both sit at `GameSettings::cloud_height + 0.33`, the client's
 //! stand-in for Beta's `WorldProvider.getCloudHeight()`, and drift on X by
 //! 0.03 blocks per tick. Color comes from `World.drawClouds`.
+//!
+//! Both sheets are sized from `GameSettings::render_distance` and rebuilt when
+//! it changes, so clouds reach exactly as far as the loaded world. The world
+//! fog is already opaque at the render distance, which hides the sheet's edge:
+//! a sheet point that many blocks out is at least that far from the eye, and
+//! the fog color there is the sky's horizon color.
 
 use std::path::Path;
 
@@ -40,14 +46,11 @@ pub const CLOUD_RENDER_OFFSET: f32 = 0.33;
 pub const CLOUD_HEIGHT: f32 = DEFAULT_CLOUD_HEIGHT + CLOUD_RENDER_OFFSET;
 const SCROLL_PER_TICK: f64 = 0.03;
 const SCROLL_PERIOD: f64 = 2048.0;
-/// One texel of the 256² sheet is 8 blocks, so the whole texture is 2048
-/// across. The fast sheet spans two periods so it can slide by up to half a
-/// period to keep the texture world-locked, and still reach 1024 blocks past
-/// the player on every side.
-const CLOUD_EXTENT: f32 = SCROLL_PERIOD as f32;
 const FANCY_UV_SCALE: f32 = 1.0 / 256.0;
 const FANCY_WORLD_SCALE: f32 = 12.0;
 const FANCY_CELL: f32 = 8.0;
+/// One fancy cell is `FANCY_CELL` texels drawn at `FANCY_WORLD_SCALE` blocks.
+const FANCY_CELL_BLOCKS: f32 = FANCY_CELL * FANCY_WORLD_SCALE;
 const FANCY_THICKNESS: f32 = 4.0;
 const FANCY_INSET: f32 = 9.765625e-4;
 
@@ -58,7 +61,10 @@ struct FastClouds;
 struct FancyClouds;
 
 #[derive(Resource)]
-struct CloudsSpawned;
+struct CloudsSpawned {
+    /// Render distance, in chunks, the current meshes were built for.
+    distance: i32,
+}
 
 pub(super) fn plugin(app: &mut App) {
     app.add_systems(
@@ -86,27 +92,51 @@ pub fn cloud_render_y(cloud_height: f32) -> f32 {
     cloud_height + CLOUD_RENDER_OFFSET
 }
 
-/// Where the fast sheet sits so the pattern stays fixed in the world.
-///
-/// Sheet UVs run `(local + CLOUD_EXTENT) / SCROLL_PERIOD`, and the extent is a
-/// whole period, so a world point `x` samples `(x - sheet_x) / period`. The
-/// sheet is placed at `-scroll` modulo one period, as close to the player as
-/// that allows, which samples `(x + scroll) / period` without any UV offset.
-pub fn fast_cloud_anchor(player_x: f32, player_z: f32, scroll: f32, cloud_y: f32) -> Vec3 {
-    let half = SCROLL_PERIOD * 0.5;
-    let nearest = |blocks: f64| (blocks + half).rem_euclid(SCROLL_PERIOD) - half;
-    let x = f64::from(player_x) - nearest(f64::from(player_x) + f64::from(scroll));
-    let z = f64::from(player_z) - nearest(f64::from(player_z));
-    Vec3::new(x as f32, cloud_y, z as f32)
+/// Half the cloud sheet's width in blocks, on every side of the player. This
+/// is the loaded view radius, so a sheet reaches exactly as far as the world.
+pub fn cloud_half_extent_blocks(render_chunks: i32) -> f32 {
+    super::sky::view_distance_blocks(render_chunks)
 }
 
-/// Texture coordinate of a world point under the fast sheet placed at `sheet`.
-pub fn fast_cloud_uv(sheet: Vec3, world_x: f32, world_z: f32) -> Vec2 {
-    let period = SCROLL_PERIOD as f32;
+/// Fancy cells needed on each side of the player to cover `half_extent`.
+///
+/// The window is snapped to the `FANCY_WORLD_SCALE` grid, which can leave the
+/// player up to that far from the window's own center, so the coverage has to
+/// clear `half_extent` by a whole unit of it.
+pub fn fancy_cloud_cells(half_extent: f32) -> i32 {
+    ((half_extent + FANCY_WORLD_SCALE) / FANCY_CELL_BLOCKS)
+        .ceil()
+        .max(1.0) as i32
+}
+
+/// Where the fast sheet sits: centered on the player at the cloud height.
+///
+/// The pattern is world-locked by UVs rather than by placement. The sheet's
+/// baked UVs are `local / SCROLL_PERIOD` and its material carries
+/// `fast_cloud_uv_offset`, so a world point samples `(world + scroll) / period`
+/// however the sheet moves. Beta slid the sheet a whole period instead, which
+/// is why its extent had to be two periods wide.
+pub fn fast_cloud_anchor(player_x: f32, player_z: f32, cloud_y: f32) -> Vec3 {
+    Vec3::new(player_x, cloud_y, player_z)
+}
+
+/// Texture offset the fast sheet's material carries.
+///
+/// Wrapped into `0..1` so the total stays small next to the baked UVs: a texel
+/// is `1 / 256` of the period, far above the rounding of a value this size.
+pub fn fast_cloud_uv_offset(player_x: f32, player_z: f32, scroll: f32) -> Vec2 {
     Vec2::new(
-        (world_x - sheet.x + CLOUD_EXTENT) / period,
-        (world_z - sheet.z + CLOUD_EXTENT) / period,
+        (f64::from(player_x + scroll) / SCROLL_PERIOD).rem_euclid(1.0) as f32,
+        (f64::from(player_z) / SCROLL_PERIOD).rem_euclid(1.0) as f32,
     )
+}
+
+/// Texture coordinate of a world point under the fast sheet placed at `sheet`,
+/// with `offset` as the material's `uv_transform` translation. This mirrors
+/// what the shader sums from the baked vertex UVs.
+pub fn fast_cloud_uv(sheet: Vec3, offset: Vec2, world_x: f32, world_z: f32) -> Vec2 {
+    let period = SCROLL_PERIOD as f32;
+    offset + Vec2::new((world_x - sheet.x) / period, (world_z - sheet.z) / period)
 }
 
 fn wrap_blocks(blocks: f64) -> f64 {
@@ -135,21 +165,24 @@ pub fn fancy_cloud_anchor(player_x: f32, player_z: f32, scroll: f32, cloud_y: f3
     (place, uv)
 }
 
-/// Two texture periods across, repeated by the sampler.
-const SHEET_UV: [[f32; 2]; 4] = [[0.0, 2.0], [2.0, 2.0], [2.0, 0.0], [0.0, 0.0]];
-
-fn sheet_corners(y: f32) -> [[f32; 3]; 4] {
-    let h = CLOUD_EXTENT;
-    [[-h, y, h], [h, y, h], [h, y, -h], [-h, y, -h]]
-}
-
-pub fn fast_cloud_mesh() -> Mesh {
-    let positions = sheet_corners(0.0).to_vec();
+/// UVs are `local / SCROLL_PERIOD`; `fast_cloud_uv_offset` supplies the rest
+/// through the material, so they stay small at any render distance.
+pub fn fast_cloud_mesh(half_extent: f32) -> Mesh {
+    let period = SCROLL_PERIOD as f32;
+    let edge = half_extent / period;
+    let positions = [
+        [-half_extent, 0.0, half_extent],
+        [half_extent, 0.0, half_extent],
+        [half_extent, 0.0, -half_extent],
+        [-half_extent, 0.0, -half_extent],
+    ]
+    .to_vec();
+    let uvs = [[-edge, edge], [edge, edge], [edge, -edge], [-edge, -edge]].to_vec();
     let colors = vec![[1.0, 1.0, 1.0, 1.0]; positions.len()];
-    cloud_mesh(positions, SHEET_UV.to_vec(), colors, vec![0, 1, 2, 0, 2, 3])
+    cloud_mesh(positions, uvs, colors, vec![0, 1, 2, 0, 2, 3])
 }
 
-pub fn fancy_cloud_mesh() -> Mesh {
+pub fn fancy_cloud_mesh(cells: i32) -> Mesh {
     let mut positions = Vec::new();
     let mut uvs = Vec::new();
     let mut colors = Vec::new();
@@ -164,11 +197,13 @@ pub fn fancy_cloud_mesh() -> Mesh {
     let wx = |pre: f32| pre * FANCY_WORLD_SCALE;
     let uv = |pre: f32| pre * FANCY_UV_SCALE;
 
-    // `renderCloudsFancy`: cells -2..=3, each 8 pre-scale units, drawn at 12
-    // blocks per unit. Sides are one strip per texel so each cloud column has
-    // a top, a bottom, and walls.
-    for cell_x in -2..=3 {
-        for cell_z in -2..=3 {
+    // `renderCloudsFancy`: cells of 8 pre-scale units, drawn at 12 blocks per
+    // unit, `-cells..=cells` around the player so the window covers the render
+    // distance. Sides are one strip per texel so each cloud column has a top, a
+    // bottom, and walls. Beta's own `> -1` / `<= 1` wall bounds only make sense
+    // for its fixed 6-cell window, so they are the window's own edges here.
+    for cell_x in -cells..=cells {
+        for cell_z in -cells..=cells {
             let x0 = cell_x as f32 * FANCY_CELL;
             let z0 = cell_z as f32 * FANCY_CELL;
             let x1 = x0 + FANCY_CELL;
@@ -201,7 +236,7 @@ pub fn fancy_cloud_mesh() -> Mesh {
                 1.0,
             );
 
-            if cell_x > -1 {
+            if cell_x > -cells {
                 for step in 0..FANCY_CELL as i32 {
                     let edge = x0 + step as f32;
                     push(
@@ -221,7 +256,7 @@ pub fn fancy_cloud_mesh() -> Mesh {
                     );
                 }
             }
-            if cell_x <= 1 {
+            if cell_x < cells {
                 for step in 0..FANCY_CELL as i32 {
                     let edge = x0 + step as f32 + 1.0 - FANCY_INSET;
                     let column = x0 + step as f32 + 0.5;
@@ -242,7 +277,7 @@ pub fn fancy_cloud_mesh() -> Mesh {
                     );
                 }
             }
-            if cell_z > -1 {
+            if cell_z > -cells {
                 for step in 0..FANCY_CELL as i32 {
                     let edge = z0 + step as f32;
                     push(
@@ -262,7 +297,7 @@ pub fn fancy_cloud_mesh() -> Mesh {
                     );
                 }
             }
-            if cell_z <= 1 {
+            if cell_z < cells {
                 for step in 0..FANCY_CELL as i32 {
                     let edge = z0 + step as f32 + 1.0 - FANCY_INSET;
                     let column = z0 + step as f32 + 0.5;
@@ -360,11 +395,14 @@ fn ensure_clouds(
     let fast_material = materials.add(cloud_material(texture.clone()));
     let fancy_material = materials.add(cloud_material(texture));
     let cloud_y = cloud_render_y(settings.cloud_height);
-    commands.insert_resource(CloudsSpawned);
+    let half_extent = cloud_half_extent_blocks(settings.render_distance);
+    commands.insert_resource(CloudsSpawned {
+        distance: settings.render_distance,
+    });
     commands.spawn((
         Name::new("Fast clouds"),
         FastClouds,
-        Mesh3d(meshes.add(fast_cloud_mesh())),
+        Mesh3d(meshes.add(fast_cloud_mesh(half_extent))),
         MeshMaterial3d(fast_material),
         tint_tag(Color::WHITE),
         Transform::from_xyz(0.0, cloud_y, 0.0),
@@ -375,7 +413,7 @@ fn ensure_clouds(
     commands.spawn((
         Name::new("Fancy clouds"),
         FancyClouds,
-        Mesh3d(meshes.add(fancy_cloud_mesh())),
+        Mesh3d(meshes.add(fancy_cloud_mesh(fancy_cloud_cells(half_extent)))),
         MeshMaterial3d(fancy_material),
         tint_tag(Color::WHITE),
         Transform::from_xyz(0.0, cloud_y, 0.0),
@@ -385,14 +423,37 @@ fn ensure_clouds(
     ));
 }
 
+/// Moves a material's `uv_transform`, skipping the write when it already holds
+/// `offset`. The fast sheet's offset changes with the drift, so it writes
+/// every frame; the fancy window moves only when a 12-block column goes by.
+fn set_uv_offset(
+    materials: &mut Assets<TintedMaterial>,
+    handle: &Handle<TintedMaterial>,
+    offset: Vec2,
+) {
+    let moved = materials
+        .get(handle)
+        .is_some_and(|current| current.base.uv_transform.translation != offset);
+    if moved && let Some(mut current) = materials.get_mut(handle) {
+        current.base.uv_transform = Affine2::from_translation(offset);
+    }
+}
+
 fn update_clouds(
     tick: Res<WorldTick>,
     settings: Res<GameSettings>,
-    assets: Option<Res<CloudsSpawned>>,
+    spawned: Option<ResMut<CloudsSpawned>>,
     player: Query<&Transform, (With<Player>, Without<FastClouds>, Without<FancyClouds>)>,
+    mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<TintedMaterial>>,
     mut fast: Query<
-        (&mut Transform, &mut Visibility, &mut MeshTag),
+        (
+            &mut Transform,
+            &mut Visibility,
+            &mut MeshTag,
+            &mut Mesh3d,
+            &MeshMaterial3d<TintedMaterial>,
+        ),
         (With<FastClouds>, Without<FancyClouds>, Without<Player>),
     >,
     mut fancy: Query<
@@ -400,17 +461,32 @@ fn update_clouds(
             &mut Transform,
             &mut Visibility,
             &mut MeshTag,
+            &mut Mesh3d,
             &MeshMaterial3d<TintedMaterial>,
         ),
         (With<FancyClouds>, Without<FastClouds>, Without<Player>),
     >,
 ) {
-    if assets.is_none() {
+    let Some(mut spawned) = spawned else {
         return;
-    }
+    };
     let Ok(player) = player.single() else {
         return;
     };
+    // The render distance setting is the only thing that resizes the sheets.
+    if spawned.distance != settings.render_distance {
+        let half_extent = cloud_half_extent_blocks(settings.render_distance);
+        let fast_mesh = meshes.add(fast_cloud_mesh(half_extent));
+        let fancy_mesh = meshes.add(fancy_cloud_mesh(fancy_cloud_cells(half_extent)));
+        // Field 3 of either query is its `Mesh3d`.
+        for mut entity in fast.iter_mut() {
+            entity.3.0 = fast_mesh.clone();
+        }
+        for mut entity in fancy.iter_mut() {
+            entity.3.0 = fancy_mesh.clone();
+        }
+        spawned.distance = settings.render_distance;
+    }
     let fancy_mode = settings.graphics.fancy_leaves();
     let color = cloud_color(daylight_factor(super::sky::celestial_angle(
         tick.world_time(),
@@ -422,18 +498,23 @@ fn update_clouds(
     let (fancy_place, fancy_uv) =
         fancy_cloud_anchor(player.translation.x, player.translation.z, scroll, cloud_y);
 
-    if let Ok((mut transform, mut visibility, mut tag)) = fast.single_mut() {
+    if let Ok((mut transform, mut visibility, mut tag, _, material)) = fast.single_mut() {
         visibility.set_if_neq(if fancy_mode {
             Visibility::Hidden
         } else {
             Visibility::Inherited
         });
         transform.translation =
-            fast_cloud_anchor(player.translation.x, player.translation.z, scroll, cloud_y);
+            fast_cloud_anchor(player.translation.x, player.translation.z, cloud_y);
         tag.set_if_neq(tint.clone());
+        set_uv_offset(
+            &mut materials,
+            &material.0,
+            fast_cloud_uv_offset(player.translation.x, player.translation.z, scroll),
+        );
     }
 
-    if let Ok((mut transform, mut visibility, mut tag, material)) = fancy.single_mut() {
+    if let Ok((mut transform, mut visibility, mut tag, _, material)) = fancy.single_mut() {
         visibility.set_if_neq(if fancy_mode {
             Visibility::Inherited
         } else {
@@ -441,13 +522,6 @@ fn update_clouds(
         });
         transform.translation = fancy_place;
         tag.set_if_neq(tint);
-        // The texel window shifts only when the player or the drift crosses
-        // a 12-block column, so this rarely writes the material.
-        let moved = materials
-            .get(&material.0)
-            .is_some_and(|current| current.base.uv_transform.translation != fancy_uv);
-        if moved && let Some(mut current) = materials.get_mut(&material.0) {
-            current.base.uv_transform = Affine2::from_translation(fancy_uv);
-        }
+        set_uv_offset(&mut materials, &material.0, fancy_uv);
     }
 }

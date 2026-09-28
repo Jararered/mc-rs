@@ -499,7 +499,7 @@ fn apply_player_input(
             if keys.pressed(KeyCode::Space) {
                 direction.y += 1.0;
             }
-            if keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight) {
+            if sneak_pressed(&keys) {
                 direction.y -= 1.0;
             }
         }
@@ -509,7 +509,7 @@ fn apply_player_input(
     }
 
     let sneaking = locked && sneak_pressed(&keys);
-    let sprinting = locked && keys.pressed(KeyCode::ShiftLeft) && !sneaking;
+    let sprinting = locked && sprint_pressed(&keys) && !sneaking;
     movement_input.strafe = if locked {
         axis(keys.pressed(KeyCode::KeyA), keys.pressed(KeyCode::KeyD))
     } else {
@@ -535,11 +535,21 @@ fn axis(positive: bool, negative: bool) -> f32 {
 
 #[cfg(target_os = "macos")]
 fn sneak_pressed(keys: &ButtonInput<KeyCode>) -> bool {
+    keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight)
+}
+
+#[cfg(target_os = "macos")]
+fn sprint_pressed(keys: &ButtonInput<KeyCode>) -> bool {
     keys.pressed(KeyCode::SuperLeft) || keys.pressed(KeyCode::SuperRight)
 }
 
 #[cfg(not(target_os = "macos"))]
 fn sneak_pressed(keys: &ButtonInput<KeyCode>) -> bool {
+    keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn sprint_pressed(keys: &ButtonInput<KeyCode>) -> bool {
     keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight)
 }
 

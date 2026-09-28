@@ -16,6 +16,7 @@ use crate::world::persistence::PersistencePlugin;
 use crate::world::plugin::WorldPlugin;
 
 use super::diagnostics::DiagnosticsPlugin;
+use super::fullscreen::FullscreenPlugin;
 use super::screenshot::ScreenshotPlugin;
 use super::settings::SettingsPlugin;
 use super::state::AppScreen;
@@ -46,7 +47,7 @@ impl Plugin for GamePlugin {
                 MenuPlugin,
                 HudPlugin,
                 InventoryGuiPlugin,
-                ScreenshotPlugin,
+                (ScreenshotPlugin, FullscreenPlugin),
                 DiagnosticsPlugin,
             ));
     }

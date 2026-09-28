@@ -1,0 +1,50 @@
+//! F11 toggles the game window between windowed and borderless fullscreen.
+//!
+//! The key works in every [`AppScreen`], like in the original game, so it can be
+//! used from the menu as well as while playing.
+
+use bevy::prelude::*;
+use bevy::window::MonitorSelection;
+use bevy::window::PrimaryWindow;
+use bevy::window::WindowMode;
+use bevy::window::WindowResolution;
+
+/// Windowed size to restore when leaving fullscreen.
+///
+/// Going fullscreen resizes the window to the monitor, and the window backend
+/// reports that size back as a resize. Without a saved resolution the window
+/// would come back at full monitor size instead of its former windowed one.
+#[derive(Resource, Default)]
+pub struct WindowedResolution(Option<WindowResolution>);
+
+pub struct FullscreenPlugin;
+
+impl Plugin for FullscreenPlugin {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<WindowedResolution>()
+            .add_systems(Update, toggle_fullscreen);
+    }
+}
+
+fn toggle_fullscreen(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut windowed: ResMut<WindowedResolution>,
+    mut windows: Query<&mut Window, With<PrimaryWindow>>,
+) {
+    if !keys.just_pressed(KeyCode::F11) {
+        return;
+    }
+    let Ok(mut window) = windows.single_mut() else {
+        return;
+    };
+
+    if window.mode == WindowMode::Windowed {
+        windowed.0 = Some(window.resolution.clone());
+        window.mode = WindowMode::BorderlessFullscreen(MonitorSelection::Current);
+    } else {
+        window.mode = WindowMode::Windowed;
+        if let Some(resolution) = windowed.0.take() {
+            window.resolution = resolution;
+        }
+    }
+}

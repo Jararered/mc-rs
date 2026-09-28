@@ -980,11 +980,15 @@ pub fn place_selected_block_facing(
             BlockFace::East => 2,
             _ => 0,
         }),
+        // Beta `BlockRedstoneRepeater.onBlockPlacedBy` derives the facing from
+        // the player's yaw, so a placed repeater points away from the player
+        // and takes its input from the player's side. `furnace_facing` points at
+        // the player, so the facing bits are the opposite direction.
         Id::Repeater => Some(match furnace_facing {
-            FurnaceFacing::North => 0,
-            FurnaceFacing::East => 1,
-            FurnaceFacing::South => 2,
-            FurnaceFacing::West => 3,
+            FurnaceFacing::South => 0,
+            FurnaceFacing::West => 1,
+            FurnaceFacing::North => 2,
+            FurnaceFacing::East => 3,
         }),
         Id::Piston | Id::StickyPiston => {
             Some(piston_placement_facing(player, (x, y, z), furnace_facing))

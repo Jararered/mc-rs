@@ -216,6 +216,38 @@ fn placed_pumpkin_front_faces_the_player() {
 }
 
 #[test]
+fn placed_repeater_points_away_from_the_player() {
+    // Beta `BlockRedstoneRepeater.onBlockPlacedBy` takes the repeater facing
+    // from the player's yaw, so the plate and its two torches face away from
+    // the player and the input side faces the player.
+    for (facing, metadata) in [
+        (FurnaceFacing::South, 0),
+        (FurnaceFacing::West, 1),
+        (FurnaceFacing::North, 2),
+        (FurnaceFacing::East, 3),
+    ] {
+        let mut chunk = Chunk::new();
+        chunk.set(8, 64, 8, Id::Stone);
+        let mut chunks = world_with(chunk);
+        let player = Aabb::new(Vec3::new(2.0, 70.0, 2.0), Vec3::new(2.6, 71.8, 2.6));
+
+        assert!(place_selected_block_facing(
+            &mut chunks,
+            hit(8, 64, 8, BlockFace::Up, Id::Stone),
+            player,
+            Id::Repeater,
+            facing,
+        ));
+        assert_eq!(chunks.block_at(8, 65, 8), Some(Id::Repeater));
+        assert_eq!(
+            chunks.metadata_at(8, 65, 8),
+            metadata,
+            "a repeater placed with the player {facing:?} should face away from them"
+        );
+    }
+}
+
+#[test]
 fn normal_and_sticky_pistons_can_be_placed_facing_up_and_down() {
     for block in [Id::Piston, Id::StickyPiston] {
         let mut floor = Chunk::new();
@@ -696,7 +728,7 @@ fn placed_redstone_controls_keep_support_orientation_and_doors_fill_two_cells() 
         Id::Repeater,
         FurnaceFacing::East,
     ));
-    assert_eq!(chunks.metadata_at(10, 65, 8), 1);
+    assert_eq!(chunks.metadata_at(10, 65, 8), 3);
     assert!(place_selected_block_facing(
         &mut chunks,
         hit(8, 64, 8, BlockFace::East, Id::Stone),

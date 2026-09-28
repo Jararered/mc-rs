@@ -10,13 +10,16 @@ use bevy::pbr::ScreenSpaceReflections;
 use bevy::prelude::*;
 use bevy::state::app::StatesPlugin;
 use game::app::settings::AMBIENT_ONLY_SCALE;
+use game::app::settings::DEFAULT_CLOUD_HEIGHT;
 use game::app::settings::DEFAULT_FOV;
 use game::app::settings::GameSettings;
 use game::app::settings::GraphicsQuality;
 use game::app::settings::MAX_BRIGHTNESS;
+use game::app::settings::MAX_CLOUD_HEIGHT;
 use game::app::settings::MAX_FOV;
 use game::app::settings::MAX_RENDER_DISTANCE;
 use game::app::settings::MIN_BRIGHTNESS;
+use game::app::settings::MIN_CLOUD_HEIGHT;
 use game::app::settings::MIN_FOV;
 use game::app::settings::MIN_RENDER_DISTANCE;
 use game::app::settings::SettingsPlugin;
@@ -70,6 +73,14 @@ fn settings_controls_stay_within_their_ranges() {
     assert_eq!(settings.fov, MAX_FOV);
     settings.change_fov(-1_000.0);
     assert_eq!(settings.fov, MIN_FOV);
+
+    assert_eq!(settings.cloud_height, DEFAULT_CLOUD_HEIGHT);
+    settings.change_cloud_height(8.0);
+    assert_eq!(settings.cloud_height, DEFAULT_CLOUD_HEIGHT + 8.0);
+    settings.change_cloud_height(1_000.0);
+    assert_eq!(settings.cloud_height, MAX_CLOUD_HEIGHT);
+    settings.change_cloud_height(-1_000.0);
+    assert_eq!(settings.cloud_height, MIN_CLOUD_HEIGHT);
 
     assert_eq!(settings.graphics, GraphicsQuality::Fancy);
     assert!(settings.graphics.fancy_leaves());
@@ -380,6 +391,7 @@ fn settings_round_trip_through_json() {
         render_distance: 12,
         brightness: 450.0,
         fov: 90.0,
+        cloud_height: 192.0,
         old_lighting: true,
         smooth_lighting: true,
         directional_lighting: false,
@@ -399,6 +411,7 @@ fn settings_json_fills_in_missing_menu_fields() {
     assert_eq!(loaded.render_distance, 16);
     assert_eq!(loaded.brightness, GameSettings::default().brightness);
     assert_eq!(loaded.fov, DEFAULT_FOV);
+    assert_eq!(loaded.cloud_height, DEFAULT_CLOUD_HEIGHT);
     assert_eq!(loaded.old_lighting, true);
     assert_eq!(loaded.directional_lighting, true);
     assert_eq!(loaded.graphics, GraphicsQuality::Fancy);
@@ -414,6 +427,7 @@ fn settings_json_clamps_out_of_range_values() {
             "render_distance": 99,
             "brightness": -50.0,
             "fov": 180.0,
+            "cloud_height": 9999.0,
             "old_lighting": true,
             "directional_lighting": false,
             "graphics": "Fast"
@@ -424,6 +438,7 @@ fn settings_json_clamps_out_of_range_values() {
     assert_eq!(loaded.render_distance, MAX_RENDER_DISTANCE);
     assert_eq!(loaded.brightness, MIN_BRIGHTNESS);
     assert_eq!(loaded.fov, MAX_FOV);
+    assert_eq!(loaded.cloud_height, MAX_CLOUD_HEIGHT);
     assert!(loaded.old_lighting);
     assert!(!loaded.directional_lighting);
     assert_eq!(loaded.graphics, GraphicsQuality::Fast);
@@ -445,6 +460,7 @@ fn settings_plugin_loads_and_saves_menu_changes() {
         render_distance: 8,
         brightness: 200.0,
         fov: 55.0,
+        cloud_height: 64.0,
         old_lighting: true,
         smooth_lighting: true,
         directional_lighting: false,
@@ -464,6 +480,7 @@ fn settings_plugin_loads_and_saves_menu_changes() {
         let mut settings = app.world_mut().resource_mut::<GameSettings>();
         settings.change_render_distance(1);
         settings.change_fov(10.0);
+        settings.change_cloud_height(8.0);
         settings.cycle_graphics();
         settings.old_lighting = false;
     }
@@ -475,5 +492,6 @@ fn settings_plugin_loads_and_saves_menu_changes() {
     assert!(!saved.old_lighting);
     assert_eq!(saved.brightness, 200.0);
     assert_eq!(saved.fov, 65.0);
+    assert_eq!(saved.cloud_height, 72.0);
     let _ = fs::remove_file(path);
 }

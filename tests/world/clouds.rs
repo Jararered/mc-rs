@@ -3,9 +3,11 @@ use bevy::mesh::MeshPlugin;
 use bevy::mesh::VertexAttributeValues;
 use bevy::prelude::MinimalPlugins;
 use bevy::prelude::*;
+use game::app::settings::GameSettings;
 use game::player::Player;
 use game::world::clouds::CLOUD_HEIGHT;
 use game::world::clouds::cloud_color;
+use game::world::clouds::cloud_render_y;
 use game::world::clouds::cloud_scroll_blocks;
 use game::world::clouds::fancy_cloud_anchor;
 use game::world::clouds::fancy_cloud_mesh;
@@ -49,7 +51,7 @@ fn cloud_follow_runs_beside_the_player() {
 
     let placed = cloud_places(&mut app);
     assert_eq!(placed.len(), 2, "one fast sheet and one fancy sheet");
-    assert_cloud_anchor(&placed, 10.0, -4.0);
+    assert_cloud_anchor(&placed, 10.0, -4.0, CLOUD_HEIGHT);
 
     {
         let mut players = app
@@ -67,7 +69,7 @@ fn cloud_follow_runs_beside_the_player() {
         2,
         "walking a chunk must not spawn another sheet"
     );
-    assert_cloud_anchor(&placed, 400.0, 48.0);
+    assert_cloud_anchor(&placed, 400.0, 48.0, CLOUD_HEIGHT);
 
     let mut materials = app
         .world_mut()
@@ -81,7 +83,7 @@ fn cloud_follow_runs_beside_the_player() {
         })
         .collect();
     let assets = app.world().resource::<Assets<TintedMaterial>>();
-    let (_, fancy_uv) = fancy_cloud_anchor(400.0, 48.0, 0.0);
+    let (_, fancy_uv) = fancy_cloud_anchor(400.0, 48.0, 0.0, CLOUD_HEIGHT);
     for (name, handle) in handles {
         let material = &assets.get(&handle).unwrap().base;
         assert!(
@@ -104,13 +106,13 @@ fn cloud_follow_runs_beside_the_player() {
     }
 }
 
-fn assert_cloud_anchor(placed: &[(String, Vec3)], player_x: f32, player_z: f32) {
-    let (fancy_place, _) = fancy_cloud_anchor(player_x, player_z, 0.0);
+fn assert_cloud_anchor(placed: &[(String, Vec3)], player_x: f32, player_z: f32, cloud_y: f32) {
+    let (fancy_place, _) = fancy_cloud_anchor(player_x, player_z, 0.0, cloud_y);
     for (name, translation) in placed {
         let expected = if name == "Fancy clouds" {
             fancy_place
         } else {
-            fast_cloud_anchor(player_x, player_z, 0.0)
+            fast_cloud_anchor(player_x, player_z, 0.0, cloud_y)
         };
         assert!(
             (translation.x - expected.x).abs() < 1e-3
@@ -122,12 +124,53 @@ fn assert_cloud_anchor(placed: &[(String, Vec3)], player_x: f32, player_z: f32) 
 }
 
 #[test]
+fn cloud_height_setting_moves_both_sheets() {
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, AssetPlugin::default(), MeshPlugin))
+        .init_asset::<Image>()
+        .init_asset::<StandardMaterial>()
+        .add_plugins(WorldPlugin);
+    app.world_mut()
+        .spawn((Player, Transform::from_xyz(10.0, 70.0, -4.0)));
+    app.update();
+
+    let default = GameSettings::default().cloud_height;
+    assert!((cloud_render_y(default) - CLOUD_HEIGHT).abs() < 1e-5);
+    assert_cloud_anchor(&cloud_places(&mut app), 10.0, -4.0, CLOUD_HEIGHT);
+
+    for cloud_height in [16.0_f32, 200.0, 256.0] {
+        {
+            let mut settings = app.world_mut().resource_mut::<GameSettings>();
+            settings.cloud_height = cloud_height;
+        }
+        app.update();
+        assert_cloud_anchor(
+            &cloud_places(&mut app),
+            10.0,
+            -4.0,
+            cloud_render_y(cloud_height),
+        );
+    }
+
+    // The fancy columns keep their four-block thickness above the new height.
+    let anchor = cloud_render_y(200.0);
+    let points = positions(&fancy_cloud_mesh());
+    let min_y = points.iter().map(|p| p[1]).fold(f32::INFINITY, f32::min);
+    let max_y = points
+        .iter()
+        .map(|p| p[1])
+        .fold(f32::NEG_INFINITY, f32::max);
+    assert!((anchor + min_y - 200.33).abs() < 1e-3);
+    assert!((anchor + max_y - 204.33).abs() < 1e-3);
+}
+
+#[test]
 fn cloud_pattern_stays_put_when_the_player_moves() {
     // A fixed world point samples the same texel wherever the sheet sits.
     let point = (700.0, -300.0);
     let texel = |player_x, player_z, scroll| {
         let uv = fast_cloud_uv(
-            fast_cloud_anchor(player_x, player_z, scroll),
+            fast_cloud_anchor(player_x, player_z, scroll, CLOUD_HEIGHT),
             point.0,
             point.1,
         );
@@ -153,7 +196,7 @@ fn fast_cloud_sheet_always_covers_the_view() {
         (1024.5, 3000.0, 1500.0),
         (-40_000.0, 77_777.0, 2047.9),
     ] {
-        let sheet = fast_cloud_anchor(x, z, scroll);
+        let sheet = fast_cloud_anchor(x, z, scroll, CLOUD_HEIGHT);
         assert!((sheet.x - x).abs() <= 1024.0 + 1e-2);
         assert!((sheet.z - z).abs() <= 1024.0 + 1e-2);
         assert!((sheet.y - CLOUD_HEIGHT).abs() < 1e-5);

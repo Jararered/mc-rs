@@ -19,6 +19,13 @@ pub const MIN_FOV: f32 = 30.0;
 pub const MAX_FOV: f32 = 110.0;
 pub const DEFAULT_FOV: f32 = 80.0;
 pub const DEFAULT_WIGGLE_LEAVES: bool = true;
+/// Beta's `WorldProvider.getCloudHeight()`, which the client only used for the
+/// cloud sheet. The range reaches above the 128-block world so the clouds can
+/// clear the tallest terrain.
+pub const MIN_CLOUD_HEIGHT: f32 = 16.0;
+pub const MAX_CLOUD_HEIGHT: f32 = 256.0;
+/// `WorldProvider.getCloudHeight()` for the sky provider.
+pub const DEFAULT_CLOUD_HEIGHT: f32 = 108.0;
 
 /// Client options file, relative to the working directory.
 pub const SETTINGS_FILE: &str = "settings.json";
@@ -66,6 +73,7 @@ pub struct GameSettings {
     pub render_distance: i32,
     pub brightness: f32,
     pub fov: f32,
+    pub cloud_height: f32,
     pub old_lighting: bool,
     pub smooth_lighting: bool,
     pub directional_lighting: bool,
@@ -79,6 +87,7 @@ impl Default for GameSettings {
             render_distance: MIN_RENDER_DISTANCE,
             brightness: 300.0,
             fov: DEFAULT_FOV,
+            cloud_height: DEFAULT_CLOUD_HEIGHT,
             old_lighting: true,
             smooth_lighting: true,
             directional_lighting: true,
@@ -123,6 +132,11 @@ impl GameSettings {
         self.fov.to_radians()
     }
 
+    /// Beta fixes the cloud sheet in `WorldProvider`; here the menu moves it.
+    pub fn change_cloud_height(&mut self, change: f32) {
+        self.cloud_height = (self.cloud_height + change).clamp(MIN_CLOUD_HEIGHT, MAX_CLOUD_HEIGHT);
+    }
+
     pub fn cycle_graphics(&mut self) {
         self.graphics = self.graphics.cycle();
     }
@@ -141,6 +155,11 @@ impl GameSettings {
             self.fov.clamp(MIN_FOV, MAX_FOV)
         } else {
             DEFAULT_FOV
+        };
+        self.cloud_height = if self.cloud_height.is_finite() {
+            self.cloud_height.clamp(MIN_CLOUD_HEIGHT, MAX_CLOUD_HEIGHT)
+        } else {
+            DEFAULT_CLOUD_HEIGHT
         };
     }
 }
@@ -184,6 +203,7 @@ struct StoredSettings {
     render_distance: i32,
     brightness: f32,
     fov: f32,
+    cloud_height: f32,
     old_lighting: bool,
     smooth_lighting: bool,
     directional_lighting: bool,
@@ -204,6 +224,7 @@ impl From<&GameSettings> for StoredSettings {
             render_distance: settings.render_distance,
             brightness: settings.brightness,
             fov: settings.fov,
+            cloud_height: settings.cloud_height,
             old_lighting: settings.old_lighting,
             smooth_lighting: settings.smooth_lighting,
             directional_lighting: settings.directional_lighting,
@@ -219,6 +240,7 @@ impl From<StoredSettings> for GameSettings {
             render_distance: stored.render_distance,
             brightness: stored.brightness,
             fov: stored.fov,
+            cloud_height: stored.cloud_height,
             old_lighting: stored.old_lighting,
             smooth_lighting: stored.smooth_lighting,
             directional_lighting: stored.directional_lighting,

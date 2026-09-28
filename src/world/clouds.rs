@@ -3,8 +3,9 @@
 //! Fast graphics draws the flat sheet from `RenderGlobal.renderClouds`. Fancy
 //! and Ultra draw the 4-block columns from `renderCloudsFancy`, including the
 //! sides of each column. Empty texels are cut out and the clouds themselves
-//! are opaque. Both sit at world Y 108.33 and drift on X by 0.03 blocks per
-//! tick. Color comes from `World.drawClouds`.
+//! are opaque. Both sit at `GameSettings::cloud_height + 0.33`, the client's
+//! stand-in for Beta's `WorldProvider.getCloudHeight()`, and drift on X by
+//! 0.03 blocks per tick. Color comes from `World.drawClouds`.
 
 use std::path::Path;
 
@@ -22,6 +23,7 @@ use bevy::mesh::MeshTag;
 use bevy::prelude::*;
 use bevy::render::render_resource::PrimitiveTopology;
 
+use crate::app::settings::DEFAULT_CLOUD_HEIGHT;
 use crate::app::settings::GameSettings;
 use crate::physics::PhysicsSet;
 use crate::player::Player;
@@ -32,8 +34,10 @@ use super::textures::TintedMaterial;
 use super::textures::tint_tag;
 use super::tick::WorldTick;
 
-/// `WorldProvider.getCloudHeight() + 0.33`.
-pub const CLOUD_HEIGHT: f32 = 108.33;
+/// Both cloud renderers add this to `getCloudHeight()` before drawing.
+pub const CLOUD_RENDER_OFFSET: f32 = 0.33;
+/// World Y of the sheet at the default setting, `getCloudHeight() + 0.33`.
+pub const CLOUD_HEIGHT: f32 = DEFAULT_CLOUD_HEIGHT + CLOUD_RENDER_OFFSET;
 const SCROLL_PER_TICK: f64 = 0.03;
 const SCROLL_PERIOD: f64 = 2048.0;
 /// One texel of the 256² sheet is 8 blocks, so the whole texture is 2048
@@ -77,18 +81,23 @@ pub fn cloud_scroll_blocks(world_time: u64, partial: f32) -> f32 {
     distance.rem_euclid(SCROLL_PERIOD) as f32
 }
 
+/// World Y of the sheet for a `GameSettings::cloud_height` value.
+pub fn cloud_render_y(cloud_height: f32) -> f32 {
+    cloud_height + CLOUD_RENDER_OFFSET
+}
+
 /// Where the fast sheet sits so the pattern stays fixed in the world.
 ///
 /// Sheet UVs run `(local + CLOUD_EXTENT) / SCROLL_PERIOD`, and the extent is a
 /// whole period, so a world point `x` samples `(x - sheet_x) / period`. The
 /// sheet is placed at `-scroll` modulo one period, as close to the player as
 /// that allows, which samples `(x + scroll) / period` without any UV offset.
-pub fn fast_cloud_anchor(player_x: f32, player_z: f32, scroll: f32) -> Vec3 {
+pub fn fast_cloud_anchor(player_x: f32, player_z: f32, scroll: f32, cloud_y: f32) -> Vec3 {
     let half = SCROLL_PERIOD * 0.5;
     let nearest = |blocks: f64| (blocks + half).rem_euclid(SCROLL_PERIOD) - half;
     let x = f64::from(player_x) - nearest(f64::from(player_x) + f64::from(scroll));
     let z = f64::from(player_z) - nearest(f64::from(player_z));
-    Vec3::new(x as f32, CLOUD_HEIGHT, z as f32)
+    Vec3::new(x as f32, cloud_y, z as f32)
 }
 
 /// Texture coordinate of a world point under the fast sheet placed at `sheet`.
@@ -107,7 +116,7 @@ fn wrap_blocks(blocks: f64) -> f64 {
 /// Fancy column anchor from `renderCloudsFancy`. The mesh is a window of
 /// columns around the player; this snaps that window to the world grid and
 /// shifts the texture so the columns stay put as the player walks.
-pub fn fancy_cloud_anchor(player_x: f32, player_z: f32, scroll: f32) -> (Vec3, Vec2) {
+pub fn fancy_cloud_anchor(player_x: f32, player_z: f32, scroll: f32, cloud_y: f32) -> (Vec3, Vec2) {
     let scaled_x =
         wrap_blocks((f64::from(player_x) + f64::from(scroll)) / f64::from(FANCY_WORLD_SCALE));
     let scaled_z =
@@ -116,7 +125,7 @@ pub fn fancy_cloud_anchor(player_x: f32, player_z: f32, scroll: f32) -> (Vec3, V
     let frac_z = (scaled_z - scaled_z.floor()) as f32;
     let place = Vec3::new(
         player_x - frac_x * FANCY_WORLD_SCALE,
-        CLOUD_HEIGHT,
+        cloud_y,
         player_z - frac_z * FANCY_WORLD_SCALE,
     );
     let uv = Vec2::new(
@@ -322,6 +331,7 @@ fn cloud_material(texture: Handle<Image>) -> TintedMaterial {
 fn ensure_clouds(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
+    settings: Res<GameSettings>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<TintedMaterial>>,
     existing: Query<(), With<FastClouds>>,
@@ -349,6 +359,7 @@ fn ensure_clouds(
         .load("environment/clouds.png".to_string());
     let fast_material = materials.add(cloud_material(texture.clone()));
     let fancy_material = materials.add(cloud_material(texture));
+    let cloud_y = cloud_render_y(settings.cloud_height);
     commands.insert_resource(CloudsSpawned);
     commands.spawn((
         Name::new("Fast clouds"),
@@ -356,7 +367,7 @@ fn ensure_clouds(
         Mesh3d(meshes.add(fast_cloud_mesh())),
         MeshMaterial3d(fast_material),
         tint_tag(Color::WHITE),
-        Transform::from_xyz(0.0, CLOUD_HEIGHT, 0.0),
+        Transform::from_xyz(0.0, cloud_y, 0.0),
         Visibility::default(),
         NotShadowCaster,
         NoFrustumCulling,
@@ -367,7 +378,7 @@ fn ensure_clouds(
         Mesh3d(meshes.add(fancy_cloud_mesh())),
         MeshMaterial3d(fancy_material),
         tint_tag(Color::WHITE),
-        Transform::from_xyz(0.0, CLOUD_HEIGHT, 0.0),
+        Transform::from_xyz(0.0, cloud_y, 0.0),
         Visibility::Hidden,
         NotShadowCaster,
         NoFrustumCulling,
@@ -407,8 +418,9 @@ fn update_clouds(
     )));
     let tint = tint_tag(Color::srgb(color[0], color[1], color[2]));
     let scroll = cloud_scroll_blocks(tick.world_time(), tick.partial());
+    let cloud_y = cloud_render_y(settings.cloud_height);
     let (fancy_place, fancy_uv) =
-        fancy_cloud_anchor(player.translation.x, player.translation.z, scroll);
+        fancy_cloud_anchor(player.translation.x, player.translation.z, scroll, cloud_y);
 
     if let Ok((mut transform, mut visibility, mut tag)) = fast.single_mut() {
         visibility.set_if_neq(if fancy_mode {
@@ -417,7 +429,7 @@ fn update_clouds(
             Visibility::Inherited
         });
         transform.translation =
-            fast_cloud_anchor(player.translation.x, player.translation.z, scroll);
+            fast_cloud_anchor(player.translation.x, player.translation.z, scroll, cloud_y);
         tag.set_if_neq(tint.clone());
     }
 

@@ -47,6 +47,7 @@ enum MenuAction {
     RenderDistance(i32),
     Brightness(f32),
     Fov(f32),
+    CloudHeight(f32),
     OldLighting,
     SmoothLighting,
     DirectionalLighting,
@@ -59,6 +60,7 @@ enum SettingLabel {
     RenderDistance,
     Brightness,
     Fov,
+    CloudHeight,
     OldLighting,
     SmoothLighting,
     DirectionalLighting,
@@ -185,6 +187,14 @@ fn spawn_settings_menu(commands: &mut Commands, textures: &MenuTextures, setting
             brightness_text(&settings),
             MenuAction::Brightness(-50.0),
             MenuAction::Brightness(50.0),
+        );
+        spawn_stepper(
+            parent,
+            &textures,
+            SettingLabel::CloudHeight,
+            cloud_height_text(&settings),
+            MenuAction::CloudHeight(-8.0),
+            MenuAction::CloudHeight(8.0),
         );
         spawn_setting_button(
             parent,
@@ -347,6 +357,7 @@ fn handle_buttons(
             MenuAction::RenderDistance(change) => settings.change_render_distance(*change),
             MenuAction::Brightness(change) => settings.change_brightness(*change),
             MenuAction::Fov(change) => settings.change_fov(*change),
+            MenuAction::CloudHeight(change) => settings.change_cloud_height(*change),
             MenuAction::OldLighting => settings.old_lighting = !settings.old_lighting,
             MenuAction::SmoothLighting => settings.smooth_lighting = !settings.smooth_lighting,
             MenuAction::DirectionalLighting => {
@@ -371,6 +382,7 @@ fn refresh_settings_labels(
             SettingLabel::RenderDistance => render_distance_text(&settings),
             SettingLabel::Brightness => brightness_text(&settings),
             SettingLabel::Fov => fov_text(&settings),
+            SettingLabel::CloudHeight => cloud_height_text(&settings),
             SettingLabel::OldLighting => old_lighting_text(&settings),
             SettingLabel::SmoothLighting => smooth_lighting_text(&settings),
             SettingLabel::DirectionalLighting => directional_lighting_text(&settings),
@@ -400,6 +412,10 @@ fn brightness_text(settings: &GameSettings) -> String {
 
 fn fov_text(settings: &GameSettings) -> String {
     format!("FOV: {:.0}", settings.fov)
+}
+
+fn cloud_height_text(settings: &GameSettings) -> String {
+    format!("Cloud height: {:.0}", settings.cloud_height)
 }
 
 fn old_lighting_text(settings: &GameSettings) -> String {

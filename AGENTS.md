@@ -16,7 +16,7 @@ Compatibility with original Minecraft Beta 1.7.3 worlds and servers is a **secon
 # Commands
 
 - `cargo run` — start the game. `cargo run --features dev_dynamic_linking` links faster while iterating.
-- `cargo test` — all tests. Focus one target with `cargo test --test <name>` (for example `--test world`) or one test with `cargo test <filter>`.
+- `cargo test` — all tests. Focus one target with `cargo test --test <name>` (for example `--test world`) or one test with `cargo test <filter>`. Each target is its own binary that links all of Bevy, so the cost is in linking, not in running the tests: `.cargo/config.toml` caps `build.jobs`, and `[profile.test]` uses `line-tables-only` debug info to keep linker memory down. Adding another top-level `tests/<name>.rs` adds another full Bevy link, so prefer adding to an existing target.
 - `cargo check` / `cargo fmt` for a quick pass. `cargo fmt` must run on nightly: `rust-toolchain.toml` pins nightly and `rustfmt.toml` enables unstable `imports_granularity = "Item"`.
 - Edition 2024 is in use (let-chains appear in the code, e.g. `if let ... && let ...`).
 

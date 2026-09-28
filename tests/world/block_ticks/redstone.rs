@@ -122,6 +122,48 @@ fn piston_pushes_and_sticky_piston_pulls_without_duplication() {
 }
 
 #[test]
+fn torch_below_stone_powers_and_releases_a_downward_piston_beside_it() {
+    let mut w = TestWorld::new(1);
+    let piston = at(8, 65, 8);
+    let stone = piston + IVec3::NEG_X;
+    let torch = stone + IVec3::NEG_Y;
+    // The torch strongly powers the stone above it. That stone is next to
+    // the piston, but the torch itself is diagonal from the piston.
+    w.set(torch + IVec3::NEG_Y, Id::Stone);
+    w.set(stone, Id::Stone);
+    w.set(piston + IVec3::NEG_Y, Id::Stone);
+    place_meta(&mut w, piston, Id::Piston, 0);
+    assert_eq!(w.metadata(piston), 0);
+
+    place_meta(&mut w, torch, Id::RedstoneTorch, 5);
+    assert_eq!(w.block(torch), Id::RedstoneTorch);
+    assert_eq!(w.metadata(piston), 8, "piston should extend downward");
+    assert_eq!(w.block(piston + IVec3::NEG_Y), Id::PistonHead);
+    assert_eq!(w.block(piston + IVec3::NEG_Y * 2), Id::Stone);
+
+    // Switching the torch off and back on must also notify the piston,
+    // even though neither torch state touches the piston directly.
+    let lever = torch + IVec3::NEG_Y + IVec3::NEG_X;
+    place_meta(&mut w, lever, Id::Lever, 2);
+    w.event(BlockEvent::Activated { position: lever });
+    w.run(2);
+    assert_eq!(w.block(torch), Id::UnlitRedstoneTorch);
+    assert_eq!(w.metadata(piston), 0);
+    w.event(BlockEvent::Activated { position: lever });
+    w.run(2);
+    assert_eq!(w.block(torch), Id::RedstoneTorch);
+    assert_eq!(w.metadata(piston), 8);
+
+    w.place(torch, Id::Air);
+    assert_eq!(
+        w.metadata(piston),
+        0,
+        "piston should retract when the torch is removed"
+    );
+    assert_eq!(w.block(piston + IVec3::NEG_Y), Id::Air);
+}
+
+#[test]
 fn detector_rail_only_responds_to_carts() {
     use game::world::block_ticks::RedstoneOccupant;
     let mut w = TestWorld::new(1);

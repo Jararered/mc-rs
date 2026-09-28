@@ -281,6 +281,22 @@ fn torch_powered(world: &mut TickWorld, position: IVec3) -> bool {
     };
     world.block_indirectly_providing_power_to(position + support, side)
 }
+/// BlockRedstoneTorch notifies around all six adjacent cells when it turns
+/// on or off. This reaches consumers beside a solid block powered by the
+/// torch (one cell diagonally from the torch itself).
+fn notify_torch_neighbors(world: &mut TickWorld, position: IVec3) {
+    for offset in [
+        IVec3::NEG_Y,
+        IVec3::Y,
+        IVec3::NEG_X,
+        IVec3::X,
+        IVec3::NEG_Z,
+        IVec3::Z,
+    ] {
+        world.notify_neighbors(position + offset, Id::RedstoneTorch);
+    }
+}
+
 impl BlockBehavior for RedstoneTorch {
     fn can_provide_power(&self) -> bool {
         true
@@ -307,12 +323,12 @@ impl BlockBehavior for RedstoneTorch {
     }
     fn on_added(&self, world: &mut TickWorld, position: IVec3) {
         if world.block(position) == Id::RedstoneTorch {
-            world.notify_neighbors(position, Id::RedstoneTorch);
+            notify_torch_neighbors(world, position);
         }
     }
     fn on_removed(&self, world: &mut TickWorld, position: IVec3, previous: Id, _: u8) {
         if previous == Id::RedstoneTorch {
-            world.notify_neighbors(position, previous);
+            notify_torch_neighbors(world, position);
         }
     }
     fn neighbor_changed(&self, world: &mut TickWorld, position: IVec3, _: Id) {

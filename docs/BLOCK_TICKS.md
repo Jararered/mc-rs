@@ -222,6 +222,13 @@ saved writes a copy of its pending ticks, and loading schedules them
 again. Beta dropped such ticks,
 which could leave water frozen mid-flow; this is a deliberate difference.
 
+Block ticks mark their chunk dirty on every change, so flowing water can
+make most of a region dirty between autosaves. The save path handles that
+load: an autosave drains a few chunks per frame and writes them on a
+background task, so a churning world does not stall. A chunk whose snapshot
+is already with the writer and which then unloads is queued again, because
+streaming attaches its dropped items and pending ticks at unload time.
+
 ## Generated springs
 
 Overworld `WorldGenLiquids` attempts run after cactus and before snow, with

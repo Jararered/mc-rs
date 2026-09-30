@@ -7,6 +7,7 @@ use bevy::prelude::*;
 use bevy::window::MonitorSelection;
 use bevy::window::PrimaryWindow;
 use bevy::window::WindowMode;
+use bevy::window::WindowResized;
 use bevy::window::WindowResolution;
 
 /// Windowed size to restore when leaving fullscreen.
@@ -29,12 +30,13 @@ impl Plugin for FullscreenPlugin {
 fn toggle_fullscreen(
     keys: Res<ButtonInput<KeyCode>>,
     mut windowed: ResMut<WindowedResolution>,
-    mut windows: Query<&mut Window, With<PrimaryWindow>>,
+    mut windows: Query<(Entity, &mut Window), With<PrimaryWindow>>,
+    mut resized: MessageWriter<WindowResized>,
 ) {
     if !keys.just_pressed(KeyCode::F11) {
         return;
     }
-    let Ok(mut window) = windows.single_mut() else {
+    let Ok((entity, mut window)) = windows.single_mut() else {
         return;
     };
 
@@ -45,6 +47,15 @@ fn toggle_fullscreen(
         window.mode = WindowMode::Windowed;
         if let Some(resolution) = windowed.0.take() {
             window.resolution = resolution;
+            // Camera target sizes are refreshed by resize messages, not Window
+            // change detection. Notify before PostUpdate's camera system so the
+            // depth textures and the extracted window color target agree this
+            // frame; the backend's resize notification can arrive later.
+            resized.write(WindowResized {
+                window: entity,
+                width: window.width(),
+                height: window.height(),
+            });
         }
     }
 }

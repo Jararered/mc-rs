@@ -1,9 +1,14 @@
+#![recursion_limit = "256"]
+
 use bevy::asset::AssetPlugin;
 use bevy::prelude::*;
+use bevy::render::camera::camera_system;
+use bevy::render::texture::ManualTextureViews;
 use bevy::window::MonitorSelection;
 use bevy::window::PrimaryWindow;
 use bevy::window::WindowMode;
 use bevy::window::WindowPlugin;
+use bevy::window::WindowResized;
 use game::app::fullscreen::FullscreenPlugin;
 
 fn test_app() -> App {
@@ -77,4 +82,59 @@ fn other_keys_leave_the_window_mode_alone() {
     let mut app = test_app();
     press(&mut app, KeyCode::F10);
     assert_eq!(primary_window(&mut app).mode, WindowMode::Windowed);
+}
+
+#[test]
+fn restoring_windowed_size_refreshes_all_camera_targets_in_the_same_frame() {
+    let mut app = test_app();
+    app.init_asset::<Image>()
+        .init_resource::<ManualTextureViews>()
+        .add_systems(PostUpdate, camera_system);
+    // The sky, world, arm, and UI all render to the primary window.
+    let cameras: Vec<_> = (0..5)
+        .map(|_| {
+            app.world_mut()
+                .spawn((Camera::default(), Projection::default()))
+                .id()
+        })
+        .collect();
+    app.update();
+    let windowed_size = primary_window(&mut app).resolution.physical_size();
+    press(&mut app, KeyCode::F11);
+    let entity = {
+        let mut query = app
+            .world_mut()
+            .query_filtered::<Entity, With<PrimaryWindow>>();
+        query.single(app.world()).unwrap()
+    };
+    primary_window(&mut app)
+        .resolution
+        .set_physical_resolution(2560, 1440);
+    app.world_mut().write_message(WindowResized {
+        window: entity,
+        width: 2560.0,
+        height: 1440.0,
+    });
+    app.update();
+    for &camera in &cameras {
+        assert_eq!(
+            app.world()
+                .get::<Camera>(camera)
+                .unwrap()
+                .physical_target_size(),
+            Some(UVec2::new(2560, 1440))
+        );
+    }
+
+    // No backend resize event arrives until after this frame's camera update.
+    press(&mut app, KeyCode::F11);
+    for camera in cameras {
+        assert_eq!(
+            app.world()
+                .get::<Camera>(camera)
+                .unwrap()
+                .physical_target_size(),
+            Some(windowed_size)
+        );
+    }
 }

@@ -19,6 +19,14 @@
 //! JSON file, written through a temporary path so an interrupted save cannot
 //! corrupt the previous one.
 //!
+//! Saving never blocks the main thread for a whole batch. The autosave timer
+//! starts a drain, each frame snapshots a few chunks under a small time budget,
+//! and the JSON encoding plus the file writes run on [`IoTaskPool`]. Only one
+//! write is in flight at a time, which keeps chunks reaching disk in the order
+//! they were snapshotted and stops a burst of churn from queueing without
+//! bound. Exiting waits for the in-flight write and then saves what is left in
+//! one synchronous pass.
+//!
 //! This is a native format, not the Beta one. Beta compatibility is a later
 //! priority; when it arrives, its adapters belong here alongside this format.
 
@@ -33,10 +41,15 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::time::Duration;
+use std::time::Instant;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
 use bevy::prelude::*;
+use bevy::tasks::IoTaskPool;
+use bevy::tasks::Task;
+use bevy::tasks::futures::check_ready;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -75,6 +88,13 @@ pub const FORMAT_VERSION: u32 = 1;
 const MANIFEST_FILE: &str = "level.json";
 const PLAYER_FILE: &str = "player.json";
 const AUTOSAVE_SECONDS: f32 = 30.0;
+/// Most chunks one frame may turn into save snapshots. Each one walks its 4096
+/// blocks, so this bounds the main-thread cost of a save; the encoding and the
+/// file writes happen on a background task.
+const MAX_SNAPSHOTS_PER_FRAME: usize = 8;
+/// Stop snapshotting once a frame has spent this long on it, whichever limit
+/// bites first. A slow frame must not turn into a bigger one.
+const SNAPSHOT_BUDGET: Duration = Duration::from_millis(2);
 const BLOCKS_PER_CHUNK: usize = CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE;
 const COLUMNS_PER_CHUNK: usize = CHUNK_SIZE * CHUNK_SIZE;
 
@@ -371,8 +391,26 @@ impl WorldStorage {
         &self,
         chunks: impl IntoIterator<Item = (ChunkPosition, &'a GeneratedChunk)>,
     ) -> io::Result<usize> {
-        let mut by_region: HashMap<(i32, i32), Vec<(ChunkPosition, &'a GeneratedChunk)>> =
-            HashMap::new();
+        let stored: Vec<_> = chunks
+            .into_iter()
+            .map(|(position, chunk)| {
+                (
+                    position,
+                    StoredChunk::from_generated(chunk, &chunk.items, chunk.chunk.pending_ticks()),
+                )
+            })
+            .collect();
+        self.write_stored_chunks(stored)
+    }
+
+    /// Write chunks that are already in their stored form.
+    ///
+    /// This is the half that touches the disk, so a caller that builds
+    /// [`StoredChunk`]s on the main thread can run it on a background task. The
+    /// manifest is written once at the end, and only one caller at a time should
+    /// be in here so that the last write of a chunk is the newest one.
+    fn write_stored_chunks(&self, chunks: Vec<(ChunkPosition, StoredChunk)>) -> io::Result<usize> {
+        let mut by_region: HashMap<(i32, i32), Vec<(ChunkPosition, StoredChunk)>> = HashMap::new();
         for (position, chunk) in chunks {
             by_region
                 .entry(region_of(position))
@@ -388,7 +426,7 @@ impl WorldStorage {
             let directory = self.region_path(region);
             fs::create_dir_all(&directory)?;
             for (position, chunk) in entries {
-                write_chunk_file(&directory.join(chunk_file_name(position)), chunk)?;
+                write_chunk_file(&directory.join(chunk_file_name(position)), &chunk)?;
                 saved += 1;
             }
         }
@@ -502,7 +540,14 @@ struct StoredClimate {
 }
 
 impl StoredChunk {
-    fn from_generated(generated: &GeneratedChunk) -> Self {
+    /// Snapshot a live chunk. `items` and `ticks` carry the dropped items and
+    /// pending block ticks that live outside the chunk while it is loaded, so
+    /// they are passed in rather than written into the chunk and read back.
+    fn from_generated(
+        generated: &GeneratedChunk,
+        items: &[ChunkDroppedItem],
+        ticks: &[PendingTick],
+    ) -> Self {
         Self {
             format_version: FORMAT_VERSION,
             runs: encode_blocks(generated.chunk.raw_blocks()),
@@ -517,8 +562,7 @@ impl StoredChunk {
                     biome: climate.biome.as_u8(),
                 })
                 .collect(),
-            items: generated
-                .items
+            items: items
                 .iter()
                 .map(|item| StoredDroppedItem {
                     stack: StoredStack::from_stack(item.stack),
@@ -561,9 +605,7 @@ impl StoredChunk {
                 .raw_metadata()
                 .map(encode_blocks)
                 .unwrap_or_default(),
-            ticks: generated
-                .chunk
-                .pending_ticks()
+            ticks: ticks
                 .iter()
                 .map(|tick| StoredTick {
                     index: tick.index,
@@ -572,6 +614,12 @@ impl StoredChunk {
                 })
                 .collect(),
         }
+    }
+
+    /// The chunk as the bytes of its file. Encoding is the expensive half of a
+    /// save, which is why it belongs off the main thread.
+    fn to_bytes(&self) -> io::Result<Vec<u8>> {
+        serde_json::to_vec(self).map_err(io::Error::other)
     }
 
     fn into_generated(self) -> Option<GeneratedChunk> {
@@ -751,9 +799,8 @@ fn dequantize(value: u8) -> f64 {
     f64::from(value) / 255.0
 }
 
-fn write_chunk_file(path: &Path, chunk: &GeneratedChunk) -> io::Result<()> {
-    let stored = StoredChunk::from_generated(chunk);
-    let bytes = serde_json::to_vec(&stored).map_err(io::Error::other)?;
+fn write_chunk_file(path: &Path, chunk: &StoredChunk) -> io::Result<()> {
+    let bytes = chunk.to_bytes()?;
     // Write through a temporary file so an interrupted save leaves the previous
     // chunk intact instead of a half-written one.
     let temporary = path.with_extension("tmp");
@@ -843,6 +890,7 @@ fn civil_from_days(days: i64) -> (i64, u32, u32) {
 struct PersistenceConfig {
     saves_directory: PathBuf,
     seed: u64,
+    autosave_seconds: f32,
 }
 
 /// Adds world saving and loading to the app.
@@ -852,6 +900,7 @@ struct PersistenceConfig {
 pub struct PersistencePlugin {
     saves_directory: PathBuf,
     seed: u64,
+    autosave_seconds: f32,
 }
 
 impl PersistencePlugin {
@@ -859,11 +908,19 @@ impl PersistencePlugin {
         Self {
             saves_directory: saves_directory.into(),
             seed: 0,
+            autosave_seconds: AUTOSAVE_SECONDS,
         }
     }
 
     pub fn with_seed(mut self, seed: u64) -> Self {
         self.seed = seed;
+        self
+    }
+
+    /// Seconds between autosaves. Shortened by tests so they do not have to
+    /// simulate half a minute of world time.
+    pub fn with_autosave(mut self, seconds: f32) -> Self {
+        self.autosave_seconds = seconds;
         self
     }
 }
@@ -879,13 +936,30 @@ impl Plugin for PersistencePlugin {
         app.insert_resource(PersistenceConfig {
             saves_directory: self.saves_directory.clone(),
             seed: self.seed,
+            autosave_seconds: self.autosave_seconds,
         })
         .add_systems(Startup, setup_persistence.before(setup_streaming))
-        // AppExit can be written by a UI system during Update. Run the final
-        // flush after all Update systems so the exit message and the latest
+        // AppExit can be written by a UI system during Update. Run the save
+        // pump after all Update systems so the exit message and the latest
         // player transform are both visible before Bevy shuts down.
         .add_systems(Last, flush_persistence);
     }
+}
+
+/// A batch of chunk snapshots handed to the background writer, plus the player
+/// state to write alongside them.
+struct SaveBatch {
+    positions: Vec<ChunkPosition>,
+    chunks: Vec<(ChunkPosition, StoredChunk)>,
+    player: Option<StoredPlayer>,
+}
+
+/// What a background write reported back, read on the main thread once the task
+/// finishes.
+struct SaveOutcome {
+    positions: Vec<ChunkPosition>,
+    saved: usize,
+    error: Option<String>,
 }
 
 /// Shared world storage plus the bookkeeping needed to save it.
@@ -896,19 +970,39 @@ pub struct WorldPersistence {
     dirty: HashSet<ChunkPosition>,
     /// Dirty chunks that were unloaded before a save could reach them.
     pending: Vec<(ChunkPosition, GeneratedChunk)>,
+    /// Chunks already snapshotted and on their way to disk. A position is in
+    /// at most one of `dirty`, `saving`, and `pending`.
+    saving: HashSet<ChunkPosition>,
+    /// The write in flight, if any. Only one runs at a time so chunks reach disk
+    /// in the order they were snapshotted and a burst of churn cannot queue
+    /// without bound.
+    writer: Option<Task<SaveOutcome>>,
+    /// Chunks already snapshotted into a batch for the current drain. A chunk is
+    /// written at most once per autosave, so a world that keeps changing does
+    /// not keep the drain open forever.
+    drained: HashSet<ChunkPosition>,
+    /// A save is due: the autosave fired and the drain has not finished.
+    draining: bool,
+    /// The player record has not been attached to a batch yet.
+    player_pending: bool,
     /// Set by the F4 regeneration key so the next generation pass ignores disk.
     regenerating: bool,
     timer: Timer,
 }
 
 impl WorldPersistence {
-    fn new(storage: WorldStorage) -> Self {
+    fn new(storage: WorldStorage, autosave_seconds: f32) -> Self {
         Self {
             storage: Some(Arc::new(storage)),
             dirty: HashSet::new(),
             pending: Vec::new(),
+            saving: HashSet::new(),
+            drained: HashSet::new(),
+            writer: None,
+            draining: false,
+            player_pending: false,
             regenerating: false,
-            timer: Timer::from_seconds(AUTOSAVE_SECONDS, TimerMode::Repeating),
+            timer: Timer::from_seconds(autosave_seconds, TimerMode::Repeating),
         }
     }
 
@@ -917,6 +1011,11 @@ impl WorldPersistence {
             storage: None,
             dirty: HashSet::new(),
             pending: Vec::new(),
+            saving: HashSet::new(),
+            drained: HashSet::new(),
+            writer: None,
+            draining: false,
+            player_pending: false,
             regenerating: false,
             timer: Timer::from_seconds(AUTOSAVE_SECONDS, TimerMode::Repeating),
         }
@@ -937,8 +1036,13 @@ impl WorldPersistence {
 
     /// Keep an unloaded chunk's data around until the next save, but only if it
     /// actually changed. Unmodified chunks are regenerated identically instead.
+    ///
+    /// A chunk whose snapshot is already with the writer counts as changed: the
+    /// snapshot predates the items and ticks streaming just attached to it, so
+    /// the unloaded copy has to be saved after that write to win.
     pub fn queue_unload(&mut self, position: ChunkPosition, chunk: GeneratedChunk) {
-        if self.dirty.remove(&position) {
+        let changed = self.dirty.remove(&position) | self.saving.remove(&position);
+        if changed {
             self.pending.push((position, chunk));
         }
     }
@@ -956,52 +1060,249 @@ impl WorldPersistence {
         self.regenerating = false;
     }
 
-    /// Write dirty chunks and current player state.
+    /// True when a chunk the current cycle has not covered yet still needs a
+    /// snapshot. A chunk already snapshotted this cycle does not, so a world
+    /// that keeps changing still finishes its drain.
+    fn has_work(&self) -> bool {
+        !self.pending.is_empty()
+            || self
+                .dirty
+                .iter()
+                .any(|position| !self.drained.contains(position))
+    }
+
+    /// True while a background write is in flight. The next batch waits for it,
+    /// so chunks reach disk in the order they were snapshotted.
+    pub fn write_in_flight(&self) -> bool {
+        self.writer.is_some()
+    }
+
+    /// Close the drain. A chunk edited after its snapshot this cycle waits for
+    /// the next autosave, which is the same guarantee the old single-pass save
+    /// gave.
+    fn finish_drain(&mut self) {
+        self.draining = false;
+    }
+
+    /// Begin a cycle. Each chunk is written at most once per cycle, so a world
+    /// that keeps changing does not keep the drain open forever.
+    fn start_drain(&mut self) {
+        self.draining = true;
+        self.drained.clear();
+    }
+
+    /// Retire the write that finished, if there was one.
+    fn collect_finished_write(&mut self) {
+        if !self.writer.as_ref().is_some_and(Task::is_finished) {
+            return;
+        }
+        // A finished task still has to be polled for its output, and dropping it
+        // would cancel it.
+        let Some(mut task) = self.writer.take() else {
+            return;
+        };
+        let Some(outcome) = check_ready(&mut task) else {
+            return;
+        };
+        for position in &outcome.positions {
+            self.saving.remove(position);
+        }
+        match &outcome.error {
+            Some(error) => warn!("Failed to save world: {error}"),
+            None if outcome.saved > 0 => info!("Saved {} chunks", outcome.saved),
+            None => {}
+        }
+    }
+
+    /// Snapshot up to [`MAX_SNAPSHOTS_PER_FRAME`] chunks under
+    /// [`SNAPSHOT_BUDGET`] and hand them to the background writer.
+    ///
+    /// Runs once per frame while a save is due, so writing hundreds of chunks
+    /// costs a little every frame instead of one long stall. Returns the number
+    /// of chunks snapshotted.
+    fn pump(
+        &mut self,
+        chunks: &WorldChunks,
+        items: &HashMap<ChunkPosition, Vec<ChunkDroppedItem>>,
+        ticks: &HashMap<ChunkPosition, Vec<PendingTick>>,
+        player: Option<&StoredPlayer>,
+    ) -> usize {
+        if !self.draining || self.write_in_flight() || self.storage.is_none() {
+            return 0;
+        }
+
+        let start = Instant::now();
+        let mut batch: Vec<(ChunkPosition, StoredChunk)> = Vec::new();
+        let mut positions: Vec<ChunkPosition> = Vec::new();
+
+        // Unloaded chunks first: they are plain owned data, and getting one onto
+        // disk frees the chunk's memory.
+        let mut pending = std::mem::take(&mut self.pending);
+        let mut taken = 0;
+        while taken < pending.len() {
+            if positions.len() >= MAX_SNAPSHOTS_PER_FRAME || start.elapsed() >= SNAPSHOT_BUDGET {
+                break;
+            }
+            let (position, chunk) = &pending[taken];
+            batch.push((
+                *position,
+                StoredChunk::from_generated(chunk, &chunk.items, chunk.chunk.pending_ticks()),
+            ));
+            positions.push(*position);
+            taken += 1;
+        }
+        self.pending = pending.split_off(taken);
+
+        // A chunk that is neither loaded nor with the writer has left the world
+        // without being queued, which regeneration does. Its next load
+        // regenerates it, so there is nothing to save.
+        self.dirty.retain(|position| {
+            self.saving.contains(position)
+                || self.drained.contains(position)
+                || chunks.contains(*position)
+        });
+        let candidates: Vec<ChunkPosition> = self
+            .dirty
+            .iter()
+            .copied()
+            .filter(|position| !self.saving.contains(position) && !self.drained.contains(position))
+            .collect();
+        for position in candidates {
+            if positions.len() >= MAX_SNAPSHOTS_PER_FRAME || start.elapsed() >= SNAPSHOT_BUDGET {
+                break;
+            }
+            let Some(chunk) = chunks.get(position) else {
+                continue;
+            };
+            batch.push((
+                position,
+                StoredChunk::from_generated(
+                    chunk,
+                    items.get(&position).map_or(&[][..], Vec::as_slice),
+                    ticks.get(&position).map_or(&[][..], Vec::as_slice),
+                ),
+            ));
+            positions.push(position);
+        }
+
+        let player = player.filter(|_| self.player_pending).cloned();
+        if player.is_some() {
+            self.player_pending = false;
+        }
+        if batch.is_empty() && player.is_none() {
+            return 0;
+        }
+        for position in &positions {
+            self.dirty.remove(position);
+            self.saving.insert(*position);
+            self.drained.insert(*position);
+        }
+        let snapshotted = positions.len();
+        self.submit(SaveBatch {
+            positions,
+            chunks: batch,
+            player,
+        });
+        snapshotted
+    }
+
+    /// Send a batch to the writer thread.
+    fn submit(&mut self, batch: SaveBatch) {
+        let Some(storage) = self.storage.clone() else {
+            return;
+        };
+        self.writer = Some(IoTaskPool::get().spawn(async move {
+            let SaveBatch {
+                positions,
+                chunks,
+                player,
+            } = batch;
+            let saved = match storage.write_stored_chunks(chunks) {
+                Ok(saved) => saved,
+                Err(error) => {
+                    return SaveOutcome {
+                        positions,
+                        saved: 0,
+                        error: Some(error.to_string()),
+                    };
+                }
+            };
+            // The manifest must be written after the chunks, and this task owns
+            // the world folder for its duration.
+            let error = match player {
+                Some(player) => storage.save_player(&player).err(),
+                None => None,
+            };
+            SaveOutcome {
+                positions,
+                saved,
+                error: error.map(|error| error.to_string()),
+            }
+        }));
+    }
+
+    /// Wait for the in-flight write. Dropping a `Task` cancels it, so the
+    /// outcome has to be taken before the task is dropped.
+    fn wait_for_write(&mut self) {
+        let Some(mut task) = self.writer.take() else {
+            return;
+        };
+        while !task.is_finished() {
+            std::thread::yield_now();
+        }
+        if let Some(outcome) = check_ready(&mut task)
+            && let Some(error) = outcome.error
+        {
+            warn!("Failed to save world: {error}");
+        }
+        self.saving.clear();
+    }
+
+    /// Save everything still outstanding in one synchronous pass, as the exit
+    /// path does. Waits for the background writer first so its older snapshots
+    /// cannot land after this pass and undo it.
     pub fn flush(
         &mut self,
-        chunks: &mut WorldChunks,
+        chunks: &WorldChunks,
         player: Option<(&Transform, Option<&Hotbar>, Option<&Inventory>, bool, f32)>,
-        items: &std::collections::HashMap<ChunkPosition, Vec<ChunkDroppedItem>>,
+        items: &HashMap<ChunkPosition, Vec<ChunkDroppedItem>>,
         ticks: Option<&BlockTicks>,
     ) {
         let Some(storage) = self.storage.clone() else {
             return;
         };
+        self.wait_for_write();
+        self.finish_drain();
+        self.drained.clear();
+        self.player_pending = false;
 
-        let pending = std::mem::take(&mut self.pending);
-        let dirty: Vec<_> = self.dirty.drain().collect();
-        for position in &dirty {
-            if let Some(chunk) = chunks.get_mut(*position) {
-                chunk.items = items.get(position).cloned().unwrap_or_default();
-                if let Some(ticks) = ticks {
-                    chunk
-                        .chunk
-                        .set_pending_ticks(ticks.pending_in_chunk(*position));
-                }
-            }
+        let mut batch: Vec<(ChunkPosition, StoredChunk)> = Vec::new();
+        for (position, chunk) in self.pending.drain(..) {
+            batch.push((
+                position,
+                StoredChunk::from_generated(&chunk, &chunk.items, chunk.chunk.pending_ticks()),
+            ));
         }
-        let mut batch: Vec<(ChunkPosition, &GeneratedChunk)> =
-            Vec::with_capacity(pending.len() + dirty.len());
-        for (position, chunk) in &pending {
-            batch.push((*position, chunk));
-        }
-        for position in &dirty {
-            if let Some(chunk) = chunks.get(*position) {
-                batch.push((*position, chunk));
-            }
+        let ticks = ticks
+            .map(BlockTicks::pending_ticks_by_chunk)
+            .unwrap_or_default();
+        for position in self.dirty.drain() {
+            let Some(chunk) = chunks.get(position) else {
+                continue;
+            };
+            batch.push((
+                position,
+                StoredChunk::from_generated(
+                    chunk,
+                    items.get(&position).map_or(&[][..], Vec::as_slice),
+                    ticks.get(&position).map_or(&[][..], Vec::as_slice),
+                ),
+            ));
         }
         if !batch.is_empty() {
-            match storage.save_chunks(batch) {
+            match storage.write_stored_chunks(batch) {
                 Ok(count) => info!("Saved {count} chunks to {}", storage.root().display()),
                 Err(error) => warn!("Failed to save world: {error}"),
-            }
-        }
-        // Entities remain the live copy. Drop the snapshot so a later load of
-        // this in-memory chunk does not spawn the items a second time.
-        for position in &dirty {
-            if let Some(chunk) = chunks.get_mut(*position) {
-                chunk.items.clear();
-                chunk.chunk.take_pending_ticks();
             }
         }
         if let Some((transform, hotbar, inventory, flying, fly_speed)) = player
@@ -1034,7 +1335,7 @@ fn setup_persistence(
             if let Some(tick) = tick.as_deref_mut() {
                 tick.set_world_time(storage.manifest().world_time);
             }
-            commands.insert_resource(WorldPersistence::new(storage));
+            commands.insert_resource(WorldPersistence::new(storage, config.autosave_seconds));
         }
         Err(error) => {
             warn!("World persistence disabled: {error}");
@@ -1043,9 +1344,16 @@ fn setup_persistence(
     }
 }
 
+/// Save what has changed, without stalling the frame.
+///
+/// The autosave timer starts a drain rather than the save itself: each frame
+/// snapshots a few chunks and the encoding and writes run on a background task,
+/// so a world with hundreds of changed chunks never pays for all of them in one
+/// frame. Exiting skips the drain and saves the rest synchronously, so nothing
+/// is lost by quitting mid-save.
 fn flush_persistence(
     mut persistence: ResMut<WorldPersistence>,
-    mut chunks: ResMut<WorldChunks>,
+    chunks: Res<WorldChunks>,
     player: Query<
         (
             &Transform,
@@ -1072,38 +1380,98 @@ fn flush_persistence(
 ) {
     let exiting = exit.read().next().is_some();
     persistence.timer.tick(time.delta());
-    if exiting || persistence.timer.just_finished() {
+    let autosave_due = persistence.timer.just_finished();
+    if autosave_due {
+        persistence.start_drain();
+        persistence.player_pending = true;
+    }
+
+    if exiting {
         if let Some(tick) = tick.as_deref()
             && let Some(storage) = persistence.storage()
         {
             storage.set_world_time(tick.world_time());
         }
-        let mut saved = std::collections::HashMap::<ChunkPosition, Vec<ChunkDroppedItem>>::new();
-        for (transform, dropped, motion, state) in &items {
-            let position = ChunkPosition::from_block(
-                transform.translation.x.floor() as i32,
-                transform.translation.z.floor() as i32,
-            );
-            saved
-                .entry(position)
-                .or_default()
-                .push(crate::entity::drops::items::chunk_record(
-                    dropped.0,
-                    transform.translation,
-                    motion.0,
-                    state,
-                ));
-        }
+        let items = dropped_items_by_chunk(&items);
         persistence.flush(
-            &mut chunks,
+            &chunks,
             player
                 .single()
                 .ok()
                 .map(|(transform, hotbar, inventory, flying, fly_speed)| {
                     (transform, hotbar, inventory, flying.is_some(), fly_speed.0)
                 }),
-            &saved,
+            &items,
             block_ticks.as_deref(),
         );
+        return;
     }
+
+    // Retire last frame's write before deciding there is nothing left to do.
+    persistence.collect_finished_write();
+    // Gathering the dropped items and pending ticks walks the whole world's
+    // entities, so skip the frames that only wait on a write.
+    if !persistence.draining || persistence.write_in_flight() {
+        return;
+    }
+
+    let items = dropped_items_by_chunk(&items);
+    let ticks = block_ticks
+        .as_deref()
+        .map(BlockTicks::pending_ticks_by_chunk)
+        .unwrap_or_default();
+    let record = if persistence.player_pending {
+        player
+            .single()
+            .ok()
+            .map(|(transform, hotbar, inventory, flying, fly_speed)| {
+                StoredPlayer::from_transform(transform)
+                    .with_flying(flying.is_some(), fly_speed.0)
+                    .with_inventory(
+                        hotbar.unwrap_or(&Hotbar::default()),
+                        inventory.unwrap_or(&Inventory::default()),
+                    )
+            })
+    } else {
+        None
+    };
+    if persistence.player_pending && record.is_none() {
+        // Nothing to record until a player exists; let the drain finish.
+        persistence.player_pending = false;
+    }
+    persistence.pump(&chunks, &items, &ticks, record.as_ref());
+    if !persistence.has_work() && !persistence.player_pending && !persistence.write_in_flight() {
+        persistence.finish_drain();
+    }
+}
+
+/// The live dropped items, grouped by the chunk they would be saved into.
+fn dropped_items_by_chunk(
+    items: &Query<
+        (
+            &Transform,
+            &crate::entity::DroppedItem,
+            &crate::entity::drops::items::ItemMotion,
+            &crate::entity::drops::items::DroppedItemState,
+        ),
+        Without<crate::entity::drops::items::PickupAnimation>,
+    >,
+) -> HashMap<ChunkPosition, Vec<ChunkDroppedItem>> {
+    let mut grouped: HashMap<ChunkPosition, Vec<ChunkDroppedItem>> = HashMap::new();
+    for (transform, dropped, motion, state) in items {
+        let position = ChunkPosition::from_block(
+            transform.translation.x.floor() as i32,
+            transform.translation.z.floor() as i32,
+        );
+        grouped
+            .entry(position)
+            .or_default()
+            .push(crate::entity::drops::items::chunk_record(
+                dropped.0,
+                transform.translation,
+                motion.0,
+                state,
+            ));
+    }
+    grouped
 }

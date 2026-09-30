@@ -60,13 +60,17 @@ fn assert_same_blocks(left: &Chunk, right: &Chunk) {
 /// A headless app with the world and persistence plugins, matching how
 /// `GamePlugin` wires them together.
 fn persistence_app(saves: &Path) -> App {
+    app_with(PersistencePlugin::new(saves.to_path_buf()))
+}
+
+fn app_with(persistence: PersistencePlugin) -> App {
     let mut app = App::new();
     app.add_plugins((MinimalPlugins, AssetPlugin::default(), MeshPlugin))
         .init_asset::<Image>()
         .init_asset::<StandardMaterial>()
         .init_resource::<ButtonInput<KeyCode>>()
         .add_plugins(WorldPlugin)
-        .add_plugins(PersistencePlugin::new(saves.to_path_buf()));
+        .add_plugins(persistence);
     app
 }
 
@@ -492,4 +496,144 @@ fn exit_requested_during_update_saves_the_latest_player_pose() {
     assert!((player.x - 91.0).abs() < 0.001);
     assert!((player.y - 73.0).abs() < 0.001);
     assert!((player.z - -17.0).abs() < 0.001);
+}
+
+/// A headless app whose autosave fires every frame, so a test does not have to
+/// simulate half a minute of world time to reach a save.
+fn draining_app(saves: &Path) -> App {
+    app_with(PersistencePlugin::new(saves.to_path_buf()).with_autosave(0.0))
+}
+
+/// Run until the spawn chunk is loaded, which is what makes it worth saving.
+fn run_until_spawn_chunk(app: &mut App) {
+    assert!(run_until(app, Duration::from_secs(10), |app| {
+        app.world()
+            .resource::<WorldChunks>()
+            .get(ChunkPosition::ZERO)
+            .is_some()
+    }));
+}
+
+#[test]
+fn an_autosave_drain_reaches_disk_over_several_frames() {
+    let saves = temp_saves("drain");
+    let mut app = draining_app(&saves);
+    app.world_mut()
+        .spawn((Player, Transform::from_xyz(8.0, 72.0, 8.0)));
+    run_until_spawn_chunk(&mut app);
+
+    // The save is spread over the frames that follow, so nothing but the edit
+    // and the drain itself can put this block on disk. No exit flush is used.
+    {
+        let mut chunks = app.world_mut().resource_mut::<WorldChunks>();
+        let edited = chunks
+            .get_mut(ChunkPosition::ZERO)
+            .expect("spawn chunk should be loaded");
+        assert_ne!(edited.chunk.get(4, 120, 4), Some(Id::GoldBlock));
+        edited.chunk.set(4, 120, 4, Id::GoldBlock);
+    }
+    app.world_mut()
+        .resource_mut::<WorldPersistence>()
+        .mark_dirty(ChunkPosition::ZERO);
+
+    let storage = app
+        .world()
+        .resource::<WorldPersistence>()
+        .storage()
+        .expect("persistence should be enabled")
+        .clone();
+    let saved = || {
+        storage
+            .load_chunk(ChunkPosition::ZERO)
+            .is_some_and(|chunk| chunk.chunk.get(4, 120, 4) == Some(Id::GoldBlock))
+    };
+    assert!(
+        run_until(&mut app, Duration::from_secs(20), |_| saved()),
+        "the drain never wrote the edited chunk"
+    );
+    assert!(
+        storage.load_player().is_some(),
+        "the player should ride along with the first batch"
+    );
+}
+
+#[test]
+fn a_drain_spreads_more_chunks_than_one_frame_can_hold() {
+    let saves = temp_saves("spread");
+    let mut app = draining_app(&saves);
+    run_until_spawn_chunk(&mut app);
+
+    // Well outside the streaming radius, so only the save path touches these.
+    let positions: Vec<ChunkPosition> = (0..40)
+        .map(|index| ChunkPosition {
+            x: 500 + index,
+            z: -500,
+        })
+        .collect();
+    let generator = WorldGenerator::new(0);
+    {
+        let mut chunks = app.world_mut().resource_mut::<WorldChunks>();
+        for position in &positions {
+            chunks.insert(*position, generator.generate(*position));
+        }
+        let mut persistence = app.world_mut().resource_mut::<WorldPersistence>();
+        for position in &positions {
+            persistence.mark_dirty(*position);
+        }
+    }
+
+    let storage = app
+        .world()
+        .resource::<WorldPersistence>()
+        .storage()
+        .expect("persistence should be enabled")
+        .clone();
+    assert!(
+        run_until(&mut app, Duration::from_secs(60), |_| positions
+            .iter()
+            .all(|position| storage.load_chunk(*position).is_some())),
+        "the drain left chunks behind"
+    );
+}
+
+#[test]
+fn a_chunk_unloaded_while_its_write_is_in_flight_keeps_the_newer_edit() {
+    let saves = temp_saves("in-flight");
+    let mut app = draining_app(&saves);
+    run_until_spawn_chunk(&mut app);
+
+    // Submit a write of the unedited chunk, then unload and edit it before that
+    // write lands. Exiting has to wait for the in-flight write and then save the
+    // newer unloaded copy, or the stale snapshot would win.
+    app.world_mut()
+        .resource_mut::<WorldPersistence>()
+        .mark_dirty(ChunkPosition::ZERO);
+    app.update();
+    assert!(
+        app.world().resource::<WorldPersistence>().write_in_flight(),
+        "the pump should have handed a batch to the writer"
+    );
+
+    let mut chunk = app
+        .world_mut()
+        .resource_mut::<WorldChunks>()
+        .remove(ChunkPosition::ZERO)
+        .expect("spawn chunk should be loaded");
+    chunk.chunk.set(4, 120, 4, Id::GoldBlock);
+    app.world_mut()
+        .resource_mut::<WorldPersistence>()
+        .queue_unload(ChunkPosition::ZERO, chunk);
+
+    app.world_mut().write_message(AppExit::Success);
+    app.update();
+
+    let storage = app
+        .world()
+        .resource::<WorldPersistence>()
+        .storage()
+        .expect("persistence should be enabled");
+    let reloaded = storage
+        .load_chunk(ChunkPosition::ZERO)
+        .expect("the chunk should be on disk");
+    assert_eq!(reloaded.chunk.get(4, 120, 4), Some(Id::GoldBlock));
 }

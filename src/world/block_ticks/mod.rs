@@ -33,6 +33,7 @@
 //!   with every edit.
 //! - There is no weather, so nothing is rained on and snow never accumulates.
 
+use std::collections::HashMap;
 use std::collections::VecDeque;
 
 use bevy::math::IVec3;
@@ -296,14 +297,18 @@ impl BlockTicks {
         chunk.set_pending_ticks(pending);
     }
 
-    /// `position`'s pending ticks in the form a saved chunk stores them,
-    /// leaving them scheduled.
-    pub fn pending_in_chunk(&self, position: ChunkPosition) -> Vec<PendingTick> {
-        self.scheduler
-            .iter()
-            .filter(|tick| ChunkPosition::from_block(tick.position.x, tick.position.z) == position)
-            .map(|tick| self.pending_tick(tick))
-            .collect()
+    /// Every pending tick, grouped by the chunk it belongs to, in the form a
+    /// saved chunk stores them. One pass, so a save that covers many chunks does
+    /// not rescan the scheduler for each of them.
+    pub fn pending_ticks_by_chunk(&self) -> HashMap<ChunkPosition, Vec<PendingTick>> {
+        let mut grouped: HashMap<ChunkPosition, Vec<PendingTick>> = HashMap::new();
+        for tick in self.scheduler.iter() {
+            grouped
+                .entry(ChunkPosition::from_block(tick.position.x, tick.position.z))
+                .or_default()
+                .push(self.pending_tick(tick));
+        }
+        grouped
     }
 
     fn pending_tick(&self, tick: ScheduledTick) -> PendingTick {

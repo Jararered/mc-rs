@@ -804,7 +804,22 @@ impl<'a> Mesher<'a> {
                         .as_ref()
                         .map_or(DEFAULT_GRASS_TINT, |tints| tints.grass[column]);
                     if let Some(fluid) = Fluid::of(block) {
-                        self.push_fluid(meshes, origin, x, y, z, fluid);
+                        // A wireframe filter draws the fluid as full cubes so the
+                        // shell can share the greedy planes. Gameplay water keeps
+                        // its sloped, per-cell surface.
+                        if self.only == Some(block) {
+                            self.queue_cube(
+                                meshes,
+                                &mut planes,
+                                band_start,
+                                y_origin,
+                                [x, y, z],
+                                block,
+                                grass_tint,
+                            );
+                        } else {
+                            self.push_fluid(meshes, origin, x, y, z, fluid);
+                        }
                         continue;
                     }
                     if block == Id::Crops {
@@ -968,7 +983,14 @@ impl<'a> Mesher<'a> {
                 ny,
                 z as i32 + face.neighbor[2],
             );
-            if neighbor_hides_face(block, neighbor, fancy_graphics) {
+            // Filtered fluids keep every face of the shell, including faces
+            // against stone, and drop only faces shared with the same id.
+            let fluid_shell = self.only == Some(block) && Fluid::of(block).is_some();
+            if fluid_shell {
+                if neighbor == Some(block) {
+                    continue;
+                }
+            } else if neighbor_hides_face(block, neighbor, fancy_graphics) {
                 continue;
             }
             let geometry = unit.face(face_index);
@@ -986,7 +1008,9 @@ impl<'a> Mesher<'a> {
             };
             let side_tint = if grass_side { [1.0; 3] } else { base };
             let (tile_x, tile_y) = block_tile(block, face_index, fancy_graphics);
-            let layer = if fancy_graphics && is_leaf(block) {
+            let layer = if fluid_shell && Fluid::of(block) == Some(Fluid::Water) {
+                LAYER_WATER
+            } else if fancy_graphics && is_leaf(block) {
                 LAYER_CUTOUT
             } else {
                 LAYER_OPAQUE
@@ -1041,6 +1065,7 @@ impl<'a> Mesher<'a> {
 const LAYER_OPAQUE: u8 = 0;
 const LAYER_OVERLAY: u8 = 1;
 const LAYER_CUTOUT: u8 = 2;
+const LAYER_WATER: u8 = 3;
 const GRASS_OVERLAY_TILE: [u8; 2] = [6, 2];
 
 fn empty_meshes() -> ChunkMeshes {
@@ -1211,6 +1236,7 @@ fn layer_mut(meshes: &mut ChunkMeshes, layer: u8) -> &mut BlockGeometry {
     match layer {
         LAYER_OVERLAY => &mut meshes.grass_overlay,
         LAYER_CUTOUT => &mut meshes.cutout,
+        LAYER_WATER => &mut meshes.water,
         _ => &mut meshes.opaque,
     }
 }

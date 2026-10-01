@@ -1024,6 +1024,54 @@ fn wireframe_block_filter_keeps_only_that_blocks_shell() {
     assert!(water.masked.is_empty());
 }
 
+#[test]
+fn filtered_water_merges_a_pool_into_one_top_face() {
+    let mut chunk = Chunk::new();
+    for x in 2..6 {
+        for z in 2..6 {
+            chunk.set(x, 2, z, Id::Water);
+        }
+    }
+    let light = Skylight::from_chunk(&chunk);
+
+    let filtered = mesh_chunk_filtered(&chunk, &light, true, Some(Id::Water));
+    assert!(filtered.opaque.is_empty());
+    assert!(filtered.grass_overlay.is_empty());
+    assert!(filtered.cutout.is_empty());
+    assert!(filtered.masked.is_empty());
+    let tops = quads_facing(&filtered.water, |normal| normal[1] > 0.5);
+    assert_eq!(tops.len(), 1, "the pool top is one rectangle");
+    assert!(spans(tops[0], 0, 2.0, 6.0));
+    assert!(spans(tops[0], 2, 2.0, 6.0));
+    assert!(
+        tops[0]
+            .iter()
+            .all(|vertex| (vertex.position[1] - 3.0).abs() < 1e-4)
+    );
+    let interior_wall = quads_facing(&filtered.water, |normal| {
+        normal[0].abs() > 0.5 || normal[2].abs() > 0.5
+    })
+    .into_iter()
+    .any(|quad| {
+        let inside = |axis: usize| {
+            quad.iter()
+                .all(|vertex| (2.01..5.99).contains(&vertex.position[axis]))
+        };
+        inside(0) || inside(2)
+    });
+    assert!(
+        !interior_wall,
+        "faces shared by two water cells are omitted"
+    );
+
+    let open = mesh_chunk_filtered(&chunk, &light, true, None);
+    assert_eq!(
+        quads_facing(&open.water, |normal| normal[1] > 0.5).len(),
+        16,
+        "unfiltered water stays one quad per cell"
+    );
+}
+
 fn quads_facing<'a>(
     mesh: &'a BlockGeometry,
     facing: impl Fn([f32; 3]) -> bool,

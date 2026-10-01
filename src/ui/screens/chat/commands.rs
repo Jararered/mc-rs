@@ -1,16 +1,7 @@
-//! Local Beta-style chat input, message overlay, and single-player commands.
+//! Chat command parsing, help, validation, and execution.
 
-use std::collections::VecDeque;
-
-use bevy::input::ButtonState;
-use bevy::input::keyboard::KeyboardInput;
 use bevy::prelude::*;
-use bevy::text::FontSmoothing;
-use bevy::window::CursorGrabMode;
-use bevy::window::CursorOptions;
-use bevy::window::PrimaryWindow;
 
-use crate::app::state::AppScreen;
 use crate::block::id::Id;
 use crate::entity::CollisionState;
 use crate::entity::EntitySize;
@@ -21,13 +12,9 @@ use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
 use crate::item::ItemId;
 use crate::item::ItemStack;
-use crate::physics::PhysicsSet;
 use crate::player::Player;
 use crate::player::PlayerInterpolation;
 use crate::random::ItemRng;
-use crate::ui::InventoryScreen;
-use crate::ui::icons::overlay::GUI_SCALE;
-use crate::ui::icons::overlay::UiFont;
 use crate::world::block_ticks::BlockTicks;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::ChunkPosition;
@@ -38,254 +25,33 @@ use crate::world::textures::BlockMaterial;
 use crate::world::textures::LineRasterSupported;
 use crate::world::textures::MeshWireframe;
 use crate::world::textures::configure_mesh_wireframe;
+use crate::world::tick::DAY_LENGTH;
 use crate::world::tick::WorldTick;
 
-const INPUT_LIMIT: usize = 100;
-const HISTORY_LIMIT: usize = 50;
-const MESSAGE_LINE_LIMIT: usize = 50;
-const VISIBLE_CLOSED: usize = 10;
-const VISIBLE_OPEN: usize = 20;
-const FADE_TICKS: u32 = 200;
+use super::ChatState;
+
 // Avoid unbounded entity spawning for erroneous amounts (especially unstackable items).
 const MAX_GIVE: u32 = 4096;
 
-pub struct ChatPlugin;
+const COMMAND_HELP: &[(&str, &str)] = &[
+    ("help", "/help [command]"),
+    ("time", "/time set <tick|day|night|noon|midnight>"),
+    ("time", "/time <day|night|noon|midnight|tick>"),
+    ("time", "/time add <ticks>"),
+    ("time", "/time query [daytime|gametime|day]"),
+    ("give", "/give <item id> <amount>"),
+    ("tp", "/tp <x> <y> <z>"),
+    ("setblock", "/setblock <x> <y> <z> <block id>"),
+    ("wireframe", "/wireframe on|off | /wireframe set <block id>"),
+];
 
-impl Plugin for ChatPlugin {
-    fn build(&self, app: &mut App) {
-        app.init_resource::<ChatState>()
-            .init_resource::<InventoryScreen>()
-            .add_systems(OnEnter(AppScreen::Playing), spawn_chat)
-            .add_systems(OnExit(AppScreen::Playing), despawn_chat)
-            .add_systems(
-                Update,
-                (read_chat_input, submit_chat, render_chat)
-                    .chain()
-                    .before(PhysicsSet::ApplyInput)
-                    .run_if(in_state(AppScreen::Playing)),
-            );
-    }
-}
-
-#[derive(Clone, Debug)]
-struct ChatLine {
-    text: String,
-    age: u32,
-}
-
-/// UI focus state. `suppress_controls` stays set through the frame chat closes,
-/// so the closing Escape/Enter cannot also activate a gameplay shortcut.
-#[derive(Resource, Default)]
-pub struct ChatState {
-    pub open: bool,
-    pub suppress_controls: bool,
-    input: String,
-    submitted: Option<String>,
-    lines: VecDeque<ChatLine>,
-    blink: u32,
-}
-
-impl ChatState {
-    fn push(&mut self, text: impl Into<String>) {
-        let text = text.into();
-        // Beta's font renderer wraps chat to a 320-GUI-pixel column. Split
-        // long messages into fixed rows so their backgrounds never overlap.
-        let mut rest = text.as_str();
-        while !rest.is_empty() {
-            let end = rest
-                .char_indices()
-                .nth(MESSAGE_LINE_LIMIT)
-                .map_or(rest.len(), |(byte, _)| byte);
-            let split = if end < rest.len() {
-                rest[..end]
-                    .rfind(' ')
-                    .filter(|&space| space > 0)
-                    .map_or(end, |space| space + 1)
-            } else {
-                end
-            };
-            self.lines.push_front(ChatLine {
-                text: rest[..split].trim_end().into(),
-                age: 0,
-            });
-            rest = &rest[split..];
-        }
-        self.lines.truncate(HISTORY_LIMIT);
-    }
-}
-
-#[derive(Component)]
-struct ChatRoot;
-#[derive(Component)]
-struct ChatInput;
-#[derive(Component)]
-struct ChatMessage(usize);
-
-fn spawn_chat(mut commands: Commands, font: Res<UiFont>, mut chat: ResMut<ChatState>) {
-    *chat = ChatState::default();
-    let font = TextFont::from_font_size(8.0 * GUI_SCALE)
-        .with_font(font.minecraft.clone())
-        .with_font_smoothing(FontSmoothing::None);
-    commands
-        .spawn((
-            ChatRoot,
-            GlobalZIndex(10),
-            Node {
-                width: percent(100),
-                height: percent(100),
-                ..default()
-            },
-            Pickable::IGNORE,
-        ))
-        .with_children(|root| {
-            for index in 0..VISIBLE_OPEN {
-                root.spawn((
-                    ChatMessage(index),
-                    Text::new(""),
-                    TextLayout::no_wrap(),
-                    font.clone(),
-                    TextColor(Color::NONE),
-                    BackgroundColor(Color::NONE),
-                    Visibility::Hidden,
-                    Node {
-                        position_type: PositionType::Absolute,
-                        left: px(4.0),
-                        bottom: px((48.0 + index as f32 * 9.0) * GUI_SCALE),
-                        max_width: px(320.0 * GUI_SCALE),
-                        ..default()
-                    },
-                ));
-            }
-            root.spawn((
-                ChatInput,
-                Text::new(""),
-                TextLayout::no_wrap(),
-                font,
-                TextColor(Color::srgb_u8(224, 224, 224)),
-                BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.5)),
-                Visibility::Hidden,
-                Node {
-                    position_type: PositionType::Absolute,
-                    left: px(2.0 * GUI_SCALE),
-                    right: px(2.0 * GUI_SCALE),
-                    bottom: px(2.0 * GUI_SCALE),
-                    height: px(12.0 * GUI_SCALE),
-                    overflow: Overflow::clip(),
-                    ..default()
-                },
-            ));
-        });
-}
-
-fn despawn_chat(
-    mut commands: Commands,
-    roots: Query<Entity, With<ChatRoot>>,
-    mut chat: ResMut<ChatState>,
-) {
-    for root in &roots {
-        commands.entity(root).despawn();
-    }
-    *chat = ChatState::default();
-}
-
-fn read_chat_input(
-    keys: Res<ButtonInput<KeyCode>>,
-    mut keyboard: MessageReader<KeyboardInput>,
-    mut chat: ResMut<ChatState>,
-    inventory: Res<InventoryScreen>,
-    mut windows: Query<(&Window, &mut CursorOptions), With<PrimaryWindow>>,
-    tick: Res<WorldTick>,
-) {
-    chat.suppress_controls = chat.open;
-    chat.blink = chat.blink.wrapping_add(tick.ticks_this_frame());
-    for line in &mut chat.lines {
-        line.age = line.age.saturating_add(tick.ticks_this_frame());
-    }
-    let Ok((window, mut cursor)) = windows.single_mut() else {
-        keyboard.read().for_each(drop);
-        return;
-    };
-    if !chat.open {
-        // Drain the opening key's text: '/' is already prefilled and 't' must
-        // not appear in the new input. Keyboard messages persist across frames.
-        keyboard.read().for_each(drop);
-        if !inventory.open && window.focused && cursor.grab_mode == CursorGrabMode::Locked {
-            if keys.just_pressed(KeyCode::KeyT) || keys.just_pressed(KeyCode::Slash) {
-                chat.open = true;
-                chat.suppress_controls = true;
-                chat.input = if keys.just_pressed(KeyCode::Slash) {
-                    "/".into()
-                } else {
-                    String::new()
-                };
-                chat.blink = 0;
-                cursor.grab_mode = CursorGrabMode::None;
-                cursor.visible = true;
-            }
-        }
-        return;
-    }
-
-    if !window.focused {
-        keyboard.read().for_each(drop);
-        return;
-    }
-    for event in keyboard.read() {
-        if event.state != ButtonState::Pressed
-            || event.repeat
-                && matches!(
-                    event.key_code,
-                    KeyCode::Enter | KeyCode::NumpadEnter | KeyCode::Escape
-                )
-        {
-            continue;
-        }
-        match event.key_code {
-            KeyCode::Escape => {
-                chat.input.clear();
-                chat.open = false;
-                break;
-            }
-            KeyCode::Enter | KeyCode::NumpadEnter => {
-                let text = chat.input.trim();
-                if !text.is_empty() {
-                    chat.submitted = Some(text.to_owned());
-                }
-                chat.input.clear();
-                chat.open = false;
-                break;
-            }
-            KeyCode::Backspace => {
-                chat.input.pop();
-            }
-            _ => {
-                if !keys.pressed(KeyCode::ControlLeft)
-                    && !keys.pressed(KeyCode::ControlRight)
-                    && !keys.pressed(KeyCode::SuperLeft)
-                    && !keys.pressed(KeyCode::SuperRight)
-                    && let Some(text) = &event.text
-                {
-                    for character in text.chars().filter(|c| !c.is_control()) {
-                        if chat.input.chars().count() >= INPUT_LIMIT {
-                            break;
-                        }
-                        chat.input.push(character);
-                    }
-                }
-            }
-        }
-    }
-    if !chat.open {
-        cursor.visible = false;
-        if window.focused {
-            cursor.grab_mode = CursorGrabMode::Locked;
-        }
-    }
-}
-
-/// The numeric command subset intentionally stays independent of UI and ECS.
+/// Parsed commands stay independent of UI and ECS.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ChatCommand {
+    Help(Option<&'static str>),
+    TimeSet(u64),
+    TimeAdd(u64),
+    TimeQuery(TimeQuery),
     Give {
         item: ItemId,
         amount: u32,
@@ -302,10 +68,31 @@ pub enum ChatCommand {
     },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TimeQuery {
+    Daytime,
+    Gametime,
+    Day,
+}
+
 pub fn parse_command(text: &str) -> Result<ChatCommand, String> {
     let mut parts = text.split_whitespace();
     let name = parts.next().unwrap_or("");
     let args: Vec<_> = parts.collect();
+    if name == "/help" {
+        return match args.as_slice() {
+            [] => Ok(ChatCommand::Help(None)),
+            [command] => COMMAND_HELP
+                .iter()
+                .find(|(name, _)| *name == command.trim_start_matches('/'))
+                .map(|(name, _)| ChatCommand::Help(Some(name)))
+                .ok_or_else(|| format!("Unknown command: {command}. Try /help")),
+            _ => Err("Usage: /help [command]".into()),
+        };
+    }
+    if name == "/time" {
+        return parse_time(&args);
+    }
     if name == "/wireframe" {
         return parse_wireframe(&args);
     }
@@ -313,7 +100,7 @@ pub fn parse_command(text: &str) -> Result<ChatCommand, String> {
         "/give" => "/give <item id> <amount>",
         "/tp" => "/tp <x> <y> <z>",
         "/setblock" => "/setblock <x> <y> <z> <block id>",
-        _ => return Err(format!("Unknown command: {name}")),
+        _ => return Err(format!("Unknown command: {name}. Try /help")),
     };
     if args.len()
         != match name {
@@ -372,6 +159,31 @@ pub fn parse_command(text: &str) -> Result<ChatCommand, String> {
             let block = parse_block_id(args[3])?;
             Ok(ChatCommand::SetBlock { position, block })
         }
+    }
+}
+
+fn parse_time(args: &[&str]) -> Result<ChatCommand, String> {
+    match args {
+        ["query"] | ["query", "daytime"] => Ok(ChatCommand::TimeQuery(TimeQuery::Daytime)),
+        ["query", "gametime"] => Ok(ChatCommand::TimeQuery(TimeQuery::Gametime)),
+        ["query", "day"] => Ok(ChatCommand::TimeQuery(TimeQuery::Day)),
+        ["add", ticks] => ticks
+            .parse::<u64>()
+            .map(ChatCommand::TimeAdd)
+            .map_err(|_| "Ticks must be a nonnegative integer within the u64 range".into()),
+        ["set", time] | [time] if !matches!(*time, "set" | "add") => {
+            let ticks = match *time {
+                "day" => 1_000,
+                "noon" => 6_000,
+                "night" => 13_000,
+                "midnight" => 18_000,
+                _ => time.parse::<u64>().map_err(|_| {
+                    "Time must be day, night, noon, midnight, or a nonnegative integer"
+                })?,
+            };
+            Ok(ChatCommand::TimeSet(ticks))
+        }
+        _ => Err("Usage: /time set <tick|day|night> | /time add <ticks> | /time query [daytime|gametime|day]".into()),
     }
 }
 
@@ -450,9 +262,10 @@ pub fn set_loaded_block(
     Ok(Some((previous, metadata)))
 }
 
-fn submit_chat(
+pub(super) fn submit_chat(
     mut commands: Commands,
     mut chat: ResMut<ChatState>,
+    mut clock: ResMut<WorldTick>,
     mut player: Query<
         (
             &mut Transform,
@@ -488,6 +301,56 @@ fn submit_chat(
             return;
         }
     };
+    match command {
+        ChatCommand::Help(filter) => {
+            for &(name, usage) in COMMAND_HELP {
+                if filter.is_none_or(|filter| filter == name) {
+                    chat.push(usage);
+                }
+            }
+            return;
+        }
+        ChatCommand::TimeSet(_) | ChatCommand::TimeAdd(_) => {
+            let previous = clock.world_time();
+            let time = match command {
+                ChatCommand::TimeSet(time) => time,
+                ChatCommand::TimeAdd(delta) => {
+                    let Some(time) = previous.checked_add(delta) else {
+                        chat.push("Time would exceed the u64 range");
+                        return;
+                    };
+                    time
+                }
+                _ => unreachable!(),
+            };
+            if let Some(ticks) = ticks.as_deref_mut() {
+                ticks.rebase_time(previous, time);
+            }
+            clock.set_world_time(time);
+            // This frame's ticks were counted before the jump. Do not replay
+            // them against the new time (setting 0 could otherwise wrap).
+            clock.idle();
+            if let Some(storage) = persistence.as_deref().and_then(WorldPersistence::storage) {
+                storage.set_world_time(time);
+            }
+            chat.push(format!(
+                "Set time to {time} (daytime {})",
+                time % DAY_LENGTH
+            ));
+            return;
+        }
+        ChatCommand::TimeQuery(query) => {
+            let time = clock.world_time();
+            let (name, value) = match query {
+                TimeQuery::Daytime => ("Daytime", time % DAY_LENGTH),
+                TimeQuery::Gametime => ("World time", time),
+                TimeQuery::Day => ("Day", time / DAY_LENGTH),
+            };
+            chat.push(format!("{name}: {value}"));
+            return;
+        }
+        _ => {}
+    }
     if let ChatCommand::Wireframe { enabled, block } = command {
         let (Some(mut mode), Some(mut materials), Some(raster)) =
             (wireframe, block_materials, line_raster)
@@ -515,7 +378,11 @@ fn submit_chat(
         return;
     };
     let feedback = match command {
-        ChatCommand::Wireframe { .. } => unreachable!("handled before the player lookup"),
+        ChatCommand::Help(_)
+        | ChatCommand::TimeSet(_)
+        | ChatCommand::TimeAdd(_)
+        | ChatCommand::TimeQuery(_)
+        | ChatCommand::Wireframe { .. } => unreachable!("handled before the player lookup"),
         ChatCommand::Give { item, amount } => {
             let overflow = give_to_inventory(item, amount, &mut hotbar, &mut inventory);
             let dropped: u32 = overflow.iter().map(|stack| u32::from(stack.count())).sum();
@@ -601,51 +468,4 @@ fn submit_chat(
         }
     };
     chat.push(feedback);
-}
-
-fn render_chat(
-    chat: Res<ChatState>,
-    mut input: Query<(&mut Text, &mut Visibility), (With<ChatInput>, Without<ChatMessage>)>,
-    mut messages: Query<
-        (
-            &ChatMessage,
-            &mut Text,
-            &mut TextColor,
-            &mut BackgroundColor,
-            &mut Visibility,
-        ),
-        Without<ChatInput>,
-    >,
-) {
-    if let Ok((mut text, mut visibility)) = input.single_mut() {
-        *visibility = if chat.open {
-            Visibility::Visible
-        } else {
-            Visibility::Hidden
-        };
-        if chat.open {
-            let cursor = if chat.blink / 6 % 2 == 0 { "_" } else { "" };
-            **text = format!("> {}{cursor}", chat.input);
-        }
-    }
-    for (index, mut text, mut color, mut background, mut visibility) in &mut messages {
-        let Some(line) = chat
-            .lines
-            .get(index.0)
-            .filter(|line| chat.open || index.0 < VISIBLE_CLOSED && line.age < FADE_TICKS)
-        else {
-            *visibility = Visibility::Hidden;
-            continue;
-        };
-        let opacity = if chat.open {
-            1.0
-        } else {
-            let remaining = (FADE_TICKS - line.age) as f32 / FADE_TICKS as f32;
-            (remaining * 10.0).min(1.0).powi(2)
-        };
-        **text = line.text.clone();
-        color.0 = Color::srgba(1.0, 1.0, 1.0, opacity);
-        background.0 = Color::srgba(0.0, 0.0, 0.0, opacity * 0.5);
-        *visibility = Visibility::Visible;
-    }
 }

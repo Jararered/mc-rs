@@ -4,10 +4,10 @@ use game::inventory::Hotbar;
 use game::inventory::Inventory;
 use game::item::ItemId;
 use game::item::ItemStack;
-use game::ui::screens::chat::ChatCommand;
-use game::ui::screens::chat::give_to_inventory;
-use game::ui::screens::chat::parse_command;
-use game::ui::screens::chat::set_loaded_block;
+use game::ui::screens::chat::commands::ChatCommand;
+use game::ui::screens::chat::commands::give_to_inventory;
+use game::ui::screens::chat::commands::parse_command;
+use game::ui::screens::chat::commands::set_loaded_block;
 use game::world::block_ticks::BlockTicks;
 use game::world::chunk::CHUNK_SIZE;
 use game::world::chunk::Chunk;
@@ -391,4 +391,209 @@ fn submitted_commands_change_player_inventory_and_world() {
         Some(Id::Stone)
     );
     assert!(app.world().resource::<BlockTicks>().has_pending_events());
+}
+
+#[test]
+fn parses_help_and_time_commands() {
+    use game::ui::screens::chat::commands::TimeQuery;
+
+    assert_eq!(parse_command("/help"), Ok(ChatCommand::Help(None)));
+    assert_eq!(
+        parse_command("/help /time"),
+        Ok(ChatCommand::Help(Some("time")))
+    );
+    for (name, time) in [
+        ("day", 1000),
+        ("noon", 6000),
+        ("night", 13000),
+        ("midnight", 18000),
+    ] {
+        assert_eq!(
+            parse_command(&format!("/time {name}")),
+            Ok(ChatCommand::TimeSet(time))
+        );
+        assert_eq!(
+            parse_command(&format!("/time set {name}")),
+            Ok(ChatCommand::TimeSet(time))
+        );
+    }
+    for time in [0, 24000, u64::MAX] {
+        assert_eq!(
+            parse_command(&format!("/time set {time}")),
+            Ok(ChatCommand::TimeSet(time))
+        );
+        assert_eq!(
+            parse_command(&format!("/time {time}")),
+            Ok(ChatCommand::TimeSet(time))
+        );
+    }
+    assert_eq!(
+        parse_command(" /time   add  50 "),
+        Ok(ChatCommand::TimeAdd(50))
+    );
+    assert_eq!(
+        parse_command("/time query"),
+        Ok(ChatCommand::TimeQuery(TimeQuery::Daytime))
+    );
+    for (name, query) in [
+        ("daytime", TimeQuery::Daytime),
+        ("gametime", TimeQuery::Gametime),
+        ("day", TimeQuery::Day),
+    ] {
+        assert_eq!(
+            parse_command(&format!("/time query {name}")),
+            Ok(ChatCommand::TimeQuery(query))
+        );
+    }
+    for line in [
+        "/help unknown",
+        "/help time extra",
+        "/time",
+        "/time set",
+        "/time add",
+        "/time day extra",
+        "/time set -1",
+        "/time set 1.5",
+        "/time set NaN",
+        "/time set 18446744073709551616",
+        "/time add -1",
+        "/time add day",
+        "/time query unknown",
+        "/time query day extra",
+    ] {
+        assert!(parse_command(line).is_err(), "accepted {line}");
+    }
+}
+
+fn submit_command(app: &mut App, window: Entity, command: &str) {
+    use bevy::input::ButtonState;
+    use bevy::input::keyboard::Key;
+    use bevy::input::keyboard::KeyboardInput;
+
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .press(KeyCode::KeyT);
+    app.update();
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .release(KeyCode::KeyT);
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .clear();
+    app.world_mut().write_message(KeyboardInput {
+        key_code: KeyCode::Space,
+        logical_key: Key::Space,
+        state: ButtonState::Pressed,
+        text: Some(command.into()),
+        repeat: false,
+        window,
+    });
+    app.update();
+    app.world_mut().write_message(KeyboardInput {
+        key_code: KeyCode::Enter,
+        logical_key: Key::Enter,
+        state: ButtonState::Pressed,
+        text: None,
+        repeat: false,
+        window,
+    });
+    app.update();
+}
+
+#[test]
+fn help_and_time_work_without_player_and_preserve_scheduled_delays() {
+    use bevy::input::keyboard::KeyboardInput;
+    use bevy::state::app::StatesPlugin;
+    use bevy::window::CursorGrabMode;
+    use bevy::window::CursorOptions;
+    use bevy::window::PrimaryWindow;
+    use game::app::state::AppScreen;
+    use game::ui::ChatPlugin;
+    use game::ui::icons::overlay::UiFont;
+    use game::world::tick::WorldTick;
+
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, StatesPlugin))
+        .init_state::<AppScreen>()
+        .add_message::<KeyboardInput>()
+        .insert_resource(ButtonInput::<KeyCode>::default())
+        .insert_resource(WorldTick::default())
+        .insert_resource(WorldChunks::default())
+        .insert_resource(BlockTicks::default())
+        .insert_resource(UiFont {
+            minecraft: Handle::default(),
+        })
+        .add_plugins(ChatPlugin);
+    let window = app
+        .world_mut()
+        .spawn((
+            Window {
+                focused: true,
+                ..default()
+            },
+            PrimaryWindow,
+            CursorOptions {
+                grab_mode: CursorGrabMode::Locked,
+                ..default()
+            },
+        ))
+        .id();
+    app.update();
+    app.world_mut()
+        .resource_mut::<NextState<AppScreen>>()
+        .set(AppScreen::Playing);
+    app.update();
+
+    submit_command(&mut app, window, "/help");
+    for command in ["/time", "/give", "/tp", "/setblock", "/wireframe"] {
+        assert!(
+            app.world_mut()
+                .query::<&Text>()
+                .iter(app.world())
+                .any(|text| text.0.starts_with(command)),
+            "help missing {command}"
+        );
+    }
+    let pos = IVec3::new(1, 70, 2);
+    app.world_mut()
+        .resource_mut::<BlockTicks>()
+        .schedule(pos, Id::FlowingWater, 7);
+    app.world_mut().resource_mut::<WorldTick>().advance(0.1);
+    for (command, expected) in [
+        ("/time night", 13000),
+        ("/time set 0", 0),
+        ("/time set day", 1000),
+        ("/time add 50", 1050),
+    ] {
+        submit_command(&mut app, window, command);
+        assert_eq!(app.world().resource::<WorldTick>().world_time(), expected);
+        let ticks = app.world().resource::<BlockTicks>();
+        assert_eq!(ticks.time(), expected);
+        assert_eq!(app.world().resource::<WorldTick>().ticks_this_frame(), 0);
+        assert_eq!(ticks.scheduled().next().unwrap().due, expected + 5);
+    }
+    submit_command(&mut app, window, "/time set invalid");
+    assert_eq!(app.world().resource::<WorldTick>().world_time(), 1050);
+    for (command, feedback) in [
+        ("/time query daytime", "Daytime: 1050"),
+        ("/time query gametime", "World time: 1050"),
+        ("/time query day", "Day: 0"),
+    ] {
+        submit_command(&mut app, window, command);
+        assert!(
+            app.world_mut()
+                .query::<&Text>()
+                .iter(app.world())
+                .any(|text| text.0 == feedback)
+        );
+    }
+    submit_command(&mut app, window, "/time set 18446744073709551615");
+    submit_command(&mut app, window, "/time add 1");
+    assert_eq!(app.world().resource::<WorldTick>().world_time(), u64::MAX);
+    assert!(
+        app.world_mut()
+            .query::<&Text>()
+            .iter(app.world())
+            .any(|text| text.0 == "Time would exceed the u64 range")
+    );
 }

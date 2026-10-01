@@ -97,6 +97,20 @@ impl TickScheduler {
             })
     }
 
+    /// Keep remaining delays when a command moves the world clock. Retain
+    /// sequence keys so entries that become due together keep their order.
+    pub fn rebase_time(&mut self, previous: u64, time: u64) {
+        self.queue = std::mem::take(&mut self.queue)
+            .into_iter()
+            .map(|((due, sequence), entry)| {
+                (
+                    (time.saturating_add(due.saturating_sub(previous)), sequence),
+                    entry,
+                )
+            })
+            .collect();
+    }
+
     pub fn clear(&mut self) {
         self.queue.clear();
         self.pending.clear();

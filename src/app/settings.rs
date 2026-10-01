@@ -18,6 +18,8 @@ pub const AMBIENT_ONLY_SCALE: f32 = 10.0;
 pub const MIN_FOV: f32 = 30.0;
 pub const MAX_FOV: f32 = 110.0;
 pub const DEFAULT_FOV: f32 = 80.0;
+pub const MIN_MOUSE_SENSITIVITY: f32 = 0.1;
+pub const MAX_MOUSE_SENSITIVITY: f32 = 3.0;
 pub const DEFAULT_MAX_FPS: u32 = 60;
 pub const MIN_MAX_FPS: u32 = 30;
 pub const MAX_MAX_FPS: u32 = 240;
@@ -84,6 +86,9 @@ pub struct GameSettings {
     pub directional_lighting: bool,
     pub wiggle_leaves: bool,
     pub graphics: GraphicsQuality,
+    pub mouse_sensitivity: f32,
+    pub view_bobbing: bool,
+    pub fullscreen: bool,
 }
 
 impl Default for GameSettings {
@@ -99,11 +104,19 @@ impl Default for GameSettings {
             directional_lighting: true,
             wiggle_leaves: DEFAULT_WIGGLE_LEAVES,
             graphics: GraphicsQuality::Fancy,
+            mouse_sensitivity: 1.0,
+            view_bobbing: true,
+            fullscreen: false,
         }
     }
 }
 
 impl GameSettings {
+    pub fn change_mouse_sensitivity(&mut self, change: f32) {
+        self.mouse_sensitivity =
+            (self.mouse_sensitivity + change).clamp(MIN_MOUSE_SENSITIVITY, MAX_MOUSE_SENSITIVITY);
+    }
+
     pub fn cycle_max_fps(&mut self) {
         self.max_fps = match self.max_fps {
             0..30 => 30,
@@ -161,6 +174,12 @@ impl GameSettings {
 
     /// Keep loaded or edited values inside the same ranges the menu uses.
     pub fn clamp(&mut self) {
+        self.mouse_sensitivity = if self.mouse_sensitivity.is_finite() {
+            self.mouse_sensitivity
+                .clamp(MIN_MOUSE_SENSITIVITY, MAX_MOUSE_SENSITIVITY)
+        } else {
+            1.0
+        };
         if self.max_fps != 0 {
             self.max_fps = self.max_fps.clamp(MIN_MAX_FPS, MAX_MAX_FPS);
         }
@@ -231,6 +250,9 @@ struct StoredSettings {
     directional_lighting: bool,
     wiggle_leaves: bool,
     graphics: GraphicsQuality,
+    mouse_sensitivity: f32,
+    view_bobbing: bool,
+    fullscreen: bool,
 }
 
 impl Default for StoredSettings {
@@ -253,6 +275,9 @@ impl From<&GameSettings> for StoredSettings {
             directional_lighting: settings.directional_lighting,
             wiggle_leaves: settings.wiggle_leaves,
             graphics: settings.graphics,
+            mouse_sensitivity: settings.mouse_sensitivity,
+            view_bobbing: settings.view_bobbing,
+            fullscreen: settings.fullscreen,
         }
     }
 }
@@ -270,6 +295,9 @@ impl From<StoredSettings> for GameSettings {
             directional_lighting: stored.directional_lighting,
             wiggle_leaves: stored.wiggle_leaves,
             graphics: stored.graphics,
+            mouse_sensitivity: stored.mouse_sensitivity,
+            view_bobbing: stored.view_bobbing,
+            fullscreen: stored.fullscreen,
         };
         settings.clamp();
         settings

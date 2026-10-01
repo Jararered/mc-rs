@@ -4,6 +4,8 @@
 //! used from the menu as well as while playing.
 
 use bevy::prelude::*;
+
+use crate::app::settings::GameSettings;
 use bevy::window::MonitorSelection;
 use bevy::window::PrimaryWindow;
 use bevy::window::WindowMode;
@@ -22,25 +24,34 @@ pub struct FullscreenPlugin;
 
 impl Plugin for FullscreenPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<WindowedResolution>()
-            .add_systems(Update, toggle_fullscreen);
+        app.init_resource::<GameSettings>()
+            .init_resource::<WindowedResolution>()
+            .add_systems(
+                PostUpdate,
+                toggle_fullscreen.before(bevy::render::camera::camera_system),
+            );
     }
 }
 
 fn toggle_fullscreen(
     keys: Res<ButtonInput<KeyCode>>,
+    mut settings: ResMut<GameSettings>,
     mut windowed: ResMut<WindowedResolution>,
     mut windows: Query<(Entity, &mut Window), With<PrimaryWindow>>,
     mut resized: MessageWriter<WindowResized>,
 ) {
-    if !keys.just_pressed(KeyCode::F11) {
-        return;
+    if keys.just_pressed(KeyCode::F11) {
+        settings.fullscreen = !settings.fullscreen;
     }
     let Ok((entity, mut window)) = windows.single_mut() else {
         return;
     };
 
-    if window.mode == WindowMode::Windowed {
+    if settings.fullscreen == (window.mode != WindowMode::Windowed) {
+        return;
+    }
+
+    if settings.fullscreen {
         windowed.0 = Some(window.resolution.clone());
         window.mode = WindowMode::BorderlessFullscreen(MonitorSelection::Current);
     } else {

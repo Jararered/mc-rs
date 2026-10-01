@@ -15,6 +15,10 @@
 //! | 2    | sRGB tint: 24, octahedral normal y: 6, shade: 1, bright: 1  |
 //! | 3    | four light samples, each sky << 4 \| block                  |
 //!
+//! A greedy quad sets normal x to [`REPEAT_NORMAL`]. Normal y is then the
+//! face index, and the fragment shader tiles the stored atlas tile from the
+//! vertex position. `oct_encode` never writes that sentinel.
+//!
 //! Positions are relative to the mesh origin in `-8..24`, x and z in 1/256
 //! block steps and y in 1/128. Section meshes stay inside that range, and so
 //! do dropped block meshes centered on their entity.
@@ -59,6 +63,9 @@ pub const SHADE_X: f32 = 0.6;
 pub const SHADE_Z: f32 = 0.8;
 /// A light sample from a block that emits full light, regardless of the sky.
 pub const FULL_BRIGHT: [u8; 4] = [15; 4];
+/// Normal-x sentinel: this quad tiles its atlas tile from the face position.
+/// `oct_encode` only produces `0..=62`.
+pub const REPEAT_NORMAL: u32 = 63;
 
 /// A point in an atlas tile, in Beta texels. Ordinary faces use `0..=16`;
 /// flowing-fluid tops span `0..31` across the repeated 2×2 atlas tiles.
@@ -107,6 +114,10 @@ pub struct BlockVertex {
     pub ao: u8,
     /// Apply Beta's per-face shade under old lighting.
     pub shade: bool,
+    /// Tile the atlas from this face's position instead of the stored texels.
+    /// Set on greedy rectangles wider than one block. The tile index still
+    /// comes from [`Self::texel`].
+    pub repeat_uv: bool,
 }
 
 /// How the block shader turns vertex data into a color.
@@ -178,7 +189,11 @@ impl BlockVertex {
             .round()
             .clamp(0.0, 4095.0) as u32;
         debug_assert!((POSITION_MIN..POSITION_MIN + POSITION_SPAN).contains(&y));
-        let [normal_x, normal_y] = oct_encode(self.normal);
+        let [normal_x, normal_y] = if self.repeat_uv {
+            [REPEAT_NORMAL, face_index(self.normal)]
+        } else {
+            oct_encode(self.normal)
+        };
         let texel = |axis: usize| {
             (u32::from(self.texel.tile[axis]) & 0xf) << 5 | u32::from(self.texel.texel[axis]) & 0x1f
         };
@@ -215,6 +230,8 @@ pub struct PackedFields {
     pub ao: u8,
     pub shade: bool,
     pub bright: bool,
+    /// Atlas UVs for this vertex are tiled from its position in the fragment shader.
+    pub repeat_uv: bool,
 }
 
 pub fn unpack_vertex(words: [u32; 4]) -> PackedFields {
@@ -222,13 +239,20 @@ pub fn unpack_vertex(words: [u32; 4]) -> PackedFields {
     let texel = |bits: u32| ((bits >> 5 & 0xf) as u8, (bits & 0x1f) as u8);
     let (tile_u, texel_u) = texel(words[1] >> 12);
     let (tile_v, texel_v) = texel(words[1] >> 21);
+    let normal_x = words[0] >> 26 & 0x3f;
+    let normal_y = words[2] >> 24 & 0x3f;
+    let repeat_uv = normal_x == REPEAT_NORMAL;
     PackedFields {
         position: [
             horizontal(words[0]),
             (words[1] & 0xfff) as f32 / VERTICAL_STEPS + POSITION_MIN,
             horizontal(words[0] >> 13),
         ],
-        normal: oct_decode([words[0] >> 26 & 0x3f, words[2] >> 24 & 0x3f]),
+        normal: if repeat_uv {
+            face_normal(normal_y)
+        } else {
+            oct_decode([normal_x, normal_y])
+        },
         texel: AtlasTexel::new(tile_u, tile_v, texel_u, texel_v),
         tint_srgb: [
             words[2] as u8,
@@ -239,6 +263,35 @@ pub fn unpack_vertex(words: [u32; 4]) -> PackedFields {
         ao: (words[1] >> 30) as u8,
         shade: words[2] >> 30 & 1 == 1,
         bright: words[2] >> 31 == 1,
+        repeat_uv,
+    }
+}
+
+/// Face index stored beside [`REPEAT_NORMAL`], matching `geometry::FACE_*`.
+fn face_index(normal: [f32; 3]) -> u32 {
+    if normal[1] > 0.5 {
+        0
+    } else if normal[1] < -0.5 {
+        1
+    } else if normal[0] > 0.5 {
+        2
+    } else if normal[0] < -0.5 {
+        3
+    } else if normal[2] > 0.5 {
+        4
+    } else {
+        5
+    }
+}
+
+fn face_normal(index: u32) -> [f32; 3] {
+    match index {
+        0 => [0.0, 1.0, 0.0],
+        1 => [0.0, -1.0, 0.0],
+        2 => [1.0, 0.0, 0.0],
+        3 => [-1.0, 0.0, 0.0],
+        4 => [0.0, 0.0, 1.0],
+        _ => [0.0, 0.0, -1.0],
     }
 }
 

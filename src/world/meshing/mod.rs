@@ -29,6 +29,7 @@ use crate::world::textures::crop_tile;
 use crate::world::textures::farmland_top_tile;
 
 pub(crate) mod geometry;
+mod greedy;
 mod vertex;
 
 pub use self::vertex::ATTRIBUTE_BLOCK_VERTEX;
@@ -50,6 +51,8 @@ use self::geometry::FACE_SOUTH;
 use self::geometry::FACE_TOP;
 use self::geometry::FACE_WEST;
 use self::geometry::FaceGeometry;
+use self::greedy::PLANE;
+use self::greedy::mesh_binary_plane;
 
 struct Face {
     neighbor: [i32; 3],
@@ -606,6 +609,7 @@ impl BlockGeometry {
             light: shading.light[corner],
             ao: shading.ao[corner],
             shade: shading.shade,
+            repeat_uv: false,
         }));
     }
 }
@@ -739,19 +743,25 @@ impl<'a> Mesher<'a> {
     }
 
     /// Mesh the chunk layers in `rows`, with positions relative to `y_origin`.
+    ///
+    /// Full cubes are merged inside each 16-block band. A section mesh is one
+    /// band, so a rectangle never crosses a section boundary.
     fn region(&self, rows: Range<usize>, y_origin: usize) -> ChunkMeshes {
-        let chunk = self.chunk;
-        let neighbors = self.neighbors;
-        let skylight = self.skylight;
-        let fancy_graphics = self.fancy_graphics;
-        let mut meshes = ChunkMeshes {
-            opaque: BlockGeometry::default(),
-            grass_overlay: BlockGeometry::default(),
-            cutout: BlockGeometry::default(),
-            masked: BlockGeometry::default(),
-            water: BlockGeometry::default(),
-        };
+        let mut meshes = empty_meshes();
+        let mut start = rows.start;
+        while start < rows.end {
+            let end = (start + SECTION_HEIGHT).min(rows.end);
+            self.mesh_band(&mut meshes, start..end, y_origin);
+            start = end;
+        }
+        meshes
+    }
 
+    fn mesh_band(&self, meshes: &mut ChunkMeshes, rows: Range<usize>, y_origin: usize) {
+        let band_start = rows.start;
+        let mut planes = std::array::from_fn(|_| Vec::<Plane>::new());
+        let chunk = self.chunk;
+        let skylight = self.skylight;
         for y in rows {
             for z in 0..CHUNK_SIZE {
                 for x in 0..CHUNK_SIZE {
@@ -774,7 +784,7 @@ impl<'a> Mesher<'a> {
                         .as_ref()
                         .map_or(DEFAULT_GRASS_TINT, |tints| tints.grass[column]);
                     if let Some(fluid) = Fluid::of(block) {
-                        self.push_fluid(&mut meshes, origin, x, y, z, fluid);
+                        self.push_fluid(meshes, origin, x, y, z, fluid);
                         continue;
                     }
                     if block == Id::Crops {
@@ -795,90 +805,437 @@ impl<'a> Mesher<'a> {
                         );
                         continue;
                     }
-
-                    let chest_pair = if block.is_chest() {
-                        chest_pair_direction(chunk, neighbors, x, y, z)
-                    } else {
-                        None
-                    };
-                    let block_geometry = if block.is_chest() {
-                        chest_geometry(chest_pair)
-                    } else {
-                        BlockFaceGeometry::for_block(block)
-                    };
-                    for (face_index, face) in FACES.iter().enumerate() {
-                        let face_geometry = block_geometry.face(face_index);
-                        if chest_pair == Some(face.neighbor) {
-                            continue;
-                        }
-
-                        let nx = x as i32 + face.neighbor[0];
-                        let ny = y as i32 + face.neighbor[1];
-                        let nz = z as i32 + face.neighbor[2];
-                        // Nothing can see the underside of the world's bottom
-                        // layer from inside the world.
-                        if ny < 0 {
-                            continue;
-                        }
-                        let neighbor = neighbors.get(chunk, nx, ny, nz);
-                        if neighbor_hides_face(block, neighbor, fancy_graphics) {
-                            continue;
-                        }
-
-                        let grass_side = block == Id::Grass
-                            && face_index != FACE_TOP
-                            && face_index != FACE_BOTTOM;
-                        let base = if block == Id::Grass && face_index == FACE_TOP {
-                            grass_tint
-                        } else {
-                            block_tint(
-                                block,
-                                self.tints.as_ref().map(|tints| tints.foliage[column]),
-                            )
-                        };
-                        let layer = if block == Id::Cactus {
-                            &mut meshes.masked
-                        } else if fancy_graphics && is_leaf(block) {
-                            &mut meshes.cutout
-                        } else {
-                            &mut meshes.opaque
-                        };
-                        let chest_tile = chest_pair
-                            .map(|direction| double_chest_tile(block, direction, face_index));
-                        // `BlockFarmland`: any moisture shows the wet top.
-                        let wet_farmland_top = block == Id::Farmland
-                            && face_index == FACE_TOP
-                            && chunk.metadata(x, y, z) > 0;
-                        let tile_override = wet_farmland_top
-                            .then(|| farmland_top_tile(true))
-                            .or(chest_tile);
-                        let shading = CornerShading {
-                            light: face_corner_light(skylight, x, y, z, face, face_geometry),
-                            ao: face_corner_ao(chunk, neighbors, x, y, z, face, face_geometry),
-                            shade: true,
-                        };
-                        let side_tint = if grass_side { [1.0; 3] } else { base };
-                        layer.push_face(
-                            origin,
-                            face,
-                            face_geometry,
-                            face_index,
-                            side_tint,
-                            shading,
-                            block,
-                            fancy_graphics,
-                            tile_override,
-                        );
-                        if grass_side && fancy_graphics {
-                            meshes
-                                .grass_overlay
-                                .push_grass_overlay(origin, face, face_index, grass_tint, shading);
-                        }
+                    if shaped_block(block) {
+                        self.emit_shaped(meshes, origin, x, y, z, block, grass_tint);
+                        continue;
                     }
+                    self.queue_cube(
+                        meshes,
+                        &mut planes,
+                        band_start,
+                        y_origin,
+                        [x, y, z],
+                        block,
+                        grass_tint,
+                    );
                 }
             }
         }
-        meshes
+        flush_planes(meshes, planes, band_start, y_origin);
+    }
+
+    /// Cactus, snow, farmland, and chests keep per-face geometry.
+    #[allow(clippy::too_many_arguments)]
+    fn emit_shaped(
+        &self,
+        meshes: &mut ChunkMeshes,
+        origin: [f32; 3],
+        x: usize,
+        y: usize,
+        z: usize,
+        block: Id,
+        grass_tint: [f32; 3],
+    ) {
+        let chunk = self.chunk;
+        let neighbors = self.neighbors;
+        let skylight = self.skylight;
+        let fancy_graphics = self.fancy_graphics;
+        let column = z * CHUNK_SIZE + x;
+        let chest_pair = if block.is_chest() {
+            chest_pair_direction(chunk, neighbors, x, y, z)
+        } else {
+            None
+        };
+        let block_geometry = if block.is_chest() {
+            chest_geometry(chest_pair)
+        } else {
+            BlockFaceGeometry::for_block(block)
+        };
+        for (face_index, face) in FACES.iter().enumerate() {
+            let face_geometry = block_geometry.face(face_index);
+            if chest_pair == Some(face.neighbor) {
+                continue;
+            }
+            let nx = x as i32 + face.neighbor[0];
+            let ny = y as i32 + face.neighbor[1];
+            let nz = z as i32 + face.neighbor[2];
+            if ny < 0 {
+                continue;
+            }
+            let neighbor = neighbors.get(chunk, nx, ny, nz);
+            if neighbor_hides_face(block, neighbor, fancy_graphics) {
+                continue;
+            }
+            let grass_side =
+                block == Id::Grass && face_index != FACE_TOP && face_index != FACE_BOTTOM;
+            let base = if block == Id::Grass && face_index == FACE_TOP {
+                grass_tint
+            } else {
+                block_tint(
+                    block,
+                    self.tints.as_ref().map(|tints| tints.foliage[column]),
+                )
+            };
+            let layer = if block == Id::Cactus {
+                &mut meshes.masked
+            } else if fancy_graphics && is_leaf(block) {
+                &mut meshes.cutout
+            } else {
+                &mut meshes.opaque
+            };
+            let chest_tile =
+                chest_pair.map(|direction| double_chest_tile(block, direction, face_index));
+            let wet_farmland_top =
+                block == Id::Farmland && face_index == FACE_TOP && chunk.metadata(x, y, z) > 0;
+            let tile_override = wet_farmland_top
+                .then(|| farmland_top_tile(true))
+                .or(chest_tile);
+            let shading = CornerShading {
+                light: face_corner_light(skylight, x, y, z, face, face_geometry),
+                ao: face_corner_ao(chunk, neighbors, x, y, z, face, face_geometry),
+                shade: true,
+            };
+            let side_tint = if grass_side { [1.0; 3] } else { base };
+            layer.push_face(
+                origin,
+                face,
+                face_geometry,
+                face_index,
+                side_tint,
+                shading,
+                block,
+                fancy_graphics,
+                tile_override,
+            );
+            if grass_side && fancy_graphics {
+                meshes
+                    .grass_overlay
+                    .push_grass_overlay(origin, face, face_index, grass_tint, shading);
+            }
+        }
+    }
+
+    /// Full unit-cube faces. Flat shading joins a bit plane; a corner gradient
+    /// stays a single quad so smooth light is unchanged.
+    #[allow(clippy::too_many_arguments)]
+    fn queue_cube(
+        &self,
+        meshes: &mut ChunkMeshes,
+        planes: &mut [Vec<Plane>; 6],
+        band_start: usize,
+        y_origin: usize,
+        at: [usize; 3],
+        block: Id,
+        grass_tint: [f32; 3],
+    ) {
+        let [x, y, z] = at;
+        let origin = [x as f32, (y - y_origin) as f32, z as f32];
+        let chunk = self.chunk;
+        let neighbors = self.neighbors;
+        let skylight = self.skylight;
+        let fancy_graphics = self.fancy_graphics;
+        let column = z * CHUNK_SIZE + x;
+        let foliage = self.tints.as_ref().map(|tints| tints.foliage[column]);
+        let unit = BlockFaceGeometry::unit_cube();
+        for (face_index, face) in FACES.iter().enumerate() {
+            let ny = y as i32 + face.neighbor[1];
+            if ny < 0 {
+                continue;
+            }
+            let neighbor = neighbors.get(
+                chunk,
+                x as i32 + face.neighbor[0],
+                ny,
+                z as i32 + face.neighbor[2],
+            );
+            if neighbor_hides_face(block, neighbor, fancy_graphics) {
+                continue;
+            }
+            let geometry = unit.face(face_index);
+            let shading = CornerShading {
+                light: face_corner_light(skylight, x, y, z, face, geometry),
+                ao: face_corner_ao(chunk, neighbors, x, y, z, face, geometry),
+                shade: true,
+            };
+            let grass_side =
+                block == Id::Grass && face_index != FACE_TOP && face_index != FACE_BOTTOM;
+            let base = if block == Id::Grass && face_index == FACE_TOP {
+                grass_tint
+            } else {
+                block_tint(block, foliage)
+            };
+            let side_tint = if grass_side { [1.0; 3] } else { base };
+            let (tile_x, tile_y) = block_tile(block, face_index, fancy_graphics);
+            let layer = if fancy_graphics && is_leaf(block) {
+                LAYER_CUTOUT
+            } else {
+                LAYER_OPAQUE
+            };
+            if uniform_shading(&shading) {
+                let (fixed, row, bit) = plane_coords(face_index, x, y, z, band_start);
+                insert_plane(
+                    planes,
+                    face_index,
+                    plane_key(layer, [tile_x, tile_y], side_tint, &shading),
+                    side_tint,
+                    shading,
+                    fixed,
+                    row,
+                    bit,
+                );
+                if grass_side && fancy_graphics {
+                    insert_plane(
+                        planes,
+                        face_index,
+                        plane_key(LAYER_OVERLAY, GRASS_OVERLAY_TILE, grass_tint, &shading),
+                        grass_tint,
+                        shading,
+                        fixed,
+                        row,
+                        bit,
+                    );
+                }
+            } else {
+                let target = layer_mut(meshes, layer);
+                target.push_face(
+                    origin,
+                    face,
+                    geometry,
+                    face_index,
+                    side_tint,
+                    shading,
+                    block,
+                    fancy_graphics,
+                    Some((tile_x, tile_y)),
+                );
+                if grass_side && fancy_graphics {
+                    meshes
+                        .grass_overlay
+                        .push_grass_overlay(origin, face, face_index, grass_tint, shading);
+                }
+            }
+        }
+    }
+}
+
+const LAYER_OPAQUE: u8 = 0;
+const LAYER_OVERLAY: u8 = 1;
+const LAYER_CUTOUT: u8 = 2;
+const GRASS_OVERLAY_TILE: [u8; 2] = [6, 2];
+
+fn empty_meshes() -> ChunkMeshes {
+    ChunkMeshes {
+        opaque: BlockGeometry::default(),
+        grass_overlay: BlockGeometry::default(),
+        cutout: BlockGeometry::default(),
+        masked: BlockGeometry::default(),
+        water: BlockGeometry::default(),
+    }
+}
+
+fn shaped_block(block: Id) -> bool {
+    block == Id::Cactus || block == Id::SnowLayer || block == Id::Farmland || block.is_chest()
+}
+
+/// Faces whose four corners already match can share a rectangle. The merged
+/// quad copies that one shading, so it matches the 1×1 quads it replaces.
+fn uniform_shading(shading: &CornerShading) -> bool {
+    let ao = shading.ao[0];
+    let light = shading.light[0];
+    shading.ao.iter().all(|value| *value == ao)
+        && shading.light.iter().all(|sample| *sample == light)
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct MergeKey {
+    layer: u8,
+    tile: [u8; 2],
+    tint: [u8; 3],
+    bright: bool,
+    ao: u8,
+    light: [u8; 4],
+    shade: bool,
+}
+
+struct Plane {
+    key: MergeKey,
+    tint: [f32; 3],
+    shading: CornerShading,
+    fixed: u8,
+    rows: [u16; PLANE],
+}
+
+fn plane_key(layer: u8, tile: [u8; 2], tint: [f32; 3], shading: &CornerShading) -> MergeKey {
+    let (tint, bright) = quantized_tint(tint);
+    MergeKey {
+        layer,
+        tile,
+        tint,
+        bright,
+        ao: shading.ao[0],
+        light: shading.light[0],
+        shade: shading.shade,
+    }
+}
+
+/// Same sRGB bytes [`BlockVertex::pack`] stores, so merged faces agree on screen.
+fn quantized_tint(tint: [f32; 3]) -> ([u8; 3], bool) {
+    let bright = tint.iter().any(|channel| *channel > 1.0);
+    let tint = if bright {
+        tint.map(|channel| channel / BRIGHT_TINT)
+    } else {
+        tint
+    };
+    let srgb = Color::linear_rgb(tint[0], tint[1], tint[2]).to_srgba();
+    let byte = |channel: f32| (channel.clamp(0.0, 1.0) * 255.0).round() as u8;
+    ([byte(srgb.red), byte(srgb.green), byte(srgb.blue)], bright)
+}
+
+/// `(fixed, row, bit)` for a cell. Horizontal faces use x as the row and z as
+/// the bit. Vertical faces use the horizontal axis as the row and the band-local
+/// y as the bit, which keeps every plane inside 16×16.
+fn plane_coords(
+    face: usize,
+    x: usize,
+    y: usize,
+    z: usize,
+    band_start: usize,
+) -> (u8, usize, usize) {
+    match face {
+        FACE_TOP | FACE_BOTTOM => (y as u8, x, z),
+        FACE_EAST | FACE_WEST => (x as u8, z, y - band_start),
+        _ => (z as u8, x, y - band_start),
+    }
+}
+
+fn set_plane_bit(rows: &mut [u16; PLANE], row: usize, bit: usize) {
+    let shift = u32::try_from(bit).expect("greedy plane bit");
+    rows[row] |= 1u16.checked_shl(shift).expect("greedy plane bit");
+}
+
+fn insert_plane(
+    planes: &mut [Vec<Plane>; 6],
+    face: usize,
+    key: MergeKey,
+    tint: [f32; 3],
+    shading: CornerShading,
+    fixed: u8,
+    row: usize,
+    bit: usize,
+) {
+    let rows = &mut planes[face];
+    if let Some(plane) = rows
+        .iter_mut()
+        .find(|plane| plane.key == key && plane.fixed == fixed)
+    {
+        set_plane_bit(&mut plane.rows, row, bit);
+        return;
+    }
+    let mut stored = [0u16; PLANE];
+    set_plane_bit(&mut stored, row, bit);
+    rows.push(Plane {
+        key,
+        tint,
+        shading,
+        fixed,
+        rows: stored,
+    });
+}
+
+fn flush_planes(
+    meshes: &mut ChunkMeshes,
+    planes: [Vec<Plane>; 6],
+    band_start: usize,
+    y_origin: usize,
+) {
+    for (face_index, face_planes) in planes.into_iter().enumerate() {
+        for plane in face_planes {
+            let quads = mesh_binary_plane(plane.rows);
+            let layer = layer_mut(meshes, plane.key.layer);
+            for quad in quads {
+                let (x, y, z) =
+                    cell_origin(face_index, plane.fixed, band_start, quad.row, quad.bit);
+                let origin = [x as f32, (y - y_origin) as f32, z as f32];
+                push_greedy_quad(
+                    layer,
+                    face_index,
+                    origin,
+                    quad.w,
+                    quad.h,
+                    plane.key.tile,
+                    plane.tint,
+                    plane.shading,
+                );
+            }
+        }
+    }
+}
+
+fn cell_origin(
+    face: usize,
+    fixed: u8,
+    band_start: usize,
+    row: u32,
+    bit: u32,
+) -> (usize, usize, usize) {
+    let row = row as usize;
+    let bit = bit as usize;
+    match face {
+        FACE_TOP | FACE_BOTTOM => (row, usize::from(fixed), bit),
+        FACE_EAST | FACE_WEST => (usize::from(fixed), band_start + bit, row),
+        _ => (row, band_start + bit, usize::from(fixed)),
+    }
+}
+
+fn layer_mut(meshes: &mut ChunkMeshes, layer: u8) -> &mut BlockGeometry {
+    match layer {
+        LAYER_OVERLAY => &mut meshes.grass_overlay,
+        LAYER_CUTOUT => &mut meshes.cutout,
+        _ => &mut meshes.opaque,
+    }
+}
+
+fn push_greedy_quad(
+    layer: &mut BlockGeometry,
+    face_index: usize,
+    origin: [f32; 3],
+    w: u32,
+    h: u32,
+    tile: [u8; 2],
+    tint: [f32; 3],
+    shading: CornerShading,
+) {
+    let normal = FACES[face_index].normal;
+    if w == 1 && h == 1 {
+        let corners = BlockFaceGeometry::unit_cube().face(face_index).corners;
+        let texels = face_texels(tile[0], tile[1], face_index);
+        layer.push_block_quad(origin, normal, corners, texels, tint, shading);
+        return;
+    }
+    let corners = merged_corners(face_index, w as f32, h as f32);
+    let texel = AtlasTexel::new(tile[0], tile[1], 0, 0);
+    let ao = shading.ao[0];
+    let light = shading.light[0];
+    layer.push_quad(std::array::from_fn(|corner| BlockVertex {
+        position: std::array::from_fn(|axis| origin[axis] + corners[corner][axis]),
+        normal,
+        texel,
+        tint,
+        light,
+        ao,
+        shade: shading.shade,
+        repeat_uv: true,
+    }));
+}
+
+fn merged_corners(face: usize, w: f32, h: f32) -> [[f32; 3]; 4] {
+    match face {
+        FACE_TOP => [[0.0, 1.0, 0.0], [0.0, 1.0, h], [w, 1.0, h], [w, 1.0, 0.0]],
+        FACE_BOTTOM => [[0.0, 0.0, 0.0], [w, 0.0, 0.0], [w, 0.0, h], [0.0, 0.0, h]],
+        FACE_EAST => [[1.0, 0.0, 0.0], [1.0, h, 0.0], [1.0, h, w], [1.0, 0.0, w]],
+        FACE_WEST => [[0.0, 0.0, 0.0], [0.0, 0.0, w], [0.0, h, w], [0.0, h, 0.0]],
+        FACE_SOUTH => [[0.0, 0.0, 1.0], [w, 0.0, 1.0], [w, h, 1.0], [0.0, h, 1.0]],
+        _ => [[0.0, 0.0, 0.0], [0.0, h, 0.0], [w, h, 0.0], [w, 0.0, 0.0]],
     }
 }
 

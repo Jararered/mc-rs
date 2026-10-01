@@ -20,6 +20,7 @@ use game::world::lighting::light_emission;
 use game::world::lighting::light_opacity;
 use game::world::meshing::BlockGeometry;
 use game::world::meshing::BlockLighting;
+use game::world::meshing::BlockVertex;
 use game::world::meshing::ChunkNeighbors;
 use game::world::meshing::WATER_ALPHA;
 use game::world::meshing::mesh_chunk;
@@ -231,8 +232,15 @@ fn mesher_culls_faces_between_adjacent_blocks() {
 
     chunk.set(2, 1, 1, Id::Stone);
     let mesh = mesh_chunk(&chunk, &Skylight::from_chunk(&chunk));
-    assert_eq!(mesh.vertex_count(), 40);
-    assert_eq!(mesh.index_count(), 60);
+    // Tops and the open north/south walls merge. The shared face is culled.
+    // Each underside stays its own quad: the cell under a block is darker than
+    // the open cells beside it, so the four corners do not match.
+    assert_eq!(mesh.vertex_count(), 28);
+    assert_eq!(mesh.index_count(), 42);
+    let tops = quads_facing(&mesh, |normal| normal[1] > 0.5);
+    assert_eq!(tops.len(), 1);
+    assert!(tops[0].iter().all(|vertex| vertex.repeat_uv));
+    assert!(spans(tops[0], 0, 1.0, 3.0));
 }
 
 #[test]
@@ -243,11 +251,13 @@ fn fancy_leaves_keep_internal_faces_and_use_the_cutout_tile() {
     let skylight = Skylight::from_chunk(&chunk);
 
     let fast = mesh_chunk_with_settings(&chunk, &skylight, false);
-    assert_eq!(fast.opaque.vertex_count(), 40);
+    assert_eq!(fast.opaque.vertex_count(), 28);
 
     let fancy = mesh_chunk_with_settings(&chunk, &skylight, true);
     assert_eq!(fancy.opaque.vertex_count(), 0);
-    assert_eq!(fancy.cutout.vertex_count(), 48);
+    // The pair's outside faces merge like stone, and the two leaf-to-leaf
+    // faces stay, so this is eight vertices more than the fast mesh.
+    assert_eq!(fancy.cutout.vertex_count(), 36);
 
     let uvs = fancy.cutout.uvs();
     assert!(
@@ -854,4 +864,153 @@ fn wall_torch_rotates_the_floor_post_without_tapering_or_flattening_its_cap() {
             assert_eq!(bounds_max[tilted_axis], 1.0);
         }
     }
+}
+
+#[test]
+fn greedy_mesh_merges_a_uniform_stone_slab_into_one_top_quad() {
+    let mut chunk = Chunk::new();
+    for x in 0..4 {
+        for z in 0..4 {
+            chunk.set(x, 1, z, Id::Stone);
+        }
+    }
+    let mesh = mesh_chunk(&chunk, &Skylight::from_chunk(&chunk));
+    let tops = quads_facing(&mesh, |normal| normal[1] > 0.5);
+    assert_eq!(tops.len(), 1, "a flat sunlit roof is one quad");
+    let quad = tops[0];
+    assert!(
+        quad.iter().all(|vertex| vertex.repeat_uv),
+        "a wide quad tiles its atlas tile from the block position"
+    );
+    let (tile_x, tile_y) = block_tile(Id::Stone, 0, false);
+    assert!(
+        quad.iter()
+            .all(|vertex| vertex.texel.tile == [tile_x, tile_y] && vertex.texel.texel == [0, 0])
+    );
+    assert!(quad.iter().all(|vertex| {
+        vertex.ao == quad[0].ao && vertex.light == quad[0].light && vertex.tint == quad[0].tint
+    }));
+    assert_eq!(quad[0].ao, 0);
+    assert_eq!(quad[0].light[0] >> 4, 15);
+    let packed = unpack_vertex(quad[0].pack());
+    assert!(packed.repeat_uv);
+    assert!(packed.normal[1] > 0.5);
+    assert_eq!(packed.texel.tile, [tile_x, tile_y]);
+    assert!(spans(quad, 0, 0.0, 4.0));
+    assert!(spans(quad, 2, 0.0, 4.0));
+    assert!(
+        quad.iter()
+            .all(|vertex| (vertex.position[1] - 2.0).abs() < 1e-4)
+    );
+}
+
+#[test]
+fn greedy_mesh_splits_a_row_where_torch_light_changes() {
+    let fill_row = |chunk: &mut Chunk| {
+        for x in 1..5 {
+            chunk.set(x, 2, 3, Id::Stone);
+        }
+    };
+    let mut plain = Chunk::new();
+    fill_row(&mut plain);
+    let plain_mesh = mesh_chunk(&plain, &Skylight::from_chunk(&plain));
+    let plain_north = quads_facing(&plain_mesh, |normal| normal[2] < -0.5);
+    assert_eq!(plain_north.len(), 1);
+    assert!(plain_north[0].iter().all(|vertex| vertex.repeat_uv));
+    assert!(spans(plain_north[0], 0, 1.0, 5.0));
+    assert!(
+        plain_north[0]
+            .iter()
+            .all(|vertex| (vertex.position[2] - 3.0).abs() < 1e-4)
+    );
+
+    let mut lit = Chunk::new();
+    fill_row(&mut lit);
+    lit.set(1, 2, 2, Id::Torch);
+    let lit_mesh = mesh_chunk(&lit, &Skylight::from_chunk(&lit));
+    assert!(
+        quads_facing(&lit_mesh, |normal| normal[2] < -0.5).len() > 1,
+        "a torch's block light changes along the row, so the wall cannot be one quad"
+    );
+}
+
+#[test]
+fn greedy_mesh_merges_a_fancy_grass_side_overlay() {
+    let mut chunk = Chunk::new();
+    for x in 1..5 {
+        chunk.set(x, 2, 3, Id::Grass);
+    }
+    let meshes = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true);
+    let north = quads_facing(&meshes.grass_overlay, |normal| normal[2] < -0.5);
+    assert_eq!(north.len(), 1);
+    assert!(north[0].iter().all(|vertex| vertex.repeat_uv));
+    assert!(north[0].iter().all(|vertex| vertex.texel.tile == [6, 2]));
+    assert!(
+        north[0]
+            .iter()
+            .all(|vertex| vertex.tint == north[0][0].tint)
+    );
+    assert!(spans(north[0], 0, 1.0, 5.0));
+}
+
+#[test]
+fn greedy_mesh_merges_a_chunk_edge_and_culls_it_against_the_neighbor() {
+    let mut chunk = Chunk::new();
+    for z in 0..4 {
+        chunk.set(CHUNK_SIZE - 1, 2, z, Id::Stone);
+    }
+    let light = Skylight::from_chunk(&chunk);
+    let mesh = mesh_chunk(&chunk, &light);
+    let east = quads_facing(&mesh, |normal| normal[0] > 0.5);
+    assert_eq!(east.len(), 1);
+    assert!(east[0].iter().all(|vertex| vertex.repeat_uv));
+    assert!(
+        east[0]
+            .iter()
+            .all(|vertex| (vertex.position[0] - CHUNK_SIZE as f32).abs() < 1e-4)
+    );
+    assert!(spans(east[0], 2, 0.0, 4.0));
+
+    let mut neighbor = Chunk::new();
+    for z in 0..4 {
+        neighbor.set(0, 2, z, Id::Stone);
+    }
+    let culled = mesh_chunk_with_neighbors(
+        &chunk,
+        &ChunkNeighbors {
+            east: Some(&neighbor),
+            ..Default::default()
+        },
+        &light,
+    );
+    assert!(
+        quads_facing(&culled, |normal| normal[0] > 0.5).is_empty(),
+        "the neighbor occludes the chunk-edge face"
+    );
+    let tops = quads_facing(&culled, |normal| normal[1] > 0.5);
+    assert_eq!(tops.len(), 1, "the row still merges inside its own section");
+    assert!(spans(tops[0], 2, 0.0, 4.0));
+    assert!(tops[0].iter().all(|vertex| {
+        (15.0..=16.0).contains(&vertex.position[0]) && (vertex.position[1] - 3.0).abs() < 1e-4
+    }));
+}
+
+fn quads_facing<'a>(
+    mesh: &'a BlockGeometry,
+    facing: impl Fn([f32; 3]) -> bool,
+) -> Vec<&'a [BlockVertex]> {
+    mesh.vertices()
+        .chunks_exact(4)
+        .filter(|quad| facing(quad[0].normal))
+        .collect()
+}
+
+fn spans(quad: &[BlockVertex], axis: usize, min: f32, max: f32) -> bool {
+    let mut lo = f32::INFINITY;
+    let mut hi = f32::NEG_INFINITY;
+    for vertex in quad {
+        lo = lo.min(vertex.position[axis]);
+        hi = hi.max(vertex.position[axis]);
+    }
+    (lo - min).abs() < 1e-4 && (hi - max).abs() < 1e-4
 }

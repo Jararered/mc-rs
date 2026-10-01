@@ -6,6 +6,11 @@
 //! uniform below. Changing the time of day, old lighting, or smooth lighting
 //! updates this uniform instead of rebuilding meshes. Leaf wiggle reads
 //! Bevy's time uniform, so nothing here changes every frame.
+//!
+//! A greedy rectangle stores an unwrapped block position as its UV and the
+//! atlas tile in vertex alpha. The fragment shaders wrap that back into one
+//! tile before sampling. Forward, deferred, and the mask prepass all do it,
+//! because each of those paths samples the atlas.
 
 use bevy::asset::load_internal_asset;
 use bevy::asset::uuid_handle;
@@ -38,6 +43,10 @@ const BLOCK_VERTEX_SHADER_HANDLE: Handle<Shader> =
     uuid_handle!("c41f8e2b-6a70-4d13-b9e5-2f7c90d4a6b1");
 const BLOCK_PREPASS_SHADER_HANDLE: Handle<Shader> =
     uuid_handle!("5d9a2c14-8e6f-4b07-a3c8-1e5d7f90b4a6");
+const BLOCK_FRAGMENT_SHADER_HANDLE: Handle<Shader> =
+    uuid_handle!("9c4e2a71-3b58-4d0e-8f16-6a2d91c0e4b7");
+const BLOCK_PREPASS_FRAGMENT_SHADER_HANDLE: Handle<Shader> =
+    uuid_handle!("2f6b8d04-7c19-4a55-b3e2-8d1f0a6c47e9");
 
 /// Atlas-textured block shading shared by terrain layers and dropped blocks.
 pub type BlockMaterial = ExtendedMaterial<StandardMaterial, BlockShading>;
@@ -106,6 +115,18 @@ impl MaterialExtension for BlockShading {
         BLOCK_PREPASS_SHADER_HANDLE.into()
     }
 
+    fn fragment_shader() -> ShaderRef {
+        BLOCK_FRAGMENT_SHADER_HANDLE.into()
+    }
+
+    fn prepass_fragment_shader() -> ShaderRef {
+        BLOCK_PREPASS_FRAGMENT_SHADER_HANDLE.into()
+    }
+
+    fn deferred_fragment_shader() -> ShaderRef {
+        BLOCK_FRAGMENT_SHADER_HANDLE.into()
+    }
+
     /// Block meshes carry one packed attribute, so Bevy's mesh pipeline finds
     /// none of the standard ones. Bind the packed buffer and declare the UV
     /// and color outputs the vertex shaders fill for `StandardMaterial`.
@@ -160,6 +181,18 @@ pub(super) fn plugin(app: &mut App) {
         app,
         BLOCK_PREPASS_SHADER_HANDLE,
         "block_vertex_prepass.wgsl",
+        Shader::from_wgsl
+    );
+    load_internal_asset!(
+        app,
+        BLOCK_FRAGMENT_SHADER_HANDLE,
+        "block_fragment.wgsl",
+        Shader::from_wgsl
+    );
+    load_internal_asset!(
+        app,
+        BLOCK_PREPASS_FRAGMENT_SHADER_HANDLE,
+        "block_prepass_fragment.wgsl",
         Shader::from_wgsl
     );
 }

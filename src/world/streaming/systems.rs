@@ -150,44 +150,6 @@ pub(crate) fn setup_streaming(
     });
 }
 
-/// Regenerate every loaded chunk from the world generator when F4 is pressed.
-///
-/// Stored chunk data is dropped so [`stream_chunks`] re-runs terrain and
-/// decoration, then rebuilds each mesh. Rendered entities are kept so the world
-/// stays visible while it updates.
-pub(crate) fn regenerate_loaded_chunks(
-    keys: Option<Res<ButtonInput<KeyCode>>>,
-    screen: Option<Res<State<AppScreen>>>,
-    mut streaming: ResMut<WorldStreaming>,
-    mut chunks: ResMut<WorldChunks>,
-    mut persistence: Option<ResMut<WorldPersistence>>,
-    mut ticks: Option<ResMut<BlockTicks>>,
-    mut light: Option<ResMut<LightCache>>,
-) {
-    if screen.is_some_and(|state| *state.get() != AppScreen::Playing) {
-        return;
-    }
-    if keys.is_some_and(|keys| keys.just_pressed(KeyCode::F4)) {
-        let count = chunks.positions().count();
-        streaming.generating.clear();
-        streaming.populating.clear();
-        streaming.held.clear();
-        streaming.remesh_everything();
-        chunks.clear();
-        if let Some(ticks) = ticks.as_deref_mut() {
-            ticks.clear();
-        }
-        if let Some(light) = light.as_deref_mut() {
-            light.clear();
-        }
-        // Saved chunks would otherwise be loaded straight back from disk.
-        if let Some(persistence) = persistence.as_deref_mut() {
-            persistence.request_regeneration();
-        }
-        info!("Regenerating {count} loaded chunks from scratch");
-    }
-}
-
 pub(crate) fn stream_chunks(
     mut commands: Commands,
     player: Query<&Transform, With<Player>>,

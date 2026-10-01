@@ -14,7 +14,6 @@ use super::chunk::WorldChunks;
 use super::sky::CelestialCamera;
 use super::sky::SkyCamera;
 use super::streaming::StreamingDiagnostics;
-use super::streaming::regenerate_loaded_chunks;
 use super::streaming::setup_streaming;
 use super::streaming::stream_chunks;
 use super::textures::TerrainTexturePlugin;
@@ -42,7 +41,7 @@ impl Plugin for WorldPlugin {
                     apply_lighting_settings,
                     apply_graphics_pipeline,
                     super::furnace::tick_furnaces,
-                    (regenerate_loaded_chunks, stream_chunks)
+                    stream_chunks
                         .chain()
                         .after(PhysicsSet::ApplyInput)
                         .after(BlockTickSet),

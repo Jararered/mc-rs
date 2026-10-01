@@ -23,7 +23,6 @@ use mesh_jobs::MeshTask;
 use render::ChunkMaterials;
 use render::RenderedChunk;
 
-pub(crate) use systems::regenerate_loaded_chunks;
 pub(crate) use systems::setup_streaming;
 pub(crate) use systems::stream_chunks;
 

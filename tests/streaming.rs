@@ -280,44 +280,6 @@ fn edited_chunk_remesh_is_dispatched_without_main_thread_meshing() {
 }
 
 #[test]
-fn pressing_f4_regenerates_loaded_chunks_from_scratch() {
-    let mut app = test_app();
-    app.world_mut()
-        .spawn((Player, Transform::from_xyz(8.0, 80.0, 8.0)));
-
-    let origin = ChunkPosition::ZERO;
-    assert!(run_until(&mut app, Duration::from_secs(3), |app| {
-        rendered_positions(app).contains(&origin)
-    }));
-
-    // Corrupt a block in the stored chunk. Regeneration must discard the edit,
-    // which a plain re-mesh of the cached chunk would keep.
-    let (x, y, z) = {
-        let mut chunks = app.world_mut().resource_mut::<WorldChunks>();
-        let chunk = chunks.get_mut(origin).unwrap();
-        let (x, y, z) = top_solid(&chunk.chunk);
-        chunk.chunk.set(x, y, z, Id::Air);
-        (x, y, z)
-    };
-    assert_eq!(block_at(&app, origin, x, y, z), Some(Id::Air));
-
-    app.world_mut()
-        .resource_mut::<ButtonInput<KeyCode>>()
-        .press(KeyCode::F4);
-    app.update();
-    app.world_mut()
-        .resource_mut::<ButtonInput<KeyCode>>()
-        .clear();
-
-    // The chunk is dropped and regenerated, so the edit disappears while the
-    // chunk stays rendered.
-    assert!(run_until(&mut app, Duration::from_secs(5), |app| {
-        block_at(app, origin, x, y, z).is_some_and(|block| block != Id::Air)
-    }));
-    assert!(rendered_positions(&mut app).contains(&origin));
-}
-
-#[test]
 fn generation_radius_is_two_rings_beyond_the_render_distance() {
     let center = ChunkPosition { x: 3, z: -2 };
     let generated = positions_in_radius(center, LOAD_RADIUS + GENERATE_MARGIN);

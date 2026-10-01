@@ -1,6 +1,7 @@
 //! Local Beta-style chat input and message overlay.
 
 pub mod commands;
+pub mod registry;
 
 use std::collections::VecDeque;
 
@@ -33,6 +34,7 @@ pub struct ChatPlugin;
 impl Plugin for ChatPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ChatState>()
+            .init_resource::<registry::CommandRegistry>()
             .init_resource::<InventoryScreen>()
             .add_systems(OnEnter(AppScreen::Playing), spawn_chat)
             .add_systems(OnExit(AppScreen::Playing), despawn_chat)

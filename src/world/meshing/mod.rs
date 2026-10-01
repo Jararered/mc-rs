@@ -587,8 +587,8 @@ impl BlockGeometry {
     /// the hanging grass pixels, leaving the normal dirt side unmodified.
     /// Coplanar with the dirt side face, not nudged outward: both quads pack
     /// their corners into the same quantized vertex positions (see
-    /// `vertex.rs`) and share the opaque layer's depth test, so the mask
-    /// layer's fragments resolve deterministically without z-fighting.
+    /// `vertex.rs`) with identical triangulation. Greedy base faces must also
+    /// split at overlay tint boundaries to preserve that depth equality.
     fn push_grass_overlay(
         &mut self,
         origin: [f32; 3],
@@ -1032,15 +1032,15 @@ impl<'a> Mesher<'a> {
             };
             if self.only.is_some() || uniform_shading(&shading) {
                 let (fixed, row, bit) = plane_coords(face_index, x, y, z, band_start);
+                let mut base_key = plane_key(layer, [tile_x, tile_y], side_tint, &recorded);
+                if grass_side && fancy_graphics {
+                    // The coplanar passes must rasterize identical triangles.
+                    // Dirt is untinted, but merging it across an overlay tint
+                    // boundary gives the two layers different depth rounding.
+                    base_key.overlay_tint = Some(quantized_tint(grass_tint));
+                }
                 insert_plane(
-                    planes,
-                    face_index,
-                    plane_key(layer, [tile_x, tile_y], side_tint, &recorded),
-                    side_tint,
-                    recorded,
-                    fixed,
-                    row,
-                    bit,
+                    planes, face_index, base_key, side_tint, recorded, fixed, row, bit,
                 );
                 if grass_side && fancy_graphics {
                     insert_plane(
@@ -1115,6 +1115,8 @@ struct MergeKey {
     ao: u8,
     light: [u8; 4],
     shade: bool,
+    /// Keep an untinted grass side's rectangles in step with its overlay.
+    overlay_tint: Option<([u8; 3], bool)>,
 }
 
 struct Plane {
@@ -1135,6 +1137,7 @@ fn plane_key(layer: u8, tile: [u8; 2], tint: [f32; 3], shading: &CornerShading) 
         ao: shading.ao[0],
         light: shading.light[0],
         shade: shading.shade,
+        overlay_tint: None,
     }
 }
 

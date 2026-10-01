@@ -163,3 +163,87 @@ fn greedy_grass_tops_merge_only_when_the_quantized_tint_matches() {
     assert!((merged[0].1 - 2.0).abs() < 1e-4);
     assert!((merged[0].2 - 4.0).abs() < 1e-4);
 }
+
+#[test]
+fn fancy_grass_overlays_share_the_base_faces_packed_triangles() {
+    let wet = Climate {
+        temperature: 0.5,
+        humidity: 0.5,
+        biome: Biome::Forest,
+    };
+    let dry = Climate {
+        temperature: 1.0,
+        humidity: 0.0,
+        biome: Biome::Forest,
+    };
+    let mut rgba = [0, 255, 0, 255].repeat(PALETTE_SIZE * PALETTE_SIZE);
+    let blue = palette_index(dry.temperature, dry.humidity) * 4;
+    rgba[blue..blue + 4].copy_from_slice(&[0, 0, 255, 255]);
+    let colors = GrassColors::from_rgba(rgba);
+
+    for split_colors in [false, true] {
+        let biomes = BiomeMap::from_cells(std::array::from_fn(|index| {
+            let x = index / CHUNK_SIZE;
+            let z = index % CHUNK_SIZE;
+            if split_colors && (x >= 4 || z >= 4) {
+                dry
+            } else {
+                wet
+            }
+        }));
+        for torch in [false, true] {
+            let mut chunk = Chunk::new();
+            for x in 1..7 {
+                for z in 1..7 {
+                    chunk.set(x, 2, z, Id::Grass);
+                }
+            }
+            if torch {
+                chunk.set(3, 2, 0, Id::Torch);
+            }
+            let meshes = mesh_chunk_with_biomes(
+                &chunk,
+                &ChunkNeighbors::default(),
+                &Skylight::from_chunk(&chunk),
+                &biomes,
+                &colors,
+                &FoliageColors::default(),
+                true,
+                ChunkPosition::ZERO,
+            );
+            let base = meshes
+                .opaque
+                .vertices()
+                .chunks_exact(4)
+                .filter(|quad| quad[0].texel.tile == [3, 0])
+                .collect::<Vec<_>>();
+            let overlays = meshes
+                .grass_overlay
+                .vertices()
+                .chunks_exact(4)
+                .filter(|quad| quad[0].texel.tile == [6, 2])
+                .collect::<Vec<_>>();
+            assert_eq!(base.len(), overlays.len());
+            if !torch {
+                assert!(overlays.iter().any(|quad| quad[0].repeat_uv));
+            }
+            for overlay in overlays {
+                let paired = base.iter().find(|quad| {
+                    quad.iter()
+                        .zip(overlay)
+                        .all(|(a, b)| a.position == b.position && a.normal == b.normal)
+                });
+                let paired = paired.expect("overlay must use the base face's ordered corners");
+                for (a, b) in paired.iter().zip(overlay) {
+                    let a_packed = game::world::meshing::unpack_vertex(a.pack());
+                    let b_packed = game::world::meshing::unpack_vertex(b.pack());
+                    assert_eq!(a_packed.position, b_packed.position);
+                    assert_eq!(a_packed.normal, b_packed.normal);
+                    assert_eq!(a_packed.repeat_uv, b_packed.repeat_uv);
+                    assert_eq!(a.light, b.light);
+                    assert_eq!(a.ao, b.ao);
+                }
+            }
+        }
+    }
+}

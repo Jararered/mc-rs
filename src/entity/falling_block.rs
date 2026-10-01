@@ -19,15 +19,15 @@ use crate::physics::WATER_CURRENT_PER_TICK;
 use crate::physics::move_entity;
 use crate::physics::water_current;
 use crate::random::ItemRng;
+use crate::rendering::meshing::dropped_block_meshes;
+use crate::rendering::textures::TerrainMaterial;
 use crate::world::block_ticks::BlockTicks;
 use crate::world::block_ticks::behaviors::falling::can_fall_below;
 use crate::world::block_ticks::behaviors::falling::can_land_in;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
-use crate::world::meshing::dropped_block_meshes;
 use crate::world::persistence::WorldPersistence;
 use crate::world::streaming::WorldStreaming;
-use crate::world::textures::TerrainMaterial;
 use crate::world::tick::WorldTick;
 
 /// `setSize(0.98F, 0.98F)`, centered on the entity position.

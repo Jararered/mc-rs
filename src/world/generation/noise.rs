@@ -11,7 +11,7 @@
 use crate::random::JavaRandom;
 
 /// Improved Perlin noise with Java-seeded permutation tables.
-pub(super) struct PerlinNoise {
+pub struct PerlinNoise {
     permutation: [u8; 512],
     x_offset: f64,
     y_offset: f64,
@@ -267,7 +267,7 @@ impl PerlinNoise {
 }
 
 /// `NoiseGeneratorOctaves`: octave `i` has frequency `2^-i` and weight `2^i`.
-pub(super) struct PerlinOctaves(pub Vec<PerlinNoise>);
+pub struct PerlinOctaves(pub Vec<PerlinNoise>);
 
 impl PerlinOctaves {
     pub fn new(random: &mut JavaRandom, count: usize) -> Self {
@@ -313,7 +313,7 @@ impl PerlinOctaves {
     }
 }
 
-pub(super) struct SimplexOctaves(Vec<PerlinNoise>);
+pub struct SimplexOctaves(Vec<PerlinNoise>);
 
 impl SimplexOctaves {
     pub fn new(seed: u64, count: usize) -> Self {
@@ -335,7 +335,7 @@ impl SimplexOctaves {
     }
 }
 
-pub(super) fn lerp(t: f64, a: f64, b: f64) -> f64 {
+pub fn lerp(t: f64, a: f64, b: f64) -> f64 {
     a + t * (b - a)
 }
 

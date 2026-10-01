@@ -1,35 +1,35 @@
 use game::block::id::Id;
 use game::block::properties::selection_bounds;
+use game::rendering::meshing::BlockGeometry;
+use game::rendering::meshing::BlockLighting;
+use game::rendering::meshing::BlockVertex;
+use game::rendering::meshing::ChunkNeighbors;
+use game::rendering::meshing::WATER_ALPHA;
+use game::rendering::meshing::mesh_chunk;
+use game::rendering::meshing::mesh_chunk_filtered;
+use game::rendering::meshing::mesh_chunk_with_neighbors;
+use game::rendering::meshing::mesh_chunk_with_settings;
+use game::rendering::meshing::unpack_vertex;
+use game::rendering::textures::atlas_tile_uvs;
+use game::rendering::textures::block_tile;
+use game::world::biome::Biome;
+use game::world::biome::BiomeMap;
+use game::world::biome::Climate;
 use game::world::chunk::CHUNK_HEIGHT;
 use game::world::chunk::CHUNK_SIZE;
 use game::world::chunk::Chunk;
 use game::world::chunk::ChunkPosition;
+use game::world::chunk::GeneratedChunk;
+use game::world::chunk::Heightmap;
 use game::world::chunk::WorldChunks;
 use game::world::chunk::remesh_chunks_touching;
-use game::world::generation::Biome;
-use game::world::generation::BiomeMap;
-use game::world::generation::Climate;
-use game::world::generation::GeneratedChunk;
-use game::world::generation::Heightmap;
-use game::world::generation::WorldGenerator;
 use game::world::generation::generate_chunk;
+use game::world::generation::overworld::OverworldGenerator;
 use game::world::lighting::Skylight;
 use game::world::lighting::beta_brightness;
 use game::world::lighting::combined_light;
 use game::world::lighting::light_emission;
 use game::world::lighting::light_opacity;
-use game::world::meshing::BlockGeometry;
-use game::world::meshing::BlockLighting;
-use game::world::meshing::BlockVertex;
-use game::world::meshing::ChunkNeighbors;
-use game::world::meshing::WATER_ALPHA;
-use game::world::meshing::mesh_chunk;
-use game::world::meshing::mesh_chunk_filtered;
-use game::world::meshing::mesh_chunk_with_neighbors;
-use game::world::meshing::mesh_chunk_with_settings;
-use game::world::meshing::unpack_vertex;
-use game::world::textures::atlas_tile_uvs;
-use game::world::textures::block_tile;
 
 #[test]
 fn mesh_snapshot_keeps_old_blocks_after_world_edit() {
@@ -45,7 +45,7 @@ fn mesh_snapshot_keeps_old_blocks_after_world_edit() {
 
 #[test]
 fn generated_chunk_has_solid_ground_and_sunlit_air() {
-    let generated = WorldGenerator::new(0).generate(ChunkPosition::ZERO);
+    let generated = OverworldGenerator::new(0).generate(ChunkPosition::ZERO);
     let chunk = &generated.chunk;
     let light = Skylight::from_chunk(chunk);
 
@@ -662,7 +662,7 @@ fn block_light_propagates_from_beta_emitters() {
 
 #[test]
 fn adjacent_chunk_edges_have_continuous_height() {
-    let generator = WorldGenerator::new(0);
+    let generator = OverworldGenerator::new(0);
     let left = generator.generate(ChunkPosition::ZERO);
     let right = generator.generate(ChunkPosition { x: 1, z: 0 });
     for z in 0..CHUNK_SIZE {
@@ -674,7 +674,7 @@ fn adjacent_chunk_edges_have_continuous_height() {
 
 #[test]
 fn climate_matches_the_local_cpp_reference_at_seed_zero() {
-    let generated = WorldGenerator::new(0).generate(ChunkPosition::ZERO);
+    let generated = OverworldGenerator::new(0).generate(ChunkPosition::ZERO);
     for (x, z, temperature, humidity) in [
         (0, 0, 0.918687, 0.516277),
         (8, 8, 0.930815, 0.604113),
@@ -686,7 +686,7 @@ fn climate_matches_the_local_cpp_reference_at_seed_zero() {
         assert_eq!(climate.biome, Biome::Forest);
     }
 
-    let desert = WorldGenerator::new(12345)
+    let desert = OverworldGenerator::new(12345)
         .generate(ChunkPosition::ZERO)
         .biomes
         .get(0, 0);

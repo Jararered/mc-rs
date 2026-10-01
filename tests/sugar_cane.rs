@@ -10,19 +10,19 @@ use game::physics::Aabb;
 use game::physics::BlockFace;
 use game::physics::BlockHit;
 use game::player::place_selected_block;
+use game::rendering::meshing::mesh_chunk_with_settings;
+use game::rendering::textures::block_tile;
+use game::world::biome::Biome;
+use game::world::biome::BiomeMap;
+use game::world::biome::Climate;
 use game::world::chunk::CHUNK_SIZE;
 use game::world::chunk::Chunk;
 use game::world::chunk::ChunkPosition;
+use game::world::chunk::GeneratedChunk;
+use game::world::chunk::Heightmap;
 use game::world::chunk::WorldChunks;
-use game::world::generation::Biome;
-use game::world::generation::BiomeMap;
-use game::world::generation::Climate;
-use game::world::generation::GeneratedChunk;
-use game::world::generation::Heightmap;
-use game::world::generation::WorldGenerator;
+use game::world::generation::overworld::OverworldGenerator;
 use game::world::lighting::Skylight;
-use game::world::meshing::mesh_chunk_with_settings;
-use game::world::textures::block_tile;
 
 fn world_with(chunk: Chunk) -> WorldChunks {
     let heightmap = Heightmap::from_chunk(&chunk);
@@ -142,7 +142,7 @@ fn sugar_cane_requires_water_next_to_its_ground_support() {
 
 #[test]
 fn world_generation_places_sugar_cane_near_water() {
-    let generator = WorldGenerator::new(0);
+    let generator = OverworldGenerator::new(0);
     for z in -16..=16 {
         for x in -16..=16 {
             let generated = generator.generate(ChunkPosition { x, z });

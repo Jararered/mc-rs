@@ -10,12 +10,13 @@ use crate::block::id::Id;
 
 use super::chunk::CHUNK_SIZE;
 use super::chunk::ChunkPosition;
+use super::chunk::GeneratedChunk;
 use super::chunk::SECTION_HEIGHT;
 use super::chunk::SECTIONS_PER_CHUNK;
-use super::generation::GeneratedChunk;
-use super::generation::WorldGenerator;
-use super::textures::FoliageColors;
-use super::textures::GrassColors;
+use super::generation::ChunkGenerator;
+use super::generation::population_footprint;
+use crate::rendering::textures::FoliageColors;
+use crate::rendering::textures::GrassColors;
 
 mod mesh_jobs;
 mod render;
@@ -61,14 +62,6 @@ pub(crate) struct ChunkJob {
 pub(crate) struct PopulationJob {
     pub chunks: [GeneratedChunk; 4],
     pub elapsed: Duration,
-}
-
-/// A population pass's source chunk and the three chunks it writes into.
-fn population_footprint(source: ChunkPosition) -> [ChunkPosition; 4] {
-    [(0, 0), (1, 0), (0, 1), (1, 1)].map(|(dx, dz)| ChunkPosition {
-        x: source.x + dx,
-        z: source.z + dz,
-    })
 }
 
 /// Timing samples collected since the last performance print.
@@ -118,7 +111,7 @@ impl TimingStats {
 
 #[derive(Resource)]
 pub struct WorldStreaming {
-    generator: Arc<WorldGenerator>,
+    generator: Arc<dyn ChunkGenerator>,
     grass_colors: GrassColors,
     foliage_colors: FoliageColors,
     /// Base terrain and load jobs inside the generation radius.

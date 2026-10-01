@@ -15,17 +15,17 @@ fn sin_table() -> &'static [f32] {
 }
 
 /// `MathHelper.sin`.
-pub(super) fn sin(value: f32) -> f32 {
+pub fn sin(value: f32) -> f32 {
     sin_table()[((value * 10430.378) as i32 & 0xffff) as usize]
 }
 
 /// `MathHelper.cos`.
-pub(super) fn cos(value: f32) -> f32 {
+pub fn cos(value: f32) -> f32 {
     sin_table()[((value * 10430.378 + 16384.0) as i32 & 0xffff) as usize]
 }
 
 /// `MathHelper.floor_double`.
-pub(super) fn floor_double(value: f64) -> i32 {
+pub fn floor_double(value: f64) -> i32 {
     let truncated = value as i32;
     if value < f64::from(truncated) {
         truncated - 1
@@ -35,4 +35,4 @@ pub(super) fn floor_double(value: f64) -> i32 {
 }
 
 /// The float value of pi Beta uses throughout generation.
-pub(super) const PI: f32 = 3.141_592_7;
+pub const PI: f32 = 3.141_592_7;

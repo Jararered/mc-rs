@@ -1,22 +1,18 @@
-//! Menus, the HUD, the inventory GUI, and item icons.
+//! Menus, the HUD, inventory/chat screens, and stack overlays.
 //!
 //! [`UiCameraPlugin`] composites everything here after the world and the
-//! first-person arm. Screens live in [`screens`], icon data in [`icons`].
+//! first-person arm. Screens live in [`screens`], stack overlays in [`icons`].
+//! Shared item appearances and icon assets belong to `crate::rendering`.
 
 use bevy::prelude::*;
 
 pub mod icons;
 pub mod screens;
 
-pub use screens::chat::ChatPlugin;
+pub use screens::chat::ChatUiPlugin;
 pub use screens::hud::HudPlugin;
 pub use screens::inventory::InventoryGuiPlugin;
 pub use screens::menu::MenuPlugin;
-
-pub(crate) use screens::chat::ChatState;
-pub(crate) use screens::inventory::InventoryScreen;
-pub(crate) use screens::inventory::WorkbenchUiSession;
-pub(crate) use screens::inventory::close_crafting_interface;
 
 /// Composites all HUD and menu nodes after the world and first-person arm.
 pub struct UiCameraPlugin;

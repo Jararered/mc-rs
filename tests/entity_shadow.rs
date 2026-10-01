@@ -3,15 +3,15 @@ use game::block::id::Id;
 use game::entity::EntitySize;
 use game::entity::shadow::Shadow;
 use game::entity::shadow::place_shadow;
+use game::world::biome::Biome;
+use game::world::biome::BiomeMap;
+use game::world::biome::Climate;
 use game::world::chunk::CHUNK_SIZE;
 use game::world::chunk::Chunk;
 use game::world::chunk::ChunkPosition;
+use game::world::chunk::GeneratedChunk;
+use game::world::chunk::Heightmap;
 use game::world::chunk::WorldChunks;
-use game::world::generation::Biome;
-use game::world::generation::BiomeMap;
-use game::world::generation::Climate;
-use game::world::generation::GeneratedChunk;
-use game::world::generation::Heightmap;
 
 fn plains() -> BiomeMap {
     BiomeMap::from_cells(

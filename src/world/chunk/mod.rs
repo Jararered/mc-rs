@@ -11,3 +11,10 @@ pub use chunk::SECTIONS_PER_CHUNK;
 pub use chunk::WorldChunks;
 pub use chunk::remesh_chunks_touching;
 pub use position::ChunkPosition;
+
+mod generated;
+mod heightmap;
+
+pub use generated::ChunkDroppedItem;
+pub use generated::GeneratedChunk;
+pub use heightmap::Heightmap;

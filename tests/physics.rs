@@ -23,15 +23,15 @@ use game::physics::raycast_blocks;
 use game::physics::water_current;
 use game::player::Player;
 use game::player::PlayerMovementInput;
+use game::world::biome::Biome;
+use game::world::biome::BiomeMap;
+use game::world::biome::Climate;
 use game::world::chunk::CHUNK_SIZE;
 use game::world::chunk::Chunk;
 use game::world::chunk::ChunkPosition;
+use game::world::chunk::GeneratedChunk;
+use game::world::chunk::Heightmap;
 use game::world::chunk::WorldChunks;
-use game::world::generation::Biome;
-use game::world::generation::BiomeMap;
-use game::world::generation::Climate;
-use game::world::generation::GeneratedChunk;
-use game::world::generation::Heightmap;
 use game::world::tick::WorldTick;
 
 fn plains() -> BiomeMap {

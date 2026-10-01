@@ -16,11 +16,11 @@ use game::player::Player;
 use game::world::chunk::CHUNK_HEIGHT;
 use game::world::chunk::CHUNK_SIZE;
 use game::world::chunk::Chunk;
+use game::world::chunk::ChunkDroppedItem;
 use game::world::chunk::ChunkPosition;
 use game::world::chunk::PendingTick;
 use game::world::chunk::WorldChunks;
-use game::world::generation::ChunkDroppedItem;
-use game::world::generation::WorldGenerator;
+use game::world::generation::overworld::OverworldGenerator;
 use game::world::persistence::FORMAT_VERSION;
 use game::world::persistence::PersistencePlugin;
 use game::world::persistence::REGION_SIZE;
@@ -69,7 +69,7 @@ fn app_with(persistence: PersistencePlugin) -> App {
         .init_asset::<Image>()
         .init_asset::<StandardMaterial>()
         .init_resource::<ButtonInput<KeyCode>>()
-        .add_plugins(WorldPlugin)
+        .add_plugins((WorldPlugin, game::rendering::WorldRenderingPlugin))
         .add_plugins(persistence);
     app
 }
@@ -125,7 +125,7 @@ fn chunk_round_trips_through_a_chunk_file() {
     let saves = temp_saves("roundtrip");
     let storage = WorldStorage::create(&saves, 0, "Roundtrip").unwrap();
     let position = ChunkPosition { x: -1, z: 2 };
-    let mut generated = WorldGenerator::new(0).generate(position);
+    let mut generated = OverworldGenerator::new(0).generate(position);
     for (x, facing) in [
         (1, Id::PumpkinNorth),
         (2, Id::PumpkinEast),
@@ -161,7 +161,7 @@ fn block_metadata_and_pending_ticks_round_trip_through_a_chunk_file() {
     let saves = temp_saves("metadata");
     let storage = WorldStorage::create(&saves, 0, "Metadata").unwrap();
     let position = ChunkPosition { x: 3, z: -2 };
-    let mut generated = WorldGenerator::new(0).generate(position);
+    let mut generated = OverworldGenerator::new(0).generate(position);
     generated
         .chunk
         .set_with_metadata(4, 90, 5, Id::FlowingWater, 3);
@@ -183,7 +183,7 @@ fn block_metadata_and_pending_ticks_round_trip_through_a_chunk_file() {
     assert_eq!(loaded.chunk.pending_ticks(), &[tick]);
 
     // A chunk without metadata stores none and loads all zeroes.
-    let plain = WorldGenerator::new(0).generate_base(ChunkPosition { x: 4, z: -2 });
+    let plain = OverworldGenerator::new(0).generate_base(ChunkPosition { x: 4, z: -2 });
     assert!(plain.chunk.raw_metadata().is_none());
     storage
         .save_chunk(ChunkPosition { x: 4, z: -2 }, &plain)
@@ -200,7 +200,7 @@ fn legacy_species_bytes_stay_spruce_while_cake_uses_the_same_number() {
     let saves = temp_saves("legacy-spruce");
     let storage = WorldStorage::create(&saves, 0, "Legacy").unwrap();
     let position = ChunkPosition::ZERO;
-    let generated = WorldGenerator::new(0).generate(position);
+    let generated = OverworldGenerator::new(0).generate(position);
     storage.save_chunk(position, &generated).unwrap();
 
     let path = storage
@@ -232,7 +232,7 @@ fn dropped_items_round_trip_inside_their_chunk() {
     let saves = temp_saves("items");
     let storage = WorldStorage::create(&saves, 0, "Items").unwrap();
     let position = ChunkPosition { x: 1, z: -1 };
-    let mut generated = WorldGenerator::new(0).generate(position);
+    let mut generated = OverworldGenerator::new(0).generate(position);
     generated.items.push(ChunkDroppedItem {
         stack: ItemStack::from_block(Id::Cobblestone, 3).unwrap(),
         position: [20.25, 70.0, -8.5],
@@ -271,7 +271,7 @@ fn dropped_items_round_trip_inside_their_chunk() {
 fn region_folders_group_sixteen_by_sixteen_chunks() {
     let saves = temp_saves("regions");
     let storage = WorldStorage::create(&saves, 0, "Regions").unwrap();
-    let generator = WorldGenerator::new(0);
+    let generator = OverworldGenerator::new(0);
     let positions = [
         ChunkPosition { x: 0, z: 0 },
         ChunkPosition { x: 15, z: 15 },
@@ -305,7 +305,7 @@ fn region_folders_group_sixteen_by_sixteen_chunks() {
 fn saving_one_chunk_keeps_the_others_in_its_region() {
     let saves = temp_saves("merge");
     let storage = WorldStorage::create(&saves, 0, "Merge").unwrap();
-    let generator = WorldGenerator::new(0);
+    let generator = OverworldGenerator::new(0);
     let first = ChunkPosition { x: 1, z: 1 };
     let second = ChunkPosition { x: 2, z: 2 };
     storage
@@ -332,7 +332,7 @@ fn saving_one_chunk_keeps_the_others_in_its_region() {
 fn save_chunks_writes_every_chunk_once() {
     let saves = temp_saves("batch");
     let storage = WorldStorage::create(&saves, 0, "Batch").unwrap();
-    let generator = WorldGenerator::new(0);
+    let generator = OverworldGenerator::new(0);
     let positions = [
         ChunkPosition { x: 0, z: 0 },
         ChunkPosition { x: 1, z: 0 },
@@ -570,7 +570,7 @@ fn a_drain_spreads_more_chunks_than_one_frame_can_hold() {
             z: -500,
         })
         .collect();
-    let generator = WorldGenerator::new(0);
+    let generator = OverworldGenerator::new(0);
     {
         let mut chunks = app.world_mut().resource_mut::<WorldChunks>();
         for position in &positions {

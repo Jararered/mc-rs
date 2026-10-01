@@ -1,10 +1,5 @@
 //! Local Beta-style chat input and message overlay.
 
-pub mod commands;
-pub mod registry;
-
-use std::collections::VecDeque;
-
 use bevy::input::ButtonState;
 use bevy::input::keyboard::KeyboardInput;
 use bevy::prelude::*;
@@ -14,13 +9,14 @@ use bevy::window::CursorOptions;
 use bevy::window::PrimaryWindow;
 
 use crate::app::state::AppScreen;
-use crate::physics::PhysicsSet;
-use crate::ui::InventoryScreen;
+use crate::chat::ChatFocus;
+use crate::chat::ChatHistory;
+use crate::chat::ChatSet;
+use crate::chat::ChatSubmission;
+use crate::inventory::session::InventorySession;
 use crate::ui::icons::overlay::GUI_SCALE;
 use crate::ui::icons::overlay::UiFont;
 use crate::world::tick::WorldTick;
-
-use self::commands::submit_chat;
 
 const INPUT_LIMIT: usize = 100;
 const HISTORY_LIMIT: usize = 50;
@@ -29,70 +25,57 @@ const VISIBLE_CLOSED: usize = 10;
 const VISIBLE_OPEN: usize = 20;
 const FADE_TICKS: u32 = 200;
 
-pub struct ChatPlugin;
+pub struct ChatUiPlugin;
 
-impl Plugin for ChatPlugin {
+impl Plugin for ChatUiPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ChatState>()
-            .init_resource::<registry::CommandRegistry>()
-            .init_resource::<InventoryScreen>()
+            .init_resource::<ChatFocus>()
+            .init_resource::<InventorySession>()
             .add_systems(OnEnter(AppScreen::Playing), spawn_chat)
             .add_systems(OnExit(AppScreen::Playing), despawn_chat)
             .add_systems(
                 Update,
-                (read_chat_input, submit_chat, render_chat)
-                    .chain()
-                    .before(PhysicsSet::ApplyInput)
+                read_chat_input
+                    .in_set(ChatSet::Input)
+                    .run_if(in_state(AppScreen::Playing)),
+            )
+            .add_systems(
+                Update,
+                render_chat
+                    .in_set(ChatSet::Presentation)
                     .run_if(in_state(AppScreen::Playing)),
             );
     }
 }
 
-#[derive(Clone, Debug)]
-struct ChatLine {
-    text: String,
-    age: u32,
-}
-
-/// UI focus state. `suppress_controls` stays set through the frame chat closes,
-/// so the closing Escape/Enter cannot also activate a gameplay shortcut.
 #[derive(Resource, Default)]
-pub struct ChatState {
-    pub open: bool,
-    pub suppress_controls: bool,
+struct ChatState {
     input: String,
-    submitted: Option<String>,
-    lines: VecDeque<ChatLine>,
     blink: u32,
 }
 
-impl ChatState {
-    fn push(&mut self, text: impl Into<String>) {
-        let text = text.into();
-        // Beta's font renderer wraps chat to a 320-GUI-pixel column. Split
-        // long messages into fixed rows so their backgrounds never overlap.
-        let mut rest = text.as_str();
-        while !rest.is_empty() {
-            let end = rest
-                .char_indices()
-                .nth(MESSAGE_LINE_LIMIT)
-                .map_or(rest.len(), |(byte, _)| byte);
-            let split = if end < rest.len() {
-                rest[..end]
-                    .rfind(' ')
-                    .filter(|&space| space > 0)
-                    .map_or(end, |space| space + 1)
-            } else {
-                end
-            };
-            self.lines.push_front(ChatLine {
-                text: rest[..split].trim_end().into(),
-                age: 0,
-            });
-            rest = &rest[split..];
-        }
-        self.lines.truncate(HISTORY_LIMIT);
+/// Beta's 320-GUI-pixel column, including Unicode-safe word wrapping.
+fn wrap_message(text: &str) -> Vec<String> {
+    let mut lines = Vec::new();
+    let mut rest = text;
+    while !rest.is_empty() {
+        let end = rest
+            .char_indices()
+            .nth(MESSAGE_LINE_LIMIT)
+            .map_or(rest.len(), |(byte, _)| byte);
+        let split = if end < rest.len() {
+            rest[..end]
+                .rfind(' ')
+                .filter(|&space| space > 0)
+                .map_or(end, |space| space + 1)
+        } else {
+            end
+        };
+        lines.push(rest[..split].trim_end().into());
+        rest = &rest[split..];
     }
+    lines
 }
 
 #[derive(Component)]
@@ -102,8 +85,14 @@ struct ChatInput;
 #[derive(Component)]
 struct ChatMessage(usize);
 
-fn spawn_chat(mut commands: Commands, font: Res<UiFont>, mut chat: ResMut<ChatState>) {
+fn spawn_chat(
+    mut commands: Commands,
+    font: Res<UiFont>,
+    mut chat: ResMut<ChatState>,
+    mut focus: ResMut<ChatFocus>,
+) {
     *chat = ChatState::default();
+    *focus = ChatFocus::default();
     let font = TextFont::from_font_size(8.0 * GUI_SCALE)
         .with_font(font.minecraft.clone())
         .with_font_smoothing(FontSmoothing::None);
@@ -162,38 +151,39 @@ fn despawn_chat(
     mut commands: Commands,
     roots: Query<Entity, With<ChatRoot>>,
     mut chat: ResMut<ChatState>,
+    mut focus: ResMut<ChatFocus>,
 ) {
     for root in &roots {
         commands.entity(root).despawn();
     }
     *chat = ChatState::default();
+    *focus = ChatFocus::default();
 }
 
 fn read_chat_input(
     keys: Res<ButtonInput<KeyCode>>,
     mut keyboard: MessageReader<KeyboardInput>,
+    mut submissions: MessageWriter<ChatSubmission>,
+    mut focus: ResMut<ChatFocus>,
     mut chat: ResMut<ChatState>,
-    inventory: Res<InventoryScreen>,
+    inventory: Res<InventorySession>,
     mut windows: Query<(&Window, &mut CursorOptions), With<PrimaryWindow>>,
     tick: Res<WorldTick>,
 ) {
-    chat.suppress_controls = chat.open;
+    focus.suppress_controls = focus.open;
     chat.blink = chat.blink.wrapping_add(tick.ticks_this_frame());
-    for line in &mut chat.lines {
-        line.age = line.age.saturating_add(tick.ticks_this_frame());
-    }
     let Ok((window, mut cursor)) = windows.single_mut() else {
         keyboard.read().for_each(drop);
         return;
     };
-    if !chat.open {
+    if !focus.open {
         // Drain the opening key's text: '/' is already prefilled and 't' must
         // not appear in the new input. Keyboard messages persist across frames.
         keyboard.read().for_each(drop);
         if !inventory.open && window.focused && cursor.grab_mode == CursorGrabMode::Locked {
             if keys.just_pressed(KeyCode::KeyT) || keys.just_pressed(KeyCode::Slash) {
-                chat.open = true;
-                chat.suppress_controls = true;
+                focus.open = true;
+                focus.suppress_controls = true;
                 chat.input = if keys.just_pressed(KeyCode::Slash) {
                     "/".into()
                 } else {
@@ -224,16 +214,16 @@ fn read_chat_input(
         match event.key_code {
             KeyCode::Escape => {
                 chat.input.clear();
-                chat.open = false;
+                focus.open = false;
                 break;
             }
             KeyCode::Enter | KeyCode::NumpadEnter => {
                 let text = chat.input.trim();
                 if !text.is_empty() {
-                    chat.submitted = Some(text.to_owned());
+                    submissions.write(ChatSubmission(text.to_owned()));
                 }
                 chat.input.clear();
-                chat.open = false;
+                focus.open = false;
                 break;
             }
             KeyCode::Backspace => {
@@ -256,7 +246,7 @@ fn read_chat_input(
             }
         }
     }
-    if !chat.open {
+    if !focus.open {
         cursor.visible = false;
         if window.focused {
             cursor.grab_mode = CursorGrabMode::Locked;
@@ -266,6 +256,9 @@ fn read_chat_input(
 
 fn render_chat(
     chat: Res<ChatState>,
+    focus: Res<ChatFocus>,
+    history: Res<ChatHistory>,
+    mut rows: Local<Vec<(String, u32)>>,
     mut input: Query<(&mut Text, &mut Visibility), (With<ChatInput>, Without<ChatMessage>)>,
     mut messages: Query<
         (
@@ -279,32 +272,46 @@ fn render_chat(
     >,
 ) {
     if let Ok((mut text, mut visibility)) = input.single_mut() {
-        *visibility = if chat.open {
+        *visibility = if focus.open {
             Visibility::Visible
         } else {
             Visibility::Hidden
         };
-        if chat.open {
+        if focus.open {
             let cursor = if chat.blink / 6 % 2 == 0 { "_" } else { "" };
             **text = format!("> {}{cursor}", chat.input);
         }
     }
+    if history.is_changed() {
+        rows.clear();
+        for message in history.messages() {
+            let wrapped = wrap_message(&message.text);
+            for line in wrapped.into_iter().rev() {
+                rows.push((line, message.age_ticks));
+                if rows.len() == HISTORY_LIMIT {
+                    break;
+                }
+            }
+            if rows.len() == HISTORY_LIMIT {
+                break;
+            }
+        }
+    }
     for (index, mut text, mut color, mut background, mut visibility) in &mut messages {
-        let Some(line) = chat
-            .lines
+        let Some((line, age)) = rows
             .get(index.0)
-            .filter(|line| chat.open || index.0 < VISIBLE_CLOSED && line.age < FADE_TICKS)
+            .filter(|(_, age)| focus.open || index.0 < VISIBLE_CLOSED && *age < FADE_TICKS)
         else {
             *visibility = Visibility::Hidden;
             continue;
         };
-        let opacity = if chat.open {
+        let opacity = if focus.open {
             1.0
         } else {
-            let remaining = (FADE_TICKS - line.age) as f32 / FADE_TICKS as f32;
+            let remaining = (FADE_TICKS - age) as f32 / FADE_TICKS as f32;
             (remaining * 10.0).min(1.0).powi(2)
         };
-        **text = line.text.clone();
+        **text = line.clone();
         color.0 = Color::srgba(1.0, 1.0, 1.0, opacity);
         background.0 = Color::srgba(0.0, 0.0, 0.0, opacity * 0.5);
         *visibility = Visibility::Visible;

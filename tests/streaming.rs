@@ -27,7 +27,7 @@ fn test_app() -> App {
         .init_asset::<Image>()
         .init_asset::<StandardMaterial>()
         .init_resource::<ButtonInput<KeyCode>>()
-        .add_plugins(WorldPlugin);
+        .add_plugins((WorldPlugin, game::rendering::WorldRenderingPlugin));
     app
 }
 
@@ -357,4 +357,130 @@ fn settled_streaming_skips_discovery_and_wakes_for_chunk_changes_and_movement() 
             .discovery_passes
             > passes
     );
+}
+
+#[derive(Clone)]
+struct TestGenerator {
+    bases: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    populations: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl game::world::generation::ChunkGenerator for TestGenerator {
+    fn generate_base(&self, _: ChunkPosition) -> game::world::chunk::GeneratedChunk {
+        use game::world::biome::Biome;
+        use game::world::biome::BiomeMap;
+        use game::world::biome::Climate;
+        use game::world::chunk::GeneratedChunk;
+        use game::world::chunk::Heightmap;
+        self.bases
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let mut chunk = Chunk::new();
+        chunk.set(0, 40, 0, Id::Obsidian);
+        GeneratedChunk {
+            heightmap: Heightmap::from_chunk(&chunk),
+            chunk,
+            biomes: BiomeMap::from_cells(
+                [Climate {
+                    biome: Biome::Plains,
+                    temperature: 0.5,
+                    humidity: 0.5,
+                }; CHUNK_SIZE * CHUNK_SIZE],
+            ),
+            items: Vec::new(),
+            populated: false,
+        }
+    }
+
+    fn populate(
+        &self,
+        _: ChunkPosition,
+        mut chunks: [game::world::chunk::GeneratedChunk; 4],
+    ) -> [game::world::chunk::GeneratedChunk; 4] {
+        self.populations
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        // Leave a marker in every member of the footprint, to exercise
+        // neighboring writes and the shared finished-neighborhood rules.
+        for generated in &mut chunks {
+            generated.chunk.set(1, 40, 1, Id::GoldBlock);
+            generated.heightmap = game::world::chunk::Heightmap::from_chunk(&generated.chunk);
+        }
+        chunks[0].populated = true;
+        chunks
+    }
+}
+
+fn test_generator() -> TestGenerator {
+    TestGenerator {
+        bases: Default::default(),
+        populations: Default::default(),
+    }
+}
+
+#[test]
+fn reusable_area_generation_populates_a_consistent_neighborhood() {
+    use game::world::generation::generate_area;
+    use game::world::generation::population_footprint;
+    use std::sync::atomic::Ordering;
+
+    let generator = test_generator();
+    let center = ChunkPosition { x: -7, z: 12 };
+    let area = generate_area(&generator, center, 0);
+    assert_eq!(area.len(), 9);
+    assert_eq!(generator.bases.load(Ordering::Relaxed), 9);
+    assert_eq!(generator.populations.load(Ordering::Relaxed), 4);
+    assert!(area[&center].populated);
+    assert!(
+        area.values()
+            .all(|generated| generated.chunk.get(1, 40, 1) == Some(Id::GoldBlock))
+    );
+    assert!(
+        !area[&ChunkPosition {
+            x: center.x + 1,
+            z: center.z + 1
+        }]
+            .populated
+    );
+    assert_eq!(
+        population_footprint(center),
+        [
+            center,
+            ChunkPosition { x: -6, z: 12 },
+            ChunkPosition { x: -7, z: 13 },
+            ChunkPosition { x: -6, z: 13 }
+        ]
+    );
+}
+
+#[test]
+fn streaming_uses_selected_backend_for_spawn_and_background_jobs() {
+    use game::world::generation::WorldGeneration;
+    use std::sync::atomic::Ordering;
+
+    let generator = test_generator();
+    let mut app = test_app();
+    app.insert_resource(WorldGeneration::new(generator.clone()));
+    app.update();
+    assert_eq!(
+        block_at(&app, ChunkPosition::ZERO, 0, 40, 0),
+        Some(Id::Obsidian)
+    );
+    assert_eq!(
+        block_at(&app, ChunkPosition::ZERO, 1, 40, 1),
+        Some(Id::GoldBlock)
+    );
+    assert_eq!(generator.bases.load(Ordering::Relaxed), 9);
+    assert_eq!(generator.populations.load(Ordering::Relaxed), 4);
+
+    let center = ChunkPosition { x: 6, z: -4 };
+    app.world_mut()
+        .spawn((Player, Transform::from_xyz(96.0, 65.0, -64.0)));
+    assert!(run_until(&mut app, Duration::from_secs(10), |app| {
+        app.world()
+            .resource::<WorldStreaming>()
+            .neighborhood_finished(app.world().resource::<WorldChunks>(), center)
+    }));
+    assert_eq!(block_at(&app, center, 0, 40, 0), Some(Id::Obsidian));
+    assert_eq!(block_at(&app, center, 1, 40, 1), Some(Id::GoldBlock));
+    assert!(generator.bases.load(Ordering::Relaxed) > 9);
+    assert!(generator.populations.load(Ordering::Relaxed) > 4);
 }

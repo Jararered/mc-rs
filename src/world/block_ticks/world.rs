@@ -9,12 +9,12 @@ use crate::block::id::Id;
 use crate::block::properties::is_opaque_cube;
 use crate::block::properties::is_solid_material;
 use crate::random::JavaRandom;
+use crate::world::biome::Biome;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::Chunk;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
-use crate::world::generation::Biome;
 use crate::world::lighting::LightCache;
 use crate::world::lighting::combined_light;
 

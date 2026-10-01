@@ -1,9 +1,9 @@
 use game::block::id::FurnaceFacing;
 use game::block::id::Id;
-use game::ui::icons::appearance::Shape;
-use game::ui::icons::appearance::block_appearance;
-use game::ui::icons::appearance::item_tile;
-use game::world::textures::block_tile;
+use game::rendering::appearance::Shape;
+use game::rendering::appearance::block_appearance;
+use game::rendering::appearance::item_tile;
+use game::rendering::textures::block_tile;
 
 #[test]
 fn beta_render_types_select_flat_and_3d_appearances() {

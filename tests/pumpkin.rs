@@ -1,6 +1,6 @@
 use game::block::id::FurnaceFacing;
 use game::block::id::Id;
-use game::world::textures::block_tile;
+use game::rendering::textures::block_tile;
 
 #[test]
 fn pumpkin_metadata_preserves_beta_front_directions() {

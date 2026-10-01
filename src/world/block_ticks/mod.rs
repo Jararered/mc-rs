@@ -195,6 +195,12 @@ impl BlockTicks {
         self.time
     }
 
+    /// Move the clock without spending or delaying pending block updates.
+    pub fn rebase_time(&mut self, previous: u64, time: u64) {
+        self.scheduler.rebase_time(previous, time);
+        self.time = time;
+    }
+
     /// Pending scheduled ticks in due order.
     pub fn scheduled(&self) -> impl Iterator<Item = ScheduledTick> + '_ {
         self.scheduler.iter()

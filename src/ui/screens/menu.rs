@@ -53,6 +53,7 @@ enum MenuAction {
     DirectionalLighting,
     WiggleLeaves,
     Graphics,
+    MaxFps,
 }
 
 #[derive(Component, Clone, Copy)]
@@ -66,6 +67,7 @@ enum SettingLabel {
     DirectionalLighting,
     WiggleLeaves,
     Graphics,
+    MaxFps,
 }
 
 fn load_menu_textures(mut commands: Commands, asset_server: Res<AssetServer>) {
@@ -84,7 +86,7 @@ fn menu_font(textures: &MenuTextures, size: f32) -> TextFont {
         .with_font_smoothing(FontSmoothing::None)
 }
 
-fn spawn_root(commands: &mut Commands, textures: &MenuTextures) -> Entity {
+fn spawn_root(commands: &mut Commands, textures: &MenuTextures, gap: f32) -> Entity {
     commands
         .spawn((
             MenuRoot,
@@ -94,7 +96,7 @@ fn spawn_root(commands: &mut Commands, textures: &MenuTextures) -> Entity {
                 flex_direction: FlexDirection::Column,
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
-                row_gap: px(14),
+                row_gap: px(gap),
                 ..default()
             },
             ImageNode::new(textures.background.clone())
@@ -127,7 +129,7 @@ fn ensure_menu(
 }
 
 fn spawn_main_menu(commands: &mut Commands, textures: &MenuTextures) {
-    let root = spawn_root(commands, textures);
+    let root = spawn_root(commands, textures, 14.0);
     commands.entity(root).with_children(|parent| {
         parent.spawn((
             ImageNode::new(textures.logo.clone()).with_rect(Rect::new(0.0, 0.0, 256.0, 64.0)),
@@ -152,7 +154,7 @@ fn spawn_main_menu(commands: &mut Commands, textures: &MenuTextures) {
 }
 
 fn spawn_settings_menu(commands: &mut Commands, textures: &MenuTextures, settings: &GameSettings) {
-    let root = spawn_root(commands, textures);
+    let root = spawn_root(commands, textures, 6.0);
     commands.entity(root).with_children(|parent| {
         parent.spawn((
             Text::new("Settings"),
@@ -223,6 +225,13 @@ fn spawn_settings_menu(commands: &mut Commands, textures: &MenuTextures, setting
             wiggle_leaves_text(&settings),
             MenuAction::WiggleLeaves,
             SettingLabel::WiggleLeaves,
+        );
+        spawn_setting_button(
+            parent,
+            &textures,
+            max_fps_text(&settings),
+            MenuAction::MaxFps,
+            SettingLabel::MaxFps,
         );
         spawn_setting_button(
             parent,
@@ -365,6 +374,7 @@ fn handle_buttons(
             }
             MenuAction::WiggleLeaves => settings.wiggle_leaves = !settings.wiggle_leaves,
             MenuAction::Graphics => settings.cycle_graphics(),
+            MenuAction::MaxFps => settings.cycle_max_fps(),
         }
     }
 }
@@ -388,6 +398,7 @@ fn refresh_settings_labels(
             SettingLabel::DirectionalLighting => directional_lighting_text(&settings),
             SettingLabel::WiggleLeaves => wiggle_leaves_text(&settings),
             SettingLabel::Graphics => graphics_text(&settings),
+            SettingLabel::MaxFps => max_fps_text(&settings),
         };
         if let Ok(mut text) = texts.get_mut(entity) {
             **text = value;
@@ -468,5 +479,13 @@ fn wiggle_leaves_text(settings: &GameSettings) -> String {
 fn settings_escape(keys: Res<ButtonInput<KeyCode>>, mut next_screen: ResMut<NextState<AppScreen>>) {
     if keys.just_pressed(KeyCode::Escape) {
         next_screen.set(AppScreen::Menu);
+    }
+}
+
+fn max_fps_text(settings: &GameSettings) -> String {
+    if settings.max_fps == 0 {
+        "Max FPS: VSync".to_string()
+    } else {
+        format!("Max FPS: {}", settings.max_fps)
     }
 }

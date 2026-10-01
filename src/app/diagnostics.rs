@@ -70,18 +70,20 @@ fn print_perf_stats(
         });
     let mesh_mib = mesh_bytes as f64 / (1024.0 * 1024.0);
 
-    let (generate, populate, load, mesh) = match perf {
+    let (generate, populate, load, mesh, discovery_passes) = match perf {
         Some(mut perf) => (
             perf.generate.take(),
             perf.populate.take(),
             perf.load.take(),
             perf.mesh.take(),
+            std::mem::take(&mut perf.discovery_passes),
         ),
         None => (
             TimingStats::default(),
             TimingStats::default(),
             TimingStats::default(),
             TimingStats::default(),
+            0,
         ),
     };
 
@@ -94,6 +96,7 @@ fn print_perf_stats(
          chunks          {loaded_chunks} loaded, {generating} generating, {populating} populating\n  \
          meshes          {rendered} chunks, {layers} section layers, {meshing} meshing\n  \
          mesh memory     {mesh_mib:.1} MiB vertex and index data\n  \
+         streaming scans {discovery_passes} candidate-discovery passes\n  \
          chunk generate  {}\n  \
          chunk populate  {}\n  \
          chunk load      {}\n  \

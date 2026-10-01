@@ -108,7 +108,6 @@ fn cloud_follow_runs_beside_the_player() {
         .collect::<Vec<_>>();
     let assets = app.world().resource::<Assets<TintedMaterial>>();
     let (_, fancy_uv) = fancy_cloud_anchor(400.0, 48.0, 0.0, CLOUD_HEIGHT);
-    let fast_uv = fast_cloud_uv_offset(400.0, 48.0, 0.0);
     for (name, handle) in materials {
         let material = &assets.get(&handle).unwrap().base;
         assert!(
@@ -116,13 +115,13 @@ fn cloud_follow_runs_beside_the_player() {
             "{name} should cut out empty texels and stay opaque"
         );
         assert!((material.base_color.alpha() - 1.0).abs() < 1e-5);
-        // Both sheets stay world-locked: the fast one through its own UV
-        // offset, the fancy one through the shifted texel window.
-        let expected = if name == "Fancy clouds" {
-            fancy_uv
-        } else {
-            fast_uv
-        };
+        // Only the visible sheet updates its material. A hidden sheet is
+        // synchronized when graphics quality switches to it.
+        if name == "Fast clouds" {
+            assert_eq!(material.uv_transform.translation, Vec2::ZERO);
+            continue;
+        }
+        let expected = fancy_uv;
         let uv = material.uv_transform.translation;
         assert!(
             (uv.x - expected.x).abs() < 1e-4 && (uv.y - expected.y).abs() < 1e-4,
@@ -405,4 +404,56 @@ fn fancy_clouds_cover_the_render_distance() {
             points.len()
         );
     }
+}
+
+#[test]
+fn hidden_cloud_material_stays_unchanged_and_switching_modes_synchronizes_it() {
+    use game::app::settings::GraphicsQuality;
+    use game::world::tick::WorldTick;
+    let mut app = cloud_app();
+    app.world_mut()
+        .spawn((Player, Transform::from_xyz(400.0, 70.0, 48.0)));
+    app.update();
+    app.update();
+    let mut query = app
+        .world_mut()
+        .query::<(&Name, &MeshMaterial3d<TintedMaterial>)>();
+    let fast = query
+        .iter(app.world())
+        .find(|(name, _)| name.as_str() == "Fast clouds")
+        .unwrap()
+        .1
+        .0
+        .clone();
+    let before = app
+        .world()
+        .resource::<Assets<TintedMaterial>>()
+        .get(&fast)
+        .unwrap()
+        .base
+        .uv_transform;
+    app.world_mut().resource_mut::<WorldTick>().advance(0.2);
+    app.update();
+    assert_eq!(
+        app.world()
+            .resource::<Assets<TintedMaterial>>()
+            .get(&fast)
+            .unwrap()
+            .base
+            .uv_transform,
+        before
+    );
+    app.world_mut().resource_mut::<GameSettings>().graphics = GraphicsQuality::Fast;
+    app.update();
+    let tick = app.world().resource::<WorldTick>();
+    let scroll = cloud_scroll_blocks(tick.world_time(), tick.partial());
+    let offset = app
+        .world()
+        .resource::<Assets<TintedMaterial>>()
+        .get(&fast)
+        .unwrap()
+        .base
+        .uv_transform
+        .translation;
+    assert_eq!(offset, fast_cloud_uv_offset(400.0, 48.0, scroll));
 }

@@ -646,9 +646,13 @@ fn update_atmosphere(
         distance.color = fog_color;
         distance.falloff = world_falloff.clone();
         distance.directional_light_color = Color::NONE;
-        if let Projection::Perspective(perspective) = projection.as_mut() {
-            perspective.far = far * 2.0;
+        if let Projection::Perspective(perspective) = projection.as_ref() {
             view_fov = Some(perspective.fov);
+            if perspective.far != far * 2.0
+                && let Projection::Perspective(perspective) = projection.as_mut()
+            {
+                perspective.far = far * 2.0;
+            }
         }
     }
     for (mut distance, mut camera, mut projection) in &mut views.sky_cameras {
@@ -661,7 +665,10 @@ fn update_atmosphere(
         // Keep the atmosphere behind the fog-free sky geometry. World
         // blocks and clouds still use the player's fog, but the sky pass
         // should not introduce a second fog-colored horizon.
-        camera.clear_color = ClearColorConfig::Custom(srgb(sky));
+        let clear = srgb(sky);
+        if !matches!(camera.clear_color, ClearColorConfig::Custom(color) if color == clear) {
+            camera.clear_color = ClearColorConfig::Custom(clear);
+        }
         copy_fov(view_fov, &mut projection);
     }
     for mut projection in &mut views.celestial_cameras {
@@ -670,13 +677,19 @@ fn update_atmosphere(
 
     if let Ok(camera) = views.player.single() {
         for mut anchor in &mut views.anchors {
-            anchor.translation = camera.translation();
-            anchor.rotation = Quat::IDENTITY;
+            let next = Transform {
+                translation: camera.translation(),
+                rotation: Quat::IDENTITY,
+                ..*anchor
+            };
+            anchor.set_if_neq(next);
         }
     }
     let spin = Quat::from_rotation_x(angle * std::f32::consts::TAU);
     for mut rig in &mut views.rigs {
-        rig.rotation = spin;
+        rig.reborrow()
+            .map_unchanged(|rig| &mut rig.rotation)
+            .set_if_neq(spin);
     }
     let stars_on = star_brightness(angle);
     let star_tag = tint_tag(Color::WHITE.with_alpha(stars_on));
@@ -728,16 +741,20 @@ fn update_atmosphere(
             light.illuminance = illuminance;
             light.shadow_maps_enabled = shadows;
         }
-        transform.translation = direction * SUN_DISTANCE;
-        transform.look_at(Vec3::ZERO, up);
+        let next = Transform::from_translation(direction * SUN_DISTANCE).looking_at(Vec3::ZERO, up);
+        transform.set_if_neq(next);
     }
 }
 
-fn copy_fov(fov: Option<f32>, projection: &mut Projection) {
-    let (Some(fov), Projection::Perspective(perspective)) = (fov, projection) else {
+fn copy_fov(fov: Option<f32>, projection: &mut Mut<Projection>) {
+    let (Some(fov), Projection::Perspective(perspective)) = (fov, projection.as_ref()) else {
         return;
     };
-    perspective.fov = fov;
+    if perspective.fov != fov
+        && let Projection::Perspective(perspective) = projection.as_mut()
+    {
+        perspective.fov = fov;
+    }
 }
 
 fn unlit_color(color: Color, fog: bool) -> StandardMaterial {

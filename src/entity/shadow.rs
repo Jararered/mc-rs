@@ -236,15 +236,19 @@ fn update_shadow_quads(
             .flatten();
         match placed {
             Some((position, alpha)) => {
-                *quad_transform = Transform::from_translation(position).with_scale(Vec3::new(
-                    shadow.radius * 2.0,
-                    1.0,
-                    shadow.radius * 2.0,
-                ));
+                quad_transform.set_if_neq(
+                    Transform::from_translation(position).with_scale(Vec3::new(
+                        shadow.radius * 2.0,
+                        1.0,
+                        shadow.radius * 2.0,
+                    )),
+                );
                 tag.set_if_neq(tint_tag(Color::WHITE.with_alpha(alpha)));
-                *visibility = Visibility::Inherited;
+                visibility.set_if_neq(Visibility::Inherited);
             }
-            None => *visibility = Visibility::Hidden,
+            None => {
+                visibility.set_if_neq(Visibility::Hidden);
+            }
         }
     }
 }

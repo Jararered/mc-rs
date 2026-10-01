@@ -311,11 +311,13 @@ impl Default for Chunk {
 #[derive(Resource, Default)]
 pub struct WorldChunks {
     chunks: HashMap<ChunkPosition, GeneratedChunk>,
+    membership_revision: u64,
 }
 
 impl WorldChunks {
     pub fn insert(&mut self, position: ChunkPosition, chunk: GeneratedChunk) {
         self.chunks.insert(position, chunk);
+        self.membership_revision = self.membership_revision.wrapping_add(1);
     }
 
     pub fn get(&self, position: ChunkPosition) -> Option<&GeneratedChunk> {
@@ -342,12 +344,25 @@ impl WorldChunks {
         self.chunks.keys().copied()
     }
 
+    /// Changes when chunks are inserted, replaced, or removed, rather than
+    /// when simulation writes blocks inside an existing chunk.
+    pub fn membership_revision(&self) -> u64 {
+        self.membership_revision
+    }
+
     pub fn clear(&mut self) {
-        self.chunks.clear();
+        if !self.chunks.is_empty() {
+            self.chunks.clear();
+            self.membership_revision = self.membership_revision.wrapping_add(1);
+        }
     }
 
     pub fn remove(&mut self, position: ChunkPosition) -> Option<GeneratedChunk> {
-        self.chunks.remove(&position)
+        let removed = self.chunks.remove(&position);
+        if removed.is_some() {
+            self.membership_revision = self.membership_revision.wrapping_add(1);
+        }
+        removed
     }
 
     /// Block at a world-space integer position, if that chunk is loaded and `y`

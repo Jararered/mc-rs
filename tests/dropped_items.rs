@@ -595,3 +595,58 @@ fn dropped_items_drift_with_water_once_per_world_tick() {
         .translation;
     assert!(wet_pos.x > 8.54, "two catch-up ticks apply two more pushes");
 }
+
+#[test]
+fn zero_hotbar_pop_does_not_signal_a_change_and_active_pop_still_finishes() {
+    use bevy::asset::AssetPlugin;
+    use bevy::mesh::MeshPlugin;
+    use bevy::prelude::*;
+    use bevy::state::app::StatesPlugin;
+    use game::app::settings::GameSettings;
+    use game::app::state::AppScreen;
+    use game::entity::drops::items::DroppedItemPlugin;
+    use game::world::chunk::WorldChunks;
+    use game::world::tick::WorldTick;
+
+    #[derive(Resource, Default)]
+    struct Changes(usize);
+    fn observe(query: Query<(), Changed<Hotbar>>, mut changes: ResMut<Changes>) {
+        changes.0 = query.iter().count();
+    }
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        AssetPlugin::default(),
+        MeshPlugin,
+        StatesPlugin,
+    ))
+    .init_asset::<StandardMaterial>()
+    .init_state::<AppScreen>()
+    .init_resource::<GameSettings>()
+    .init_resource::<WorldTick>()
+    .init_resource::<WorldChunks>()
+    .init_resource::<Changes>()
+    .add_plugins(DroppedItemPlugin)
+    .add_systems(Last, observe);
+    let entity = app.world_mut().spawn(Hotbar::default()).id();
+    app.world_mut()
+        .resource_mut::<NextState<AppScreen>>()
+        .set(AppScreen::Playing);
+    app.world_mut().resource_mut::<WorldTick>().advance(0.05);
+    app.update();
+    app.update();
+    assert_eq!(app.world().resource::<Changes>().0, 0);
+    app.world_mut().get_mut::<Hotbar>(entity).unwrap().pop[0] = 5;
+    app.update();
+    assert_eq!(app.world().get::<Hotbar>(entity).unwrap().pop[0], 4);
+    for _ in 0..4 {
+        app.update();
+    }
+    assert_eq!(app.world().get::<Hotbar>(entity).unwrap().pop[0], 0);
+    app.update();
+    assert_eq!(app.world().resource::<Changes>().0, 0);
+    app.world_mut().get_mut::<Hotbar>(entity).unwrap().pop[1] = 5;
+    app.world_mut().resource_mut::<WorldTick>().advance(0.25);
+    app.update();
+    assert_eq!(app.world().get::<Hotbar>(entity).unwrap().pop[1], 0);
+}

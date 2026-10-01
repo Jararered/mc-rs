@@ -18,6 +18,9 @@ pub const AMBIENT_ONLY_SCALE: f32 = 10.0;
 pub const MIN_FOV: f32 = 30.0;
 pub const MAX_FOV: f32 = 110.0;
 pub const DEFAULT_FOV: f32 = 80.0;
+pub const DEFAULT_MAX_FPS: u32 = 60;
+pub const MIN_MAX_FPS: u32 = 30;
+pub const MAX_MAX_FPS: u32 = 240;
 pub const DEFAULT_WIGGLE_LEAVES: bool = true;
 /// Beta's `WorldProvider.getCloudHeight()`, which the client only used for the
 /// cloud sheet. The range reaches above the 128-block world so the clouds can
@@ -71,6 +74,8 @@ impl GraphicsQuality {
 #[derive(Resource, Debug, Clone, PartialEq)]
 pub struct GameSettings {
     pub render_distance: i32,
+    /// Zero follows VSync without an additional application frame cap.
+    pub max_fps: u32,
     pub brightness: f32,
     pub fov: f32,
     pub cloud_height: f32,
@@ -85,6 +90,7 @@ impl Default for GameSettings {
     fn default() -> Self {
         Self {
             render_distance: MIN_RENDER_DISTANCE,
+            max_fps: DEFAULT_MAX_FPS,
             brightness: 300.0,
             fov: DEFAULT_FOV,
             cloud_height: DEFAULT_CLOUD_HEIGHT,
@@ -98,6 +104,18 @@ impl Default for GameSettings {
 }
 
 impl GameSettings {
+    pub fn cycle_max_fps(&mut self) {
+        self.max_fps = match self.max_fps {
+            0..30 => 30,
+            30..60 => 60,
+            60..90 => 90,
+            90..120 => 120,
+            120..144 => 144,
+            144..240 => 240,
+            _ => 0,
+        };
+    }
+
     pub fn change_render_distance(&mut self, change: i32) {
         self.render_distance =
             (self.render_distance + change).clamp(MIN_RENDER_DISTANCE, MAX_RENDER_DISTANCE);
@@ -143,6 +161,9 @@ impl GameSettings {
 
     /// Keep loaded or edited values inside the same ranges the menu uses.
     pub fn clamp(&mut self) {
+        if self.max_fps != 0 {
+            self.max_fps = self.max_fps.clamp(MIN_MAX_FPS, MAX_MAX_FPS);
+        }
         self.render_distance = self
             .render_distance
             .clamp(MIN_RENDER_DISTANCE, MAX_RENDER_DISTANCE);
@@ -201,6 +222,7 @@ struct SettingsPath(PathBuf);
 struct StoredSettings {
     format_version: u32,
     render_distance: i32,
+    max_fps: u32,
     brightness: f32,
     fov: f32,
     cloud_height: f32,
@@ -222,6 +244,7 @@ impl From<&GameSettings> for StoredSettings {
         Self {
             format_version: FORMAT_VERSION,
             render_distance: settings.render_distance,
+            max_fps: settings.max_fps,
             brightness: settings.brightness,
             fov: settings.fov,
             cloud_height: settings.cloud_height,
@@ -238,6 +261,7 @@ impl From<StoredSettings> for GameSettings {
     fn from(stored: StoredSettings) -> Self {
         let mut settings = Self {
             render_distance: stored.render_distance,
+            max_fps: stored.max_fps,
             brightness: stored.brightness,
             fov: stored.fov,
             cloud_height: stored.cloud_height,

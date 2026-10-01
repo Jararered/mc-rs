@@ -314,18 +314,18 @@ fn animate_arm(
         let partial = tick.partial();
         let progress = interpolated_swing(arm.prev_swing, arm.swing, partial);
         let equip = arm.prev_equip + (arm.equip - arm.prev_equip) * partial;
-        *arm_visibility = if arm.displayed.is_none() {
+        arm_visibility.set_if_neq(if arm.displayed.is_none() {
             Visibility::Visible
         } else {
             Visibility::Hidden
-        };
-        *held_visibility = if arm.displayed.is_some() {
+        });
+        held_visibility.set_if_neq(if arm.displayed.is_some() {
             Visibility::Visible
         } else {
             Visibility::Hidden
-        };
-        *transform = Transform::from_matrix(walk_pose * arm_pose(progress));
-        *held_transform = Transform::from_matrix(
+        });
+        transform.set_if_neq(Transform::from_matrix(walk_pose * arm_pose(progress)));
+        held_transform.set_if_neq(Transform::from_matrix(
             walk_pose
                 * held_pose(
                     progress,
@@ -336,7 +336,7 @@ fn animate_arm(
                             && block_appearance(key.id as u8, key.data).shape != Shape::Flat
                     }),
                 ),
-        );
+        ));
     }
 }
 

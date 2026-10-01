@@ -985,7 +985,7 @@ pub struct WorldPersistence {
     draining: bool,
     /// The player record has not been attached to a batch yet.
     player_pending: bool,
-    /// Set by the F4 regeneration key so the next generation pass ignores disk.
+    /// When set, the next generation pass ignores chunks already on disk.
     regenerating: bool,
     timer: Timer,
 }

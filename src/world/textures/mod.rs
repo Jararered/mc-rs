@@ -23,6 +23,7 @@ mod biome_color;
 mod block_material;
 mod instance_tint;
 mod water;
+mod wireframe;
 
 pub use biome_color::FoliageColors;
 pub use biome_color::GrassColors;
@@ -43,6 +44,8 @@ pub use water::StillWaterTexture;
 pub use water::WATER_FLOW_TILE;
 pub use water::WATER_STILL_TILE;
 pub use water::write_atlas_tile;
+pub use wireframe::MeshWireframe;
+pub use wireframe::MeshWireframePlugin;
 
 pub struct TerrainTexturePlugin;
 
@@ -52,6 +55,7 @@ impl Plugin for TerrainTexturePlugin {
         instance_tint::plugin(app);
         water::render_plugin(app);
         app.init_resource::<GameSettings>()
+            .add_plugins(MeshWireframePlugin)
             .add_systems(PreStartup, load_terrain_atlas)
             .add_systems(
                 Update,
@@ -62,6 +66,10 @@ impl Plugin for TerrainTexturePlugin {
                     water::animate_fluid_textures.after(apply_terrain_atlas),
                 ),
             );
+    }
+
+    fn finish(&self, app: &mut App) {
+        wireframe::detect_line_raster(app);
     }
 }
 
@@ -113,6 +121,7 @@ fn block_material(base: StandardMaterial, lighting: BlockLighting, wiggle: f32) 
         base,
         extension: BlockShading {
             settings: BlockShadingSettings::new(lighting, wiggle),
+            wireframe: false,
         },
     }
 }

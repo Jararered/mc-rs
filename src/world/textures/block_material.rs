@@ -22,6 +22,7 @@ use bevy::pbr::MaterialExtensionPipeline;
 use bevy::pbr::MaterialPlugin;
 use bevy::prelude::*;
 use bevy::render::render_resource::AsBindGroup;
+use bevy::render::render_resource::PolygonMode;
 use bevy::render::render_resource::RenderPipelineDescriptor;
 use bevy::render::render_resource::ShaderType;
 use bevy::render::render_resource::SpecializedMeshPipelineError;
@@ -96,10 +97,28 @@ impl Default for BlockShadingSettings {
     }
 }
 
+/// Pipeline permutation for [`BlockShading`]. Line mode draws the mesh edges.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct BlockPipelineKey {
+    pub wireframe: bool,
+}
+
+impl From<&BlockShading> for BlockPipelineKey {
+    fn from(shading: &BlockShading) -> Self {
+        Self {
+            wireframe: shading.wireframe,
+        }
+    }
+}
+
 #[derive(Asset, AsBindGroup, Reflect, Debug, Clone, Default)]
+#[bind_group_data(BlockPipelineKey)]
 pub struct BlockShading {
     #[uniform(100)]
     pub settings: BlockShadingSettings,
+    /// Draw triangle edges instead of filled faces. Not uploaded; it selects
+    /// the pipeline via [`BlockPipelineKey`].
+    pub wireframe: bool,
 }
 
 impl MaterialExtension for BlockShading {
@@ -134,8 +153,20 @@ impl MaterialExtension for BlockShading {
         _pipeline: &MaterialExtensionPipeline,
         descriptor: &mut RenderPipelineDescriptor,
         layout: &MeshVertexBufferLayoutRef,
-        _key: MaterialExtensionKey<Self>,
+        key: MaterialExtensionKey<Self>,
     ) -> Result<(), SpecializedMeshPipelineError> {
+        // Filled and line pipelines are different specializations. The key
+        // changes with `BlockShading::wireframe`, so both stay cached.
+        if key.bind_group_data.wireframe {
+            descriptor.primitive.polygon_mode = PolygonMode::Line;
+            // The depth prepass rasterizes the same edges. A slope bias keeps
+            // the color pass from losing the depth test to that prepass.
+            if let Some(depth_stencil) = descriptor.depth_stencil.as_mut() {
+                depth_stencil.bias.slope_scale = 1.0;
+            }
+        } else {
+            descriptor.primitive.polygon_mode = PolygonMode::Fill;
+        }
         descriptor.vertex.buffers = vec![
             layout
                 .0

@@ -404,8 +404,8 @@ pub(crate) fn stream_chunks(
     }
 
     // Generate base terrain out to the generation margin. Chunks already on
-    // disk are loaded instead of regenerated, unless F4 asked for a
-    // from-scratch pass.
+    // disk are loaded instead of regenerated, unless a regeneration pass asked
+    // to build them from scratch.
     let bypass_load = persistence
         .as_deref()
         .is_some_and(WorldPersistence::bypass_load);

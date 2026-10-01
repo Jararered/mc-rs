@@ -12,7 +12,6 @@ use crate::app::state::AppScreen;
 use crate::block::id::Id;
 use crate::crafting::CraftingGrid;
 use crate::crafting::beta_recipe_book;
-use crate::entity::drops::items::spawn_thrown_item;
 use crate::inventory::DragPlace;
 use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
@@ -26,6 +25,9 @@ use crate::inventory::hotbar_key_swap_chest;
 use crate::inventory::preview_chest_drag_place;
 use crate::inventory::preview_drag_place;
 use crate::inventory::quick_move_drag_slot;
+use crate::inventory::session::ActiveWorkbench;
+use crate::inventory::session::InventorySession;
+use crate::inventory::session::close_crafting_session;
 use crate::inventory::shift_click_chest_slot;
 use crate::inventory::shift_click_furnace_slot;
 use crate::inventory::shift_click_slot;
@@ -36,7 +38,7 @@ use crate::item::ItemData;
 use crate::item::ItemStack;
 use crate::player::Player;
 use crate::random::ItemRng;
-use crate::ui::icons::blocks::BlockIcons;
+use crate::rendering::icons::BlockIcons;
 use crate::ui::icons::overlay::GUI_SCALE;
 use crate::ui::icons::overlay::UiFont;
 use crate::ui::icons::overlay::count_frame;
@@ -62,12 +64,11 @@ pub struct InventoryGuiPlugin;
 
 impl Plugin for InventoryGuiPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<InventoryScreen>()
-            .init_resource::<WorkbenchUiSession>()
+        app.init_resource::<InventorySession>()
+            .init_resource::<ActiveWorkbench>()
             .init_resource::<SlotDrag>()
             .init_resource::<LastInventoryClick>()
-            .add_systems(PreStartup, (load_texture, crate::ui::icons::blocks::setup))
-            .add_systems(Update, crate::ui::icons::blocks::build.before(refresh))
+            .add_systems(PreStartup, load_texture)
             .add_systems(
                 Update,
                 (
@@ -80,6 +81,7 @@ impl Plugin for InventoryGuiPlugin {
                     refresh,
                 )
                     .chain()
+                    .after(crate::rendering::icons::build)
                     .run_if(in_state(AppScreen::Playing)),
             )
             .add_systems(OnExit(AppScreen::Playing), close);
@@ -88,8 +90,8 @@ impl Plugin for InventoryGuiPlugin {
 
 fn validate_workbench(
     mut commands: Commands,
-    mut screen: ResMut<InventoryScreen>,
-    mut session: ResMut<WorkbenchUiSession>,
+    mut screen: ResMut<InventorySession>,
+    mut session: ResMut<ActiveWorkbench>,
     chunks: Res<WorldChunks>,
     player_transform: Query<&Transform, With<Player>>,
     mut player: Query<(&mut Hotbar, &mut Inventory), With<Player>>,
@@ -114,7 +116,7 @@ fn validate_workbench(
         return;
     }
     if let Ok((mut hotbar, mut inventory)) = player.single_mut() {
-        close_crafting_interface(
+        close_crafting_session(
             &mut commands,
             transform,
             &mut item_rng,
@@ -137,11 +139,11 @@ fn validate_workbench(
 
 fn validate_furnace(
     mut commands: Commands,
-    mut screen: ResMut<InventoryScreen>,
+    mut screen: ResMut<InventorySession>,
     chunks: Res<WorldChunks>,
     player_transform: Query<&Transform, With<Player>>,
     mut player: Query<(&mut Hotbar, &mut Inventory), With<Player>>,
-    mut workbench: ResMut<WorkbenchUiSession>,
+    mut workbench: ResMut<ActiveWorkbench>,
     roots: Query<Entity, With<InventoryRoot>>,
     mut windows: Query<&mut CursorOptions, With<PrimaryWindow>>,
     mut item_rng: Local<ItemRng>,
@@ -164,7 +166,7 @@ fn validate_furnace(
     screen.furnace = false;
     screen.furnace_position = None;
     if let Ok((mut hotbar, mut inventory)) = player.single_mut() {
-        close_crafting_interface(
+        close_crafting_session(
             &mut commands,
             transform,
             &mut item_rng,
@@ -184,11 +186,11 @@ fn validate_furnace(
 
 fn validate_chest(
     mut commands: Commands,
-    mut screen: ResMut<InventoryScreen>,
+    mut screen: ResMut<InventorySession>,
     chunks: Res<WorldChunks>,
     player_transform: Query<&Transform, With<Player>>,
     mut player: Query<(&Transform, &mut Hotbar, &mut Inventory), With<Player>>,
-    mut workbench: ResMut<WorkbenchUiSession>,
+    mut workbench: ResMut<ActiveWorkbench>,
     roots: Query<Entity, With<InventoryRoot>>,
     mut windows: Query<&mut CursorOptions, With<PrimaryWindow>>,
     mut item_rng: Local<ItemRng>,
@@ -211,7 +213,7 @@ fn validate_chest(
     screen.chest_position = None;
     screen.chest_group = None;
     if let Ok((player_transform, mut hotbar, mut inventory)) = player.single_mut() {
-        close_crafting_interface(
+        close_crafting_session(
             &mut commands,
             player_transform,
             &mut item_rng,
@@ -229,30 +231,6 @@ fn validate_chest(
     }
 }
 
-#[derive(Resource, Default)]
-pub(crate) struct InventoryScreen {
-    pub open: bool,
-    pub workbench: bool,
-    pub furnace: bool,
-    pub furnace_position: Option<(i32, i32, i32)>,
-    pub chest: bool,
-    pub chest_position: Option<(i32, i32, i32)>,
-    pub chest_group: Option<ChestGroup>,
-}
-#[derive(Resource)]
-pub(crate) struct WorkbenchUiSession {
-    pub grid: CraftingGrid,
-    pub position: Option<(i32, i32, i32)>,
-}
-
-impl Default for WorkbenchUiSession {
-    fn default() -> Self {
-        Self {
-            grid: CraftingGrid::workbench(),
-            position: None,
-        }
-    }
-}
 #[derive(Resource)]
 struct InventoryTexture {
     background: Handle<Image>,
@@ -321,7 +299,7 @@ const DOUBLE_CLICK_SECONDS: f64 = 0.35;
 
 fn is_double_click(
     last: &mut LastInventoryClick,
-    screen: &InventoryScreen,
+    screen: &InventorySession,
     slot: Slot,
     now: f64,
 ) -> bool {
@@ -347,11 +325,11 @@ fn load_texture(mut commands: Commands, assets: Res<AssetServer>) {
 }
 
 fn toggle(
-    chat: Option<Res<crate::ui::ChatState>>,
+    chat: Option<Res<crate::chat::ChatFocus>>,
     mut commands: Commands,
     keys: Res<ButtonInput<KeyCode>>,
-    mut screen: ResMut<InventoryScreen>,
-    mut workbench: ResMut<WorkbenchUiSession>,
+    mut screen: ResMut<InventorySession>,
+    mut workbench: ResMut<ActiveWorkbench>,
     texture: Res<InventoryTexture>,
     icons: Res<BlockIcons>,
     font: Res<UiFont>,
@@ -396,7 +374,7 @@ fn toggle(
     screen.open = !screen.open;
     if !screen.open {
         if let Ok((transform, mut hotbar, mut inventory)) = player.single_mut() {
-            close_crafting_interface(
+            close_crafting_session(
                 &mut commands,
                 transform,
                 &mut item_rng,
@@ -452,14 +430,14 @@ fn toggle(
 
 fn close(
     mut commands: Commands,
-    mut screen: ResMut<InventoryScreen>,
-    mut workbench: ResMut<WorkbenchUiSession>,
+    mut screen: ResMut<InventorySession>,
+    mut workbench: ResMut<ActiveWorkbench>,
     roots: Query<Entity, With<InventoryRoot>>,
     mut player: Query<(&Transform, &mut Hotbar, &mut Inventory), With<Player>>,
     mut item_rng: Local<ItemRng>,
 ) {
     if let Ok((transform, mut hotbar, mut inventory)) = player.single_mut() {
-        close_crafting_interface(
+        close_crafting_session(
             &mut commands,
             transform,
             &mut item_rng,
@@ -477,45 +455,6 @@ fn close(
     screen.chest_group = None;
     for root in &roots {
         commands.entity(root).despawn();
-    }
-}
-
-pub(crate) fn close_crafting_interface(
-    commands: &mut Commands,
-    player: &Transform,
-    rng: &mut ItemRng,
-    hotbar: &mut Hotbar,
-    inventory: &mut Inventory,
-    workbench: &mut WorkbenchUiSession,
-) {
-    let mut stacks: Vec<ItemStack> = inventory
-        .crafting
-        .iter_mut()
-        .filter_map(Option::take)
-        .collect();
-    stacks.extend(workbench.grid.drain());
-    for stack in stacks {
-        return_or_drop(commands, rng, player, hotbar, inventory, stack);
-    }
-    if let Some(stack) = inventory.carried.take() {
-        return_or_drop(commands, rng, player, hotbar, inventory, stack);
-    }
-    // A closed interface must never leave a reusable session holding inputs;
-    // the next workbench always starts with a fresh 3×3 grid.
-    workbench.grid = CraftingGrid::workbench();
-    workbench.position = None;
-}
-
-fn return_or_drop(
-    commands: &mut Commands,
-    rng: &mut ItemRng,
-    player: &Transform,
-    hotbar: &mut Hotbar,
-    inventory: &mut Inventory,
-    stack: ItemStack,
-) {
-    if let Some(remainder) = inventory.insert(hotbar, stack) {
-        spawn_thrown_item(commands, rng, player, *player.forward(), remainder);
     }
 }
 
@@ -914,7 +853,7 @@ fn click_slot(target: &mut Option<ItemStack>, carried: &mut Option<ItemStack>, r
 }
 
 fn take_workbench_result(
-    session: &mut WorkbenchUiSession,
+    session: &mut ActiveWorkbench,
     hotbar: &mut Hotbar,
     inventory: &mut Inventory,
 ) -> bool {
@@ -953,13 +892,13 @@ fn take_workbench_result(
 }
 
 fn handle_slots(
-    screen: Res<InventoryScreen>,
+    screen: Res<InventorySession>,
     time: Res<Time>,
     mouse: Res<ButtonInput<MouseButton>>,
     keys: Res<ButtonInput<KeyCode>>,
     slots: Query<(&RelativeCursorPosition, &Slot)>,
     mut player: Query<(&mut Hotbar, &mut Inventory), With<Player>>,
-    mut workbench: ResMut<WorkbenchUiSession>,
+    mut workbench: ResMut<ActiveWorkbench>,
     mut chunks: ResMut<WorldChunks>,
     mut persistence: Option<ResMut<WorldPersistence>>,
     mut drag: ResMut<SlotDrag>,
@@ -1265,13 +1204,13 @@ fn handle_slots(
 
 #[allow(clippy::too_many_arguments)]
 fn handle_chest_slots(
-    screen: &InventoryScreen,
+    screen: &InventorySession,
     mouse: &ButtonInput<MouseButton>,
     keys: &ButtonInput<KeyCode>,
     slots: &Query<(&RelativeCursorPosition, &Slot)>,
     hotbar: &mut Hotbar,
     inventory: &mut Inventory,
-    workbench: &mut WorkbenchUiSession,
+    workbench: &mut ActiveWorkbench,
     chunks: &mut WorldChunks,
     persistence: &mut Option<ResMut<WorldPersistence>>,
     drag: &mut SlotDrag,
@@ -1458,7 +1397,7 @@ fn apply_chest_click(
     chunks: &mut WorldChunks,
     hotbar: &mut Hotbar,
     inventory: &mut Inventory,
-    workbench: &mut WorkbenchUiSession,
+    workbench: &mut ActiveWorkbench,
 ) {
     if let Slot::Chest(index) = slot {
         let mut chest_slots = read_chest_group_slots(chunks, group);
@@ -1474,7 +1413,7 @@ fn apply_chest_click(
 fn collect_player_stacks(
     inventory: &mut Inventory,
     hotbar: &mut Hotbar,
-    workbench: &mut WorkbenchUiSession,
+    workbench: &mut ActiveWorkbench,
     workbench_open: bool,
 ) {
     collect_storage_stacks(inventory, hotbar);
@@ -1499,12 +1438,12 @@ fn collect_storage_stacks(inventory: &mut Inventory, hotbar: &mut Hotbar) {
 }
 
 fn collect_open_inventory(
-    screen: &InventoryScreen,
+    screen: &InventorySession,
     clicked: Slot,
     chunks: &mut WorldChunks,
     hotbar: &mut Hotbar,
     inventory: &mut Inventory,
-    workbench: &mut WorkbenchUiSession,
+    workbench: &mut ActiveWorkbench,
 ) {
     if screen.furnace {
         if matches!(clicked, Slot::Furnace(_)) {
@@ -1605,7 +1544,7 @@ fn apply_furnace_click(
     chunks: &mut WorldChunks,
     hotbar: &mut Hotbar,
     inventory: &mut Inventory,
-    workbench: &mut WorkbenchUiSession,
+    workbench: &mut ActiveWorkbench,
 ) {
     let Some(furnace) = chunks.furnace_at_mut(position.0, position.1, position.2) else {
         return;
@@ -1654,7 +1593,7 @@ fn apply_click(
     workbench_open: bool,
     hotbar: &mut Hotbar,
     inventory: &mut Inventory,
-    workbench: &mut WorkbenchUiSession,
+    workbench: &mut ActiveWorkbench,
 ) {
     match slot {
         Slot::Hotbar(i) => click_slot(&mut hotbar.slots[i], &mut inventory.carried, right),
@@ -1702,7 +1641,7 @@ fn apply_click(
 }
 
 fn highlight_slots(
-    screen: Res<InventoryScreen>,
+    screen: Res<InventorySession>,
     drag: Res<SlotDrag>,
     slots: Query<(&RelativeCursorPosition, &Slot, &Children)>,
     mut highlights: Query<&mut Visibility, With<SlotHighlight>>,
@@ -1739,9 +1678,9 @@ fn stack_text(stack: Option<ItemStack>) -> String {
 }
 
 fn refresh(
-    screen: Res<InventoryScreen>,
+    screen: Res<InventorySession>,
     player: Query<(&Hotbar, &Inventory), With<Player>>,
-    workbench: Res<WorkbenchUiSession>,
+    workbench: Res<ActiveWorkbench>,
     chunks: Res<WorldChunks>,
     drag: Res<SlotDrag>,
     mut labels: Query<
@@ -2093,7 +2032,7 @@ fn displayed_stack(
     slot: Slot,
     hotbar: &Hotbar,
     inventory: &Inventory,
-    workbench: &WorkbenchUiSession,
+    workbench: &ActiveWorkbench,
     workbench_open: bool,
     furnace_position: Option<(i32, i32, i32)>,
     chest_group: Option<ChestGroup>,
@@ -2121,7 +2060,7 @@ fn slot_stack(
     slot: Slot,
     hotbar: &Hotbar,
     inventory: &Inventory,
-    workbench: &WorkbenchUiSession,
+    workbench: &ActiveWorkbench,
     workbench_open: bool,
     furnace_position: Option<(i32, i32, i32)>,
     chest_group: Option<ChestGroup>,

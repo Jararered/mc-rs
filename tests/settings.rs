@@ -28,14 +28,14 @@ use game::app::settings::save_settings;
 use game::app::state::AppScreen;
 use game::player::PlayerCamera;
 use game::player::PlayerPlugin;
+use game::rendering::meshing::WATER_ALPHA;
+use game::rendering::textures::BlockMaterial;
 use game::ui::UiCameraPlugin;
 use game::world::chunk::WorldChunks;
-use game::world::meshing::WATER_ALPHA;
+use game::world::environment::celestial_angle;
+use game::world::environment::skylight_subtracted;
 use game::world::plugin::WorldPlugin;
-use game::world::sky::celestial_angle;
-use game::world::sky::skylight_subtracted;
 use game::world::streaming::WorldStreaming;
-use game::world::textures::BlockMaterial;
 use game::world::tick::WorldTick;
 
 fn temp_settings_path(label: &str) -> PathBuf {
@@ -109,7 +109,7 @@ fn brightness_and_directional_toggle_update_bevy_lights() {
     app.add_plugins((MinimalPlugins, AssetPlugin::default(), MeshPlugin))
         .init_asset::<Image>()
         .init_asset::<StandardMaterial>()
-        .add_plugins(WorldPlugin);
+        .add_plugins((WorldPlugin, game::rendering::WorldRenderingPlugin));
     app.update();
 
     {
@@ -250,7 +250,7 @@ fn ultra_graphics_uses_ssr_water_without_changing_blend_on_fancy() {
     app.add_plugins((MinimalPlugins, AssetPlugin::default(), MeshPlugin))
         .init_asset::<Image>()
         .init_asset::<StandardMaterial>()
-        .add_plugins(WorldPlugin);
+        .add_plugins((WorldPlugin, game::rendering::WorldRenderingPlugin));
     app.world_mut().spawn(Camera3d::default());
     app.update();
 
@@ -295,7 +295,7 @@ fn fancy_leaves_mask_does_not_apply_to_solid_terrain() {
     app.add_plugins((MinimalPlugins, AssetPlugin::default(), MeshPlugin))
         .init_asset::<Image>()
         .init_asset::<StandardMaterial>()
-        .add_plugins(WorldPlugin);
+        .add_plugins((WorldPlugin, game::rendering::WorldRenderingPlugin));
     app.update();
 
     let materials = block_materials(&app);
@@ -329,7 +329,7 @@ fn lighting_settings_and_dusk_update_block_uniforms_without_remeshing() {
         .init_asset::<Image>()
         .init_asset::<StandardMaterial>()
         .init_resource::<ButtonInput<KeyCode>>()
-        .add_plugins(WorldPlugin);
+        .add_plugins((WorldPlugin, game::rendering::WorldRenderingPlugin));
     app.update();
     for material in block_materials(&app) {
         let lighting = material.extension.settings.lighting();
@@ -515,7 +515,7 @@ fn atmosphere_does_not_mark_unchanged_camera_projections_changed() {
     app.add_plugins((MinimalPlugins, AssetPlugin::default(), MeshPlugin))
         .init_asset::<Image>()
         .init_asset::<StandardMaterial>()
-        .add_plugins(WorldPlugin)
+        .add_plugins((WorldPlugin, game::rendering::WorldRenderingPlugin))
         .init_resource::<ProjectionChanges>()
         .add_systems(Last, observe);
     app.world_mut().spawn((
@@ -633,7 +633,7 @@ fn opaque_menu_disables_world_cameras_and_playing_restores_them() {
     .init_state::<AppScreen>()
     .init_asset::<Image>()
     .init_asset::<StandardMaterial>()
-    .add_plugins(WorldPlugin);
+    .add_plugins((WorldPlugin, game::rendering::WorldRenderingPlugin));
     let camera = app
         .world_mut()
         .spawn((PlayerCamera, Camera3d::default(), Transform::default()))

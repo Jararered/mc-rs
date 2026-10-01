@@ -12,6 +12,9 @@ mod systems;
 
 use bevy::math::IVec3;
 use game::block::id::Id;
+use game::world::biome::Biome;
+use game::world::biome::BiomeMap;
+use game::world::biome::Climate;
 use game::world::block_ticks::BlockChange;
 use game::world::block_ticks::BlockEvent;
 use game::world::block_ticks::BlockTicks;
@@ -19,12 +22,9 @@ use game::world::block_ticks::TickEffect;
 use game::world::chunk::CHUNK_SIZE;
 use game::world::chunk::Chunk;
 use game::world::chunk::ChunkPosition;
+use game::world::chunk::GeneratedChunk;
+use game::world::chunk::Heightmap;
 use game::world::chunk::WorldChunks;
-use game::world::generation::Biome;
-use game::world::generation::BiomeMap;
-use game::world::generation::Climate;
-use game::world::generation::GeneratedChunk;
-use game::world::generation::Heightmap;
 use game::world::lighting::LightCache;
 
 pub fn generated(chunk: Chunk, biome: Biome) -> GeneratedChunk {

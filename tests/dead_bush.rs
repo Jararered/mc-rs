@@ -3,11 +3,11 @@ use game::block::properties::collision_bounds;
 use game::block::properties::is_crossed_plant;
 use game::block::properties::is_opaque_cube;
 use game::block::properties::selection_bounds;
+use game::rendering::meshing::mesh_chunk_with_settings;
+use game::rendering::textures::atlas_tile_uvs;
+use game::rendering::textures::block_tile;
 use game::world::chunk::Chunk;
 use game::world::lighting::Skylight;
-use game::world::meshing::mesh_chunk_with_settings;
-use game::world::textures::atlas_tile_uvs;
-use game::world::textures::block_tile;
 
 #[test]
 fn dead_bush_uses_its_beta_sprite_tile_and_crossed_mesh() {

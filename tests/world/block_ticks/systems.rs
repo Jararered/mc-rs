@@ -4,12 +4,12 @@ use bevy::prelude::*;
 use game::block::id::Id;
 use game::entity::DroppedItem;
 use game::entity::falling_block::FallingBlock;
+use game::world::biome::Biome;
 use game::world::block_ticks::BlockTicks;
 use game::world::block_ticks::BlockTicksPlugin;
 use game::world::chunk::Chunk;
 use game::world::chunk::ChunkPosition;
 use game::world::chunk::WorldChunks;
-use game::world::generation::Biome;
 use game::world::tick::TICK_SECONDS;
 use game::world::tick::WorldTick;
 

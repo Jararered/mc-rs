@@ -2,9 +2,12 @@
 
 mod block_ticks;
 mod chunk;
-mod clouds;
 mod generation;
 mod persistence;
-mod sky;
 mod streaming;
-mod textures;
+
+mod runtime;
+
+// Share the world test binary to avoid another full Bevy link.
+#[path = "../rendering/mod.rs"]
+mod rendering;

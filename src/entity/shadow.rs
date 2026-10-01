@@ -26,13 +26,13 @@ use crate::entity::EntitySize;
 use crate::entity::PreviousTick;
 use crate::physics::PhysicsSet;
 use crate::player::Player;
+use crate::rendering::textures::TintedMaterial;
+use crate::rendering::textures::tint_tag;
 use crate::world::chunk::WorldChunks;
+use crate::world::environment::celestial_angle;
+use crate::world::environment::skylight_subtracted;
 use crate::world::lighting::beta_brightness;
 use crate::world::lighting::light_level_at;
-use crate::world::sky::celestial_angle;
-use crate::world::sky::skylight_subtracted;
-use crate::world::textures::TintedMaterial;
-use crate::world::textures::tint_tag;
 use crate::world::tick::WorldTick;
 
 /// Beta shadows fade out at 16 blocks (`Render.doRenderShadowAndFire`:

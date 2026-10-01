@@ -4,10 +4,10 @@ use bevy::mesh::Indices;
 use bevy::prelude::*;
 use bevy::render::render_resource::PrimitiveTopology;
 
-use crate::ui::icons::appearance::Appearance;
-use crate::ui::icons::appearance::Shape;
-use crate::world::meshing::geometry::BlockFaceGeometry;
-use crate::world::textures::atlas_tile_uvs;
+use crate::rendering::appearance::Appearance;
+use crate::rendering::appearance::Shape;
+use crate::rendering::meshing::geometry::BlockFaceGeometry;
+use crate::rendering::textures::atlas_tile_uvs;
 
 struct Builder {
     positions: Vec<[f32; 3]>,

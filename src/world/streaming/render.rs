@@ -2,12 +2,12 @@ use bevy::camera::primitives::Aabb;
 use bevy::camera::visibility::NoAutoAabb;
 use bevy::prelude::*;
 
+use crate::rendering::meshing::ChunkMeshes;
+use crate::rendering::textures::BlockMaterial;
+use crate::rendering::textures::LEAF_WIGGLE_AMPLITUDE;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::SECTION_HEIGHT;
 use crate::world::chunk::SECTIONS_PER_CHUNK;
-use crate::world::meshing::ChunkMeshes;
-use crate::world::textures::BlockMaterial;
-use crate::world::textures::LEAF_WIGGLE_AMPLITUDE;
 
 /// Layers of a section in [`ChunkMeshes::into_layers`] order.
 const LAYER_COUNT: usize = 5;

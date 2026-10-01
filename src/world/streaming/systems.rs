@@ -34,17 +34,17 @@ use super::render::apply_sections;
 use super::render::despawn_rendered_chunk;
 use super::render::spawn_chunk;
 use super::within_radius;
+use crate::rendering::textures::AlphaMaskMaterial;
+use crate::rendering::textures::CutoutMaterial;
+use crate::rendering::textures::FoliageColors;
+use crate::rendering::textures::GrassColors;
+use crate::rendering::textures::GrassOverlayMaterial;
+use crate::rendering::textures::MeshWireframe;
+use crate::rendering::textures::TerrainMaterial;
+use crate::rendering::textures::WaterMaterial;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
-use crate::world::generation::WorldGenerator;
-use crate::world::textures::AlphaMaskMaterial;
-use crate::world::textures::CutoutMaterial;
-use crate::world::textures::FoliageColors;
-use crate::world::textures::GrassColors;
-use crate::world::textures::GrassOverlayMaterial;
-use crate::world::textures::MeshWireframe;
-use crate::world::textures::TerrainMaterial;
-use crate::world::textures::WaterMaterial;
+use crate::world::generation::overworld::OverworldGenerator;
 
 /// Jobs of each kind kept in flight per async compute thread. A job that
 /// finishes mid-frame waits for the next streaming pass to be replaced, so a
@@ -55,6 +55,7 @@ const MAX_REMESH_PER_FRAME: usize = 16;
 
 pub(crate) fn setup_streaming(
     mut commands: Commands,
+    generation: Option<Res<crate::world::generation::WorldGeneration>>,
     terrain_material: Res<TerrainMaterial>,
     grass_overlay_material: Res<GrassOverlayMaterial>,
     cutout_material: Res<CutoutMaterial>,
@@ -72,7 +73,13 @@ pub(crate) fn setup_streaming(
     let seed = persistence
         .as_ref()
         .map_or(0, |persistence| persistence.seed());
-    let generator = Arc::new(WorldGenerator::new(seed));
+    let generator = generation.map_or_else(
+        || {
+            Arc::new(OverworldGenerator::new(seed))
+                as Arc<dyn crate::world::generation::ChunkGenerator>
+        },
+        |generation| Arc::clone(&generation.0),
+    );
     // The player starts in PostStartup and needs this heightmap immediately, so
     // the spawn chunk is loaded or generated synchronously.
     let storage = persistence
@@ -93,7 +100,8 @@ pub(crate) fn setup_streaming(
             // passes have run, so build its whole neighborhood now. Saved
             // neighbors are kept rather than overwritten.
             let generate_start = Instant::now();
-            let area = generator.generate_area(ChunkPosition::ZERO, 0);
+            let area =
+                crate::world::generation::generate_area(generator.as_ref(), ChunkPosition::ZERO, 0);
             perf.generate.record(generate_start.elapsed());
             area.into_iter()
                 .map(|(position, generated)| {

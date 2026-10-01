@@ -26,7 +26,7 @@ impl Plugin for ScreenshotPlugin {
 
 fn capture_screenshot(
     keys: Res<ButtonInput<KeyCode>>,
-    chat: Option<Res<crate::ui::ChatState>>,
+    chat: Option<Res<crate::chat::ChatFocus>>,
     mut commands: Commands,
 ) {
     if chat.is_some_and(|chat| chat.suppress_controls) || !keys.just_pressed(KeyCode::F2) {

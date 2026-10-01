@@ -13,7 +13,7 @@ use game::world::furnace::SMELT_TICKS;
 use game::world::furnace::fuel_ticks;
 use game::world::furnace::smelting_result;
 use game::world::furnace::tick_furnaces;
-use game::world::generation::WorldGenerator;
+use game::world::generation::overworld::OverworldGenerator;
 use game::world::persistence::WorldStorage;
 use game::world::persistence::chunk_file_name;
 use game::world::persistence::region_dir_name;
@@ -122,7 +122,7 @@ fn furnace_world_system_uses_world_ticks_and_switches_the_block_light_state() {
         .init_resource::<WorldTick>()
         .add_systems(Update, tick_furnaces);
     let position = ChunkPosition::ZERO;
-    let mut generated = WorldGenerator::new(1).generate(position);
+    let mut generated = OverworldGenerator::new(1).generate(position);
     generated.chunk.set(2, 40, 3, Id::Furnace);
     app.world_mut()
         .resource_mut::<WorldChunks>()
@@ -153,7 +153,7 @@ fn furnace_world_system_uses_world_ticks_and_switches_the_block_light_state() {
 
 #[test]
 fn removing_a_furnace_block_removes_its_block_local_inventory() {
-    let mut generated = WorldGenerator::new(2).generate(ChunkPosition::ZERO);
+    let mut generated = OverworldGenerator::new(2).generate(ChunkPosition::ZERO);
     generated.chunk.set(2, 40, 3, Id::Furnace);
     let mut chunks = WorldChunks::default();
     chunks.insert(ChunkPosition::ZERO, generated);
@@ -194,7 +194,7 @@ fn furnace_inventory_and_progress_round_trip_and_old_chunks_still_load() {
     let saves = temp_saves();
     let storage = WorldStorage::create(&saves, 99, "Furnace persistence").unwrap();
     let position = ChunkPosition { x: -1, z: 2 };
-    let mut generated = WorldGenerator::new(99).generate(position);
+    let mut generated = OverworldGenerator::new(99).generate(position);
     generated.chunk.set(3, 32, 7, Id::Furnace);
     let index = (32 * 16 + 7) * 16 + 3;
     let furnace = generated.chunk.furnace_mut(index).unwrap();

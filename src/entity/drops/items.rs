@@ -32,18 +32,18 @@ use crate::physics::water_current;
 use crate::player::Player;
 use crate::random::ItemRng;
 use crate::random::JavaRandom;
-use crate::ui::icons::blocks::BlockIcons;
+use crate::rendering::icons::BlockIcons;
+use crate::rendering::meshing::dropped_block_meshes;
+use crate::rendering::textures::AlphaMaskMaterial;
+use crate::rendering::textures::CutoutMaterial;
+use crate::rendering::textures::FoliageColors;
+use crate::rendering::textures::GrassColors;
+use crate::rendering::textures::GrassOverlayMaterial;
+use crate::rendering::textures::TerrainMaterial;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
-use crate::world::meshing::dropped_block_meshes;
 use crate::world::persistence::WorldPersistence;
-use crate::world::textures::AlphaMaskMaterial;
-use crate::world::textures::CutoutMaterial;
-use crate::world::textures::FoliageColors;
-use crate::world::textures::GrassColors;
-use crate::world::textures::GrassOverlayMaterial;
-use crate::world::textures::TerrainMaterial;
 use crate::world::tick::WorldTick;
 
 const ITEM_LIFETIME_TICKS: u32 = 6000;
@@ -242,7 +242,7 @@ pub fn spawn_thrown_item(
 }
 
 /// Respawn an item that was stored in a chunk file.
-pub fn spawn_saved_item(commands: &mut Commands, item: crate::world::generation::ChunkDroppedItem) {
+pub fn spawn_saved_item(commands: &mut Commands, item: crate::world::chunk::ChunkDroppedItem) {
     commands.spawn((
         Name::new("Dropped item"),
         DroppedItem(item.stack),
@@ -270,8 +270,8 @@ pub fn chunk_record(
     position: Vec3,
     motion: Vec3,
     state: &DroppedItemState,
-) -> crate::world::generation::ChunkDroppedItem {
-    crate::world::generation::ChunkDroppedItem {
+) -> crate::world::chunk::ChunkDroppedItem {
+    crate::world::chunk::ChunkDroppedItem {
         stack,
         position: position.to_array(),
         motion: motion.to_array(),

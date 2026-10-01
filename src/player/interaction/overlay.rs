@@ -9,9 +9,9 @@ use crate::app::state::AppScreen;
 use crate::block::properties::selection_bounds;
 use crate::physics::BlockHit;
 use crate::physics::PhysicsSet;
-use crate::world::textures::BlockMaterial;
-use crate::world::textures::TerrainMaterial;
-use crate::world::textures::atlas_tile_uvs;
+use crate::rendering::textures::BlockMaterial;
+use crate::rendering::textures::TerrainMaterial;
+use crate::rendering::textures::atlas_tile_uvs;
 
 use super::mining::destroy_stage;
 

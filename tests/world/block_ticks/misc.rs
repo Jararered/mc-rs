@@ -1,7 +1,7 @@
 use game::block::id::Id;
+use game::world::biome::Biome;
 use game::world::block_ticks::BlockEvent;
 use game::world::chunk::ChunkPosition;
-use game::world::generation::Biome;
 
 use super::TestWorld;
 use super::at;

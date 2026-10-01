@@ -25,9 +25,9 @@ use game::inventory::Inventory;
 use game::inventory::MAIN_SLOTS;
 use game::item::ItemId;
 use game::item::ItemStack;
-use game::world::meshing::BlockGeometry;
-use game::world::meshing::BlockLighting;
-use game::world::meshing::dropped_block_meshes;
+use game::rendering::meshing::BlockGeometry;
+use game::rendering::meshing::BlockLighting;
+use game::rendering::meshing::dropped_block_meshes;
 
 struct Rolls<'a> {
     values: &'a [u32],
@@ -504,14 +504,14 @@ fn dropped_items_drift_with_water_once_per_world_tick() {
     use game::entity::drops::items::DroppedItemPlugin;
     use game::entity::drops::items::DroppedItemState;
     use game::entity::drops::items::ItemMotion;
+    use game::world::biome::Biome;
+    use game::world::biome::BiomeMap;
+    use game::world::biome::Climate;
     use game::world::chunk::Chunk;
     use game::world::chunk::ChunkPosition;
+    use game::world::chunk::GeneratedChunk;
+    use game::world::chunk::Heightmap;
     use game::world::chunk::WorldChunks;
-    use game::world::generation::Biome;
-    use game::world::generation::BiomeMap;
-    use game::world::generation::Climate;
-    use game::world::generation::GeneratedChunk;
-    use game::world::generation::Heightmap;
     use game::world::tick::WorldTick;
 
     let mut chunk = Chunk::new();

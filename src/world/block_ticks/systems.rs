@@ -42,7 +42,6 @@ impl Plugin for BlockTicksPlugin {
                     run_block_ticks,
                     falling_block::tick_falling_blocks,
                     apply_tick_effects,
-                    falling_block::sync_falling_block_rendering,
                 )
                     .chain()
                     .in_set(BlockTickSet)

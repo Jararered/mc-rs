@@ -31,6 +31,9 @@ use crate::entity::drops::items::spawn_thrown_item;
 use crate::entity::particles::block::BlockParticles;
 use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
+use crate::inventory::session::ActiveWorkbench;
+use crate::inventory::session::InventorySession;
+use crate::inventory::session::close_crafting_session;
 use crate::item::ItemId;
 use crate::item::ItemStack;
 use crate::item::tools::break_durability;
@@ -43,9 +46,6 @@ use crate::physics::BlockHit;
 use crate::physics::raycast_blocks;
 use crate::physics::raycast_blocks_or_liquid;
 use crate::random::ItemRng;
-use crate::ui::InventoryScreen;
-use crate::ui::WorkbenchUiSession;
-use crate::ui::close_crafting_interface;
 use crate::world::block_ticks::BlockEvent;
 use crate::world::block_ticks::BlockTicks;
 use crate::world::block_ticks::behaviors::leaves::CHECK_DECAY;
@@ -101,8 +101,8 @@ pub(crate) fn interact_blocks(
     mut particles: Option<ResMut<BlockParticles>>,
     mut focus: ResMut<BlockFocus>,
     mut state: Local<BlockInteractState>,
-    mut inventory_screen: ResMut<InventoryScreen>,
-    mut workbench: ResMut<WorkbenchUiSession>,
+    mut inventory_screen: ResMut<InventorySession>,
+    mut workbench: ResMut<ActiveWorkbench>,
     mut item_rng: Local<ItemRng>,
 ) {
     let ticks = tick.ticks_this_frame();
@@ -173,7 +173,7 @@ pub(crate) fn interact_blocks(
     );
     if right_click && !inventory_screen.open && hit.is_some_and(|hit| hit.block.is_furnace()) {
         let hit = hit.expect("checked above");
-        close_crafting_interface(
+        close_crafting_session(
             &mut commands,
             transform,
             &mut item_rng,
@@ -212,7 +212,7 @@ pub(crate) fn interact_blocks(
             *focus = BlockFocus::default();
             return;
         }
-        close_crafting_interface(
+        close_crafting_session(
             &mut commands,
             transform,
             &mut item_rng,
@@ -243,7 +243,7 @@ pub(crate) fn interact_blocks(
         // Do not let stale player-grid contents leak into a new workbench
         // session if an earlier interface was interrupted before its close
         // system ran.
-        close_crafting_interface(
+        close_crafting_session(
             &mut commands,
             transform,
             &mut item_rng,

@@ -4,10 +4,10 @@ use std::sync::Arc;
 use bevy::prelude::Resource;
 
 use crate::block::id::Id;
+use crate::world::biome::Climate;
 use crate::world::chest::Chest;
+use crate::world::chunk::GeneratedChunk;
 use crate::world::furnace::Furnace;
-use crate::world::generation::Climate;
-use crate::world::generation::GeneratedChunk;
 
 use super::ChunkPosition;
 

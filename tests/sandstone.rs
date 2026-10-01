@@ -1,5 +1,5 @@
 use game::block::id::Id;
-use game::world::textures::block_tile;
+use game::rendering::textures::block_tile;
 
 #[test]
 fn sandstone_uses_distinct_top_bottom_and_side_textures() {

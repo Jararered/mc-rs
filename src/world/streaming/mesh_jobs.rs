@@ -10,12 +10,12 @@ use super::ALL_SECTIONS;
 use super::SectionMask;
 use super::WorldStreaming;
 use super::render::SectionMeshes;
+use crate::rendering::meshing::ChunkNeighbors;
+use crate::rendering::meshing::SectionMesher;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::SECTIONS_PER_CHUNK;
 use crate::world::chunk::WorldChunks;
 use crate::world::lighting::Skylight;
-use crate::world::meshing::ChunkNeighbors;
-use crate::world::meshing::SectionMesher;
 
 /// A background lighting and meshing job for one chunk. `forced` is kept so a
 /// cancelled job's pending section rebuilds can be requeued.

@@ -63,7 +63,9 @@ impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         interaction::overlay::overlay_plugin(app);
         model::arm::plugin(app);
-        app.add_systems(PostStartup, spawn_player)
+        app.init_resource::<crate::inventory::session::InventorySession>()
+            .init_resource::<crate::inventory::session::ActiveWorkbench>()
+            .add_systems(PostStartup, spawn_player)
             .add_systems(OnEnter(AppScreen::Playing), capture_mouse)
             .add_systems(OnEnter(AppScreen::Menu), release_mouse)
             .add_systems(OnEnter(AppScreen::Settings), release_mouse)
@@ -349,7 +351,7 @@ fn default_spawn_transform(chunks: &WorldChunks) -> Transform {
     Transform::from_xyz(8.5, eye, 8.5).looking_at(Vec3::new(8.5, eye, 16.5), Vec3::Y)
 }
 
-fn chat_controls_active(chat: Option<Res<crate::ui::ChatState>>) -> bool {
+fn chat_controls_active(chat: Option<Res<crate::chat::ChatFocus>>) -> bool {
     chat.is_none_or(|chat| !chat.suppress_controls)
 }
 
@@ -374,7 +376,7 @@ fn update_mouse_capture(
     mouse_buttons: Res<ButtonInput<MouseButton>>,
     mut windows: Query<(&Window, &mut CursorOptions), With<PrimaryWindow>>,
     mut next_screen: ResMut<NextState<AppScreen>>,
-    inventory_screen: Res<crate::ui::InventoryScreen>,
+    inventory_screen: Res<crate::inventory::session::InventorySession>,
 ) {
     if inventory_screen.open {
         return;
@@ -459,7 +461,7 @@ fn look_player(
 }
 
 fn apply_player_input(
-    chat: Option<Res<crate::ui::ChatState>>,
+    chat: Option<Res<crate::chat::ChatFocus>>,
     keys: Res<ButtonInput<KeyCode>>,
     windows: Query<(&Window, &CursorOptions), With<PrimaryWindow>>,
     mut player: Query<
@@ -563,7 +565,7 @@ fn sprint_pressed(keys: &ButtonInput<KeyCode>) -> bool {
 fn select_hotbar(
     keys: Res<ButtonInput<KeyCode>>,
     scroll: Res<AccumulatedMouseScroll>,
-    inventory_screen: Option<Res<crate::ui::InventoryScreen>>,
+    inventory_screen: Option<Res<crate::inventory::session::InventorySession>>,
     mut hotbar: Query<&mut Hotbar, With<Player>>,
 ) {
     let Ok(mut hotbar) = hotbar.single_mut() else {

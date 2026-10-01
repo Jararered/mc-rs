@@ -47,10 +47,9 @@ use crate::world::chunk::Chunk;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::PendingTick;
 use crate::world::chunk::WorldChunks;
+use crate::world::environment::celestial_angle;
+use crate::world::environment::skylight_subtracted;
 use crate::world::lighting::LightCache;
-use crate::world::meshing::same_appearance;
-use crate::world::sky::celestial_angle;
-use crate::world::sky::skylight_subtracted;
 
 mod behavior;
 pub mod behaviors;
@@ -118,19 +117,6 @@ impl BlockChange {
     pub fn changes_light(&self) -> bool {
         definition::light_opacity(self.previous) != definition::light_opacity(self.block)
             || definition::light_emission(self.previous) != definition::light_emission(self.block)
-    }
-
-    /// Whether any mesh can differ after the change. A flowing fluid settling
-    /// into its still block, a leaf's decay flag, or a cactus's age change
-    /// what the world simulates but nothing it draws.
-    pub fn needs_remesh(&self) -> bool {
-        self.changes_light()
-            || !same_appearance(
-                self.previous,
-                self.previous_metadata,
-                self.block,
-                self.metadata,
-            )
     }
 }
 

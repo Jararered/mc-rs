@@ -10,23 +10,23 @@ use game::physics::Aabb;
 use game::physics::BlockFace;
 use game::physics::BlockHit;
 use game::player::place_selected_block;
+use game::rendering::meshing::dropped_block_meshes;
+use game::rendering::meshing::mesh_chunk_with_settings;
+use game::rendering::textures::atlas_tile_uvs;
+use game::rendering::textures::block_tile;
+use game::world::biome::Biome;
+use game::world::biome::BiomeMap;
+use game::world::biome::Climate;
 use game::world::chunk::CHUNK_HEIGHT;
 use game::world::chunk::CHUNK_SIZE;
 use game::world::chunk::Chunk;
 use game::world::chunk::ChunkPosition;
+use game::world::chunk::GeneratedChunk;
+use game::world::chunk::Heightmap;
 use game::world::chunk::WorldChunks;
-use game::world::generation::Biome;
-use game::world::generation::BiomeMap;
-use game::world::generation::Climate;
-use game::world::generation::GeneratedChunk;
-use game::world::generation::Heightmap;
-use game::world::generation::WorldGenerator;
+use game::world::generation::overworld::OverworldGenerator;
 use game::world::lighting::Skylight;
 use game::world::lighting::light_opacity;
-use game::world::meshing::dropped_block_meshes;
-use game::world::meshing::mesh_chunk_with_settings;
-use game::world::textures::atlas_tile_uvs;
-use game::world::textures::block_tile;
 
 fn world_with(chunk: Chunk) -> WorldChunks {
     let heightmap = Heightmap::from_chunk(&chunk);
@@ -229,7 +229,7 @@ fn cactus_placement_requires_sand_support_and_clear_sides() {
 #[test]
 fn desert_chunks_generate_repeatable_cactus_columns() {
     for seed in 0..128 {
-        let generator = WorldGenerator::new(seed);
+        let generator = OverworldGenerator::new(seed);
         let generated = generator.generate(ChunkPosition::ZERO);
         let cactus_count = generated
             .chunk
@@ -264,7 +264,7 @@ fn desert_chunks_generate_repeatable_cactus_columns() {
                     }
                 }
             }
-            let again = WorldGenerator::new(seed).generate(ChunkPosition::ZERO);
+            let again = OverworldGenerator::new(seed).generate(ChunkPosition::ZERO);
             assert_eq!(generated.chunk.blocks(), again.chunk.blocks());
             assert!(
                 generated

@@ -16,10 +16,10 @@ use game::item::ItemId;
 use game::item::ItemStack;
 use game::player::Player;
 use game::player::PlayerPlugin;
+use game::rendering::textures::atlas_tile_uvs;
 use game::ui::HudPlugin;
 use game::ui::InventoryGuiPlugin;
 use game::world::chunk::WorldChunks;
-use game::world::textures::atlas_tile_uvs;
 use game::world::tick::WorldTick;
 use game::world::tick::advance_world_tick;
 
@@ -42,7 +42,12 @@ fn app() -> App {
     .init_resource::<WorldChunks>()
     .init_resource::<WorldTick>()
     .add_systems(First, advance_world_tick)
-    .add_plugins((PlayerPlugin, InventoryGuiPlugin, HudPlugin));
+    .add_plugins((
+        PlayerPlugin,
+        InventoryGuiPlugin,
+        HudPlugin,
+        game::rendering::icons::ItemIconsPlugin,
+    ));
     app.update();
     app.world_mut()
         .resource_mut::<NextState<AppScreen>>()
@@ -290,7 +295,7 @@ fn click_swing_moves_the_arm_and_held_item() {
 
 #[test]
 fn idle_hud_and_inventory_stop_invalidating_ui_components() {
-    use game::ui::icons::blocks::BlockIcons;
+    use game::rendering::icons::BlockIcons;
 
     #[derive(Resource, Default)]
     struct UiChanges(usize);

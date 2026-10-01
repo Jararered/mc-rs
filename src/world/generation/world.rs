@@ -144,7 +144,7 @@ impl PopulatedChunk {
     }
 }
 
-pub(crate) struct PopulationWorld {
+pub struct PopulationWorld {
     /// The chunk being populated. Its three `+x`/`+z` neighbors follow.
     origin: ChunkPosition,
     chunks: [PopulatedChunk; 4],
@@ -152,18 +152,18 @@ pub(crate) struct PopulationWorld {
 
 impl PopulationWorld {
     /// `chunks` are `origin`, `+x`, `+z`, and `+x+z`, in that order.
-    pub(crate) fn new(origin: ChunkPosition, chunks: [Chunk; 4]) -> Self {
+    pub fn new(origin: ChunkPosition, chunks: [Chunk; 4]) -> Self {
         Self {
             origin,
             chunks: chunks.map(PopulatedChunk::new),
         }
     }
 
-    pub(crate) fn origin(&self) -> ChunkPosition {
+    pub fn origin(&self) -> ChunkPosition {
         self.origin
     }
 
-    pub(crate) fn into_chunks(self) -> [Chunk; 4] {
+    pub fn into_chunks(self) -> [Chunk; 4] {
         self.chunks.map(|chunk| chunk.chunk)
     }
 
@@ -182,7 +182,7 @@ impl PopulationWorld {
 
     /// `World.getBlockId`. Outside the four chunks is air, which no Beta
     /// overworld feature reaches.
-    pub(crate) fn get(&self, x: i32, y: i32, z: i32) -> Id {
+    pub fn get(&self, x: i32, y: i32, z: i32) -> Id {
         if !(0..HEIGHT).contains(&y) {
             return Id::Air;
         }
@@ -191,14 +191,14 @@ impl PopulationWorld {
         })
     }
 
-    pub(crate) fn is_air(&self, x: i32, y: i32, z: i32) -> bool {
+    pub fn is_air(&self, x: i32, y: i32, z: i32) -> bool {
         self.get(x, y, z) == Id::Air
     }
 
     /// `Chunk.setBlockID` through `World.setBlock`, including the heightmap
     /// and relight updates and the only `onBlockAdded` side effect that
     /// matters during generation: lava hardening next to water.
-    pub(crate) fn set(&mut self, x: i32, y: i32, z: i32, block: Id) -> bool {
+    pub fn set(&mut self, x: i32, y: i32, z: i32, block: Id) -> bool {
         if !self.set_raw(x, y, z, block) {
             return false;
         }
@@ -245,7 +245,7 @@ impl PopulationWorld {
         .any(|(x, y, z)| is_water(self.get(x, y, z)))
     }
 
-    pub(crate) fn set_chest(&mut self, x: i32, y: i32, z: i32, chest: Chest) {
+    pub fn set_chest(&mut self, x: i32, y: i32, z: i32, chest: Chest) {
         self.set(x, y, z, Id::Chest);
         if let Some((index, lx, lz)) = self.locate(x, z)
             && (0..HEIGHT).contains(&y)
@@ -257,7 +257,7 @@ impl PopulationWorld {
     }
 
     /// `World.getHeightValue`.
-    pub(crate) fn height(&self, x: i32, z: i32) -> i32 {
+    pub fn height(&self, x: i32, z: i32) -> i32 {
         self.locate(x, z).map_or(0, |(chunk, lx, lz)| {
             i32::from(self.chunks[chunk].heights[lz * CHUNK_SIZE + lx])
         })
@@ -265,7 +265,7 @@ impl PopulationWorld {
 
     /// `World.getFullBlockLightValue`: saved sky light, since no block light
     /// has propagated yet.
-    pub(crate) fn light(&self, x: i32, y: i32, z: i32) -> u8 {
+    pub fn light(&self, x: i32, y: i32, z: i32) -> u8 {
         if y < 0 {
             return 0;
         }
@@ -276,7 +276,7 @@ impl PopulationWorld {
     }
 
     /// `World.getSavedLightValue(EnumSkyBlock.Sky, ...)`.
-    pub(crate) fn sky_light(&self, x: i32, y: i32, z: i32) -> u8 {
+    pub fn sky_light(&self, x: i32, y: i32, z: i32) -> u8 {
         if !(0..HEIGHT).contains(&y) {
             return if y < 0 { 0 } else { 15 };
         }
@@ -284,12 +284,12 @@ impl PopulationWorld {
     }
 
     /// `World.canBlockSeeTheSky`.
-    pub(crate) fn sees_sky(&self, x: i32, y: i32, z: i32) -> bool {
+    pub fn sees_sky(&self, x: i32, y: i32, z: i32) -> bool {
         y >= self.height(x, z)
     }
 
     /// `World.findTopSolidBlock`: one above the highest solid or liquid block.
-    pub(crate) fn top_solid_block(&self, x: i32, z: i32) -> i32 {
+    pub fn top_solid_block(&self, x: i32, z: i32) -> i32 {
         let mut y = HEIGHT - 1;
         while y > 0 {
             let block = self.get(x, y, z);

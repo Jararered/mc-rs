@@ -9,7 +9,7 @@ use game::item::tools::break_durability;
 use game::item::tools::can_harvest;
 use game::item::tools::str_vs_block;
 use game::item::tools::ticks_to_break;
-use game::world::generation::Biome;
+use game::world::biome::Biome;
 
 #[test]
 fn numeric_enum_conversions_preserve_valid_and_unknown_values() {

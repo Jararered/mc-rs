@@ -1,23 +1,23 @@
 use bevy::prelude::*;
 use game::block::id::Id;
+use game::chat::commands::ChatCommand;
+use game::chat::commands::give_to_inventory;
+use game::chat::commands::set_loaded_block;
+use game::chat::registry::CommandRegistry;
 use game::inventory::Hotbar;
 use game::inventory::Inventory;
 use game::item::ItemId;
 use game::item::ItemStack;
-use game::ui::screens::chat::commands::ChatCommand;
-use game::ui::screens::chat::commands::give_to_inventory;
-use game::ui::screens::chat::commands::set_loaded_block;
-use game::ui::screens::chat::registry::CommandRegistry;
+use game::world::biome::Biome;
+use game::world::biome::BiomeMap;
+use game::world::biome::Climate;
 use game::world::block_ticks::BlockTicks;
 use game::world::chunk::CHUNK_SIZE;
 use game::world::chunk::Chunk;
 use game::world::chunk::ChunkPosition;
+use game::world::chunk::GeneratedChunk;
+use game::world::chunk::Heightmap;
 use game::world::chunk::WorldChunks;
-use game::world::generation::Biome;
-use game::world::generation::BiomeMap;
-use game::world::generation::Climate;
-use game::world::generation::GeneratedChunk;
-use game::world::generation::Heightmap;
 
 #[test]
 fn parses_numeric_beta_ids_and_three_commands() {
@@ -174,9 +174,10 @@ fn keyboard_focus_open_submit_and_escape_behave_like_chat() {
     use bevy::window::CursorOptions;
     use bevy::window::PrimaryWindow;
     use game::app::state::AppScreen;
-    use game::ui::ChatPlugin;
+    use game::chat::ChatFocus;
+    use game::chat::ChatPlugin;
+    use game::ui::ChatUiPlugin;
     use game::ui::icons::overlay::UiFont;
-    use game::ui::screens::chat::ChatState;
     use game::world::tick::WorldTick;
 
     let mut app = App::new();
@@ -189,7 +190,7 @@ fn keyboard_focus_open_submit_and_escape_behave_like_chat() {
         .insert_resource(UiFont {
             minecraft: Handle::default(),
         })
-        .add_plugins(ChatPlugin);
+        .add_plugins((ChatPlugin, ChatUiPlugin));
     let window = app
         .world_mut()
         .spawn((
@@ -214,8 +215,8 @@ fn keyboard_focus_open_submit_and_escape_behave_like_chat() {
         .resource_mut::<ButtonInput<KeyCode>>()
         .press(KeyCode::KeyT);
     app.update();
-    assert!(app.world().resource::<ChatState>().open);
-    assert!(app.world().resource::<ChatState>().suppress_controls);
+    assert!(app.world().resource::<ChatFocus>().open);
+    assert!(app.world().resource::<ChatFocus>().suppress_controls);
     assert_eq!(
         app.world()
             .entity(window)
@@ -245,8 +246,8 @@ fn keyboard_focus_open_submit_and_escape_behave_like_chat() {
         window,
     });
     app.update();
-    assert!(!app.world().resource::<ChatState>().open);
-    assert!(app.world().resource::<ChatState>().suppress_controls);
+    assert!(!app.world().resource::<ChatFocus>().open);
+    assert!(app.world().resource::<ChatFocus>().suppress_controls);
     assert_eq!(
         app.world()
             .entity(window)
@@ -262,7 +263,7 @@ fn keyboard_focus_open_submit_and_escape_behave_like_chat() {
             .any(|text| text.0 == "<Player> hello")
     );
     app.update();
-    assert!(!app.world().resource::<ChatState>().suppress_controls);
+    assert!(!app.world().resource::<ChatFocus>().suppress_controls);
 
     app.world_mut()
         .resource_mut::<ButtonInput<KeyCode>>()
@@ -286,7 +287,7 @@ fn keyboard_focus_open_submit_and_escape_behave_like_chat() {
         window,
     });
     app.update();
-    assert!(!app.world().resource::<ChatState>().open);
+    assert!(!app.world().resource::<ChatFocus>().open);
     assert!(
         !app.world_mut()
             .query::<&Text>()
@@ -304,8 +305,9 @@ fn submitted_commands_change_player_inventory_and_world() {
     use bevy::window::CursorOptions;
     use bevy::window::PrimaryWindow;
     use game::app::state::AppScreen;
+    use game::chat::ChatPlugin;
     use game::player::Player;
-    use game::ui::ChatPlugin;
+    use game::ui::ChatUiPlugin;
     use game::ui::icons::overlay::UiFont;
 
     let mut chunk = Chunk::new();
@@ -321,7 +323,7 @@ fn submitted_commands_change_player_inventory_and_world() {
         })
         .insert_resource(world_with(chunk))
         .insert_resource(BlockTicks::default())
-        .add_plugins(ChatPlugin);
+        .add_plugins((ChatPlugin, ChatUiPlugin));
     let window = app
         .world_mut()
         .spawn((
@@ -395,7 +397,7 @@ fn submitted_commands_change_player_inventory_and_world() {
 
 #[test]
 fn parses_help_and_time_commands() {
-    use game::ui::screens::chat::commands::TimeQuery;
+    use game::chat::commands::TimeQuery;
 
     assert_eq!(parse_command("/help"), Ok(ChatCommand::Help(None)));
     assert_eq!(
@@ -508,7 +510,8 @@ fn help_and_time_work_without_player_and_preserve_scheduled_delays() {
     use bevy::window::CursorOptions;
     use bevy::window::PrimaryWindow;
     use game::app::state::AppScreen;
-    use game::ui::ChatPlugin;
+    use game::chat::ChatPlugin;
+    use game::ui::ChatUiPlugin;
     use game::ui::icons::overlay::UiFont;
     use game::world::tick::WorldTick;
 
@@ -523,7 +526,7 @@ fn help_and_time_work_without_player_and_preserve_scheduled_delays() {
         .insert_resource(UiFont {
             minecraft: Handle::default(),
         })
-        .add_plugins(ChatPlugin);
+        .add_plugins((ChatPlugin, ChatUiPlugin));
     let window = app
         .world_mut()
         .spawn((
@@ -628,9 +631,9 @@ fn parse_command(text: &str) -> Result<ChatCommand, String> {
 fn parse_clock(
     _: &CommandRegistry,
     args: &[&str],
-) -> Result<ChatCommand, game::ui::screens::chat::registry::CommandParseError> {
-    use game::ui::screens::chat::commands::TimeQuery;
-    use game::ui::screens::chat::registry::CommandParseError;
+) -> Result<ChatCommand, game::chat::registry::CommandParseError> {
+    use game::chat::commands::TimeQuery;
+    use game::chat::registry::CommandParseError;
     if !args.is_empty() {
         return Err(CommandParseError::Usage);
     }
@@ -708,4 +711,92 @@ fn builtin_usage_errors_come_from_the_registered_help_forms() {
             ))
         );
     }
+}
+
+#[test]
+fn chat_backend_dispatches_multiple_submissions_without_ui_or_window() {
+    use game::chat::ChatHistory;
+    use game::chat::ChatPlugin;
+    use game::chat::ChatSubmission;
+    use game::world::tick::WorldTick;
+
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins)
+        .init_resource::<WorldChunks>()
+        .init_resource::<WorldTick>()
+        .add_plugins(ChatPlugin);
+    app.world_mut()
+        .write_message(ChatSubmission("hello".into()));
+    app.world_mut()
+        .write_message(ChatSubmission("/time set noon".into()));
+    app.world_mut()
+        .write_message(ChatSubmission("/unknown".into()));
+    app.world_mut()
+        .write_message(ChatSubmission("/time query".into()));
+    app.update();
+
+    assert_eq!(app.world().resource::<WorldTick>().world_time(), 6000);
+    let lines: Vec<_> = app
+        .world()
+        .resource::<ChatHistory>()
+        .messages()
+        .map(|message| message.text.as_str())
+        .collect();
+    assert_eq!(lines.len(), 4);
+    assert_eq!(lines[0], "Daytime: 6000");
+    assert!(lines[1].starts_with("Unknown command:"));
+    assert_eq!(lines[3], "<Player> hello");
+    app.update();
+    assert_eq!(app.world().resource::<ChatHistory>().messages().count(), 4);
+    assert_eq!(
+        app.world_mut().query::<&Node>().iter(app.world()).count(),
+        0
+    );
+}
+
+#[test]
+fn backend_history_keeps_whole_unicode_messages_and_ages_on_world_ticks() {
+    use game::chat::ChatHistory;
+    use game::chat::ChatPlugin;
+    use game::world::tick::WorldTick;
+
+    let text = "世界 ".repeat(40);
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins)
+        .init_resource::<WorldChunks>()
+        .init_resource::<WorldTick>()
+        .add_plugins(ChatPlugin);
+    app.world_mut()
+        .resource_mut::<ChatHistory>()
+        .push(text.clone());
+    app.world_mut().resource_mut::<WorldTick>().advance(0.1);
+    app.update();
+    let message = app
+        .world()
+        .resource::<ChatHistory>()
+        .messages()
+        .next()
+        .unwrap();
+    assert_eq!(message.text, text);
+    assert_eq!(message.age_ticks, 2);
+    app.world_mut().resource_mut::<WorldTick>().idle();
+    app.update();
+    assert_eq!(
+        app.world()
+            .resource::<ChatHistory>()
+            .messages()
+            .next()
+            .unwrap()
+            .age_ticks,
+        2
+    );
+
+    for index in 0..70 {
+        app.world_mut()
+            .resource_mut::<ChatHistory>()
+            .push(format!("Message {index}"));
+    }
+    let history = app.world().resource::<ChatHistory>();
+    assert_eq!(history.messages().count(), 50);
+    assert_eq!(history.messages().next().unwrap().text, "Message 69");
 }

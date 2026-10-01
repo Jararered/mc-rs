@@ -21,7 +21,7 @@ use crate::player::HeartFill;
 use crate::player::Player;
 use crate::player::PlayerCamera;
 use crate::player::PlayerHealth;
-use crate::ui::icons::blocks::BlockIcons;
+use crate::rendering::icons::BlockIcons;
 use crate::ui::icons::overlay::GUI_SCALE;
 use crate::ui::icons::overlay::UiFont;
 use crate::ui::icons::overlay::count_label;
@@ -157,7 +157,7 @@ fn spawn_hud(
 }
 
 fn update_debug_overlay(
-    chat: Option<Res<crate::ui::ChatState>>,
+    chat: Option<Res<crate::chat::ChatFocus>>,
     keys: Option<Res<ButtonInput<KeyCode>>>,
     mut visible: ResMut<DebugVisible>,
     player: Query<(&Transform, &CollisionState, Option<&Flying>), With<Player>>,

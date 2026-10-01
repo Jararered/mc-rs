@@ -863,3 +863,79 @@ fn hotbar_number_key_crafts_into_an_empty_slot_only() {
     assert!(inventory.crafting[0].is_none());
     assert_eq!(hotbar.slots[4], Some(stack(block(Id::WoodenPlanks), 4)));
 }
+
+#[test]
+fn closing_crafting_session_returns_inputs_or_drops_overflow_without_ui() {
+    use bevy::ecs::system::RunSystemOnce;
+    use bevy::prelude::*;
+    use game::entity::DroppedItem;
+    use game::inventory::Inventory;
+    use game::inventory::session::ActiveWorkbench;
+    use game::inventory::session::close_crafting_session;
+    use game::random::ItemRng;
+
+    for full in [false, true] {
+        let stone = ItemId::from_u16(u16::from(Id::Stone.as_u8())).unwrap();
+        let mut hotbar = Hotbar::default();
+        let mut inventory = Inventory::default();
+        if full {
+            hotbar.slots.fill(Some(ItemStack::new(stone, 64).unwrap()));
+            inventory
+                .main
+                .fill(Some(ItemStack::new(stone, 64).unwrap()));
+        }
+        inventory.crafting[0] = Some(ItemStack::new(stone, 3).unwrap());
+        inventory.carried = Some(ItemStack::new(stone, 2).unwrap());
+        let mut workbench = ActiveWorkbench::default();
+        workbench.position = Some((4, 60, 7));
+        workbench
+            .grid
+            .set(1, 1, Some(ItemStack::new(stone, 4).unwrap()));
+        let mut world = World::new();
+        world.insert_resource(workbench);
+        let player = world.spawn((Transform::default(), hotbar, inventory)).id();
+        world
+            .run_system_once(
+                |mut commands: Commands,
+                 mut workbench: ResMut<ActiveWorkbench>,
+                 mut player: Query<(&Transform, &mut Hotbar, &mut Inventory)>,
+                 mut rng: Local<ItemRng>| {
+                    let (transform, mut hotbar, mut inventory) = player.single_mut().unwrap();
+                    close_crafting_session(
+                        &mut commands,
+                        transform,
+                        &mut rng,
+                        &mut hotbar,
+                        &mut inventory,
+                        &mut workbench,
+                    );
+                },
+            )
+            .unwrap();
+        let inventory = world.get::<Inventory>(player).unwrap();
+        assert!(inventory.crafting.iter().all(Option::is_none));
+        assert!(inventory.carried.is_none());
+        let workbench = world.resource::<ActiveWorkbench>();
+        assert!(workbench.position.is_none());
+        assert_eq!(workbench.grid.occupied(), 0);
+        let drops: u32 = world
+            .query::<&DroppedItem>()
+            .iter(&world)
+            .map(|drop| u32::from(drop.0.count()))
+            .sum();
+        assert_eq!(drops, if full { 9 } else { 0 });
+        if !full {
+            assert_eq!(
+                world
+                    .get::<Hotbar>(player)
+                    .unwrap()
+                    .slots
+                    .iter()
+                    .flatten()
+                    .map(|stack| u32::from(stack.count()))
+                    .sum::<u32>(),
+                9
+            );
+        }
+    }
+}

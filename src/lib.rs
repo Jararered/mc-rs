@@ -14,3 +14,6 @@ pub mod player;
 pub mod random;
 pub mod ui;
 pub mod world;
+
+pub mod chat;
+pub mod rendering;

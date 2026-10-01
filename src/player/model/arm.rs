@@ -17,9 +17,9 @@ use crate::app::state::AppScreen;
 use crate::inventory::Hotbar;
 use crate::item::ItemData;
 use crate::item::ItemStack;
-use crate::ui::icons::appearance::Shape;
-use crate::ui::icons::appearance::block_appearance;
-use crate::ui::icons::appearance::item_tile;
+use crate::rendering::appearance::Shape;
+use crate::rendering::appearance::block_appearance;
+use crate::rendering::appearance::item_tile;
 use crate::world::tick::WorldTick;
 
 use super::mesh;

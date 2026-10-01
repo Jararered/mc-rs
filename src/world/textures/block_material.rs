@@ -159,6 +159,9 @@ impl MaterialExtension for BlockShading {
         // changes with `BlockShading::wireframe`, so both stay cached.
         if key.bind_group_data.wireframe {
             descriptor.primitive.polygon_mode = PolygonMode::Line;
+            // A face between dirt and water points at the water. Draw it from
+            // the shore as well as from inside the liquid.
+            descriptor.primitive.cull_mode = None;
             // The depth prepass rasterizes the same edges. A slope bias keeps
             // the color pass from losing the depth test to that prepass.
             if let Some(depth_stencil) = descriptor.depth_stencil.as_mut() {

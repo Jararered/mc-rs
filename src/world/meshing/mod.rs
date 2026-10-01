@@ -804,9 +804,10 @@ impl<'a> Mesher<'a> {
                         .as_ref()
                         .map_or(DEFAULT_GRASS_TINT, |tints| tints.grass[column]);
                     if let Some(fluid) = Fluid::of(block) {
-                        // A wireframe filter draws the fluid as full cubes so the
-                        // shell can share the greedy planes. Gameplay water keeps
-                        // its sloped, per-cell surface.
+                        // A wireframe filter draws the open fluid surface as full
+                        // cubes so it can share the greedy planes. Faces against
+                        // opaque blocks stay on those blocks. Gameplay water
+                        // keeps its sloped, per-cell surface.
                         if self.only == Some(block) {
                             self.queue_cube(
                                 meshes,
@@ -983,11 +984,13 @@ impl<'a> Mesher<'a> {
                 ny,
                 z as i32 + face.neighbor[2],
             );
-            // Filtered fluids keep every face of the shell, including faces
-            // against stone, and drop only faces shared with the same id.
-            let fluid_shell = self.only == Some(block) && Fluid::of(block).is_some();
-            if fluid_shell {
-                if neighbor == Some(block) {
+            // A filtered fluid keeps the open surface only. Faces against
+            // sand, dirt, and other opaque cubes belong to those blocks.
+            let filtered_fluid = (self.only == Some(block))
+                .then(|| Fluid::of(block))
+                .flatten();
+            if let Some(fluid) = filtered_fluid {
+                if !fluid_shell_face_visible(fluid, neighbor, face.neighbor[1]) {
                     continue;
                 }
             } else if neighbor_hides_face(block, neighbor, fancy_graphics) {
@@ -1008,7 +1011,7 @@ impl<'a> Mesher<'a> {
             };
             let side_tint = if grass_side { [1.0; 3] } else { base };
             let (tile_x, tile_y) = block_tile(block, face_index, fancy_graphics);
-            let layer = if fluid_shell && Fluid::of(block) == Some(Fluid::Water) {
+            let layer = if filtered_fluid == Some(Fluid::Water) {
                 LAYER_WATER
             } else if fancy_graphics && is_leaf(block) {
                 LAYER_CUTOUT
@@ -1531,6 +1534,20 @@ fn double_chest_tile(block: Id, pair_direction: [i32; 3], face: usize) -> (u8, u
     let tile_x = if left_half { 9 } else { 10 };
     let tile_y = if face == front { 2 } else { 3 };
     (tile_x, tile_y)
+}
+
+/// Same visibility as [`Mesher::push_fluid`]: either id of this fluid and ice
+/// cover a face, and an opaque cube covers the sides and bottom. An open top
+/// stays visible, which is the flat water surface in a filtered wireframe.
+fn fluid_shell_face_visible(fluid: Fluid, neighbor: Option<Id>, dy: i32) -> bool {
+    match neighbor {
+        None => true,
+        Some(neighbor) => {
+            Fluid::of(neighbor) != Some(fluid)
+                && neighbor != Id::Ice
+                && (dy > 0 || !is_opaque_cube(neighbor))
+        }
+    }
 }
 
 /// Fast leaves hide every non-air neighbour, like any solid cube. Fancy leaves

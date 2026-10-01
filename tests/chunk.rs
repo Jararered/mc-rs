@@ -1072,6 +1072,62 @@ fn filtered_water_merges_a_pool_into_one_top_face() {
     );
 }
 
+#[test]
+fn filtered_water_leaves_the_shared_face_on_the_dirt() {
+    let mut chunk = Chunk::new();
+    for x in 2..6 {
+        for z in 2..6 {
+            chunk.set(x, 1, z, Id::Dirt);
+            chunk.set(x, 2, z, Id::Water);
+        }
+    }
+    let light = Skylight::from_chunk(&chunk);
+
+    let water = mesh_chunk_filtered(&chunk, &light, true, Some(Id::Water));
+    let tops = quads_facing(&water.water, |normal| normal[1] > 0.5);
+    assert_eq!(tops.len(), 1, "the open water surface is one rectangle");
+    assert!(spans(tops[0], 0, 2.0, 6.0));
+    assert!(spans(tops[0], 2, 2.0, 6.0));
+    assert!(
+        water.water.vertices().chunks_exact(4).all(|quad| {
+            !quad
+                .iter()
+                .all(|vertex| (vertex.position[1] - 2.0).abs() < 1e-4)
+        }),
+        "water does not draw the face it shares with the dirt"
+    );
+
+    let dirt = mesh_chunk_filtered(&chunk, &light, true, Some(Id::Dirt));
+    let bed_area: f32 = quads_facing(&dirt.opaque, |normal| normal[1] > 0.5)
+        .into_iter()
+        .filter(|quad| {
+            quad.iter()
+                .all(|vertex| (vertex.position[1] - 2.0).abs() < 1e-4)
+        })
+        .map(horizontal_area)
+        .sum();
+    assert!(
+        (bed_area - 16.0).abs() < 0.01,
+        "dirt under the water keeps its top, area {bed_area}"
+    );
+}
+
+fn horizontal_area(quad: &[BlockVertex]) -> f32 {
+    let width = extent(quad, 0);
+    let depth = extent(quad, 2);
+    width * depth
+}
+
+fn extent(quad: &[BlockVertex], axis: usize) -> f32 {
+    let mut lo = f32::INFINITY;
+    let mut hi = f32::NEG_INFINITY;
+    for vertex in quad {
+        lo = lo.min(vertex.position[axis]);
+        hi = hi.max(vertex.position[axis]);
+    }
+    hi - lo
+}
+
 fn quads_facing<'a>(
     mesh: &'a BlockGeometry,
     facing: impl Fn([f32; 3]) -> bool,

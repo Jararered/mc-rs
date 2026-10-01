@@ -248,6 +248,7 @@ fn selection_lowers_old_visual_before_swapping_and_raising() {
 #[test]
 fn click_swing_moves_the_arm_and_held_item() {
     let mut app = app();
+    app.world_mut().resource_mut::<GameSettings>().view_bobbing = false;
     app.world_mut().spawn((
         Window::default(),
         CursorOptions {
@@ -367,4 +368,111 @@ fn idle_hud_and_inventory_stop_invalidating_ui_components() {
     assert!(app.world().resource::<UiChanges>().0 > 0);
     app.update();
     assert_eq!(app.world().resource::<UiChanges>().0, 0);
+}
+
+#[test]
+fn mouse_sensitivity_scales_look_rotation() {
+    use bevy::input::mouse::AccumulatedMouseMotion;
+    let mut app = app();
+    app.world_mut().spawn((
+        PrimaryWindow,
+        Window {
+            focused: true,
+            ..default()
+        },
+        CursorOptions {
+            grab_mode: CursorGrabMode::Locked,
+            ..default()
+        },
+    ));
+    app.add_systems(
+        Update,
+        (|mut motion: ResMut<AccumulatedMouseMotion>| {
+            motion.delta = Vec2::new(10.0, 0.0);
+        })
+        .before(game::physics::PhysicsSet::ApplyInput),
+    );
+    let player = app
+        .world_mut()
+        .query_filtered::<Entity, With<Player>>()
+        .single(app.world())
+        .unwrap();
+    app.world_mut()
+        .get_mut::<Transform>(player)
+        .unwrap()
+        .rotation = Quat::IDENTITY;
+    app.update();
+    let yaw = app
+        .world()
+        .get::<Transform>(player)
+        .unwrap()
+        .rotation
+        .to_euler(EulerRot::YXZ)
+        .0;
+    assert!((yaw + 0.02).abs() < 0.0001);
+    app.world_mut()
+        .resource_mut::<GameSettings>()
+        .mouse_sensitivity = 2.0;
+    app.world_mut()
+        .get_mut::<Transform>(player)
+        .unwrap()
+        .rotation = Quat::IDENTITY;
+    app.update();
+    let yaw = app
+        .world()
+        .get::<Transform>(player)
+        .unwrap()
+        .rotation
+        .to_euler(EulerRot::YXZ)
+        .0;
+    assert!((yaw + 0.04).abs() < 0.0001);
+}
+
+#[test]
+fn disabling_bobbing_removes_walk_pose_but_keeps_interpolation_and_equip() {
+    use game::entity::CollisionState;
+    use game::entity::Velocity;
+    use game::player::PlayerCamera;
+    let mut app = app();
+    let player = app
+        .world_mut()
+        .query_filtered::<Entity, With<Player>>()
+        .single(app.world())
+        .unwrap();
+    app.world_mut()
+        .get_mut::<CollisionState>(player)
+        .unwrap()
+        .on_ground = true;
+    app.world_mut().get_mut::<Velocity>(player).unwrap().0 = Vec3::new(4.0, 0.0, 0.0);
+    let resting_arm = visual(&mut app, "Right arm").2;
+    // Move without a physics integration pass: the previous position stays at spawn.
+    app.world_mut()
+        .get_mut::<Transform>(player)
+        .unwrap()
+        .translation
+        .x += 2.0;
+    app.update();
+    let mut cameras = app
+        .world_mut()
+        .query_filtered::<&Transform, With<PlayerCamera>>();
+    assert_ne!(
+        cameras.single(app.world()).unwrap().rotation,
+        Quat::IDENTITY
+    );
+    assert_ne!(visual(&mut app, "Right arm").2, resting_arm);
+    app.world_mut().resource_mut::<GameSettings>().view_bobbing = false;
+    app.update();
+    let camera = cameras.single(app.world()).unwrap();
+    assert_eq!(camera.rotation, Quat::IDENTITY);
+    assert!(
+        camera.translation.length() > 1.0,
+        "interpolation offset must remain"
+    );
+    assert_eq!(visual(&mut app, "Right arm").2, resting_arm);
+    select(&mut app, 1, 0);
+    for _ in 0..7 {
+        app.update();
+    }
+    assert_eq!(visual(&mut app, "Held stack").0, Visibility::Visible);
+    assert_eq!(visual(&mut app, "Right arm").0, Visibility::Hidden);
 }

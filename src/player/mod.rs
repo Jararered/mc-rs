@@ -271,6 +271,7 @@ fn apply_camera_fov(
 /// distance drives the phase while smoothed horizontal and vertical motion
 /// control the bob's amplitude.
 fn update_camera_bobbing(
+    settings: Res<GameSettings>,
     time: Res<Time>,
     tick: Res<WorldTick>,
     mut players: Query<
@@ -317,7 +318,12 @@ fn update_camera_bobbing(
         for child in children {
             if let Ok(mut camera) = cameras.get_mut(*child) {
                 camera.set_if_neq(Transform::from_matrix(
-                    Mat4::from_translation(render_offset) * camera_bob_pose(&bob),
+                    Mat4::from_translation(render_offset)
+                        * if settings.view_bobbing {
+                            camera_bob_pose(&bob)
+                        } else {
+                            Mat4::IDENTITY
+                        },
                 ));
             }
         }
@@ -427,6 +433,7 @@ fn adjust_fly_speed(
 }
 
 fn look_player(
+    settings: Res<GameSettings>,
     mouse_motion: Res<AccumulatedMouseMotion>,
     windows: Query<(&Window, &CursorOptions), With<PrimaryWindow>>,
     mut player: Query<&mut Transform, With<Player>>,
@@ -443,8 +450,8 @@ fn look_player(
     };
 
     let (mut yaw, mut pitch, _) = transform.rotation.to_euler(EulerRot::YXZ);
-    yaw -= mouse_motion.delta.x * MOUSE_SENSITIVITY;
-    pitch = (pitch - mouse_motion.delta.y * MOUSE_SENSITIVITY).clamp(
+    yaw -= mouse_motion.delta.x * MOUSE_SENSITIVITY * settings.mouse_sensitivity;
+    pitch = (pitch - mouse_motion.delta.y * MOUSE_SENSITIVITY * settings.mouse_sensitivity).clamp(
         -std::f32::consts::FRAC_PI_2 + 0.01,
         std::f32::consts::FRAC_PI_2 - 0.01,
     );

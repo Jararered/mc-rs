@@ -253,7 +253,11 @@ fn animate_arm(
     let Ok((bobbing, hotbar)) = players.single() else {
         return;
     };
-    let walk_pose = camera_bob_pose(bobbing);
+    let walk_pose = if settings.view_bobbing {
+        camera_bob_pose(bobbing)
+    } else {
+        Mat4::IDENTITY
+    };
     let desired = hotbar.selected_stack().map(VisualKey::from_stack);
     let Ok((mut held_mesh, mut held_material, mut held_transform, mut held_visibility)) =
         held.single_mut()

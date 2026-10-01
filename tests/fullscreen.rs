@@ -138,3 +138,21 @@ fn restoring_windowed_size_refreshes_all_camera_targets_in_the_same_frame() {
         );
     }
 }
+
+#[test]
+fn saved_fullscreen_and_menu_changes_share_the_f11_setting() {
+    use game::app::settings::GameSettings;
+    let mut app = test_app();
+    let original = primary_window(&mut app).resolution.clone();
+    app.world_mut().resource_mut::<GameSettings>().fullscreen = true;
+    app.update();
+    assert_ne!(primary_window(&mut app).mode, WindowMode::Windowed);
+    press(&mut app, KeyCode::F11);
+    assert!(!app.world().resource::<GameSettings>().fullscreen);
+    assert_eq!(primary_window(&mut app).resolution, original);
+    app.world_mut().resource_mut::<GameSettings>().fullscreen = true;
+    app.update();
+    app.world_mut().resource_mut::<GameSettings>().fullscreen = false;
+    app.update();
+    assert_eq!(primary_window(&mut app).mode, WindowMode::Windowed);
+}

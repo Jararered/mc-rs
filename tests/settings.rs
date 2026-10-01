@@ -400,6 +400,9 @@ fn settings_round_trip_through_json() {
         directional_lighting: false,
         wiggle_leaves: false,
         graphics: GraphicsQuality::Ultra,
+        mouse_sensitivity: 1.5,
+        view_bobbing: false,
+        fullscreen: true,
     };
     save_settings(&path, &settings).unwrap();
     assert_eq!(load_settings(&path), settings);
@@ -470,6 +473,7 @@ fn settings_plugin_loads_and_saves_menu_changes() {
         directional_lighting: false,
         wiggle_leaves: true,
         graphics: GraphicsQuality::Fast,
+        ..default()
     };
     save_settings(&path, &initial).unwrap();
 
@@ -647,4 +651,318 @@ fn opaque_menu_disables_world_cameras_and_playing_restores_them() {
     app.update();
     let mut cameras = app.world_mut().query_filtered::<&Camera, With<Camera3d>>();
     assert!(cameras.iter(app.world()).all(|camera| !camera.is_active));
+}
+
+#[test]
+fn player_options_default_clamp_and_load_from_older_files() {
+    let mut settings = GameSettings::default();
+    assert_eq!(settings.mouse_sensitivity, 1.0);
+    assert!(settings.view_bobbing);
+    assert!(!settings.fullscreen);
+    settings.change_mouse_sensitivity(100.0);
+    assert_eq!(settings.mouse_sensitivity, 3.0);
+    settings.change_mouse_sensitivity(-100.0);
+    assert_eq!(settings.mouse_sensitivity, 0.1);
+    for invalid in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+        settings.mouse_sensitivity = invalid;
+        settings.clamp();
+        assert_eq!(settings.mouse_sensitivity, 1.0);
+    }
+    let path = temp_settings_path("old-player-options");
+    fs::write(&path, r#"{"fov":90}"#).unwrap();
+    let loaded = load_settings(&path);
+    assert_eq!(loaded.mouse_sensitivity, 1.0);
+    assert!(loaded.view_bobbing);
+    assert!(!loaded.fullscreen);
+    fs::remove_file(path).unwrap();
+}
+
+fn settings_menu_app() -> App {
+    settings_menu_app_with_assets(format!("{}/assets", env!("CARGO_MANIFEST_DIR")))
+}
+
+fn settings_menu_app_with_assets(file_path: String) -> App {
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        AssetPlugin {
+            file_path,
+            ..default()
+        },
+        bevy::image::ImagePlugin::default_nearest(),
+        StatesPlugin,
+        bevy::input::InputPlugin,
+    ))
+    .register_asset_loader(bevy::image::ImageLoader::new(
+        bevy::image::CompressedImageFormats::NONE,
+    ))
+    .init_asset::<Font>()
+    .init_state::<AppScreen>()
+    .init_resource::<GameSettings>()
+    .add_message::<AppExit>()
+    .add_plugins(game::ui::MenuPlugin);
+    app.world_mut()
+        .resource_mut::<NextState<AppScreen>>()
+        .set(AppScreen::Settings);
+    app.update();
+    app
+}
+
+fn button_named(app: &mut App, title: &str) -> Entity {
+    let mut texts = app.world_mut().query::<(&Text, &ChildOf)>();
+    texts
+        .iter(app.world())
+        .find(|(text, parent)| {
+            text.0 == title && app.world().get::<Button>(parent.parent()).is_some()
+        })
+        .unwrap_or_else(|| panic!("missing button {title}"))
+        .1
+        .parent()
+}
+
+fn click_menu_button(app: &mut App, title: &str) {
+    let button = button_named(app, title);
+    app.world_mut()
+        .entity_mut(button)
+        .insert(Interaction::Pressed);
+    app.update();
+    app.world_mut().entity_mut(button).insert(Interaction::None);
+    app.update();
+}
+
+#[test]
+fn settings_tabs_buttons_and_live_labels() {
+    let mut app = settings_menu_app();
+    for title in [
+        "Graphics: Fancy",
+        "Old lighting: ON",
+        "Smooth lighting: ON",
+        "Wiggle leaves: ON",
+        "Max FPS: 60",
+        "Fullscreen: OFF",
+        "View bobbing: ON",
+    ] {
+        button_named(&mut app, title);
+    }
+    let mut texts = app.world_mut().query::<(&Text, &ChildOf)>();
+    let sensitivity_row = texts
+        .iter(app.world())
+        .find(|(text, _)| text.0 == "Mouse sensitivity: 100%")
+        .unwrap()
+        .1
+        .parent();
+    let controls_panel = app
+        .world()
+        .get::<ChildOf>(sensitivity_row)
+        .unwrap()
+        .parent();
+    assert_eq!(
+        app.world().get::<Node>(controls_panel).unwrap().display,
+        Display::None
+    );
+    click_menu_button(&mut app, "Controls");
+    assert_eq!(
+        app.world().get::<Node>(controls_panel).unwrap().display,
+        Display::Grid
+    );
+    click_menu_button(&mut app, "View bobbing: ON");
+    assert!(!app.world().resource::<GameSettings>().view_bobbing);
+    button_named(&mut app, "View bobbing: OFF");
+    let plus = {
+        let children = app.world().get::<Children>(sensitivity_row).unwrap();
+        children
+            .iter()
+            .find(|entity| {
+                app.world().get::<Button>(*entity).is_some_and(|_| {
+                    app.world()
+                        .get::<Children>(*entity)
+                        .unwrap()
+                        .iter()
+                        .any(|child| {
+                            app.world()
+                                .get::<Text>(child)
+                                .is_some_and(|text| text.0 == "+")
+                        })
+                })
+            })
+            .unwrap()
+    };
+    let node = app.world().get::<Node>(plus).unwrap();
+    assert_eq!(node.width, px(48));
+    assert_eq!(node.flex_shrink, 0.0);
+    assert!(matches!(
+        app.world().get::<ImageNode>(plus).unwrap().image_mode,
+        bevy::ui::widget::NodeImageMode::Sliced(_)
+    ));
+    app.world_mut()
+        .entity_mut(plus)
+        .insert(Interaction::Pressed);
+    app.update();
+    assert!((app.world().resource::<GameSettings>().mouse_sensitivity - 1.1).abs() < 0.0001);
+    assert!(
+        app.world_mut()
+            .query::<&Text>()
+            .iter(app.world())
+            .any(|text| text.0 == "Mouse sensitivity: 110%")
+    );
+    click_menu_button(&mut app, "Video");
+    click_menu_button(&mut app, "Fullscreen: OFF");
+    assert!(app.world().resource::<GameSettings>().fullscreen);
+    assert_eq!(
+        app.world().get::<Node>(controls_panel).unwrap().display,
+        Display::None
+    );
+}
+
+#[test]
+fn settings_resize_scroll_and_tab_reset() {
+    use bevy::input::mouse::MouseScrollUnit;
+    use bevy::input::mouse::MouseWheel;
+    use bevy::window::PrimaryWindow;
+    let mut app = settings_menu_app();
+    let window = app
+        .world_mut()
+        .spawn((
+            PrimaryWindow,
+            Window {
+                resolution: (1280, 720).into(),
+                ..default()
+            },
+        ))
+        .id();
+    app.update();
+    let mut nodes = app.world_mut().query::<&Node>();
+    assert_eq!(
+        nodes
+            .iter(app.world())
+            .filter(|node| node.grid_template_columns == vec![RepeatedGridTrack::flex(2, 1.0)])
+            .count(),
+        2
+    );
+    app.world_mut()
+        .get_mut::<Window>(window)
+        .unwrap()
+        .resolution
+        .set(640.0, 360.0);
+    app.update();
+    assert_eq!(
+        nodes
+            .iter(app.world())
+            .filter(|node| node.grid_template_columns == vec![RepeatedGridTrack::flex(1, 1.0)])
+            .count(),
+        2
+    );
+    let content = app
+        .world_mut()
+        .query::<(Entity, &Node)>()
+        .iter(app.world())
+        .find(|(_, node)| node.overflow.y == OverflowAxis::Scroll)
+        .unwrap()
+        .0;
+    app.world_mut().entity_mut(content).insert(ComputedNode {
+        size: Vec2::new(600.0, 180.0),
+        content_size: Vec2::new(600.0, 540.0),
+        inverse_scale_factor: 1.0,
+        ..default()
+    });
+    app.world_mut().write_message(MouseWheel {
+        unit: MouseScrollUnit::Line,
+        phase: bevy::input::touch::TouchPhase::Moved,
+        x: 0.0,
+        y: -100.0,
+        window,
+    });
+    app.update();
+    assert_eq!(app.world().get::<ScrollPosition>(content).unwrap().y, 360.0);
+    click_menu_button(&mut app, "Controls");
+    assert_eq!(app.world().get::<ScrollPosition>(content).unwrap().y, 0.0);
+    click_menu_button(&mut app, "Back");
+    click_menu_button(&mut app, "Settings");
+    // Reopening settings always starts on Video.
+    let controls = button_named(&mut app, "View bobbing: ON");
+    let panel = app.world().get::<ChildOf>(controls).unwrap().parent();
+    assert_eq!(
+        app.world().get::<Node>(panel).unwrap().display,
+        Display::None
+    );
+}
+
+#[test]
+fn compact_stepper_skin_preserves_both_button_edges_and_hover_row() {
+    let mut app = settings_menu_app();
+    let plus = button_named(&mut app, "+");
+    // Asset loading is asynchronous, including in a headless app.
+    let compact = (0..200)
+        .find_map(|_| {
+            std::thread::sleep(std::time::Duration::from_millis(1));
+            app.update();
+            let image = app.world().get::<ImageNode>(plus)?;
+            let handle = image.image.clone();
+            let loaded = app.world().resource::<Assets<Image>>().get(&handle)?;
+            if loaded.width() == 24 && loaded.height() == 40 {
+                Some(handle)
+            } else {
+                std::thread::sleep(std::time::Duration::from_millis(1));
+                None
+            }
+        })
+        .expect("compact button atlas should load");
+    let wide = button_named(&mut app, "Graphics: Fancy");
+    let source = &app.world().get::<ImageNode>(wide).unwrap().image;
+    let assets = app.world().resource::<Assets<Image>>();
+    let source = assets.get(source).unwrap();
+    let compact = assets.get(&compact).unwrap();
+    let stride = source.width() as usize * 4;
+    let pixels = source.data.as_ref().unwrap();
+    let small = compact.data.as_ref().unwrap();
+    for (small_y, source_y) in [(0, 66), (19, 85), (20, 86), (39, 105)] {
+        assert_eq!(
+            &small[small_y * 96..small_y * 96 + 48],
+            &pixels[source_y * stride..source_y * stride + 48]
+        );
+        assert_eq!(
+            &small[small_y * 96 + 48..small_y * 96 + 96],
+            &pixels[source_y * stride + 188 * 4..source_y * stride + 200 * 4]
+        );
+    }
+    app.world_mut()
+        .entity_mut(plus)
+        .insert(Interaction::Hovered);
+    app.update();
+    assert_eq!(
+        app.world().get::<ImageNode>(plus).unwrap().rect,
+        Some(Rect::new(0.0, 20.0, 24.0, 40.0))
+    );
+    app.world_mut()
+        .entity_mut(plus)
+        .insert(Interaction::Pressed);
+    app.update();
+    assert_eq!(
+        app.world().get::<ImageNode>(plus).unwrap().rect,
+        Some(Rect::new(0.0, 20.0, 24.0, 40.0))
+    );
+}
+
+#[test]
+fn missing_reference_art_keeps_settings_labels_and_buttons_usable() {
+    let mut app =
+        settings_menu_app_with_assets(temp_settings_path("no-art").to_string_lossy().into_owned());
+    let fullscreen = button_named(&mut app, "Fullscreen: OFF");
+    for _ in 0..200 {
+        std::thread::sleep(std::time::Duration::from_millis(1));
+        app.update();
+        if app.world().get::<ImageNode>(fullscreen).is_none() {
+            break;
+        }
+    }
+    assert!(app.world().get::<ImageNode>(fullscreen).is_none());
+    assert!(app.world().get::<BackgroundColor>(fullscreen).is_some());
+    let text = app.world().get::<Children>(fullscreen).unwrap()[0];
+    assert_eq!(
+        app.world().get::<TextFont>(text).unwrap().font,
+        TextFont::default().font
+    );
+    click_menu_button(&mut app, "Fullscreen: OFF");
+    assert!(app.world().resource::<GameSettings>().fullscreen);
+    button_named(&mut app, "Fullscreen: ON");
 }

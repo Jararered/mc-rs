@@ -1018,14 +1018,26 @@ impl<'a> Mesher<'a> {
             } else {
                 LAYER_OPAQUE
             };
-            if uniform_shading(&shading) {
+            // Gameplay keeps a corner gradient as its own quad so smooth light
+            // stays exact. A block filter is a wireframe, so light and occlusion
+            // drop out of the merge key and a long wall becomes one rectangle.
+            let recorded = if self.only.is_some() {
+                CornerShading {
+                    light: [FULL_BRIGHT; 4],
+                    ao: [0; 4],
+                    shade: shading.shade,
+                }
+            } else {
+                shading
+            };
+            if self.only.is_some() || uniform_shading(&shading) {
                 let (fixed, row, bit) = plane_coords(face_index, x, y, z, band_start);
                 insert_plane(
                     planes,
                     face_index,
-                    plane_key(layer, [tile_x, tile_y], side_tint, &shading),
+                    plane_key(layer, [tile_x, tile_y], side_tint, &recorded),
                     side_tint,
-                    shading,
+                    recorded,
                     fixed,
                     row,
                     bit,
@@ -1034,9 +1046,9 @@ impl<'a> Mesher<'a> {
                     insert_plane(
                         planes,
                         face_index,
-                        plane_key(LAYER_OVERLAY, GRASS_OVERLAY_TILE, grass_tint, &shading),
+                        plane_key(LAYER_OVERLAY, GRASS_OVERLAY_TILE, grass_tint, &recorded),
                         grass_tint,
-                        shading,
+                        recorded,
                         fixed,
                         row,
                         bit,

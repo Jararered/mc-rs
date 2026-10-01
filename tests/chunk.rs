@@ -936,6 +936,33 @@ fn greedy_mesh_splits_a_row_where_torch_light_changes() {
 }
 
 #[test]
+fn filtered_wireframe_merges_a_lit_wall_into_one_side() {
+    let mut chunk = Chunk::new();
+    for x in 1..7 {
+        for y in 2..6 {
+            chunk.set(x, y, 3, Id::Stone);
+        }
+    }
+    chunk.set(3, 2, 2, Id::Torch);
+    let light = Skylight::from_chunk(&chunk);
+    assert!(
+        quads_facing(&mesh_chunk(&chunk, &light), |normal| normal[2] < -0.5).len() > 1,
+        "the torch and the height gradient keep the gameplay wall split"
+    );
+
+    let filtered = mesh_chunk_filtered(&chunk, &light, false, Some(Id::Stone));
+    let north = quads_facing(&filtered.opaque, |normal| normal[2] < -0.5);
+    assert_eq!(north.len(), 1, "the filtered wall is one rectangle");
+    assert!(spans(north[0], 0, 1.0, 7.0));
+    assert!(spans(north[0], 1, 2.0, 6.0));
+    assert!(
+        north[0]
+            .iter()
+            .all(|vertex| (vertex.position[2] - 3.0).abs() < 1e-4)
+    );
+}
+
+#[test]
 fn greedy_mesh_merges_a_fancy_grass_side_overlay() {
     let mut chunk = Chunk::new();
     for x in 1..5 {

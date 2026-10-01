@@ -218,7 +218,7 @@ pub fn mesh_chunk_with_neighbors(
     neighbors: &ChunkNeighbors<'_>,
     skylight: &Skylight,
 ) -> BlockGeometry {
-    Mesher::new(chunk, neighbors, skylight, None, false, 0, 0)
+    Mesher::new(chunk, neighbors, skylight, None, false, 0, 0, None)
         .region(0..CHUNK_HEIGHT, 0)
         .opaque
 }
@@ -230,6 +230,18 @@ pub fn mesh_chunk_with_settings(
     skylight: &Skylight,
     fancy_graphics: bool,
 ) -> ChunkMeshes {
+    mesh_chunk_filtered(chunk, skylight, fancy_graphics, None)
+}
+
+/// Like [`mesh_chunk_with_settings`], but omit every block other than `only`
+/// when that filter is set. Neighbor culling is unchanged, so the remaining
+/// faces are that block's shell against air and other blocks.
+pub fn mesh_chunk_filtered(
+    chunk: &Chunk,
+    skylight: &Skylight,
+    fancy_graphics: bool,
+    only: Option<Id>,
+) -> ChunkMeshes {
     Mesher::new(
         chunk,
         &ChunkNeighbors::default(),
@@ -238,6 +250,7 @@ pub fn mesh_chunk_with_settings(
         fancy_graphics,
         0,
         0,
+        only,
     )
     .region(0..CHUNK_HEIGHT, 0)
 }
@@ -285,6 +298,7 @@ pub fn mesh_chunk_with_biomes(
         foliage_colors,
         fancy_graphics,
         position,
+        None,
     )
     .mesher
     .region(0..CHUNK_HEIGHT, 0)
@@ -307,6 +321,7 @@ impl<'a> SectionMesher<'a> {
         foliage_colors: &FoliageColors,
         fancy_graphics: bool,
         position: ChunkPosition,
+        only: Option<Id>,
     ) -> Self {
         Self {
             mesher: Mesher::new(
@@ -317,6 +332,7 @@ impl<'a> SectionMesher<'a> {
                 fancy_graphics,
                 position.x * CHUNK_SIZE as i32,
                 position.z * CHUNK_SIZE as i32,
+                only,
             ),
         }
     }
@@ -622,6 +638,8 @@ struct Mesher<'a> {
     fancy_graphics: bool,
     origin_x: i32,
     origin_z: i32,
+    /// Omit every other block. Face culling still reads the real neighbors.
+    only: Option<Id>,
 }
 
 impl<'a> Mesher<'a> {
@@ -633,6 +651,7 @@ impl<'a> Mesher<'a> {
         fancy_graphics: bool,
         origin_x: i32,
         origin_z: i32,
+        only: Option<Id>,
     ) -> Self {
         Self {
             chunk,
@@ -642,6 +661,7 @@ impl<'a> Mesher<'a> {
             fancy_graphics,
             origin_x,
             origin_z,
+            only,
         }
     }
 
@@ -766,7 +786,7 @@ impl<'a> Mesher<'a> {
             for z in 0..CHUNK_SIZE {
                 for x in 0..CHUNK_SIZE {
                     let block = chunk.get(x, y, z).unwrap();
-                    if block == Id::Air {
+                    if block == Id::Air || self.only.is_some_and(|only| block != only) {
                         continue;
                     }
                     let origin = [x as f32, (y - y_origin) as f32, z as f32];

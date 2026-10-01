@@ -56,6 +56,7 @@ pub(super) fn spawn_mesh_job(
     let grass_colors = streaming.grass_colors.clone();
     let foliage_colors = streaming.foliage_colors.clone();
     let fancy_graphics = streaming.fancy_graphics;
+    let only = streaming.wireframe_block;
     let previous = streaming
         .rendered
         .get(&position)
@@ -114,6 +115,7 @@ pub(super) fn spawn_mesh_job(
             &foliage_colors,
             fancy_graphics,
             position,
+            only,
         );
         let sections = (0..SECTIONS_PER_CHUNK)
             .filter(|&section| rebuild & (1 << section) != 0)

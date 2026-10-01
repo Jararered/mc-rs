@@ -46,6 +46,34 @@ fn parses_numeric_beta_ids_and_three_commands() {
             block: Id::Stone
         }
     );
+    assert_eq!(
+        parse_command("/wireframe on").unwrap(),
+        ChatCommand::Wireframe {
+            enabled: true,
+            block: None
+        }
+    );
+    assert_eq!(
+        parse_command("/wireframe off").unwrap(),
+        ChatCommand::Wireframe {
+            enabled: false,
+            block: None
+        }
+    );
+    assert_eq!(
+        parse_command("/wireframe set 9").unwrap(),
+        ChatCommand::Wireframe {
+            enabled: true,
+            block: Some(Id::Water)
+        }
+    );
+    assert_eq!(
+        parse_command("/wireframe set 2").unwrap(),
+        ChatCommand::Wireframe {
+            enabled: true,
+            block: Some(Id::Grass)
+        }
+    );
 }
 
 #[test]
@@ -64,6 +92,12 @@ fn bad_arguments_are_rejected_without_running_a_command() {
         "/setblock 1 10 3 255",
         "/setblock 1 10 3 92",
         "/unknown 1",
+        "/wireframe",
+        "/wireframe set",
+        "/wireframe set 0",
+        "/wireframe set 255",
+        "/wireframe on extra",
+        "/wireframe set 9 extra",
     ] {
         assert!(parse_command(line).is_err(), "accepted {line}");
     }

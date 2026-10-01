@@ -42,6 +42,7 @@ use crate::world::textures::CutoutMaterial;
 use crate::world::textures::FoliageColors;
 use crate::world::textures::GrassColors;
 use crate::world::textures::GrassOverlayMaterial;
+use crate::world::textures::MeshWireframe;
 use crate::world::textures::TerrainMaterial;
 use crate::world::textures::WaterMaterial;
 
@@ -62,6 +63,7 @@ pub(crate) fn setup_streaming(
     grass_colors: Res<GrassColors>,
     foliage_colors: Res<FoliageColors>,
     settings: Res<GameSettings>,
+    wireframe: Res<MeshWireframe>,
     mut persistence: Option<ResMut<WorldPersistence>>,
     mut chunks: ResMut<WorldChunks>,
     mut perf: ResMut<StreamingDiagnostics>,
@@ -140,6 +142,7 @@ pub(crate) fn setup_streaming(
         rendered: HashMap::new(),
         materials,
         fancy_graphics: settings.graphics.fancy_leaves(),
+        wireframe_block: wireframe.block,
         remesh_queue: VecDeque::new(),
         remesh_sections: HashMap::new(),
         desired_generation: Vec::new(),
@@ -157,6 +160,7 @@ pub(crate) fn stream_chunks(
     mut chunks: ResMut<WorldChunks>,
     mut meshes: ResMut<Assets<Mesh>>,
     settings: Res<GameSettings>,
+    wireframe: Res<MeshWireframe>,
     screen: Option<Res<State<AppScreen>>>,
     mut persistence: Option<ResMut<WorldPersistence>>,
     mut perf: ResMut<StreamingDiagnostics>,
@@ -182,11 +186,15 @@ pub(crate) fn stream_chunks(
     let generate_radius = load_radius + GENERATE_MARGIN;
     let unload_radius = generate_radius;
 
-    // Lighting settings and the time of day are block material uniforms; only
-    // the leaf style changes geometry.
+    // Lighting settings and the time of day are block material uniforms.
+    // Leaf style and a wireframe block filter change geometry.
     if streaming.fancy_graphics != settings.graphics.fancy_leaves() {
         streaming.fancy_graphics = settings.graphics.fancy_leaves();
         // In-flight meshes were built with the previous leaf style.
+        streaming.remesh_everything();
+    }
+    if streaming.wireframe_block != wireframe.block {
+        streaming.wireframe_block = wireframe.block;
         streaming.remesh_everything();
     }
 

@@ -24,6 +24,7 @@ use game::world::meshing::BlockVertex;
 use game::world::meshing::ChunkNeighbors;
 use game::world::meshing::WATER_ALPHA;
 use game::world::meshing::mesh_chunk;
+use game::world::meshing::mesh_chunk_filtered;
 use game::world::meshing::mesh_chunk_with_neighbors;
 use game::world::meshing::mesh_chunk_with_settings;
 use game::world::meshing::unpack_vertex;
@@ -993,6 +994,34 @@ fn greedy_mesh_merges_a_chunk_edge_and_culls_it_against_the_neighbor() {
     assert!(tops[0].iter().all(|vertex| {
         (15.0..=16.0).contains(&vertex.position[0]) && (vertex.position[1] - 3.0).abs() < 1e-4
     }));
+}
+
+#[test]
+fn wireframe_block_filter_keeps_only_that_blocks_shell() {
+    let mut chunk = Chunk::new();
+    chunk.set(1, 4, 1, Id::Stone);
+    chunk.set(3, 4, 1, Id::Grass);
+    chunk.set(5, 4, 1, Id::Water);
+    let light = Skylight::from_chunk(&chunk);
+
+    let all = mesh_chunk_filtered(&chunk, &light, true, None);
+    assert!(!all.opaque.is_empty());
+    assert!(!all.grass_overlay.is_empty());
+    assert!(!all.water.is_empty());
+
+    let grass = mesh_chunk_filtered(&chunk, &light, true, Some(Id::Grass));
+    assert!(!grass.opaque.is_empty());
+    assert!(!grass.grass_overlay.is_empty());
+    assert!(grass.water.is_empty());
+    assert!(grass.cutout.is_empty());
+    assert!(grass.masked.is_empty());
+
+    let water = mesh_chunk_filtered(&chunk, &light, true, Some(Id::Water));
+    assert!(water.opaque.is_empty());
+    assert!(water.grass_overlay.is_empty());
+    assert!(!water.water.is_empty());
+    assert!(water.cutout.is_empty());
+    assert!(water.masked.is_empty());
 }
 
 fn quads_facing<'a>(

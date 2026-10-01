@@ -2,10 +2,12 @@ use bevy::asset::AssetPlugin;
 use bevy::prelude::*;
 use bevy::state::app::StatesPlugin;
 use game::app::state::AppScreen;
+use game::block::id::Id;
 use game::ui::screens::chat::ChatState;
 use game::world::textures::BlockMaterial;
 use game::world::textures::MeshWireframe;
 use game::world::textures::MeshWireframePlugin;
+use game::world::textures::configure_mesh_wireframe;
 
 /// Keeps the test material's strong handle alive. Dropping it makes asset
 /// tracking remove the material before the toggle system can see it.
@@ -88,4 +90,62 @@ fn f4_does_not_toggle_wireframe_while_chat_has_focus() {
         .suppress_controls = false;
     press(&mut app, KeyCode::F4);
     assert!(wireframe(&app));
+}
+
+fn apply(
+    app: &mut App,
+    enabled: bool,
+    block: Option<Id>,
+    supported: bool,
+) -> Result<String, &'static str> {
+    app.world_mut()
+        .resource_scope(|world, mut materials: Mut<Assets<BlockMaterial>>| {
+            let mut mode = world.resource_mut::<MeshWireframe>();
+            configure_mesh_wireframe(&mut mode, &mut materials, enabled, block, supported)
+        })
+}
+
+#[test]
+fn wireframe_commands_update_the_material_and_block_filter() {
+    let mut app = test_app();
+    assert_eq!(apply(&mut app, true, None, true).unwrap(), "Wireframe on");
+    assert!(app.world().resource::<MeshWireframe>().enabled);
+    assert_eq!(app.world().resource::<MeshWireframe>().block, None);
+    assert!(wireframe(&app));
+
+    assert_eq!(
+        apply(&mut app, true, Some(Id::Water), true).unwrap(),
+        "Wireframe showing Water (9)"
+    );
+    assert_eq!(
+        app.world().resource::<MeshWireframe>().block,
+        Some(Id::Water)
+    );
+    assert!(wireframe(&app));
+
+    let filtered = *app.world().resource::<MeshWireframe>();
+    assert!(apply(&mut app, false, None, false).is_err());
+    assert_eq!(*app.world().resource::<MeshWireframe>(), filtered);
+    assert!(wireframe(&app));
+
+    assert_eq!(apply(&mut app, false, None, true).unwrap(), "Wireframe off");
+    assert!(!app.world().resource::<MeshWireframe>().enabled);
+    assert_eq!(app.world().resource::<MeshWireframe>().block, None);
+    assert!(!wireframe(&app));
+}
+
+#[test]
+fn f4_clears_a_block_filter_and_restores_filled_meshes() {
+    let mut app = test_app();
+    enter_playing(&mut app);
+    apply(&mut app, true, Some(Id::Grass), true).unwrap();
+    assert_eq!(
+        app.world().resource::<MeshWireframe>().block,
+        Some(Id::Grass)
+    );
+
+    press(&mut app, KeyCode::F4);
+    assert!(!app.world().resource::<MeshWireframe>().enabled);
+    assert_eq!(app.world().resource::<MeshWireframe>().block, None);
+    assert!(!wireframe(&app));
 }

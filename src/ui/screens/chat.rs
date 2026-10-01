@@ -34,6 +34,10 @@ use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
 use crate::world::persistence::WorldPersistence;
 use crate::world::streaming::WorldStreaming;
+use crate::world::textures::BlockMaterial;
+use crate::world::textures::LineRasterSupported;
+use crate::world::textures::MeshWireframe;
+use crate::world::textures::configure_mesh_wireframe;
 use crate::world::tick::WorldTick;
 
 const INPUT_LIMIT: usize = 100;
@@ -282,15 +286,29 @@ fn read_chat_input(
 /// The numeric command subset intentionally stays independent of UI and ECS.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ChatCommand {
-    Give { item: ItemId, amount: u32 },
+    Give {
+        item: ItemId,
+        amount: u32,
+    },
     Teleport(Vec3),
-    SetBlock { position: IVec3, block: Id },
+    SetBlock {
+        position: IVec3,
+        block: Id,
+    },
+    /// `block` is set only by `/wireframe set`. `on` and `off` clear it.
+    Wireframe {
+        enabled: bool,
+        block: Option<Id>,
+    },
 }
 
 pub fn parse_command(text: &str) -> Result<ChatCommand, String> {
     let mut parts = text.split_whitespace();
     let name = parts.next().unwrap_or("");
     let args: Vec<_> = parts.collect();
+    if name == "/wireframe" {
+        return parse_wireframe(&args);
+    }
     let usage = match name {
         "/give" => "/give <item id> <amount>",
         "/tp" => "/tp <x> <y> <z>",
@@ -351,16 +369,45 @@ pub fn parse_command(text: &str) -> Result<ChatCommand, String> {
                     CHUNK_HEIGHT - 1
                 ));
             }
-            let raw = args[3].parse::<u8>().map_err(|_| "Invalid block ID")?;
-            // Internal compact state IDs (200+) aren't user-facing Beta IDs.
-            let block = (raw <= 96)
-                .then(|| Id::from_u8(raw))
-                .flatten()
-                .filter(|id| id.in_world())
-                .ok_or_else(|| format!("Unsupported in-world block ID: {raw}"))?;
+            let block = parse_block_id(args[3])?;
             Ok(ChatCommand::SetBlock { position, block })
         }
     }
+}
+
+fn parse_wireframe(args: &[&str]) -> Result<ChatCommand, String> {
+    const USAGE: &str = "Usage: /wireframe on|off | /wireframe set <block id>";
+    match args {
+        ["on"] => Ok(ChatCommand::Wireframe {
+            enabled: true,
+            block: None,
+        }),
+        ["off"] => Ok(ChatCommand::Wireframe {
+            enabled: false,
+            block: None,
+        }),
+        ["set", raw] => {
+            let block = parse_block_id(raw)?;
+            if block == Id::Air {
+                return Err("Cannot show a wireframe of air".into());
+            }
+            Ok(ChatCommand::Wireframe {
+                enabled: true,
+                block: Some(block),
+            })
+        }
+        _ => Err(USAGE.into()),
+    }
+}
+
+/// Beta block IDs a player can type. Compact state IDs at 200 and above stay internal.
+fn parse_block_id(raw_text: &str) -> Result<Id, String> {
+    let raw = raw_text.parse::<u8>().map_err(|_| "Invalid block ID")?;
+    (raw <= 96)
+        .then(|| Id::from_u8(raw))
+        .flatten()
+        .filter(|id| id.in_world())
+        .ok_or_else(|| format!("Unsupported in-world block ID: {raw}"))
 }
 
 /// Insert valid stacks into the player inventory; return stacks that must be
@@ -423,6 +470,9 @@ fn submit_chat(
     mut persistence: Option<ResMut<WorldPersistence>>,
     mut ticks: Option<ResMut<BlockTicks>>,
     mut rng: Local<ItemRng>,
+    wireframe: Option<ResMut<MeshWireframe>>,
+    block_materials: Option<ResMut<Assets<BlockMaterial>>>,
+    line_raster: Option<Res<LineRasterSupported>>,
 ) {
     let Some(message) = chat.submitted.take() else {
         return;
@@ -438,6 +488,19 @@ fn submit_chat(
             return;
         }
     };
+    if let ChatCommand::Wireframe { enabled, block } = command {
+        let (Some(mut mode), Some(mut materials), Some(raster)) =
+            (wireframe, block_materials, line_raster)
+        else {
+            chat.push("Wireframe is unavailable");
+            return;
+        };
+        match configure_mesh_wireframe(&mut mode, &mut materials, enabled, block, raster.0) {
+            Ok(feedback) => chat.push(feedback),
+            Err(error) => chat.push(error),
+        }
+        return;
+    }
     let Ok((
         mut transform,
         mut velocity,
@@ -452,6 +515,7 @@ fn submit_chat(
         return;
     };
     let feedback = match command {
+        ChatCommand::Wireframe { .. } => unreachable!("handled before the player lookup"),
         ChatCommand::Give { item, amount } => {
             let overflow = give_to_inventory(item, amount, &mut hotbar, &mut inventory);
             let dropped: u32 = overflow.iter().map(|stack| u32::from(stack.count())).sum();

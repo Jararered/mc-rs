@@ -44,8 +44,10 @@ pub use water::StillWaterTexture;
 pub use water::WATER_FLOW_TILE;
 pub use water::WATER_STILL_TILE;
 pub use water::write_atlas_tile;
+pub(crate) use wireframe::LineRasterSupported;
 pub use wireframe::MeshWireframe;
 pub use wireframe::MeshWireframePlugin;
+pub use wireframe::configure_mesh_wireframe;
 
 pub struct TerrainTexturePlugin;
 

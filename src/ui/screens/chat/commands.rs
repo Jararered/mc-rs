@@ -29,26 +29,16 @@ use crate::world::tick::DAY_LENGTH;
 use crate::world::tick::WorldTick;
 
 use super::ChatState;
+use super::registry::CommandParseError;
+use super::registry::CommandRegistry;
 
 // Avoid unbounded entity spawning for erroneous amounts (especially unstackable items).
 const MAX_GIVE: u32 = 4096;
 
-const COMMAND_HELP: &[(&str, &str)] = &[
-    ("help", "/help [command]"),
-    ("time", "/time set <tick|day|night|noon|midnight>"),
-    ("time", "/time <day|night|noon|midnight|tick>"),
-    ("time", "/time add <ticks>"),
-    ("time", "/time query [daytime|gametime|day]"),
-    ("give", "/give <item id> <amount>"),
-    ("tp", "/tp <x> <y> <z>"),
-    ("setblock", "/setblock <x> <y> <z> <block id>"),
-    ("wireframe", "/wireframe on|off | /wireframe set <block id>"),
-];
-
 /// Parsed commands stay independent of UI and ECS.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ChatCommand {
-    Help(Option<&'static str>),
+    Help(Option<String>),
     TimeSet(u64),
     TimeAdd(u64),
     TimeQuery(TimeQuery),
@@ -75,94 +65,134 @@ pub enum TimeQuery {
     Day,
 }
 
-pub fn parse_command(text: &str) -> Result<ChatCommand, String> {
-    let mut parts = text.split_whitespace();
-    let name = parts.next().unwrap_or("");
-    let args: Vec<_> = parts.collect();
-    if name == "/help" {
-        return match args.as_slice() {
-            [] => Ok(ChatCommand::Help(None)),
-            [command] => COMMAND_HELP
-                .iter()
-                .find(|(name, _)| *name == command.trim_start_matches('/'))
-                .map(|(name, _)| ChatCommand::Help(Some(name)))
-                .ok_or_else(|| format!("Unknown command: {command}. Try /help")),
-            _ => Err("Usage: /help [command]".into()),
-        };
-    }
-    if name == "/time" {
-        return parse_time(&args);
-    }
-    if name == "/wireframe" {
-        return parse_wireframe(&args);
-    }
-    let usage = match name {
-        "/give" => "/give <item id> <amount>",
-        "/tp" => "/tp <x> <y> <z>",
-        "/setblock" => "/setblock <x> <y> <z> <block id>",
-        _ => return Err(format!("Unknown command: {name}. Try /help")),
-    };
-    if args.len()
-        != match name {
-            "/give" => 2,
-            "/tp" => 3,
-            _ => 4,
-        }
-    {
-        return Err(format!("Usage: {usage}"));
-    }
-    match name {
-        "/give" => {
-            let raw = args[0].parse::<u16>().map_err(|_| "Invalid item ID")?;
-            let item = ItemId::from_u16(raw)
-                .filter(|id| id.properties().is_some())
-                .ok_or_else(|| format!("Unknown item ID: {raw}"))?;
-            let amount = args[1].parse::<u32>().map_err(|_| "Invalid amount")?;
-            if !(1..=MAX_GIVE).contains(&amount) {
-                return Err(format!("Amount must be between 1 and {MAX_GIVE}"));
-            }
-            Ok(ChatCommand::Give { item, amount })
-        }
-        "/tp" => {
-            let coords = args
-                .iter()
-                .map(|s| s.parse::<f32>())
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(|_| "Coordinates must be numbers")?;
-            if coords
-                .iter()
-                .any(|value| !value.is_finite() || value.abs() > 30_000_000.0)
-            {
-                return Err("Coordinates must be finite and within 30 million blocks".into());
-            }
-            Ok(ChatCommand::Teleport(Vec3::new(
-                coords[0], coords[1], coords[2],
-            )))
-        }
-        _ => {
-            let values = args[..3]
-                .iter()
-                .map(|s| s.parse::<i32>())
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(|_| "Block coordinates must be integers")?;
-            let position = IVec3::new(values[0], values[1], values[2]);
-            if position.x.unsigned_abs() > 30_000_000
-                || position.z.unsigned_abs() > 30_000_000
-                || position.y < 0
-                || position.y >= CHUNK_HEIGHT as i32
-            {
-                return Err(format!(
-                    "Block coordinates are outside the world (height 0..{})",
-                    CHUNK_HEIGHT - 1
-                ));
-            }
-            let block = parse_block_id(args[3])?;
-            Ok(ChatCommand::SetBlock { position, block })
-        }
+pub(super) fn register_builtin_commands(registry: &mut CommandRegistry) {
+    registry
+        .register(
+            "help",
+            "List commands or explain a command.",
+            ["/help [command]"],
+            parse_help,
+        )
+        .expect("valid help command");
+    registry
+        .register(
+            "time",
+            "Set, advance, or query world time.",
+            [
+                "/time set <tick|day|night|noon|midnight>",
+                "/time <day|night|noon|midnight|tick>",
+                "/time add <ticks>",
+                "/time query [daytime|gametime|day]",
+            ],
+            parse_time,
+        )
+        .expect("valid time command");
+    registry
+        .register(
+            "give",
+            "Give items, dropping inventory overflow nearby.",
+            ["/give <item id> <amount>"],
+            parse_give,
+        )
+        .expect("valid give command");
+    registry
+        .register(
+            "tp",
+            "Teleport to world coordinates.",
+            ["/tp <x> <y> <z>"],
+            parse_teleport,
+        )
+        .expect("valid tp command");
+    registry
+        .register(
+            "setblock",
+            "Replace a block in a loaded chunk.",
+            ["/setblock <x> <y> <z> <block id>"],
+            parse_setblock,
+        )
+        .expect("valid setblock command");
+    registry
+        .register(
+            "wireframe",
+            "Toggle wireframes or select a block type to outline.",
+            ["/wireframe on|off", "/wireframe set <block id>"],
+            parse_wireframe,
+        )
+        .expect("valid wireframe command");
+}
+
+fn parse_help(registry: &CommandRegistry, args: &[&str]) -> Result<ChatCommand, CommandParseError> {
+    match args {
+        [] => Ok(ChatCommand::Help(None)),
+        [command] => registry
+            .get(command.trim_start_matches('/'))
+            .map(|entry| ChatCommand::Help(Some(entry.name().to_owned())))
+            .ok_or_else(|| format!("Unknown command: {command}. Try /help").into()),
+        _ => Err(CommandParseError::Usage),
     }
 }
 
-fn parse_time(args: &[&str]) -> Result<ChatCommand, String> {
+fn parse_give(_: &CommandRegistry, args: &[&str]) -> Result<ChatCommand, CommandParseError> {
+    let [raw, amount] = args else {
+        return Err(CommandParseError::Usage);
+    };
+    let raw = raw.parse::<u16>().map_err(|_| "Invalid item ID")?;
+    let item = ItemId::from_u16(raw)
+        .filter(|id| id.properties().is_some())
+        .ok_or_else(|| format!("Unknown item ID: {raw}"))?;
+    let amount = amount.parse::<u32>().map_err(|_| "Invalid amount")?;
+    if !(1..=MAX_GIVE).contains(&amount) {
+        return Err(format!("Amount must be between 1 and {MAX_GIVE}").into());
+    }
+    Ok(ChatCommand::Give { item, amount })
+}
+
+fn parse_teleport(_: &CommandRegistry, args: &[&str]) -> Result<ChatCommand, CommandParseError> {
+    if args.len() != 3 {
+        return Err(CommandParseError::Usage);
+    }
+    let coords = args
+        .iter()
+        .map(|s| s.parse::<f32>())
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| "Coordinates must be numbers")?;
+    if coords
+        .iter()
+        .any(|value| !value.is_finite() || value.abs() > 30_000_000.0)
+    {
+        return Err("Coordinates must be finite and within 30 million blocks".into());
+    }
+    Ok(ChatCommand::Teleport(Vec3::new(
+        coords[0], coords[1], coords[2],
+    )))
+}
+
+fn parse_setblock(_: &CommandRegistry, args: &[&str]) -> Result<ChatCommand, CommandParseError> {
+    if args.len() != 4 {
+        return Err(CommandParseError::Usage);
+    }
+    let values = args[..3]
+        .iter()
+        .map(|s| s.parse::<i32>())
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| "Block coordinates must be integers")?;
+    let position = IVec3::new(values[0], values[1], values[2]);
+    if position.x.unsigned_abs() > 30_000_000
+        || position.z.unsigned_abs() > 30_000_000
+        || position.y < 0
+        || position.y >= CHUNK_HEIGHT as i32
+    {
+        return Err(format!(
+            "Block coordinates are outside the world (height 0..{})",
+            CHUNK_HEIGHT - 1
+        )
+        .into());
+    }
+    let block = parse_block_id(args[3])?;
+    Ok(ChatCommand::SetBlock { position, block })
+}
+
+fn parse_time(_: &CommandRegistry, args: &[&str]) -> Result<ChatCommand, CommandParseError> {
     match args {
         ["query"] | ["query", "daytime"] => Ok(ChatCommand::TimeQuery(TimeQuery::Daytime)),
         ["query", "gametime"] => Ok(ChatCommand::TimeQuery(TimeQuery::Gametime)),
@@ -177,18 +207,17 @@ fn parse_time(args: &[&str]) -> Result<ChatCommand, String> {
                 "noon" => 6_000,
                 "night" => 13_000,
                 "midnight" => 18_000,
-                _ => time.parse::<u64>().map_err(|_| {
-                    "Time must be day, night, noon, midnight, or a nonnegative integer"
-                })?,
+                _ => time.parse::<u64>().map_err(
+                    |_| "Time must be day, night, noon, midnight, or a nonnegative integer",
+                )?,
             };
             Ok(ChatCommand::TimeSet(ticks))
         }
-        _ => Err("Usage: /time set <tick|day|night> | /time add <ticks> | /time query [daytime|gametime|day]".into()),
+        _ => Err(CommandParseError::Usage),
     }
 }
 
-fn parse_wireframe(args: &[&str]) -> Result<ChatCommand, String> {
-    const USAGE: &str = "Usage: /wireframe on|off | /wireframe set <block id>";
+fn parse_wireframe(_: &CommandRegistry, args: &[&str]) -> Result<ChatCommand, CommandParseError> {
     match args {
         ["on"] => Ok(ChatCommand::Wireframe {
             enabled: true,
@@ -208,7 +237,7 @@ fn parse_wireframe(args: &[&str]) -> Result<ChatCommand, String> {
                 block: Some(block),
             })
         }
-        _ => Err(USAGE.into()),
+        _ => Err(CommandParseError::Usage),
     }
 }
 
@@ -265,6 +294,7 @@ pub fn set_loaded_block(
 pub(super) fn submit_chat(
     mut commands: Commands,
     mut chat: ResMut<ChatState>,
+    registry: Res<CommandRegistry>,
     mut clock: ResMut<WorldTick>,
     mut player: Query<
         (
@@ -294,7 +324,7 @@ pub(super) fn submit_chat(
         chat.push(format!("<Player> {message}"));
         return;
     }
-    let command = match parse_command(&message) {
+    let command = match registry.parse(&message) {
         Ok(command) => command,
         Err(error) => {
             chat.push(error);
@@ -303,10 +333,8 @@ pub(super) fn submit_chat(
     };
     match command {
         ChatCommand::Help(filter) => {
-            for &(name, usage) in COMMAND_HELP {
-                if filter.is_none_or(|filter| filter == name) {
-                    chat.push(usage);
-                }
+            for line in registry.help(filter.as_deref()) {
+                chat.push(line);
             }
             return;
         }

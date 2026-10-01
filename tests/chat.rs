@@ -6,8 +6,8 @@ use game::item::ItemId;
 use game::item::ItemStack;
 use game::ui::screens::chat::commands::ChatCommand;
 use game::ui::screens::chat::commands::give_to_inventory;
-use game::ui::screens::chat::commands::parse_command;
 use game::ui::screens::chat::commands::set_loaded_block;
+use game::ui::screens::chat::registry::CommandRegistry;
 use game::world::block_ticks::BlockTicks;
 use game::world::chunk::CHUNK_SIZE;
 use game::world::chunk::Chunk;
@@ -400,7 +400,7 @@ fn parses_help_and_time_commands() {
     assert_eq!(parse_command("/help"), Ok(ChatCommand::Help(None)));
     assert_eq!(
         parse_command("/help /time"),
-        Ok(ChatCommand::Help(Some("time")))
+        Ok(ChatCommand::Help(Some("time".into())))
     );
     for (name, time) in [
         ("day", 1000),
@@ -544,8 +544,17 @@ fn help_and_time_work_without_player_and_preserve_scheduled_delays() {
         .set(AppScreen::Playing);
     app.update();
 
+    app.world_mut()
+        .resource_mut::<CommandRegistry>()
+        .register(
+            "clock",
+            "Read the current daytime.",
+            ["/clock"],
+            parse_clock,
+        )
+        .unwrap();
     submit_command(&mut app, window, "/help");
-    for command in ["/time", "/give", "/tp", "/setblock", "/wireframe"] {
+    for command in ["/time", "/give", "/tp", "/setblock", "/wireframe", "/clock"] {
         assert!(
             app.world_mut()
                 .query::<&Text>()
@@ -554,6 +563,20 @@ fn help_and_time_work_without_player_and_preserve_scheduled_delays() {
             "help missing {command}"
         );
     }
+    submit_command(&mut app, window, "/help /clock");
+    assert!(
+        app.world_mut()
+            .query::<&Text>()
+            .iter(app.world())
+            .any(|text| text.0 == "Read the current daytime.")
+    );
+    submit_command(&mut app, window, "/clock");
+    assert!(
+        app.world_mut()
+            .query::<&Text>()
+            .iter(app.world())
+            .any(|text| text.0 == "Daytime: 0")
+    );
     let pos = IVec3::new(1, 70, 2);
     app.world_mut()
         .resource_mut::<BlockTicks>()
@@ -596,4 +619,93 @@ fn help_and_time_work_without_player_and_preserve_scheduled_delays() {
             .iter(app.world())
             .any(|text| text.0 == "Time would exceed the u64 range")
     );
+}
+
+fn parse_command(text: &str) -> Result<ChatCommand, String> {
+    CommandRegistry::default().parse(text)
+}
+
+fn parse_clock(
+    _: &CommandRegistry,
+    args: &[&str],
+) -> Result<ChatCommand, game::ui::screens::chat::registry::CommandParseError> {
+    use game::ui::screens::chat::commands::TimeQuery;
+    use game::ui::screens::chat::registry::CommandParseError;
+    if !args.is_empty() {
+        return Err(CommandParseError::Usage);
+    }
+    Ok(ChatCommand::TimeQuery(TimeQuery::Daytime))
+}
+
+#[test]
+fn registry_owns_registration_and_uses_it_for_dispatch_usage_and_help() {
+    let mut registry = CommandRegistry::default();
+    let name = String::from("clock");
+    registry
+        .register(
+            name.clone(),
+            String::from("Read the current daytime."),
+            vec![format!("/{name}")],
+            parse_clock,
+        )
+        .unwrap();
+    drop(name);
+    assert_eq!(
+        registry.parse("/help /clock"),
+        Ok(ChatCommand::Help(Some("clock".into())))
+    );
+    assert_eq!(
+        registry.parse("/clock"),
+        parse_command("/time query daytime")
+    );
+    assert_eq!(registry.parse("/clock extra"), Err("Usage: /clock".into()));
+    assert_eq!(
+        registry.help(Some("clock")),
+        ["Read the current daytime.", "/clock"]
+    );
+    assert_eq!(registry.help(None).last().unwrap(), "/clock");
+    assert!(registry.parse("clock").is_err());
+    assert!(registry.parse("//clock").is_err());
+    for (name, description, usages) in [
+        ("clock", "Duplicate.", vec!["/clock"]),
+        ("", "Empty name.", vec!["/"]),
+        ("/clock", "Slash in name.", vec!["//clock"]),
+        ("two words", "Whitespace in name.", vec!["/two words"]),
+        ("missing", "   ", vec!["/missing"]),
+        ("missing", "No usage.", vec![]),
+        ("missing", "Empty usage.", vec![""]),
+        ("missing", "Wrong usage.", vec!["/other"]),
+    ] {
+        let before = registry.help(None);
+        assert!(
+            registry
+                .register(name, description, usages, parse_clock)
+                .is_err()
+        );
+        assert_eq!(registry.help(None), before);
+    }
+    assert_eq!(
+        registry.get("clock").unwrap().description(),
+        "Read the current daytime."
+    );
+    assert_eq!(registry.get("clock").unwrap().usages(), &["/clock"]);
+}
+
+#[test]
+fn builtin_usage_errors_come_from_the_registered_help_forms() {
+    let registry = CommandRegistry::default();
+    for name in ["help", "time", "give", "tp", "setblock", "wireframe"] {
+        let invalid = if name == "help" {
+            "/help time extra".to_owned()
+        } else {
+            format!("/{name}")
+        };
+        assert_eq!(
+            registry.parse(&invalid),
+            Err(format!(
+                "Usage: {}",
+                registry.get(name).unwrap().usages().join(" | ")
+            ))
+        );
+    }
 }

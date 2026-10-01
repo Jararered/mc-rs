@@ -6,6 +6,7 @@ use bevy::pbr::ScreenSpaceReflections;
 use bevy::prelude::*;
 
 use crate::app::settings::GameSettings;
+use crate::app::state::AppScreen;
 use crate::physics::PhysicsSet;
 
 use super::block_ticks::BlockTickSet;
@@ -35,6 +36,10 @@ impl Plugin for WorldPlugin {
             .init_resource::<StreamingDiagnostics>()
             .add_systems(Startup, (setup_streaming, spawn_sun))
             .add_systems(First, advance_world_tick)
+            .add_systems(
+                PostUpdate,
+                apply_world_camera_activity.before(bevy::camera::CameraUpdateSystems),
+            )
             .add_systems(
                 Update,
                 (
@@ -134,6 +139,20 @@ fn apply_graphics_pipeline(
             method.set_to_deferred();
         } else {
             method.set_to_forward();
+        }
+    }
+}
+
+/// The menu has an opaque background, so rendering the world behind it is
+/// wasted GPU work. PostUpdate includes cameras created during Update.
+fn apply_world_camera_activity(
+    screen: Option<Res<State<AppScreen>>>,
+    mut cameras: Query<&mut Camera, With<Camera3d>>,
+) {
+    let playing = screen.is_none_or(|screen| *screen.get() == AppScreen::Playing);
+    for mut camera in &mut cameras {
+        if camera.is_active != playing {
+            camera.is_active = playing;
         }
     }
 }

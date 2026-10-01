@@ -291,3 +291,70 @@ fn generation_radius_is_two_rings_beyond_the_render_distance() {
         assert!(generated.contains(position));
     }
 }
+
+#[test]
+fn settled_streaming_skips_discovery_and_wakes_for_chunk_changes_and_movement() {
+    use game::world::streaming::StreamingDiagnostics;
+    let mut app = test_app();
+    let player = app
+        .world_mut()
+        .spawn((Player, Transform::from_xyz(8.0, 80.0, 8.0)))
+        .id();
+    app.update();
+    assert!(run_until(&mut app, Duration::from_secs(20), |app| {
+        let streaming = app.world().resource::<WorldStreaming>();
+        streaming.generating_job_count() == 0
+            && streaming.populating_job_count() == 0
+            && streaming.meshing_job_count() == 0
+            && streaming.rendered_mesh_count() == ((LOAD_RADIUS * 2 + 1).pow(2) as usize)
+    }));
+    let passes = app
+        .world()
+        .resource::<StreamingDiagnostics>()
+        .discovery_passes;
+    for _ in 0..40 {
+        app.update();
+    }
+    assert_eq!(
+        app.world()
+            .resource::<StreamingDiagnostics>()
+            .discovery_passes,
+        passes
+    );
+
+    let ring = ChunkPosition {
+        x: LOAD_RADIUS + GENERATE_MARGIN,
+        z: 0,
+    };
+    app.world_mut()
+        .resource_mut::<WorldChunks>()
+        .remove(ring)
+        .unwrap();
+    app.update();
+    assert!(
+        app.world()
+            .resource::<StreamingDiagnostics>()
+            .discovery_passes
+            > passes
+    );
+    assert!(run_until(&mut app, Duration::from_secs(10), |app| {
+        app.world().resource::<WorldChunks>().contains(ring)
+    }));
+
+    let passes = app
+        .world()
+        .resource::<StreamingDiagnostics>()
+        .discovery_passes;
+    app.world_mut()
+        .get_mut::<Transform>(player)
+        .unwrap()
+        .translation
+        .x += 16.0;
+    app.update();
+    assert!(
+        app.world()
+            .resource::<StreamingDiagnostics>()
+            .discovery_passes
+            > passes
+    );
+}

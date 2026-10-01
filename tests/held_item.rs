@@ -286,3 +286,85 @@ fn click_swing_moves_the_arm_and_held_item() {
     let held_after = visual(&mut app, "Held stack").2;
     assert_ne!(held_before, held_after);
 }
+
+#[test]
+fn idle_hud_and_inventory_stop_invalidating_ui_components() {
+    use game::ui::icons::blocks::BlockIcons;
+
+    #[derive(Resource, Default)]
+    struct UiChanges(usize);
+    fn observe(
+        query: Query<
+            (),
+            (
+                With<Node>,
+                Or<(
+                    Changed<Node>,
+                    Changed<Text>,
+                    Changed<TextFont>,
+                    Changed<ImageNode>,
+                    Changed<Visibility>,
+                )>,
+            ),
+        >,
+        mut changes: ResMut<UiChanges>,
+    ) {
+        changes.0 = query.iter().count();
+    }
+    let mut app = app();
+    select(&mut app, 1, 0);
+    // Headless tests have no image loader. Supply synthetic source atlases so
+    // this covers ready icons without depending on reference game content.
+    let source = Image::new_fill(
+        bevy::render::render_resource::Extent3d {
+            width: 256,
+            height: 256,
+            depth_or_array_layers: 1,
+        },
+        bevy::render::render_resource::TextureDimension::D2,
+        &[255, 255, 255, 255],
+        bevy::render::render_resource::TextureFormat::Rgba8UnormSrgb,
+        bevy::asset::RenderAssetUsages::default(),
+    );
+    for path in ["terrain.png", "gui/items.png"] {
+        let handle = app
+            .world()
+            .resource::<AssetServer>()
+            .get_handle::<Image>(path)
+            .unwrap();
+        app.world_mut()
+            .resource_mut::<Assets<Image>>()
+            .insert(handle.id(), source.clone())
+            .unwrap();
+    }
+    app.update();
+    assert!(app.world().resource::<BlockIcons>().ready());
+    app.init_resource::<UiChanges>().add_systems(Last, observe);
+    app.update();
+    app.update();
+    assert_eq!(app.world().resource::<UiChanges>().0, 0);
+
+    app.world_mut()
+        .write_message(bevy::input::keyboard::KeyboardInput {
+            key_code: KeyCode::KeyE,
+            logical_key: bevy::input::keyboard::Key::Character("e".into()),
+            state: bevy::input::ButtonState::Pressed,
+            text: None,
+            repeat: false,
+            window: Entity::PLACEHOLDER,
+        });
+    app.update();
+    app.update();
+    app.update();
+    assert_eq!(app.world().resource::<UiChanges>().0, 0);
+
+    let mut hotbars = app
+        .world_mut()
+        .query_filtered::<&mut Hotbar, With<Player>>();
+    hotbars.single_mut(app.world_mut()).unwrap().slots[0] =
+        Some(ItemStack::from_block(game::block::id::Id::Dirt, 64).unwrap());
+    app.update();
+    assert!(app.world().resource::<UiChanges>().0 > 0);
+    app.update();
+    assert_eq!(app.world().resource::<UiChanges>().0, 0);
+}

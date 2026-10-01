@@ -504,14 +504,22 @@ fn update_clouds(
         } else {
             Visibility::Inherited
         });
-        transform.translation =
-            fast_cloud_anchor(player.translation.x, player.translation.z, cloud_y);
-        tag.set_if_neq(tint.clone());
-        set_uv_offset(
-            &mut materials,
-            &material.0,
-            fast_cloud_uv_offset(player.translation.x, player.translation.z, scroll),
-        );
+        transform
+            .reborrow()
+            .map_unchanged(|transform| &mut transform.translation)
+            .set_if_neq(fast_cloud_anchor(
+                player.translation.x,
+                player.translation.z,
+                cloud_y,
+            ));
+        if !fancy_mode {
+            tag.set_if_neq(tint.clone());
+            set_uv_offset(
+                &mut materials,
+                &material.0,
+                fast_cloud_uv_offset(player.translation.x, player.translation.z, scroll),
+            );
+        }
     }
 
     if let Ok((mut transform, mut visibility, mut tag, _, material)) = fancy.single_mut() {
@@ -520,8 +528,13 @@ fn update_clouds(
         } else {
             Visibility::Hidden
         });
-        transform.translation = fancy_place;
-        tag.set_if_neq(tint);
-        set_uv_offset(&mut materials, &material.0, fancy_uv);
+        transform
+            .reborrow()
+            .map_unchanged(|transform| &mut transform.translation)
+            .set_if_neq(fancy_place);
+        if fancy_mode {
+            tag.set_if_neq(tint);
+            set_uv_offset(&mut materials, &material.0, fancy_uv);
+        }
     }
 }

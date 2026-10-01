@@ -149,6 +149,7 @@ pub(crate) fn setup_streaming(
         desired_meshing: Vec::new(),
         desired_center: None,
         desired_radius: 0,
+        discovery_dirty: true,
         max_in_flight,
     });
 }
@@ -177,6 +178,7 @@ pub(crate) fn stream_chunks(
     mut last_unload_sweep: Local<Option<(ChunkPosition, i32)>>,
     mut ticks: Option<ResMut<BlockTicks>>,
     mut light: Option<ResMut<LightCache>>,
+    mut discovered_revision: Local<Option<u64>>,
 ) {
     let Ok(player) = player.single() else {
         return;
@@ -295,10 +297,15 @@ pub(crate) fn stream_chunks(
         .filter_map(|(source, task)| check_ready(task).map(|job| (*source, job)))
         .collect();
     for (source, job) in populated {
+        streaming.discovery_dirty = true;
         streaming.populating.remove(&source);
         perf.populate.record(job.elapsed);
         for (position, generated) in population_footprint(source).into_iter().zip(job.chunks) {
             streaming.held.remove(&position);
+            if !within_radius(position, center, generate_radius) {
+                // A job may return outside the radii after the last sweep.
+                *last_unload_sweep = None;
+            }
             if let Some(persistence) = persistence.as_deref_mut() {
                 persistence.mark_dirty(position);
             }
@@ -314,6 +321,7 @@ pub(crate) fn stream_chunks(
         .filter_map(|(position, task)| check_ready(task).map(|job| (*position, job)))
         .collect();
     for (position, mut job) in generated {
+        streaming.discovery_dirty = true;
         streaming.generating.remove(&position);
         if job.loaded {
             perf.load.record(job.elapsed);
@@ -348,6 +356,7 @@ pub(crate) fn stream_chunks(
         .filter_map(|(position, job)| check_ready(&mut job.task).map(|job| (*position, job)))
         .collect();
     for (position, job) in meshed {
+        streaming.discovery_dirty = true;
         streaming.meshing.remove(&position);
         perf.mesh.record(job.elapsed);
         if !within_radius(position, center, load_radius) {
@@ -402,7 +411,16 @@ pub(crate) fn stream_chunks(
         return;
     }
 
-    if streaming.desired_center != Some(center) || streaming.desired_radius != load_radius {
+    let desired_changed =
+        streaming.desired_center != Some(center) || streaming.desired_radius != load_radius;
+    if !desired_changed
+        && !streaming.discovery_dirty
+        && *discovered_revision == Some(chunks.membership_revision())
+    {
+        return;
+    }
+    perf.discovery_passes += 1;
+    if desired_changed {
         streaming.desired_generation = positions_in_radius(center, generate_radius);
         sort_by_distance(&mut streaming.desired_generation, center);
         streaming.desired_meshing = positions_in_radius(center, load_radius);
@@ -524,6 +542,8 @@ pub(crate) fn stream_chunks(
     for position in to_mesh {
         spawn_mesh_job(&mut streaming, &chunks, position, 0);
     }
+    *discovered_revision = Some(chunks.membership_revision());
+    streaming.discovery_dirty = false;
 }
 
 pub(super) fn sort_by_distance(positions: &mut [ChunkPosition], center: ChunkPosition) {

@@ -46,7 +46,7 @@ use crate::ui::icons::overlay::count_shadow;
 use crate::ui::icons::overlay::count_text_font;
 use crate::ui::icons::overlay::durability_track;
 use crate::ui::icons::overlay::icon_size;
-use crate::ui::icons::overlay::place_stack_label;
+use crate::ui::icons::overlay::sync_stack_label;
 use crate::world::chunk::ChestGroup;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
@@ -1746,6 +1746,7 @@ fn refresh(
     drag: Res<SlotDrag>,
     mut labels: Query<
         (
+            Entity,
             &SlotLabel,
             &mut Text,
             &mut Node,
@@ -1821,8 +1822,10 @@ fn refresh(
     windows: Query<&Window, With<PrimaryWindow>>,
     block_icons: Res<BlockIcons>,
     font: Res<UiFont>,
+    mut label_cache: Local<std::collections::HashMap<Entity, (Option<ItemStack>, bool)>>,
 ) {
     if !screen.open {
+        label_cache.clear();
         return;
     }
     let Ok((hotbar, inventory)) = player.single() else {
@@ -1852,8 +1855,16 @@ fn refresh(
             )
         }
     });
-    for (label, mut text, mut node, mut layout, mut text_font, mut line_height, mut shadow) in
-        &mut labels
+    for (
+        entity,
+        label,
+        mut text,
+        mut node,
+        mut layout,
+        mut text_font,
+        mut line_height,
+        mut shadow,
+    ) in &mut labels
     {
         let stack = displayed_stack(
             label.0,
@@ -1869,12 +1880,17 @@ fn refresh(
         let has_icon = stack
             .and_then(|stack| block_icons.rect_for_stack(stack))
             .is_some();
+        let displayed = (stack, has_icon);
+        if label_cache.get(&entity) == Some(&displayed) {
+            continue;
+        }
+        label_cache.insert(entity, displayed);
         let label_text = if has_icon {
             count_label(stack)
         } else {
             stack_text(stack)
         };
-        place_stack_label(
+        sync_stack_label(
             &mut text,
             &mut node,
             &mut layout,
@@ -1901,17 +1917,21 @@ fn refresh(
             &preview,
         );
         if let Some((width, red, green)) = stack.and_then(durability_bar) {
-            *visibility = Visibility::Inherited;
+            visibility.set_if_neq(Visibility::Inherited);
             let (_, _, track_width, _) = durability_track(0.0, 0.0, bar.1);
             if bar.1 {
-                node.width = px(width);
-                *color = BackgroundColor(Color::srgb_u8(red, green, 0));
+                node.reborrow()
+                    .map_unchanged(|node| &mut node.width)
+                    .set_if_neq(px(width));
+                color.set_if_neq(BackgroundColor(Color::srgb_u8(red, green, 0)));
             } else {
-                node.width = px(track_width);
-                *color = BackgroundColor(Color::BLACK);
+                node.reborrow()
+                    .map_unchanged(|node| &mut node.width)
+                    .set_if_neq(px(track_width));
+                color.set_if_neq(BackgroundColor(Color::BLACK));
             }
         } else {
-            *visibility = Visibility::Hidden;
+            visibility.set_if_neq(Visibility::Hidden);
         }
     }
     for (icon, mut image, mut visibility) in &mut icons {
@@ -1927,10 +1947,13 @@ fn refresh(
             &preview,
         );
         if let Some(rect) = stack.and_then(|stack| block_icons.rect_for_stack(stack)) {
-            image.rect = Some(rect);
-            *visibility = Visibility::Inherited;
+            image
+                .reborrow()
+                .map_unchanged(|image| &mut image.rect)
+                .set_if_neq(Some(rect));
+            visibility.set_if_neq(Visibility::Inherited);
         } else {
-            *visibility = Visibility::Hidden;
+            visibility.set_if_neq(Visibility::Hidden);
         }
     }
     let furnace = screen
@@ -1947,23 +1970,45 @@ fn refresh(
             }
         });
         if progress <= 0.0 {
-            *visibility = Visibility::Hidden;
+            visibility.set_if_neq(Visibility::Hidden);
         } else {
-            *visibility = Visibility::Inherited;
+            visibility.set_if_neq(Visibility::Inherited);
             if indicator.0 {
                 let width = (24.0 * progress).ceil().clamp(1.0, 24.0);
-                image.rect = Some(Rect::new(176.0, 14.0, 176.0 + width, 30.0));
-                node.width = px(width * SCALE);
-                node.height = px(16.0 * SCALE);
-                node.left = px(79.0 * SCALE);
-                node.top = px(34.0 * SCALE);
+                image
+                    .reborrow()
+                    .map_unchanged(|image| &mut image.rect)
+                    .set_if_neq(Some(Rect::new(176.0, 14.0, 176.0 + width, 30.0)));
+                node.reborrow()
+                    .map_unchanged(|node| &mut node.width)
+                    .set_if_neq(px(width * SCALE));
+                node.reborrow()
+                    .map_unchanged(|node| &mut node.height)
+                    .set_if_neq(px(16.0 * SCALE));
+                node.reborrow()
+                    .map_unchanged(|node| &mut node.left)
+                    .set_if_neq(px(79.0 * SCALE));
+                node.reborrow()
+                    .map_unchanged(|node| &mut node.top)
+                    .set_if_neq(px(34.0 * SCALE));
             } else {
                 let height = (14.0 * progress).ceil().clamp(1.0, 14.0);
-                image.rect = Some(Rect::new(176.0, 14.0 - height, 190.0, 14.0));
-                node.height = px(height * SCALE);
-                node.top = px((50.0 - height) * SCALE);
-                node.left = px(56.0 * SCALE);
-                node.width = px(14.0 * SCALE);
+                image
+                    .reborrow()
+                    .map_unchanged(|image| &mut image.rect)
+                    .set_if_neq(Some(Rect::new(176.0, 14.0 - height, 190.0, 14.0)));
+                node.reborrow()
+                    .map_unchanged(|node| &mut node.height)
+                    .set_if_neq(px(height * SCALE));
+                node.reborrow()
+                    .map_unchanged(|node| &mut node.top)
+                    .set_if_neq(px((50.0 - height) * SCALE));
+                node.reborrow()
+                    .map_unchanged(|node| &mut node.left)
+                    .set_if_neq(px(56.0 * SCALE));
+                node.reborrow()
+                    .map_unchanged(|node| &mut node.width)
+                    .set_if_neq(px(14.0 * SCALE));
             }
         }
     }
@@ -1992,14 +2037,21 @@ fn refresh(
             .carried
             .and_then(|stack| block_icons.rect_for_stack(stack))
         {
-            image.rect = Some(rect);
-            *visibility = Visibility::Inherited;
+            image
+                .reborrow()
+                .map_unchanged(|image| &mut image.rect)
+                .set_if_neq(Some(rect));
+            visibility.set_if_neq(Visibility::Inherited);
         } else {
-            *visibility = Visibility::Hidden;
+            visibility.set_if_neq(Visibility::Hidden);
         }
         if let Some((left, top)) = cursor_icon {
-            node.left = px(left);
-            node.top = px(top);
+            node.reborrow()
+                .map_unchanged(|node| &mut node.left)
+                .set_if_neq(px(left));
+            node.reborrow()
+                .map_unchanged(|node| &mut node.top)
+                .set_if_neq(px(top));
         }
     }
     if let Ok((mut text, mut node, mut layout, mut text_font, mut line_height, mut shadow)) =
@@ -2016,7 +2068,7 @@ fn refresh(
             stack_text(inventory.carried)
         };
         if let Some((left, top)) = cursor_icon {
-            place_stack_label(
+            sync_stack_label(
                 &mut text,
                 &mut node,
                 &mut layout,
@@ -2030,7 +2082,9 @@ fn refresh(
                 has_icon,
             );
         } else {
-            **text = label_text;
+            if text.0 != label_text {
+                text.0 = label_text;
+            }
         }
     }
 }

@@ -171,7 +171,9 @@ fn fov_setting_updates_player_camera() {
     }
     app.update();
 
-    assert!((player_fov_radians(&mut app) - 90.0_f32.to_radians()).abs() < f32::EPSILON);
+    assert!(
+        (player_fov_radians(&mut app) - (DEFAULT_FOV + 20.0).to_radians()).abs() < f32::EPSILON
+    );
 }
 
 fn player_fov_radians(app: &mut App) -> f32 {
@@ -389,6 +391,7 @@ fn settings_round_trip_through_json() {
     let path = temp_settings_path("roundtrip");
     let settings = GameSettings {
         render_distance: 12,
+        max_fps: 120,
         brightness: 450.0,
         fov: 90.0,
         cloud_height: 192.0,
@@ -458,6 +461,7 @@ fn settings_plugin_loads_and_saves_menu_changes() {
     let path = temp_settings_path("plugin");
     let initial = GameSettings {
         render_distance: 8,
+        max_fps: 90,
         brightness: 200.0,
         fov: 55.0,
         cloud_height: 64.0,
@@ -494,4 +498,153 @@ fn settings_plugin_loads_and_saves_menu_changes() {
     assert_eq!(saved.fov, 65.0);
     assert_eq!(saved.cloud_height, 72.0);
     let _ = fs::remove_file(path);
+}
+
+#[test]
+fn atmosphere_does_not_mark_unchanged_camera_projections_changed() {
+    #[derive(Resource, Default)]
+    struct ProjectionChanges(usize);
+    fn observe(query: Query<(), Changed<Projection>>, mut changes: ResMut<ProjectionChanges>) {
+        changes.0 = query.iter().count();
+    }
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, AssetPlugin::default(), MeshPlugin))
+        .init_asset::<Image>()
+        .init_asset::<StandardMaterial>()
+        .add_plugins(WorldPlugin)
+        .init_resource::<ProjectionChanges>()
+        .add_systems(Last, observe);
+    app.world_mut().spawn((
+        PlayerCamera,
+        Camera3d::default(),
+        Projection::default(),
+        Transform::default(),
+    ));
+    app.update();
+    app.update();
+    app.update();
+    assert_eq!(app.world().resource::<ProjectionChanges>().0, 0);
+    app.world_mut()
+        .resource_mut::<GameSettings>()
+        .render_distance = 8;
+    app.update();
+    assert!(app.world().resource::<ProjectionChanges>().0 > 0);
+    app.update();
+    assert_eq!(app.world().resource::<ProjectionChanges>().0, 0);
+}
+
+#[test]
+fn frame_limit_defaults_round_trips_and_clamps() {
+    let path = temp_settings_path("frame-limit");
+    fs::write(&path, "{}").unwrap();
+    assert_eq!(load_settings(&path).max_fps, 60);
+    for (stored, expected) in [(0, 0), (1, 30), (120, 120), (1000, 240)] {
+        fs::write(&path, format!("{{\"max_fps\":{stored}}}")).unwrap();
+        let settings = load_settings(&path);
+        assert_eq!(settings.max_fps, expected);
+        save_settings(&path, &settings).unwrap();
+        assert_eq!(load_settings(&path).max_fps, expected);
+    }
+    let _ = fs::remove_file(path);
+    let mut settings = GameSettings::default();
+    for expected in [90, 120, 144, 240, 0, 30, 60] {
+        settings.cycle_max_fps();
+        assert_eq!(settings.max_fps, expected);
+    }
+}
+
+#[test]
+fn frame_pacing_changes_with_screen_and_selected_limit() {
+    use bevy::winit::UpdateMode;
+    use bevy::winit::WinitSettings;
+    use game::app::frame_pacing::FramePacingPlugin;
+    use std::time::Duration;
+
+    fn wait(mode: &UpdateMode) -> Duration {
+        match mode {
+            UpdateMode::Reactive { wait, .. } => *wait,
+            UpdateMode::Continuous => panic!("expected paced mode"),
+        }
+    }
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, StatesPlugin))
+        .init_state::<AppScreen>()
+        .init_resource::<GameSettings>()
+        .add_plugins(FramePacingPlugin);
+    app.update();
+    let pacing = app.world().resource::<WinitSettings>();
+    assert_eq!(
+        wait(&pacing.focused_mode),
+        Duration::from_secs_f64(1.0 / 30.0)
+    );
+    assert_eq!(
+        wait(&pacing.unfocused_mode),
+        Duration::from_secs_f64(1.0 / 5.0)
+    );
+    app.world_mut()
+        .resource_mut::<NextState<AppScreen>>()
+        .set(AppScreen::Playing);
+    app.update();
+    let pacing = app.world().resource::<WinitSettings>();
+    assert_eq!(
+        wait(&pacing.focused_mode),
+        Duration::from_secs_f64(1.0 / 60.0)
+    );
+    assert_eq!(
+        wait(&pacing.unfocused_mode),
+        Duration::from_secs_f64(1.0 / 20.0)
+    );
+    assert!(matches!(
+        pacing.focused_mode,
+        UpdateMode::Reactive {
+            react_to_device_events: false,
+            react_to_user_events: false,
+            react_to_window_events: false,
+            ..
+        }
+    ));
+    app.world_mut().resource_mut::<GameSettings>().max_fps = 120;
+    app.update();
+    assert_eq!(
+        wait(&app.world().resource::<WinitSettings>().focused_mode),
+        Duration::from_secs_f64(1.0 / 120.0)
+    );
+    app.world_mut().resource_mut::<GameSettings>().max_fps = 0;
+    app.update();
+    assert!(matches!(
+        app.world().resource::<WinitSettings>().focused_mode,
+        UpdateMode::Continuous
+    ));
+}
+
+#[test]
+fn opaque_menu_disables_world_cameras_and_playing_restores_them() {
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        AssetPlugin::default(),
+        MeshPlugin,
+        StatesPlugin,
+    ))
+    .init_state::<AppScreen>()
+    .init_asset::<Image>()
+    .init_asset::<StandardMaterial>()
+    .add_plugins(WorldPlugin);
+    let camera = app
+        .world_mut()
+        .spawn((PlayerCamera, Camera3d::default(), Transform::default()))
+        .id();
+    app.update();
+    assert!(!app.world().get::<Camera>(camera).unwrap().is_active);
+    app.world_mut()
+        .resource_mut::<NextState<AppScreen>>()
+        .set(AppScreen::Playing);
+    app.update();
+    assert!(app.world().get::<Camera>(camera).unwrap().is_active);
+    app.world_mut()
+        .resource_mut::<NextState<AppScreen>>()
+        .set(AppScreen::Settings);
+    app.update();
+    let mut cameras = app.world_mut().query_filtered::<&Camera, With<Camera3d>>();
+    assert!(cameras.iter(app.world()).all(|camera| !camera.is_active));
 }

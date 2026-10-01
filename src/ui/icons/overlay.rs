@@ -156,6 +156,52 @@ pub fn place_stack_label(
     }
 }
 
+/// Apply label presentation without invalidating unchanged ECS components.
+/// The plain-value helper above is also used when initially spawning labels.
+pub fn sync_stack_label(
+    text: &mut Mut<Text>,
+    node: &mut Mut<Node>,
+    layout: &mut Mut<TextLayout>,
+    font: &mut Mut<TextFont>,
+    line_height: &mut Mut<LineHeight>,
+    shadow: &mut Mut<TextShadow>,
+    ui_font: &Handle<Font>,
+    icon_left: f32,
+    icon_top: f32,
+    label: &str,
+    has_icon: bool,
+) {
+    let mut next_node = (**node).clone();
+    let mut next_layout = **layout;
+    let mut next_font = (**font).clone();
+    let mut next_height = **line_height;
+    let mut next_shadow = **shadow;
+    // No string allocation is needed to compute the geometry and font.
+    place_stack_label(
+        &mut Text::default(),
+        &mut next_node,
+        &mut next_layout,
+        &mut next_font,
+        &mut next_height,
+        &mut next_shadow,
+        ui_font,
+        icon_left,
+        icon_top,
+        "",
+        has_icon,
+    );
+    if text.0 != label {
+        text.0 = label.to_owned();
+    }
+    node.set_if_neq(next_node);
+    if layout.justify != next_layout.justify || layout.linebreak != next_layout.linebreak {
+        **layout = next_layout;
+    }
+    font.set_if_neq(next_font);
+    line_height.set_if_neq(next_height);
+    shadow.set_if_neq(next_shadow);
+}
+
 #[derive(Resource)]
 pub struct UiFont {
     pub minecraft: Handle<Font>,

@@ -521,10 +521,12 @@ fn tick_dropped_items(
     if steps == 0 {
         return;
     }
-    for _ in 0..steps {
-        for mut hotbar in &mut hotbars {
+    for mut hotbar in &mut hotbars {
+        // Reading through Mut does not invalidate the HUD. Only an active
+        // pickup animation needs to write the component.
+        if hotbar.pop.iter().any(|&pop| pop > 0) {
             for pop in &mut hotbar.pop {
-                *pop = pop.saturating_sub(1);
+                *pop = pop.saturating_sub(steps.min(u32::from(u8::MAX)) as u8);
             }
         }
     }

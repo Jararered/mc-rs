@@ -195,12 +195,12 @@ fn update_block_overlays(
                     *mesh = destroy_overlay_mesh(stage);
                     overlays.crack_stage = Some(stage);
                 }
-                *transform = at;
-                *visibility = Visibility::Inherited;
+                transform.set_if_neq(at);
+                visibility.set_if_neq(Visibility::Inherited);
             }
             _ => {
                 overlays.crack_stage = None;
-                *visibility = Visibility::Hidden;
+                visibility.set_if_neq(Visibility::Hidden);
             }
         }
     }
@@ -211,7 +211,7 @@ fn hide_block_overlays(overlays: Option<Res<BlockOverlays>>, mut visible: Query<
         return;
     };
     if let Ok(mut visibility) = visible.get_mut(overlays.cracks.entity) {
-        *visibility = Visibility::Hidden;
+        visibility.set_if_neq(Visibility::Hidden);
     }
 }
 

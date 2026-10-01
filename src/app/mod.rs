@@ -1,4 +1,5 @@
 mod diagnostics;
+pub mod frame_pacing;
 pub mod fullscreen;
 mod plugin;
 pub mod screenshot;

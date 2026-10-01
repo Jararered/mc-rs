@@ -16,6 +16,7 @@ use crate::world::persistence::PersistencePlugin;
 use crate::world::plugin::WorldPlugin;
 
 use super::diagnostics::DiagnosticsPlugin;
+use super::frame_pacing::FramePacingPlugin;
 use super::fullscreen::FullscreenPlugin;
 use super::screenshot::ScreenshotPlugin;
 use super::settings::SettingsPlugin;
@@ -48,7 +49,7 @@ impl Plugin for GamePlugin {
                 HudPlugin,
                 InventoryGuiPlugin,
                 (ScreenshotPlugin, FullscreenPlugin),
-                DiagnosticsPlugin,
+                (DiagnosticsPlugin, FramePacingPlugin),
             ));
     }
 }

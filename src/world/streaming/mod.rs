@@ -78,6 +78,8 @@ pub struct StreamingDiagnostics {
     pub populate: TimingStats,
     pub load: TimingStats,
     pub mesh: TimingStats,
+    /// Candidate-discovery passes; settled frames should leave this unchanged.
+    pub discovery_passes: u64,
 }
 
 #[derive(Default)]
@@ -144,6 +146,7 @@ pub struct WorldStreaming {
     desired_meshing: Vec<ChunkPosition>,
     desired_center: Option<ChunkPosition>,
     desired_radius: i32,
+    discovery_dirty: bool,
     /// Jobs of each kind kept in flight. Enough to keep every compute thread
     /// busy between frames, since finished jobs are only replaced once per
     /// streaming pass.
@@ -235,6 +238,7 @@ impl WorldStreaming {
             sections |= cancelled.forced;
         }
         if !self.rendered.contains_key(&position) {
+            self.discovery_dirty = true;
             // Its first mesh is built from scratch on the next streaming pass.
             self.remesh_sections.remove(&position);
             return;
@@ -246,6 +250,7 @@ impl WorldStreaming {
 
     /// Queue a full rebuild of every rendered chunk, nearest first.
     fn remesh_everything(&mut self) {
+        self.discovery_dirty = true;
         self.meshing.clear();
         let mut positions: Vec<_> = self.rendered.keys().copied().collect();
         if let Some(center) = self.desired_center {

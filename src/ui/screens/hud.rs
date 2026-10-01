@@ -28,6 +28,7 @@ use crate::ui::icons::overlay::count_label;
 use crate::ui::icons::overlay::durability_track;
 use crate::ui::icons::overlay::icon_size;
 use crate::ui::icons::overlay::place_stack_label;
+use crate::ui::icons::overlay::sync_stack_label;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
 use crate::world::tick::WorldTick;
@@ -172,11 +173,11 @@ fn update_debug_overlay(
     let Ok((mut text, mut visibility)) = overlay.single_mut() else {
         return;
     };
-    *visibility = if visible.0 {
+    visibility.set_if_neq(if visible.0 {
         Visibility::Visible
     } else {
         Visibility::Hidden
-    };
+    });
     if !visible.0 {
         return;
     }
@@ -210,7 +211,7 @@ fn update_debug_overlay(
             |hit| format!("{:?} at {} / {} / {}", hit.block, hit.x, hit.y, hit.z),
         );
     let flight = if flying.is_some() { "ON" } else { "OFF" };
-    text.0 = format!(
+    let next = format!(
         "XYZ: {:.2} / {:.2} / {:.2}\nBlock: {} / {} / {}  Chunk: {} / {}\nFeet Y: {:.2}  Grounded: {}  Below: {}\nFlight: {}  Target: {}",
         p.x,
         p.y,
@@ -226,6 +227,9 @@ fn update_debug_overlay(
         flight,
         target
     );
+    if text.0 != next {
+        text.0 = next;
+    }
 }
 
 fn spawn_crosshair(parent: &mut ChildSpawnerCommands, textures: &HudTextures) {
@@ -526,7 +530,7 @@ fn update_hotbar_items(
             hotbar_label(stack)
         };
         let (left, top) = hotbar_item_rect(item.0);
-        place_stack_label(
+        sync_stack_label(
             &mut text,
             &mut node,
             &mut layout,
@@ -554,18 +558,23 @@ fn update_hotbar_icons(
     let partial = clock.map(|clock| clock.partial()).unwrap_or(0.0);
     for (slot, mut image, mut visibility, mut node) in &mut images {
         if let Some(rect) = hotbar.slots[slot.0].and_then(|stack| icons.rect_for_stack(stack)) {
-            image.rect = Some(rect);
-            *visibility = Visibility::Inherited;
+            image
+                .reborrow()
+                .map_unchanged(|image| &mut image.rect)
+                .set_if_neq(Some(rect));
+            visibility.set_if_neq(Visibility::Inherited);
             let scale = hotbar_icon_scale(hotbar.pop[slot.0], partial);
             let width = icon_size() * scale.x;
             let height = icon_size() * scale.y;
             let (left, top) = hotbar_item_rect(slot.0);
-            node.left = px(left + (icon_size() - width) * 0.5);
-            node.top = px(top + (icon_size() - height) * 0.5);
-            node.width = px(width);
-            node.height = px(height);
+            let mut next = node.clone();
+            next.left = px(left + (icon_size() - width) * 0.5);
+            next.top = px(top + (icon_size() - height) * 0.5);
+            next.width = px(width);
+            next.height = px(height);
+            node.set_if_neq(next);
         } else {
-            *visibility = Visibility::Hidden;
+            visibility.set_if_neq(Visibility::Hidden);
         }
     }
 }
@@ -584,17 +593,21 @@ fn update_hotbar_bars(
     };
     for (bar, mut node, mut visibility, mut color) in &mut bars {
         if let Some((width, red, green)) = hotbar.slots[bar.0].and_then(durability_bar) {
-            *visibility = Visibility::Inherited;
+            visibility.set_if_neq(Visibility::Inherited);
             let (_, _, track_width, _) = durability_track(0.0, 0.0, bar.1);
             if bar.1 {
-                node.width = px(width);
-                *color = BackgroundColor(Color::srgb_u8(red, green, 0));
+                node.reborrow()
+                    .map_unchanged(|node| &mut node.width)
+                    .set_if_neq(px(width));
+                color.set_if_neq(BackgroundColor(Color::srgb_u8(red, green, 0)));
             } else {
-                node.width = px(track_width);
-                *color = BackgroundColor(Color::BLACK);
+                node.reborrow()
+                    .map_unchanged(|node| &mut node.width)
+                    .set_if_neq(px(track_width));
+                color.set_if_neq(BackgroundColor(Color::BLACK));
             }
         } else {
-            *visibility = Visibility::Hidden;
+            visibility.set_if_neq(Visibility::Hidden);
         }
     }
 }

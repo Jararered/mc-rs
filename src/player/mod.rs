@@ -316,9 +316,9 @@ fn update_camera_bobbing(
 
         for child in children {
             if let Ok(mut camera) = cameras.get_mut(*child) {
-                *camera = Transform::from_matrix(
+                camera.set_if_neq(Transform::from_matrix(
                     Mat4::from_translation(render_offset) * camera_bob_pose(&bob),
-                );
+                ));
             }
         }
     }

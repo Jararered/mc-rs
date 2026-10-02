@@ -15,6 +15,7 @@ use crate::rendering::textures::FoliageColors;
 use crate::rendering::textures::GrassColors;
 use crate::rendering::textures::LAVA_FLOW_TILE;
 use crate::rendering::textures::LAVA_STILL_TILE;
+use crate::rendering::textures::SNOWY_GRASS_SIDE_TILE;
 use crate::rendering::textures::WATER_FLOW_TILE;
 use crate::rendering::textures::WATER_STILL_TILE;
 use crate::rendering::textures::block_tile;
@@ -1004,13 +1005,21 @@ impl<'a> Mesher<'a> {
             };
             let grass_side =
                 block == Id::Grass && face_index != FACE_TOP && face_index != FACE_BOTTOM;
+            // A side under snow is not a grass side any more: `RenderBlocks`
+            // only draws the overlay for tile 3, so the snowy tile gets none.
+            let snow_covered = grass_side && snow_above(chunk, neighbors, x, y, z);
+            let grass_overlay = grass_side && fancy_graphics && !snow_covered;
             let base = if block == Id::Grass && face_index == FACE_TOP {
                 grass_tint
             } else {
                 block_tint(block, foliage)
             };
             let side_tint = if grass_side { [1.0; 3] } else { base };
-            let (tile_x, tile_y) = block_tile(block, face_index, fancy_graphics);
+            let (tile_x, tile_y) = if snow_covered {
+                SNOWY_GRASS_SIDE_TILE
+            } else {
+                block_tile(block, face_index, fancy_graphics)
+            };
             let layer = if filtered_fluid == Some(Fluid::Water) {
                 LAYER_WATER
             } else if fancy_graphics && is_leaf(block) {
@@ -1033,7 +1042,7 @@ impl<'a> Mesher<'a> {
             if self.only.is_some() || uniform_shading(&shading) {
                 let (fixed, row, bit) = plane_coords(face_index, x, y, z, band_start);
                 let mut base_key = plane_key(layer, [tile_x, tile_y], side_tint, &recorded);
-                if grass_side && fancy_graphics {
+                if grass_overlay {
                     // The coplanar passes must rasterize identical triangles.
                     // Dirt is untinted, but merging it across an overlay tint
                     // boundary gives the two layers different depth rounding.
@@ -1042,7 +1051,7 @@ impl<'a> Mesher<'a> {
                 insert_plane(
                     planes, face_index, base_key, side_tint, recorded, fixed, row, bit,
                 );
-                if grass_side && fancy_graphics {
+                if grass_overlay {
                     insert_plane(
                         planes,
                         face_index,
@@ -1067,7 +1076,7 @@ impl<'a> Mesher<'a> {
                     fancy_graphics,
                     Some((tile_x, tile_y)),
                 );
-                if grass_side && fancy_graphics {
+                if grass_overlay {
                     meshes
                         .grass_overlay
                         .push_grass_overlay(origin, face, face_index, grass_tint, shading);
@@ -1563,6 +1572,17 @@ fn fluid_shell_face_visible(fluid: Fluid, neighbor: Option<Id>, dy: i32) -> bool
                 && (dy > 0 || !is_opaque_cube(neighbor))
         }
     }
+}
+
+/// `BlockGrass.getBlockTexture` reads the block above and swaps a grass side
+/// for the snow-capped tile when that material is `Material.snow` (the snow
+/// layer) or `Material.builtSnow` (the snow block). The block is always in the
+/// same column as its cover, so this never reaches into a neighbour chunk.
+fn snow_above(chunk: &Chunk, neighbors: &ChunkNeighbors<'_>, x: usize, y: usize, z: usize) -> bool {
+    matches!(
+        neighbors.get(chunk, x as i32, y as i32 + 1, z as i32),
+        Some(Id::SnowLayer | Id::Snow)
+    )
 }
 
 /// Fast leaves hide every non-air neighbour, like any solid cube. Fancy leaves

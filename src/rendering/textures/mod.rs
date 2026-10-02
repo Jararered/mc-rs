@@ -547,3 +547,8 @@ pub fn crop_tile(stage: u8) -> (u8, u8) {
 pub fn farmland_top_tile(wet: bool) -> (u8, u8) {
     if wet { (6, 5) } else { (7, 5) }
 }
+
+/// Atlas tile for a grass block's side while snow sits on top of it. Beta's
+/// `BlockGrass.getBlockTexture` returns tile 68 when the block above carries
+/// `Material.snow` or `Material.builtSnow`, in place of the usual side tile 3.
+pub const SNOWY_GRASS_SIDE_TILE: (u8, u8) = (4, 4);

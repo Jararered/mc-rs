@@ -14,6 +14,13 @@ use game::world::chunk::Chunk;
 use game::world::chunk::ChunkPosition;
 use game::world::lighting::Skylight;
 
+/// Any climate will do where a test is about tiles rather than tints.
+const TEST_CLIMATE: Climate = Climate {
+    temperature: 0.5,
+    humidity: 0.5,
+    biome: Biome::Forest,
+};
+
 #[test]
 fn grass_palette_uses_temperature_and_temperature_weighted_humidity() {
     assert_eq!(palette_index(1.0, 1.0), 0);
@@ -162,6 +169,103 @@ fn greedy_grass_tops_merge_only_when_the_quantized_tint_matches() {
     assert_eq!(merged[0].0, [1.0, 0.0, 0.0]);
     assert!((merged[0].1 - 2.0).abs() < 1e-4);
     assert!((merged[0].2 - 4.0).abs() < 1e-4);
+}
+
+#[test]
+fn grass_side_under_snow_draws_the_snowcapped_tile_and_drops_the_overlay() {
+    let sides_and_overlays = |cover: Option<Id>| {
+        let mut chunk = Chunk::new();
+        chunk.set(2, 2, 4, Id::Grass);
+        if let Some(cover) = cover {
+            chunk.set(2, 3, 4, cover);
+        }
+        let meshes = mesh_chunk_with_biomes(
+            &chunk,
+            &ChunkNeighbors::default(),
+            &Skylight::from_chunk(&chunk),
+            &BiomeMap::from_cells([TEST_CLIMATE; CHUNK_SIZE * CHUNK_SIZE]),
+            &GrassColors::default(),
+            &FoliageColors::default(),
+            true,
+            ChunkPosition::ZERO,
+        );
+        let sides = meshes
+            .opaque
+            .vertices()
+            .chunks_exact(4)
+            // The cover sits at y = 3, so only the grass row's sides qualify.
+            .filter(|quad| quad[0].normal[1].abs() < 0.5 && quad[0].position[1] < 2.5)
+            .map(|quad| quad[0].texel.tile)
+            .collect::<Vec<_>>();
+        (
+            sides,
+            meshes.grass_overlay.vertices().chunks_exact(4).count(),
+        )
+    };
+
+    let (bare, bare_overlays) = sides_and_overlays(None);
+    assert_eq!(bare.len(), 4, "a lone grass block shows four sides");
+    assert!(bare.iter().all(|tile| *tile == [3, 0]));
+    assert_eq!(bare_overlays, 4, "fancy grass still draws its side overlay");
+
+    // `BlockGrass.getBlockTexture` swaps the side tile for 68 under either
+    // `Material.snow` or `Material.builtSnow`, and `RenderBlocks` then skips
+    // the overlay because the tile is no longer 3.
+    for cover in [Id::SnowLayer, Id::Snow] {
+        let (covered, overlays) = sides_and_overlays(Some(cover));
+        assert_eq!(covered.len(), 4);
+        assert!(
+            covered.iter().all(|tile| *tile == [4, 4]),
+            "snow cover {cover:?} redraws the sides"
+        );
+        assert_eq!(overlays, 0, "snow cover {cover:?} drops the overlay");
+    }
+}
+
+#[test]
+fn greedy_grass_sides_do_not_merge_across_a_snow_cover_boundary() {
+    let mut chunk = Chunk::new();
+    chunk.set(2, 2, 4, Id::Grass);
+    chunk.set(3, 2, 4, Id::Grass);
+    chunk.set(3, 3, 4, Id::Snow);
+    let meshes = mesh_chunk_with_biomes(
+        &chunk,
+        &ChunkNeighbors::default(),
+        &Skylight::from_chunk(&chunk),
+        &BiomeMap::from_cells([TEST_CLIMATE; CHUNK_SIZE * CHUNK_SIZE]),
+        &GrassColors::default(),
+        &FoliageColors::default(),
+        true,
+        ChunkPosition::ZERO,
+    );
+    let north_sides = meshes
+        .opaque
+        .vertices()
+        .chunks_exact(4)
+        .filter(|quad| quad[0].normal[2] > 0.5 && quad[0].position[1] < 2.5)
+        .map(|quad| {
+            (
+                quad[0].texel.tile,
+                quad.iter()
+                    .map(|vertex| vertex.position[0])
+                    .fold(f32::INFINITY, f32::min),
+                quad.iter()
+                    .map(|vertex| vertex.position[0])
+                    .fold(f32::NEG_INFINITY, f32::max),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        north_sides.len(),
+        2,
+        "a covered side must not merge into a bare neighbour's rectangle"
+    );
+    assert!(north_sides.iter().any(|(tile, low, high)| {
+        *tile == [4, 4] && (*low - 3.0).abs() < 1e-4 && (*high - 4.0).abs() < 1e-4
+    }));
+    assert!(north_sides.iter().any(|(tile, low, high)| {
+        *tile == [3, 0] && (*low - 2.0).abs() < 1e-4 && (*high - 3.0).abs() < 1e-4
+    }));
 }
 
 #[test]

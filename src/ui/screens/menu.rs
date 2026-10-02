@@ -314,15 +314,33 @@ fn ensure_menu(
 fn spawn_main_menu(commands: &mut Commands, textures: &MenuTextures) {
     let root = spawn_root(commands, textures, 14.0);
     commands.entity(root).with_children(|parent| {
-        parent.spawn((
-            ImageNode::new(textures.logo.clone()).with_rect(Rect::new(0.0, 0.0, 155.0, 89.0)),
-            Node {
-                width: px(310),
-                height: px(178),
+        // The Beta logo atlas stores its two horizontal halves in separate rows.
+        parent
+            .spawn(Node {
+                flex_direction: FlexDirection::Row,
                 margin: UiRect::bottom(px(24)),
                 ..default()
-            },
-        ));
+            })
+            .with_children(|logo| {
+                logo.spawn((
+                    ImageNode::new(textures.logo.clone())
+                        .with_rect(Rect::new(0.0, 0.0, 155.0, 44.0)),
+                    Node {
+                        width: px(310),
+                        height: px(88),
+                        ..default()
+                    },
+                ));
+                logo.spawn((
+                    ImageNode::new(textures.logo.clone())
+                        .with_rect(Rect::new(0.0, 45.0, 119.0, 89.0)),
+                    Node {
+                        width: px(238),
+                        height: px(88),
+                        ..default()
+                    },
+                ));
+            });
         spawn_button(parent, &textures, "Play", MenuAction::Play, 400.0, None);
         spawn_button(
             parent,

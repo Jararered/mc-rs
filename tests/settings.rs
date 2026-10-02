@@ -731,21 +731,33 @@ fn click_menu_button(app: &mut App, title: &str) {
 }
 
 #[test]
-fn main_menu_uses_title_logo_without_transparent_padding() {
+fn main_menu_places_title_logo_halves_side_by_side() {
     let mut app = settings_menu_app();
     click_menu_button(&mut app, "Back");
     let logo_handle = app
         .world()
         .resource::<AssetServer>()
         .load::<Image>("title/mclogo.png");
-    let mut logos = app.world_mut().query::<(&ImageNode, &Node)>();
-    let (image, node) = logos
+    let mut logos = app.world_mut().query::<(&ImageNode, &Node, &ChildOf)>();
+    let halves: Vec<_> = logos
         .iter(app.world())
-        .find(|(image, _)| image.image == logo_handle)
-        .expect("title logo should appear on the main menu");
-    assert_eq!(image.rect, Some(Rect::new(0.0, 0.0, 155.0, 89.0)));
-    assert_eq!(node.width, px(310));
-    assert_eq!(node.height, px(178));
+        .filter(|(image, _, _)| image.image == logo_handle)
+        .collect();
+    assert_eq!(halves.len(), 2);
+    assert_eq!(halves[0].0.rect, Some(Rect::new(0.0, 0.0, 155.0, 44.0)));
+    assert_eq!(halves[1].0.rect, Some(Rect::new(0.0, 45.0, 119.0, 89.0)));
+    assert_eq!(halves[0].1.width, px(310));
+    assert_eq!(halves[1].1.width, px(238));
+    assert_eq!(halves[0].1.height, px(88));
+    assert_eq!(halves[1].1.height, px(88));
+    assert_eq!(halves[0].2.parent(), halves[1].2.parent());
+    assert_eq!(
+        app.world()
+            .get::<Node>(halves[0].2.parent())
+            .unwrap()
+            .flex_direction,
+        FlexDirection::Row
+    );
 }
 
 #[test]

@@ -4,6 +4,7 @@ use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
 use bevy::asset::AssetPlugin;
+use bevy::camera::Exposure;
 use bevy::material::OpaqueRendererMethod;
 use bevy::mesh::MeshPlugin;
 use bevy::pbr::ScreenSpaceReflections;
@@ -758,6 +759,123 @@ fn main_menu_places_title_logo_halves_side_by_side() {
             .flex_direction,
         FlexDirection::Row
     );
+}
+
+#[test]
+fn main_menu_panorama_assembles_six_faces_and_stops_outside_menu() {
+    use bevy::light::Skybox;
+    use bevy::render::render_resource::TextureViewDimension;
+
+    let mut app = settings_menu_app();
+    click_menu_button(&mut app, "Back");
+    let cubemap = (0..300)
+        .find_map(|_| {
+            std::thread::sleep(std::time::Duration::from_millis(1));
+            app.update();
+            app.world_mut()
+                .query::<&Skybox>()
+                .iter(app.world())
+                .find_map(|skybox| skybox.image.clone())
+        })
+        .expect("the title panorama should load");
+    let images = app.world().resource::<Assets<Image>>();
+    let cube = images.get(&cubemap).unwrap();
+    assert_eq!(cube.texture_descriptor.size.depth_or_array_layers, 6);
+    assert_eq!(cube.width(), 256);
+    assert_eq!(cube.height(), 256);
+    assert_eq!(
+        cube.texture_view_descriptor.as_ref().unwrap().dimension,
+        Some(TextureViewDimension::Cube)
+    );
+    let layer_size = 256 * 256 * 4;
+    let bytes = cube.data.as_ref().unwrap();
+    for (layer, face) in [1, 3, 4, 5, 0, 2].into_iter().enumerate() {
+        let handle = app
+            .world()
+            .resource::<AssetServer>()
+            .load::<Image>(format!("title/bg/panorama{face}.png"));
+        let source = images.get(&handle).unwrap().data.as_ref().unwrap();
+        let layer_bytes = &bytes[layer * layer_size..(layer + 1) * layer_size];
+        if face == 4 || face == 5 {
+            for (source_row, output_row) in source
+                .chunks_exact(256 * 4)
+                .rev()
+                .zip(layer_bytes.chunks_exact(256 * 4))
+            {
+                assert_eq!(source_row, output_row);
+            }
+        } else {
+            assert_eq!(layer_bytes, source);
+        }
+    }
+    assert!(
+        app.world_mut()
+            .query::<(&Skybox, &Camera, &bevy::camera::visibility::RenderLayers)>()
+            .iter(app.world())
+            .any(|(skybox, camera, layers)| skybox.image.is_some()
+                && camera.is_active
+                && skybox.brightness * Exposure::default().exposure() > 0.5
+                && *layers == bevy::camera::visibility::RenderLayers::layer(4))
+    );
+    // The tiled fallback is replaced with a translucent tint once the panorama is ready.
+    assert!(
+        app.world_mut()
+            .query::<(&Node, &BackgroundColor, Option<&ImageNode>)>()
+            .iter(app.world())
+            .any(|(node, color, image)| node.row_gap == px(14)
+                && image.is_none()
+                && color.0.alpha() < 1.0)
+    );
+    click_menu_button(&mut app, "Settings");
+    assert!(
+        app.world_mut()
+            .query::<(&Skybox, &Camera)>()
+            .iter(app.world())
+            .all(|(_, camera)| !camera.is_active)
+    );
+    click_menu_button(&mut app, "Back");
+    assert!(
+        app.world_mut()
+            .query::<(&Skybox, &Camera)>()
+            .iter(app.world())
+            .all(|(_, camera)| camera.is_active)
+    );
+    click_menu_button(&mut app, "Play");
+    assert!(
+        app.world_mut()
+            .query::<(&Skybox, &Camera)>()
+            .iter(app.world())
+            .all(|(_, camera)| !camera.is_active)
+    );
+}
+
+#[test]
+fn missing_panorama_preserves_main_menu_background() {
+    use bevy::light::Skybox;
+
+    let mut app = settings_menu_app_with_assets(
+        temp_settings_path("no-panorama")
+            .to_string_lossy()
+            .into_owned(),
+    );
+    click_menu_button(&mut app, "Back");
+    for _ in 0..100 {
+        std::thread::sleep(std::time::Duration::from_millis(1));
+        app.update();
+    }
+    assert!(
+        app.world_mut()
+            .query::<(&Skybox, &Camera)>()
+            .iter(app.world())
+            .all(|(skybox, camera)| skybox.image.is_none() && !camera.is_active)
+    );
+    assert!(
+        app.world_mut()
+            .query::<(&Node, &BackgroundColor)>()
+            .iter(app.world())
+            .any(|(node, color)| node.row_gap == px(14) && color.0.alpha() == 1.0)
+    );
+    button_named(&mut app, "Play");
 }
 
 #[test]

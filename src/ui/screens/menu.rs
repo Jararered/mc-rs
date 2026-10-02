@@ -12,10 +12,14 @@ use crate::app::settings::GameSettings;
 use crate::app::settings::GraphicsQuality;
 use crate::app::state::AppScreen;
 
+use super::panorama;
+use super::panorama::MenuPanoramaRoot;
+
 pub struct MenuPlugin;
 
 impl Plugin for MenuPlugin {
     fn build(&self, app: &mut App) {
+        panorama::plugin(app);
         app.add_systems(PreStartup, load_menu_textures)
             .add_systems(OnExit(AppScreen::Menu), despawn_menu)
             .add_systems(OnExit(AppScreen::Settings), despawn_menu)
@@ -313,6 +317,7 @@ fn ensure_menu(
 
 fn spawn_main_menu(commands: &mut Commands, textures: &MenuTextures) {
     let root = spawn_root(commands, textures, 14.0);
+    commands.entity(root).insert(MenuPanoramaRoot);
     commands.entity(root).with_children(|parent| {
         // The Beta logo atlas stores its two horizontal halves in separate rows.
         parent

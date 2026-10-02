@@ -8,6 +8,7 @@ use bevy::prelude::*;
 use crate::app::settings::GameSettings;
 use crate::app::state::AppScreen;
 use crate::physics::PhysicsSet;
+use crate::ui::screens::panorama::MenuPanoramaCamera;
 
 use super::sky::CelestialCamera;
 use super::sky::SkyCamera;
@@ -94,7 +95,12 @@ fn apply_graphics_pipeline(
     settings: Res<GameSettings>,
     cameras: Query<
         (Entity, Option<&ScreenSpaceReflections>),
-        (With<Camera3d>, Without<SkyCamera>, Without<CelestialCamera>),
+        (
+            With<Camera3d>,
+            Without<SkyCamera>,
+            Without<CelestialCamera>,
+            Without<MenuPanoramaCamera>,
+        ),
     >,
     sky_cameras: Query<Entity, Or<(With<SkyCamera>, With<CelestialCamera>)>>,
     renderer_method: Option<ResMut<DefaultOpaqueRendererMethod>>,
@@ -137,11 +143,11 @@ fn apply_graphics_pipeline(
     }
 }
 
-/// The menu has an opaque background, so rendering the world behind it is
+/// Menu cameras render separately; rendering the world behind the menu is
 /// wasted GPU work. PostUpdate includes cameras created during Update.
 fn apply_world_camera_activity(
     screen: Option<Res<State<AppScreen>>>,
-    mut cameras: Query<&mut Camera, With<Camera3d>>,
+    mut cameras: Query<&mut Camera, (With<Camera3d>, Without<MenuPanoramaCamera>)>,
 ) {
     let playing = screen.is_none_or(|screen| *screen.get() == AppScreen::Playing);
     for mut camera in &mut cameras {

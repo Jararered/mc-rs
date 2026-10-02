@@ -787,8 +787,16 @@ fn main_menu_panorama_assembles_six_faces_and_stops_outside_menu() {
         cube.texture_view_descriptor.as_ref().unwrap().dimension,
         Some(TextureViewDimension::Cube)
     );
+    let bevy::image::ImageSampler::Descriptor(sampler) = &cube.sampler else {
+        panic!("the panorama should use a linear sampler, unlike block textures");
+    };
+    assert_eq!(sampler.mag_filter, bevy::image::ImageFilterMode::Linear);
+    assert_eq!(sampler.min_filter, bevy::image::ImageFilterMode::Linear);
+    assert_eq!(sampler.lod_max_clamp, 0.0);
     let layer_size = 256 * 256 * 4;
     let bytes = cube.data.as_ref().unwrap();
+    let mut changed = 0;
+    let weights = [1_i32, 4, 6, 4, 1];
     for (layer, face) in [1, 3, 4, 5, 0, 2].into_iter().enumerate() {
         let handle = app
             .world()
@@ -796,18 +804,31 @@ fn main_menu_panorama_assembles_six_faces_and_stops_outside_menu() {
             .load::<Image>(format!("title/bg/panorama{face}.png"));
         let source = images.get(&handle).unwrap().data.as_ref().unwrap();
         let layer_bytes = &bytes[layer * layer_size..(layer + 1) * layer_size];
-        if face == 4 || face == 5 {
-            for (source_row, output_row) in source
-                .chunks_exact(256 * 4)
-                .rev()
-                .zip(layer_bytes.chunks_exact(256 * 4))
-            {
-                assert_eq!(source_row, output_row);
+        // Independently sample a 5x5 Gaussian from the original face. The
+        // production blur rounds after each pass, so allow 1 level of error.
+        for (x, y) in [(0_i32, 0_i32), (128, 128), (255, 255), (64, 100), (200, 10)] {
+            for channel in 0..3 {
+                let sample = |x: i32, y: i32| -> i32 {
+                    let x = x.clamp(0, 255) as usize;
+                    let y = y.clamp(0, 255) as usize;
+                    let y = if face == 4 || face == 5 { 255 - y } else { y };
+                    i32::from(source[(y * 256 + x) * 4 + channel])
+                };
+                let weighted: i32 = (-2..=2)
+                    .flat_map(|dy| (-2..=2).map(move |dx| (dy, dx)))
+                    .map(|(dy, dx)| {
+                        weights[(dy + 2) as usize]
+                            * weights[(dx + 2) as usize]
+                            * sample(x + dx, y + dy)
+                    })
+                    .sum();
+                let actual = i32::from(layer_bytes[(y as usize * 256 + x as usize) * 4 + channel]);
+                assert!((actual - ((weighted + 128) / 256)).abs() <= 1);
+                changed += usize::from(actual != sample(x, y));
             }
-        } else {
-            assert_eq!(layer_bytes, source);
         }
     }
+    assert!(changed > 0, "blur must soften some original pixels");
     assert!(
         app.world_mut()
             .query::<(&Skybox, &Camera, &bevy::camera::visibility::RenderLayers)>()

@@ -2,10 +2,13 @@
 
 use bevy::asset::RenderAssetUsages;
 use bevy::camera::visibility::RenderLayers;
+use bevy::image::ImageSampler;
+use bevy::image::ImageSamplerDescriptor;
 use bevy::light::Skybox;
 use bevy::prelude::*;
 use bevy::render::render_resource::Extent3d;
 use bevy::render::render_resource::TextureDimension;
+use bevy::render::render_resource::TextureFormat;
 use bevy::render::render_resource::TextureViewDescriptor;
 use bevy::render::render_resource::TextureViewDimension;
 
@@ -95,6 +98,13 @@ fn assemble_cubemap(
     let Some(face_len) = source.data.as_ref().map(Vec::len) else {
         return;
     };
+    if !matches!(
+        format,
+        TextureFormat::Rgba8Unorm | TextureFormat::Rgba8UnormSrgb
+    ) || face_len != size.width as usize * size.height as usize * 4
+    {
+        return;
+    }
     let mut pixels = Vec::with_capacity(face_len * 6);
     for index in CUBE_FACES {
         let Some(face) = images.get(&faces.images[index]) else {
@@ -116,6 +126,9 @@ fn assemble_cubemap(
             pixels.extend_from_slice(data);
         }
     }
+    // Blur once at load time; unlike terrain tiles, the panorama is meant to be
+    // soft when its 256px faces fill the screen.
+    blur_faces(&mut pixels, size.width as usize, size.height as usize);
     let mut cubemap = Image::new(
         Extent3d {
             depth_or_array_layers: 6,
@@ -126,7 +139,11 @@ fn assemble_cubemap(
         format,
         RenderAssetUsages::default(),
     );
-    // Inherit the app's nearest sampler and disabled mipmapping.
+    // This menu-only image intentionally overrides the pixel-art sampler.
+    cubemap.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
+        lod_max_clamp: 0.0,
+        ..ImageSamplerDescriptor::linear()
+    });
     cubemap.texture_view_descriptor = Some(TextureViewDescriptor {
         dimension: Some(TextureViewDimension::Cube),
         ..default()
@@ -136,6 +153,50 @@ fn assemble_cubemap(
         skybox.image = Some(handle.clone());
     }
     faces.cubemap = Some(handle);
+}
+
+/// Separable 5-tap Gaussian ([1, 4, 6, 4, 1] / 16), clamped at face edges.
+/// Reuse the scratch buffer across all six faces and leave the source assets intact.
+fn blur_faces(pixels: &mut [u8], width: usize, height: usize) {
+    const WEIGHTS: [u32; 5] = [1, 4, 6, 4, 1];
+    let face_len = width * height * 4;
+    let mut horizontal = vec![0_u8; face_len];
+    for face in pixels.chunks_exact_mut(face_len) {
+        for y in 0..height {
+            for x in 0..width {
+                for channel in 0..4 {
+                    let sum: u32 = WEIGHTS
+                        .into_iter()
+                        .enumerate()
+                        .map(|(tap, weight)| {
+                            let sample_x = (x as isize + tap as isize - 2)
+                                .clamp(0, width as isize - 1)
+                                as usize;
+                            weight * u32::from(face[(y * width + sample_x) * 4 + channel])
+                        })
+                        .sum();
+                    horizontal[(y * width + x) * 4 + channel] = ((sum + 8) / 16) as u8;
+                }
+            }
+        }
+        for y in 0..height {
+            for x in 0..width {
+                for channel in 0..4 {
+                    let sum: u32 = WEIGHTS
+                        .into_iter()
+                        .enumerate()
+                        .map(|(tap, weight)| {
+                            let sample_y = (y as isize + tap as isize - 2)
+                                .clamp(0, height as isize - 1)
+                                as usize;
+                            weight * u32::from(horizontal[(sample_y * width + x) * 4 + channel])
+                        })
+                        .sum();
+                    face[(y * width + x) * 4 + channel] = ((sum + 8) / 16) as u8;
+                }
+            }
+        }
+    }
 }
 
 fn show_panorama(

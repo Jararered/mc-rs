@@ -731,6 +731,24 @@ fn click_menu_button(app: &mut App, title: &str) {
 }
 
 #[test]
+fn main_menu_uses_title_logo_without_transparent_padding() {
+    let mut app = settings_menu_app();
+    click_menu_button(&mut app, "Back");
+    let logo_handle = app
+        .world()
+        .resource::<AssetServer>()
+        .load::<Image>("title/mclogo.png");
+    let mut logos = app.world_mut().query::<(&ImageNode, &Node)>();
+    let (image, node) = logos
+        .iter(app.world())
+        .find(|(image, _)| image.image == logo_handle)
+        .expect("title logo should appear on the main menu");
+    assert_eq!(image.rect, Some(Rect::new(0.0, 0.0, 155.0, 89.0)));
+    assert_eq!(node.width, px(310));
+    assert_eq!(node.height, px(178));
+}
+
+#[test]
 fn settings_tabs_buttons_and_live_labels() {
     let mut app = settings_menu_app();
     for title in [

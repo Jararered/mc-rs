@@ -146,7 +146,7 @@ fn load_menu_textures(mut commands: Commands, asset_server: Res<AssetServer>) {
         background: load("gui/background.png"),
         buttons: load("gui/gui.png"),
         compact_buttons: None,
-        logo: load("gui/logo.png"),
+        logo: load("title/mclogo.png"),
         font: asset_server.load("font/minecraft.otf"),
     });
 }
@@ -315,10 +315,10 @@ fn spawn_main_menu(commands: &mut Commands, textures: &MenuTextures) {
     let root = spawn_root(commands, textures, 14.0);
     commands.entity(root).with_children(|parent| {
         parent.spawn((
-            ImageNode::new(textures.logo.clone()).with_rect(Rect::new(0.0, 0.0, 256.0, 64.0)),
+            ImageNode::new(textures.logo.clone()).with_rect(Rect::new(0.0, 0.0, 155.0, 89.0)),
             Node {
-                width: px(512),
-                height: px(128),
+                width: px(310),
+                height: px(178),
                 margin: UiRect::bottom(px(24)),
                 ..default()
             },

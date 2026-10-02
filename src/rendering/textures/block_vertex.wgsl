@@ -140,6 +140,10 @@ fn decode_block_vertex(packed: vec4<u32>, settings: BlockShadingSettings) -> Dec
     if normal_x == REPEAT_NORMAL {
         out.normal = face_normal(normal_y);
         out.uv = face_block_uv(out.position, normal_y);
+        if texel.x == 1.0 && normal_y >= 2u && normal_y <= 5u {
+            // Snow sides are 1/8 high, but still show the whole tile.
+            out.uv.y *= 8.0;
+        }
         alpha = (tile.x + tile.y * 16.0 + 0.5) / 256.0;
     } else {
         out.normal = decode_normal(vec2(normal_x, normal_y));

@@ -17,7 +17,9 @@
 //!
 //! A greedy quad sets normal x to [`REPEAT_NORMAL`]. Normal y is then the
 //! face index, and the fragment shader tiles the stored atlas tile from the
-//! vertex position. `oct_encode` never writes that sentinel.
+//! vertex position. On merged snow-layer sides, texel x = 1 tells the shader
+//! to stretch the vertical repeat over 1/8 block. `oct_encode` never writes
+//! that sentinel.
 //!
 //! Positions are relative to the mesh origin in `-8..24`, x and z in 1/256
 //! block steps and y in 1/128. Section meshes stay inside that range, and so

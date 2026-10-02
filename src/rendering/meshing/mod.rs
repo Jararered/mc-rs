@@ -861,7 +861,7 @@ impl<'a> Mesher<'a> {
         flush_planes(meshes, planes, band_start, y_origin);
     }
 
-    /// Cactus, snow, farmland, and chests keep per-face geometry.
+    /// Cactus, farmland, and chests keep per-face geometry.
     #[allow(clippy::too_many_arguments)]
     fn emit_shaped(
         &self,
@@ -994,7 +994,13 @@ impl<'a> Mesher<'a> {
                 if !fluid_shell_face_visible(fluid, neighbor, face.neighbor[1]) {
                     continue;
                 }
-            } else if neighbor_hides_face(block, neighbor, fancy_graphics) {
+            } else if (block == Id::SnowLayer
+                && face_index != FACE_TOP
+                && face_index != FACE_BOTTOM
+                && neighbor == Some(Id::SnowLayer))
+                || neighbor_hides_face(block, neighbor, fancy_graphics)
+            {
+                // Equal-height snow layers share a side, including across chunks.
                 continue;
             }
             let geometry = unit.face(face_index);
@@ -1042,6 +1048,14 @@ impl<'a> Mesher<'a> {
             if self.only.is_some() || uniform_shading(&shading) {
                 let (fixed, row, bit) = plane_coords(face_index, x, y, z, band_start);
                 let mut base_key = plane_key(layer, [tile_x, tile_y], side_tint, &recorded);
+                if block == Id::SnowLayer {
+                    base_key.snow_layer = true;
+                    // Snow sides can merge horizontally, but never up a full
+                    // block: each layer is only an eighth of a block high.
+                    if face_index != FACE_TOP && face_index != FACE_BOTTOM {
+                        base_key.snow_side_y = Some(y as u8);
+                    }
+                }
                 if grass_overlay {
                     // The coplanar passes must rasterize identical triangles.
                     // Dirt is untinted, but merging it across an overlay tint
@@ -1103,7 +1117,7 @@ fn empty_meshes() -> ChunkMeshes {
 }
 
 fn shaped_block(block: Id) -> bool {
-    block == Id::Cactus || block == Id::SnowLayer || block == Id::Farmland || block.is_chest()
+    block == Id::Cactus || block == Id::Farmland || block.is_chest()
 }
 
 /// Faces whose four corners already match can share a rectangle. The merged
@@ -1126,6 +1140,8 @@ struct MergeKey {
     shade: bool,
     /// Keep an untinted grass side's rectangles in step with its overlay.
     overlay_tint: Option<([u8; 3], bool)>,
+    snow_layer: bool,
+    snow_side_y: Option<u8>,
 }
 
 struct Plane {
@@ -1147,6 +1163,8 @@ fn plane_key(layer: u8, tile: [u8; 2], tint: [f32; 3], shading: &CornerShading) 
         light: shading.light[0],
         shade: shading.shade,
         overlay_tint: None,
+        snow_layer: false,
+        snow_side_y: None,
     }
 }
 
@@ -1237,6 +1255,7 @@ fn flush_planes(
                     plane.key.tile,
                     plane.tint,
                     plane.shading,
+                    plane.key.snow_layer,
                 );
             }
         }
@@ -1277,16 +1296,33 @@ fn push_greedy_quad(
     tile: [u8; 2],
     tint: [f32; 3],
     shading: CornerShading,
+    snow_layer: bool,
 ) {
     let normal = FACES[face_index].normal;
     if w == 1 && h == 1 {
-        let corners = BlockFaceGeometry::unit_cube().face(face_index).corners;
+        let mut corners = BlockFaceGeometry::unit_cube().face(face_index).corners;
+        if snow_layer {
+            for corner in &mut corners {
+                corner[1] *= 0.125;
+            }
+        }
         let texels = face_texels(tile[0], tile[1], face_index);
         layer.push_block_quad(origin, normal, corners, texels, tint, shading);
         return;
     }
-    let corners = merged_corners(face_index, w as f32, h as f32);
-    let texel = AtlasTexel::new(tile[0], tile[1], 0, 0);
+    let mut corners = merged_corners(face_index, w as f32, h as f32);
+    if snow_layer {
+        for corner in &mut corners {
+            corner[1] *= 0.125;
+        }
+    }
+    // The nonzero texel flags the snow side UV scale in block_vertex.wgsl.
+    let texel = AtlasTexel::new(
+        tile[0],
+        tile[1],
+        u8::from(snow_layer && face_index != FACE_TOP && face_index != FACE_BOTTOM),
+        0,
+    );
     let ao = shading.ao[0];
     let light = shading.light[0];
     layer.push_quad(std::array::from_fn(|corner| BlockVertex {

@@ -1,4 +1,4 @@
-//! Binary-plane rectangle merge for full cube faces.
+//! Binary-plane rectangle merge for compatible block faces (including snow).
 //!
 //! `mesh_binary_plane` is adapted from `greedy_mesh_binary_plane` in
 //! `refs/binary_greedy_mesher_demo` (MIT OR Apache-2.0). A row is a bitset of

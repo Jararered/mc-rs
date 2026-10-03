@@ -1,4 +1,4 @@
-//! Independently simulated objects: the player now, later mobs and items.
+//! Independently simulated objects: mobs, items, and the player.
 //!
 //! These are Bevy entities. `Transform.translation` is the Minecraft-style
 //! position (eyes for the player, because of [`EntitySize::y_offset`]).
@@ -9,6 +9,7 @@ use crate::item::ItemStack;
 
 pub mod drops;
 pub mod falling_block;
+pub mod mobs;
 pub mod particles;
 pub mod shadow;
 

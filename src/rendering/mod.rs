@@ -5,8 +5,10 @@ pub mod clouds;
 pub mod icons;
 mod item_tiles;
 pub mod meshing;
+mod mobs;
 mod plugin;
 pub mod sky;
 pub mod textures;
+mod weather;
 
 pub use plugin::WorldRenderingPlugin;

@@ -37,10 +37,10 @@ Organize code by gameplay and engine subsystem, not broad `components/` and `sys
 - `src/world/persistence/`: saving and loading. Add Beta format adapters here when compatibility becomes a priority.
 - `src/player/`: controller, movement, camera, interaction, mining, and placement.
 - `src/physics/`: voxel collision, raycasting, and gravity.
-- `src/entity/`: non-block entities, health, spawning, mobs, and dropped items. Shared body components (`EntitySize`, `Velocity`, `Gravity`, `CollisionState`, `StepHeight`, `StepDistance`) live here. Dropped items, falling sand and gravel (`falling_block.rs`), and block particles are implemented; mobs are not yet.
+- `src/entity/`: non-block entities, health, spawning, mobs, and dropped items. Shared body components (`EntitySize`, `Velocity`, `Gravity`, `CollisionState`, `StepHeight`, `StepDistance`) live here. Dropped items, falling blocks, block particles, and Beta creature simulation live here; `rendering/mobs.rs` owns their client models.
 - `src/item/` and `src/inventory/`: item definitions, stacks, tools, slots, hotbar, inventory transfer, and active container/crafting session state. `inventory::session` owns returning inputs and carried items when a session closes; gameplay must not import UI widgets for this.
 - `src/crafting/`: crafting grids, shaped and shapeless recipes, and the Beta 1.7.3 recipe book.
-- `src/gameplay/`: weather, damage, respawning, and other game rules. Day time is `WorldTick::world_time` in `src/world/tick.rs`, not a second clock.
+- `src/gameplay/`: future game rules. Weather lives in `src/world/weather.rs`, player respawning in `src/player/`, and day time in `WorldTick::world_time`, not a second clock.
 - `src/rendering/`: meshes, materials, textures, shaders, fog, sky, clouds, shared block/item appearance, and the icon atlas used by both UI and dropped items. `WorldRenderingPlugin` wires client world rendering and streaming; `WorldPlugin` wires simulation without cameras or render assets. Daylight calculations belong to `src/world/environment.rs`.
 - `src/chat/`: submissions, complete message history, command definitions/registry, and local execution. `ChatPlugin` works without UI; `ChatUiPlugin` handles keyboard editing, wrapping, fading, and the overlay. Gameplay checks `chat::ChatFocus` rather than depending on a screen.
 - `src/ui/`, `src/input/`, and `src/audio/`: presentation, controls, and sound. `src/ui/` currently holds the menu, settings screen, HUD, inventory GUI, block icons, and stack overlays, composited by a dedicated UI camera.
@@ -71,7 +71,7 @@ The current game has a walking, sprinting, sneaking, and jumping player with vox
 - Keep this on `WorldTick` in `First`. A `FixedUpdate` schedule would repeat `just_pressed` the same way, and pausing Bevy's fixed clock would also freeze frame-time systems.
 - `world_time` counts ticks since the world started. `DAY_LENGTH` is 24000. The sky reads it, with `partial()`, for the sun and moon. It is stored on `WorldManifest` with `#[serde(default)]`, so an older `level.json` loads at time 0, and autosave writes it back.
 - Consumers today: block breaking and the place repeat, arm swing and equip, dropped items and the hotbar pop, block particles, the water atlas, block ticks, and falling blocks. Leaf wiggle and view bob stay on frame time.
-- New tick-driven work (block entities, weather) consumes this clock. Do not add another 20 Hz accumulator.
+- New tick-driven work consumes this clock, as mobs and weather do. Do not add another 20 Hz accumulator.
 - Block ticks (`src/world/block_ticks/`) consume this clock: each world tick runs pending block events, due scheduled ticks, and random ticks. Details below and in `docs/BLOCK_TICKS.md`.
 
 ## Block ticks
@@ -82,7 +82,7 @@ The current game has a walking, sprinting, sneaking, and jumping player with vox
 - Chunks store Beta's 4-bit block metadata (`Chunk::metadata`, `WorldChunks::metadata_at`). It holds simulation state such as fluid levels, crop stages, farmland moisture, and leaf decay flags; species and facings stay in the compact `Id`. Writing a different block resets it to 0. If metadata changes how a block is drawn, update `rendering::meshing::same_appearance` along with the mesher.
 - Ticks read light from `LightCache`, which streaming fills from each chunk's mesh job. Random ticks only reach chunks that are finished and lit.
 - Pending scheduled ticks are saved with their chunk and resume with their remaining delay. Scheduled ticks near unloaded chunks wait rather than being dropped.
-- Not yet simulated: fire, weather (rain and snowfall), saplings, and redstone. Overworld water and lava springs generate and immediately flow during population.
+- Not yet simulated: saplings and redstone. Fire, weather (rain, snowfall, lightning), and TNT have tick behavior. Overworld water and lava springs generate and immediately flow during population.
 
 # Data and performance rules
 

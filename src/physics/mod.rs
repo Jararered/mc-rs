@@ -387,8 +387,14 @@ pub fn colliding_aabbs(chunks: &WorldChunks, area: Aabb) -> Vec<Aabb> {
                 }
                 let block = if y < 0 {
                     Aabb::from_block(x, y, z)
-                } else if let Some((min, max)) = chunks.block_at(x, y, z).and_then(collision_bounds)
-                {
+                } else if let Some((min, max)) = chunks.block_at(x, y, z).and_then(|block| {
+                    if block == crate::block::id::Id::SnowLayer && chunks.metadata_at(x, y, z) >= 3
+                    {
+                        Some(([0.0; 3], [1.0, 0.5, 1.0]))
+                    } else {
+                        collision_bounds(block)
+                    }
+                }) {
                     let origin = Vec3::new(x as f32, y as f32, z as f32);
                     Aabb::new(
                         origin + Vec3::from_array(min),

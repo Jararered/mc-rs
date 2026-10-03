@@ -3,6 +3,7 @@
 
 mod engine;
 mod falling;
+mod fire;
 mod fluids;
 mod leaves;
 mod misc;
@@ -177,6 +178,7 @@ impl TestWorld {
                     metadata,
                 } => Some((position, block, metadata)),
                 TickEffect::FallingBlock { .. } => None,
+                TickEffect::PrimedTnt { .. } => None,
             })
             .collect()
     }

@@ -78,6 +78,7 @@ fn random_tick_chunks(
 
 pub(super) fn run_block_ticks(
     tick: Res<WorldTick>,
+    weather: Option<Res<crate::world::weather::WorldWeather>>,
     mut ticks: ResMut<BlockTicks>,
     mut chunks: ResMut<WorldChunks>,
     mut light: ResMut<LightCache>,
@@ -87,6 +88,8 @@ pub(super) fn run_block_ticks(
     player: Query<&Transform, With<Player>>,
 ) {
     let count = tick.ticks_this_frame();
+    ticks.set_raining(weather.as_ref().is_some_and(|w| w.is_raining()));
+    ticks.set_weather_penalty(weather.as_ref().map_or(0, |w| w.skylight_penalty()));
     let now = tick.world_time();
     ticks.process_events(&mut chunks, &mut light, now);
 
@@ -157,6 +160,13 @@ fn apply_tick_effects(
             }
             TickEffect::FallingBlock { position, block } => {
                 falling_block::spawn_falling_block(&mut commands, position, block);
+            }
+            TickEffect::PrimedTnt { position, fuse } => {
+                crate::entity::mobs::prime_tnt(
+                    &mut commands,
+                    position.as_vec3() + bevy::math::Vec3::new(0.5, 0.0, 0.5),
+                    fuse,
+                );
             }
         }
     }

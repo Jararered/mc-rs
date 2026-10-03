@@ -107,6 +107,8 @@ pub struct StoredPlayer {
     pub z: f32,
     pub yaw: f32,
     pub pitch: f32,
+    #[serde(default = "full_player_health")]
+    pub health: u8,
     #[serde(default)]
     pub hotbar: Vec<Option<StoredStack>>,
     #[serde(default)]
@@ -123,6 +125,10 @@ pub struct StoredPlayer {
     pub flying: bool,
     #[serde(default)]
     pub fly_speed: f32,
+}
+
+const fn full_player_health() -> u8 {
+    crate::player::MAX_PLAYER_HEALTH
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -156,6 +162,7 @@ impl StoredPlayer {
             z: transform.translation.z,
             yaw,
             pitch,
+            health: full_player_health(),
             hotbar: Vec::new(),
             selected: 0,
             main: Vec::new(),
@@ -170,6 +177,11 @@ impl StoredPlayer {
     pub fn with_flying(mut self, flying: bool, fly_speed: f32) -> Self {
         self.flying = flying;
         self.fly_speed = fly_speed;
+        self
+    }
+
+    pub fn with_health(mut self, health: u8) -> Self {
+        self.health = health;
         self
     }
 
@@ -239,6 +251,8 @@ pub struct WorldManifest {
     /// World age in 20 Hz ticks. Missing on saves from before the day cycle.
     #[serde(default)]
     pub world_time: u64,
+    #[serde(default)]
+    pub weather: crate::world::weather::WorldWeather,
 }
 
 /// The region a chunk belongs to, as `(region_x, region_z)`.
@@ -289,6 +303,7 @@ impl WorldStorage {
                 last_played_unix_millis: now,
                 format_version: FORMAT_VERSION,
                 world_time: 0,
+                weather: default(),
             }),
         };
         storage.write_manifest()?;
@@ -327,6 +342,10 @@ impl WorldStorage {
     /// Remember the day counter. The next manifest write persists it.
     pub fn set_world_time(&self, time: u64) {
         self.manifest.lock().unwrap().world_time = time;
+    }
+
+    pub fn set_weather(&self, weather: &crate::world::weather::WorldWeather) {
+        self.manifest.lock().unwrap().weather = weather.clone();
     }
 
     /// Load the stored player state, or `None` if it was never saved.
@@ -466,6 +485,10 @@ struct StoredChunk {
     /// Absent on chunks saved before dropped items were stored.
     #[serde(default)]
     items: Vec<StoredDroppedItem>,
+    #[serde(default)]
+    mobs: Vec<crate::entity::mobs::MobRecord>,
+    #[serde(default)]
+    spawners: Vec<(u16, crate::entity::mobs::MobSpawner)>,
     /// Absent on chunks saved before furnace inventories were added.
     #[serde(default)]
     furnaces: Vec<StoredFurnace>,
@@ -578,6 +601,12 @@ impl StoredChunk {
                     rng_state: item.rng_state,
                 })
                 .collect(),
+            mobs: generated.chunk.mob_records().to_vec(),
+            spawners: generated
+                .chunk
+                .spawners()
+                .map(|(index, spawner)| (index as u16, *spawner))
+                .collect(),
             furnaces: generated
                 .chunk
                 .furnaces()
@@ -644,6 +673,10 @@ impl StoredChunk {
         });
 
         let mut chunk = Chunk::from_blocks(blocks);
+        chunk.set_mob_records(self.mobs);
+        for (index, spawner) in self.spawners {
+            chunk.insert_spawner(usize::from(index), spawner);
+        }
         if !self.metadata.is_empty() {
             chunk.set_raw_metadata(decode_runs(&self.metadata, BLOCKS_PER_CHUNK / 2)?);
         }
@@ -1264,7 +1297,14 @@ impl WorldPersistence {
     pub fn flush(
         &mut self,
         chunks: &WorldChunks,
-        player: Option<(&Transform, Option<&Hotbar>, Option<&Inventory>, bool, f32)>,
+        player: Option<(
+            &Transform,
+            Option<&Hotbar>,
+            Option<&Inventory>,
+            bool,
+            f32,
+            u8,
+        )>,
         items: &HashMap<ChunkPosition, Vec<ChunkDroppedItem>>,
         ticks: Option<&BlockTicks>,
     ) {
@@ -1305,10 +1345,11 @@ impl WorldPersistence {
                 Err(error) => warn!("Failed to save world: {error}"),
             }
         }
-        if let Some((transform, hotbar, inventory, flying, fly_speed)) = player
+        if let Some((transform, hotbar, inventory, flying, fly_speed, health)) = player
             && let Err(error) = storage.save_player(
                 &StoredPlayer::from_transform(transform)
                     .with_flying(flying, fly_speed)
+                    .with_health(health)
                     .with_inventory(
                         hotbar.unwrap_or(&Hotbar::default()),
                         inventory.unwrap_or(&Inventory::default()),
@@ -1324,6 +1365,7 @@ fn setup_persistence(
     mut commands: Commands,
     config: Res<PersistenceConfig>,
     mut tick: Option<ResMut<crate::world::tick::WorldTick>>,
+    mut weather: Option<ResMut<crate::world::weather::WorldWeather>>,
 ) {
     match WorldStorage::open_latest_or_create(&config.saves_directory, config.seed) {
         Ok(storage) => {
@@ -1334,6 +1376,9 @@ fn setup_persistence(
             );
             if let Some(tick) = tick.as_deref_mut() {
                 tick.set_world_time(storage.manifest().world_time);
+            }
+            if let Some(weather) = weather.as_deref_mut() {
+                *weather = storage.manifest().weather;
             }
             commands.insert_resource(WorldPersistence::new(storage, config.autosave_seconds));
         }
@@ -1353,7 +1398,7 @@ fn setup_persistence(
 /// is lost by quitting mid-save.
 fn flush_persistence(
     mut persistence: ResMut<WorldPersistence>,
-    chunks: Res<WorldChunks>,
+    mut chunks: ResMut<WorldChunks>,
     player: Query<
         (
             &Transform,
@@ -1361,6 +1406,7 @@ fn flush_persistence(
             Option<&Inventory>,
             Option<&crate::entity::Flying>,
             &crate::player::FlySpeed,
+            Option<&crate::player::PlayerHealth>,
         ),
         With<Player>,
     >,
@@ -1373,9 +1419,15 @@ fn flush_persistence(
         ),
         Without<crate::entity::drops::items::PickupAnimation>,
     >,
+    mobs: Query<(
+        &Transform,
+        &crate::entity::Velocity,
+        &crate::entity::mobs::Mob,
+    )>,
     time: Res<Time>,
     tick: Option<Res<crate::world::tick::WorldTick>>,
     block_ticks: Option<Res<BlockTicks>>,
+    weather: Option<Res<crate::world::weather::WorldWeather>>,
     mut exit: MessageReader<AppExit>,
 ) {
     let exiting = exit.read().next().is_some();
@@ -1384,6 +1436,44 @@ fn flush_persistence(
     if autosave_due {
         persistence.start_drain();
         persistence.player_pending = true;
+    }
+
+    if (autosave_due || exiting)
+        && let Some(storage) = persistence.storage()
+    {
+        if let Some(weather) = weather.as_deref() {
+            storage.set_weather(weather);
+        }
+        if let Some(tick) = tick.as_deref() {
+            storage.set_world_time(tick.world_time());
+        }
+    }
+    if autosave_due || exiting {
+        let mut by_chunk: HashMap<ChunkPosition, Vec<crate::entity::mobs::MobRecord>> =
+            HashMap::new();
+        for (transform, velocity, mob) in &mobs {
+            by_chunk
+                .entry(ChunkPosition::from_world(
+                    transform.translation.x,
+                    transform.translation.z,
+                ))
+                .or_default()
+                .push(crate::entity::mobs::MobRecord {
+                    mob: mob.clone(),
+                    feet: transform.translation.to_array(),
+                    velocity: velocity.0.to_array(),
+                });
+        }
+        let positions: Vec<_> = chunks.positions().collect();
+        for position in positions {
+            let records = by_chunk.remove(&position).unwrap_or_default();
+            if let Some(chunk) = chunks.get_mut(position) {
+                if !records.is_empty() || !chunk.chunk.mob_records().is_empty() {
+                    chunk.chunk.set_mob_records(records);
+                    persistence.mark_dirty(position);
+                }
+            }
+        }
     }
 
     if exiting {
@@ -1395,12 +1485,18 @@ fn flush_persistence(
         let items = dropped_items_by_chunk(&items);
         persistence.flush(
             &chunks,
-            player
-                .single()
-                .ok()
-                .map(|(transform, hotbar, inventory, flying, fly_speed)| {
-                    (transform, hotbar, inventory, flying.is_some(), fly_speed.0)
-                }),
+            player.single().ok().map(
+                |(transform, hotbar, inventory, flying, fly_speed, health)| {
+                    (
+                        transform,
+                        hotbar,
+                        inventory,
+                        flying.is_some(),
+                        fly_speed.0,
+                        health.map_or(full_player_health(), |health| health.current),
+                    )
+                },
+            ),
             &items,
             block_ticks.as_deref(),
         );
@@ -1421,17 +1517,17 @@ fn flush_persistence(
         .map(BlockTicks::pending_ticks_by_chunk)
         .unwrap_or_default();
     let record = if persistence.player_pending {
-        player
-            .single()
-            .ok()
-            .map(|(transform, hotbar, inventory, flying, fly_speed)| {
+        player.single().ok().map(
+            |(transform, hotbar, inventory, flying, fly_speed, health)| {
                 StoredPlayer::from_transform(transform)
                     .with_flying(flying.is_some(), fly_speed.0)
+                    .with_health(health.map_or(full_player_health(), |health| health.current))
                     .with_inventory(
                         hotbar.unwrap_or(&Hotbar::default()),
                         inventory.unwrap_or(&Inventory::default()),
                     )
-            })
+            },
+        )
     } else {
         None
     };

@@ -200,7 +200,10 @@ fn hit_at(
         return None;
     }
     if is_torch(block) || matches!(block, Id::SnowLayer | Id::Farmland | Id::Crops) {
-        let (min, max) = selection_bounds(block);
+        let (min, mut max) = selection_bounds(block);
+        if block == Id::SnowLayer {
+            max[1] = (f32::from(chunks.metadata_at(x, y, z).min(7)) + 1.0) / 8.0;
+        }
         let block_origin = Vec3::new(x as f32, y as f32, z as f32);
         if !ray_intersects_box(
             origin,

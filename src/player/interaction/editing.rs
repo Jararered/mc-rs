@@ -28,6 +28,10 @@ use crate::entity::drops::blocks::player_break_drops_with_metadata;
 use crate::entity::drops::items::spawn_block_drop;
 use crate::entity::drops::items::spawn_chest_drops;
 use crate::entity::drops::items::spawn_thrown_item;
+use crate::entity::mobs::Mob;
+use crate::entity::mobs::MobKind;
+use crate::entity::mobs::drop_item;
+use crate::entity::mobs::ray_hit;
 use crate::entity::particles::block::BlockParticles;
 use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
@@ -98,7 +102,10 @@ pub(crate) fn interact_blocks(
         Option<ResMut<WorldPersistence>>,
         Option<ResMut<BlockTicks>>,
     ),
-    mut particles: Option<ResMut<BlockParticles>>,
+    (mut particles, mut mobs): (
+        Option<ResMut<BlockParticles>>,
+        Query<(&mut Mob, &Transform, &EntitySize)>,
+    ),
     mut focus: ResMut<BlockFocus>,
     mut state: Local<BlockInteractState>,
     mut inventory_screen: ResMut<InventorySession>,
@@ -171,6 +178,126 @@ pub(crate) fn interact_blocks(
         view_rotation * Vec3::NEG_Z,
         BLOCK_REACH,
     );
+    if !inventory_screen.open && (left_click || right_click) {
+        let direction = view_rotation * Vec3::NEG_Z;
+        let target = mobs
+            .iter()
+            .enumerate()
+            .filter_map(|(index, (mob, body, size))| {
+                (mob.health > 0)
+                    .then(|| {
+                        ray_hit(view_origin, direction, body.translation, *size, 3.0)
+                            .map(|distance| (index, distance))
+                    })
+                    .flatten()
+            })
+            .min_by(|a, b| a.1.total_cmp(&b.1));
+        if let Some((index, distance)) = target
+            && raycast_blocks(&chunks, view_origin, direction, distance).is_none()
+        {
+            let (mut mob, body, _) = mobs.iter_mut().nth(index).expect("target exists");
+            if left_click {
+                let damage = match hotbar.selected_stack().map(ItemStack::item) {
+                    Some(ItemId::WoodenSword | ItemId::GoldSword) => 5,
+                    Some(ItemId::StoneSword) => 6,
+                    Some(ItemId::IronSword) => 7,
+                    Some(ItemId::DiamondSword) => 8,
+                    Some(ItemId::WoodenAxe | ItemId::GoldAxe) => 4,
+                    Some(ItemId::StoneAxe) => 5,
+                    Some(ItemId::IronAxe) => 6,
+                    Some(ItemId::DiamondAxe) => 7,
+                    _ => 1,
+                };
+                mob.health -= damage;
+                if mob.kind == MobKind::Wolf {
+                    mob.angry = true;
+                    mob.sitting = false;
+                }
+                if mob.kind == MobKind::Spider {
+                    mob.angry = true;
+                }
+                if mob.kind == MobKind::PigZombie {
+                    mob.angry = true;
+                }
+                if hotbar.selected_stack().is_some() {
+                    hotbar.damage_selected(1);
+                }
+            } else if mob.kind == MobKind::Sheep
+                && !mob.sheared
+                && hotbar
+                    .selected_stack()
+                    .is_some_and(|s| s.item() == ItemId::Shears)
+            {
+                mob.sheared = true;
+                for _ in 0..2 + mob.rng.next_int(3) {
+                    drop_item(
+                        &mut commands,
+                        ItemId::from_u16(35).unwrap(),
+                        mob.variant as u16,
+                        body.translation,
+                    );
+                }
+                hotbar.damage_selected(1);
+            } else if mob.kind == MobKind::Pig
+                && !mob.saddled
+                && hotbar
+                    .selected_stack()
+                    .is_some_and(|s| s.item() == ItemId::Saddle)
+            {
+                mob.saddled = true;
+                hotbar.take_selected(1);
+            } else if mob.kind == MobKind::Cow
+                && hotbar
+                    .selected_stack()
+                    .is_some_and(|s| s.item() == ItemId::Bucket)
+            {
+                let one = hotbar.selected_stack().is_some_and(|s| s.count() == 1);
+                let milk = ItemStack::new(ItemId::MilkBucket, 1).expect("registered bucket");
+                if one {
+                    let selected = hotbar.selected;
+                    hotbar.slots[selected] = Some(milk);
+                } else {
+                    hotbar.take_selected(1);
+                    if let Some(overflow) = inventory.insert(&mut hotbar, milk) {
+                        spawn_block_drop(
+                            &mut commands,
+                            &mut item_rng,
+                            body.translation.floor().as_ivec3(),
+                            overflow,
+                        );
+                    }
+                }
+            } else if mob.kind == MobKind::Wolf {
+                if mob.tamed
+                    && mob.health < 20
+                    && hotbar.selected_stack().is_some_and(|s| {
+                        matches!(s.item(), ItemId::RawPorkchop | ItemId::CookedPorkchop)
+                    })
+                {
+                    hotbar.take_selected(1);
+                    mob.health = (mob.health + 3).min(20);
+                } else if mob.tamed {
+                    mob.sitting = !mob.sitting;
+                } else if !mob.angry
+                    && hotbar
+                        .selected_stack()
+                        .is_some_and(|s| s.item() == ItemId::Bone)
+                {
+                    hotbar.take_selected(1);
+                    if mob.rng.next_int(3) == 0 {
+                        mob.tamed = true;
+                        mob.angry = false;
+                        mob.sitting = true;
+                        mob.health = 20;
+                        mob.owner = Some("Player".to_owned());
+                    }
+                }
+            }
+            state.mining.reset();
+            *focus = BlockFocus::default();
+            return;
+        }
+    }
     if right_click && !inventory_screen.open && hit.is_some_and(|hit| hit.block.is_furnace()) {
         let hit = hit.expect("checked above");
         close_crafting_session(

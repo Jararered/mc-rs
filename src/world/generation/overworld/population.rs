@@ -454,7 +454,10 @@ fn dungeon(world: &mut PopulationWorld, rand: &mut JavaRandom, x: i32, y: i32, z
             }
         }
     }
-    world.set(x, y, z, Id::MobSpawner);
-    // `pickMobSpawner`. The mob type is not stored until mobs exist.
-    let _ = rand.next_int(4);
+    let kind = match rand.next_int(4) {
+        0 => crate::entity::mobs::MobKind::Skeleton,
+        1 | 2 => crate::entity::mobs::MobKind::Zombie,
+        _ => crate::entity::mobs::MobKind::Spider,
+    };
+    world.set_spawner(x, y, z, kind);
 }

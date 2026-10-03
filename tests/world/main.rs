@@ -6,7 +6,9 @@ mod generation;
 mod persistence;
 mod streaming;
 
+mod mobs;
 mod runtime;
+mod weather;
 
 // Share the world test binary to avoid another full Bevy link.
 #[path = "../rendering/mod.rs"]

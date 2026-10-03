@@ -3,6 +3,7 @@
 use bevy::prelude::*;
 
 use crate::block::id::Id;
+use crate::entity::mobs::MobKind;
 use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
 use crate::item::ItemId;
@@ -28,6 +29,11 @@ pub enum ChatCommand {
         amount: u32,
     },
     Teleport(Vec3),
+    Summon(MobKind),
+    Weather {
+        raining: bool,
+        thundering: bool,
+    },
     SetBlock {
         position: IVec3,
         block: Id,
@@ -47,6 +53,22 @@ pub enum TimeQuery {
 }
 
 pub(super) fn register_builtin_commands(registry: &mut CommandRegistry) {
+    registry
+        .register(
+            "summon",
+            "Summon a creature at the player.",
+            ["/summon <mob>"],
+            parse_summon,
+        )
+        .expect("valid summon command");
+    registry
+        .register(
+            "weather",
+            "Set overworld weather.",
+            ["/weather clear|rain|thunder"],
+            parse_weather,
+        )
+        .expect("valid weather command");
     registry
         .register(
             "help",
@@ -100,6 +122,33 @@ pub(super) fn register_builtin_commands(registry: &mut CommandRegistry) {
             parse_wireframe,
         )
         .expect("valid wireframe command");
+}
+
+fn parse_summon(_: &CommandRegistry, args: &[&str]) -> Result<ChatCommand, CommandParseError> {
+    let [name] = args else {
+        return Err(CommandParseError::Usage);
+    };
+    MobKind::parse(name)
+        .map(ChatCommand::Summon)
+        .ok_or_else(|| format!("Unknown mob: {name}").into())
+}
+
+fn parse_weather(_: &CommandRegistry, args: &[&str]) -> Result<ChatCommand, CommandParseError> {
+    match args {
+        ["clear"] => Ok(ChatCommand::Weather {
+            raining: false,
+            thundering: false,
+        }),
+        ["rain"] => Ok(ChatCommand::Weather {
+            raining: true,
+            thundering: false,
+        }),
+        ["thunder"] => Ok(ChatCommand::Weather {
+            raining: true,
+            thundering: true,
+        }),
+        _ => Err(CommandParseError::Usage),
+    }
 }
 
 fn parse_help(registry: &CommandRegistry, args: &[&str]) -> Result<ChatCommand, CommandParseError> {

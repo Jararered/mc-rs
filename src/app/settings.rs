@@ -73,9 +73,41 @@ impl GraphicsQuality {
     }
 }
 
+/// The original four survival difficulty levels. Client selection lives in settings.json.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Difficulty {
+    Peaceful,
+    Easy,
+    #[default]
+    Normal,
+    Hard,
+}
+
+impl Difficulty {
+    pub fn cycle(self) -> Self {
+        match self {
+            Self::Peaceful => Self::Easy,
+            Self::Easy => Self::Normal,
+            Self::Normal => Self::Hard,
+            Self::Hard => Self::Peaceful,
+        }
+    }
+
+    /// EntityMob and arrow damage in EntityPlayer.attackEntityFrom.
+    pub fn mob_damage(self, damage: u8) -> u8 {
+        match self {
+            Self::Peaceful => 0,
+            Self::Easy => damage / 3 + 1,
+            Self::Normal => damage,
+            Self::Hard => damage.saturating_mul(3) / 2,
+        }
+    }
+}
+
 #[derive(Resource, Debug, Clone, PartialEq)]
 pub struct GameSettings {
     pub render_distance: i32,
+    pub difficulty: Difficulty,
     /// Zero follows VSync without an additional application frame cap.
     pub max_fps: u32,
     pub brightness: f32,
@@ -95,6 +127,7 @@ impl Default for GameSettings {
     fn default() -> Self {
         Self {
             render_distance: MIN_RENDER_DISTANCE,
+            difficulty: Difficulty::Normal,
             max_fps: DEFAULT_MAX_FPS,
             brightness: 300.0,
             fov: DEFAULT_FOV,
@@ -241,6 +274,7 @@ struct SettingsPath(PathBuf);
 struct StoredSettings {
     format_version: u32,
     render_distance: i32,
+    difficulty: Difficulty,
     max_fps: u32,
     brightness: f32,
     fov: f32,
@@ -266,6 +300,7 @@ impl From<&GameSettings> for StoredSettings {
         Self {
             format_version: FORMAT_VERSION,
             render_distance: settings.render_distance,
+            difficulty: settings.difficulty,
             max_fps: settings.max_fps,
             brightness: settings.brightness,
             fov: settings.fov,
@@ -286,6 +321,7 @@ impl From<StoredSettings> for GameSettings {
     fn from(stored: StoredSettings) -> Self {
         let mut settings = Self {
             render_distance: stored.render_distance,
+            difficulty: stored.difficulty,
             max_fps: stored.max_fps,
             brightness: stored.brightness,
             fov: stored.fov,

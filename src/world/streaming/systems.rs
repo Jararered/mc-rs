@@ -10,11 +10,15 @@ use bevy::tasks::futures::check_ready;
 use crate::app::settings::GameSettings;
 use crate::app::state::AppScreen;
 use crate::entity::DroppedItem;
+use crate::entity::Velocity;
 use crate::entity::drops::items::DroppedItemState;
 use crate::entity::drops::items::ItemMotion;
 use crate::entity::drops::items::PickupAnimation;
 use crate::entity::drops::items::chunk_record;
 use crate::entity::drops::items::spawn_saved_item;
+use crate::entity::mobs::Mob;
+use crate::entity::mobs::MobRecord;
+use crate::entity::mobs::spawn_saved;
 use crate::player::Player;
 use crate::world::block_ticks::BlockTicks;
 use crate::world::lighting::LightCache;
@@ -129,12 +133,16 @@ pub(crate) fn setup_streaming(
             persistence.mark_dirty(position);
         }
         let saved_items = std::mem::take(&mut generated.items);
+        let saved_mobs = generated.chunk.take_mob_records();
         if let Some(ticks) = ticks.as_deref_mut() {
             ticks.load_chunk(position, &mut generated.chunk);
         }
         chunks.insert(position, generated);
         for item in saved_items {
             spawn_saved_item(&mut commands, item);
+        }
+        for mob in saved_mobs {
+            spawn_saved(&mut commands, mob);
         }
     }
     commands.insert_resource(WorldStreaming {
@@ -183,6 +191,7 @@ pub(crate) fn stream_chunks(
         ),
         Without<PickupAnimation>,
     >,
+    mobs: Query<(Entity, &Transform, &Velocity, &Mob)>,
     mut last_unload_sweep: Local<Option<(ChunkPosition, i32)>>,
     mut ticks: Option<ResMut<BlockTicks>>,
     mut light: Option<ResMut<LightCache>>,
@@ -289,6 +298,25 @@ pub(crate) fn stream_chunks(
                 for entity in leaving {
                     commands.entity(entity).despawn();
                 }
+                let mut saved_mobs = Vec::new();
+                for (entity, transform, velocity, mob) in &mobs {
+                    if ChunkPosition::from_world(transform.translation.x, transform.translation.z)
+                        == position
+                    {
+                        saved_mobs.push(MobRecord {
+                            mob: mob.clone(),
+                            feet: transform.translation.to_array(),
+                            velocity: velocity.0.to_array(),
+                        });
+                        commands.entity(entity).despawn();
+                    }
+                }
+                if !saved_mobs.is_empty() {
+                    chunk.chunk.set_mob_records(saved_mobs);
+                    if let Some(persistence) = persistence.as_deref_mut() {
+                        persistence.mark_dirty(position);
+                    }
+                }
                 if let Some(persistence) = persistence.as_deref_mut() {
                     persistence.queue_unload(position, chunk);
                 }
@@ -343,6 +371,7 @@ pub(crate) fn stream_chunks(
                 persistence.mark_dirty(position);
             }
             let saved_items = std::mem::take(&mut job.chunk.items);
+            let saved_mobs = job.chunk.chunk.take_mob_records();
             if let Some(ticks) = ticks.as_deref_mut() {
                 ticks.load_chunk(position, &mut job.chunk.chunk);
             }
@@ -350,6 +379,9 @@ pub(crate) fn stream_chunks(
             if job.loaded {
                 for item in saved_items {
                     spawn_saved_item(&mut commands, item);
+                }
+                for mob in saved_mobs {
+                    spawn_saved(&mut commands, mob);
                 }
             }
         }

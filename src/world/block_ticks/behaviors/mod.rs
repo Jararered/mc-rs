@@ -14,6 +14,7 @@ use super::behavior::inert_table;
 pub mod attached;
 pub mod crops;
 pub mod falling;
+pub mod fire;
 pub mod fluid;
 pub mod leaves;
 pub mod ore;
@@ -44,6 +45,7 @@ pub(super) fn table() -> [&'static dyn BlockBehavior; 256] {
     register(&mut table, &[Id::Water, Id::Lava], &fluid::STATIONARY);
     register(&mut table, &[Id::Sand, Id::Gravel], &falling::FALLING);
     register(&mut table, &[Id::Grass], &soil::GRASS);
+    register(&mut table, &[Id::Fire], &fire::FIRE);
     register(&mut table, &[Id::Farmland], &soil::FARMLAND);
     register(&mut table, &[Id::Crops], &crops::CROPS);
     register(

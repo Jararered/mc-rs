@@ -8,6 +8,7 @@ use bevy::prelude::*;
 use bevy::ui::widget::NodeImageMode;
 use bevy::window::PrimaryWindow;
 
+use crate::app::settings::Difficulty;
 use crate::app::settings::GameSettings;
 use crate::app::settings::GraphicsQuality;
 use crate::app::state::AppScreen;
@@ -72,6 +73,7 @@ enum MenuAction {
     DirectionalLighting,
     WiggleLeaves,
     Graphics,
+    Difficulty,
     MaxFps,
     MouseSensitivity(f32),
     ViewBobbing,
@@ -90,6 +92,7 @@ enum SettingLabel {
     DirectionalLighting,
     WiggleLeaves,
     Graphics,
+    Difficulty,
     MaxFps,
     MouseSensitivity,
     ViewBobbing,
@@ -100,6 +103,7 @@ enum SettingLabel {
 enum SettingsTab {
     Video,
     Controls,
+    Gameplay,
 }
 
 #[derive(Component)]
@@ -405,6 +409,14 @@ fn spawn_settings_menu(commands: &mut Commands, textures: &MenuTextures, setting
                     160.0,
                     None,
                 );
+                spawn_button(
+                    tabs,
+                    textures,
+                    "Gameplay",
+                    MenuAction::Tab(SettingsTab::Gameplay),
+                    160.0,
+                    None,
+                );
             });
         parent
             .spawn((
@@ -516,6 +528,26 @@ fn spawn_settings_menu(commands: &mut Commands, textures: &MenuTextures, setting
                             fullscreen_text(settings),
                             MenuAction::Fullscreen,
                             SettingLabel::Fullscreen,
+                        );
+                    });
+                content
+                    .spawn((
+                        SettingsTab::Gameplay,
+                        Node {
+                            width: percent(100),
+                            flex_shrink: 0.0,
+                            align_self: AlignSelf::Start,
+                            display: Display::None,
+                            ..default()
+                        },
+                    ))
+                    .with_children(|parent| {
+                        spawn_setting_button(
+                            parent,
+                            textures,
+                            difficulty_text(settings),
+                            MenuAction::Difficulty,
+                            SettingLabel::Difficulty,
                         );
                     });
                 content
@@ -710,6 +742,7 @@ fn handle_buttons(
             }
             MenuAction::WiggleLeaves => settings.wiggle_leaves = !settings.wiggle_leaves,
             MenuAction::Graphics => settings.cycle_graphics(),
+            MenuAction::Difficulty => settings.difficulty = settings.difficulty.cycle(),
             MenuAction::MaxFps => settings.cycle_max_fps(),
             MenuAction::MouseSensitivity(change) => settings.change_mouse_sensitivity(*change),
             MenuAction::ViewBobbing => settings.view_bobbing = !settings.view_bobbing,
@@ -749,6 +782,7 @@ fn refresh_settings_labels(
             SettingLabel::DirectionalLighting => directional_lighting_text(&settings),
             SettingLabel::WiggleLeaves => wiggle_leaves_text(&settings),
             SettingLabel::Graphics => graphics_text(&settings),
+            SettingLabel::Difficulty => difficulty_text(&settings),
             SettingLabel::MaxFps => max_fps_text(&settings),
             SettingLabel::MouseSensitivity => sensitivity_text(&settings),
             SettingLabel::ViewBobbing => view_bobbing_text(&settings),
@@ -808,6 +842,18 @@ fn smooth_lighting_text(settings: &GameSettings) -> String {
             "ON"
         } else {
             "OFF"
+        }
+    )
+}
+
+fn difficulty_text(settings: &GameSettings) -> String {
+    format!(
+        "Difficulty: {}",
+        match settings.difficulty {
+            Difficulty::Peaceful => "Peaceful",
+            Difficulty::Easy => "Easy",
+            Difficulty::Normal => "Normal",
+            Difficulty::Hard => "Hard",
         }
     )
 }

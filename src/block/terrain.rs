@@ -136,7 +136,7 @@ fn properties(id: Id) -> BlockProperties {
         },
         Id::CraftingTable => BlockProperties::solid(2.5),
         Id::Farmland => BlockProperties {
-            opaque_cube: true,
+            opaque_cube: false,
             selection_bounds: ([0.0; 3], [1.0, 15.0 / 16.0, 1.0]),
             ..BlockProperties::solid(0.6)
         },

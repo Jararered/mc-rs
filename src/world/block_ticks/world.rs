@@ -55,6 +55,7 @@ pub struct TickWorld<'a> {
     ticks: &'a mut BlockTicks,
     light: &'a mut LightCache,
     time: u64,
+    raining: bool,
     skylight_subtracted: u8,
     /// Beta `World.editingBlocks`: suppresses neighbor notifications.
     editing: bool,
@@ -71,11 +72,13 @@ impl<'a> TickWorld<'a> {
         time: u64,
         skylight_subtracted: u8,
     ) -> Self {
+        let raining = ticks.raining;
         Self {
             chunks,
             ticks,
             light,
             time,
+            raining,
             skylight_subtracted,
             editing: false,
             immediate: false,
@@ -198,11 +201,25 @@ impl<'a> TickWorld<'a> {
             .all(|y| light_opacity(self.block(IVec3::new(position.x, y, position.z))) == 0)
     }
 
-    /// `World.canBlockBeRainedOn`. There is no weather yet, so nothing is
-    /// rained on; behaviors that react to rain call this so weather can land
-    /// in one place.
-    pub fn rained_on(&self, _position: IVec3) -> bool {
-        false
+    /// `World.canBlockBeRainedOn`: precipitation reaches this cell only if
+    /// the sky is unobstructed and the local biome receives rain, not snow.
+    pub fn rained_on(&self, position: IVec3) -> bool {
+        self.raining
+            && self.sees_sky(position)
+            && self.top_solid_block(position.x, position.z) <= position.y
+            && self
+                .chunks
+                .climate_at(position.x, position.z)
+                .is_some_and(|climate| {
+                    !matches!(
+                        climate.biome,
+                        Biome::Taiga | Biome::Tundra | Biome::IceDesert | Biome::Desert
+                    )
+                })
+    }
+
+    pub fn is_raining(&self) -> bool {
+        self.raining
     }
 
     /// `BiomeGenBase.getEnableSnow` for the column's biome.
@@ -490,8 +507,8 @@ impl<'a> TickWorld<'a> {
     }
 
     /// The snowy-biome half of the per-chunk weather roll: still water under
-    /// the column's top freezes where block light is below 10. Snow cover
-    /// needs rain, which does not exist yet.
+    /// the column's top freezes where block light is below 10. During
+    /// precipitation a clear, supported cell also collects a snow layer.
     fn freeze_column(&mut self, x: i32, z: i32) {
         let y = self.top_solid_block(x, z);
         let top = IVec3::new(x, y, z);
@@ -504,6 +521,13 @@ impl<'a> TickWorld<'a> {
         let below = top - IVec3::Y;
         if self.block(below) == Id::Water && self.metadata(below) == 0 {
             self.set_block_notify(below, Id::Ice);
+        }
+        if self.raining
+            && self.block(top) == Id::Air
+            && super::behaviors::snow::SnowLayer::can_stay(self, top)
+            && self.block(below) != Id::Ice
+        {
+            self.set_block_notify(top, Id::SnowLayer);
         }
     }
 
@@ -579,7 +603,7 @@ impl<'a> TickWorld<'a> {
             .push(TickEffect::FallingBlock { position, block });
     }
 
-    /// Queue a presentation-only effect.
+    /// Queue an ECS effect after the block tick pass.
     pub fn emit(&mut self, effect: TickEffect) {
         self.ticks.effects.push(effect);
     }

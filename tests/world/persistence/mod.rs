@@ -11,6 +11,10 @@ use bevy::asset::AssetPlugin;
 use bevy::mesh::MeshPlugin;
 use bevy::prelude::*;
 use game::block::id::Id;
+use game::entity::mobs::Mob;
+use game::entity::mobs::MobKind;
+use game::entity::mobs::MobRecord;
+use game::entity::mobs::MobSpawner;
 use game::item::ItemStack;
 use game::player::Player;
 use game::world::chunk::CHUNK_HEIGHT;
@@ -31,6 +35,7 @@ use game::world::persistence::chunk_file_name;
 use game::world::persistence::region_dir_name;
 use game::world::persistence::region_of;
 use game::world::plugin::WorldPlugin;
+use game::world::weather::WorldWeather;
 
 /// A unique, empty directory under the system temp directory.
 fn temp_saves(label: &str) -> PathBuf {
@@ -118,6 +123,57 @@ fn manifest_records_the_seed_and_name() {
     assert_eq!(manifest.name, "Test World");
     assert_eq!(manifest.format_version, FORMAT_VERSION);
     assert!(manifest.created_unix_millis > 0);
+}
+
+#[test]
+fn weather_and_spawner_mobs_round_trip_without_changing_older_saves() {
+    let saves = temp_saves("creatures-weather");
+    let storage = WorldStorage::create(&saves, 9, "Creatures").unwrap();
+    let mut weather = WorldWeather {
+        raining: true,
+        thundering: true,
+        rain_time: 200,
+        thunder_time: 100,
+        ..default()
+    };
+    weather.rain_strength = 1.0;
+    storage.set_weather(&weather);
+    storage
+        .save_player(&StoredPlayer::from_transform(&Transform::default()))
+        .unwrap();
+    let reopened = WorldStorage::open(storage.root().to_path_buf()).unwrap();
+    assert!(reopened.manifest().weather.raining);
+    assert_eq!(reopened.manifest().weather.rain_time, 200);
+    let player = StoredPlayer::from_transform(&Transform::default()).with_health(7);
+    storage.save_player(&player).unwrap();
+    assert_eq!(reopened.load_player().unwrap().health, 7);
+
+    let pos = ChunkPosition::ZERO;
+    let mut generated = OverworldGenerator::new(9).generate(pos);
+    generated.chunk.set(2, 40, 3, Id::MobSpawner);
+    let index = Chunk::index(2, 40, 3);
+    let spawner = MobSpawner {
+        kind: MobKind::Skeleton,
+        delay: 407,
+        rng_state: 42,
+    };
+    generated.chunk.insert_spawner(index, spawner);
+    let mut sheep = Mob::new(MobKind::Sheep, 123);
+    sheep.sheared = true;
+    sheep.health = 7;
+    generated.chunk.set_mob_records(vec![MobRecord {
+        mob: sheep,
+        feet: [2.5, 42.0, 3.5],
+        velocity: [0.0, 0.1, 0.0],
+    }]);
+    storage.save_chunk(pos, &generated).unwrap();
+    let loaded = reopened.load_chunk(pos).unwrap();
+    assert_eq!(*loaded.chunk.spawners().next().unwrap().1, spawner);
+    let loaded_mob = &loaded.chunk.mob_records()[0];
+    assert_eq!(loaded_mob.mob.kind, MobKind::Sheep);
+    assert!(loaded_mob.mob.sheared);
+    assert_eq!(loaded_mob.mob.health, 7);
+    assert_eq!(loaded_mob.feet, [2.5, 42.0, 3.5]);
 }
 
 #[test]

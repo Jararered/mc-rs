@@ -9,8 +9,11 @@ mod raycast;
 pub use raycast::BLOCK_REACH;
 pub use raycast::BlockFace;
 pub use raycast::BlockHit;
+pub use raycast::block_hit_distance;
 pub use raycast::raycast_blocks;
 pub use raycast::raycast_blocks_or_liquid;
+pub use raycast::raycast_collision;
+pub use raycast::segment_entry;
 
 use bevy::prelude::*;
 
@@ -389,19 +392,8 @@ pub fn colliding_aabbs(chunks: &WorldChunks, area: Aabb) -> Vec<Aabb> {
                 }
                 let block = if y < 0 {
                     Aabb::from_block(x, y, z)
-                } else if let Some((min, max)) = chunks.block_at(x, y, z).and_then(|block| {
-                    if block == crate::block::id::Id::SnowLayer && chunks.metadata_at(x, y, z) >= 3
-                    {
-                        Some(([0.0; 3], [1.0, 0.5, 1.0]))
-                    } else {
-                        collision_bounds(block)
-                    }
-                }) {
-                    let origin = Vec3::new(x as f32, y as f32, z as f32);
-                    Aabb::new(
-                        origin + Vec3::from_array(min),
-                        origin + Vec3::from_array(max),
-                    )
+                } else if let Some(block) = block_collision_box(chunks, x, y, z) {
+                    block
                 } else {
                     continue;
                 };
@@ -412,6 +404,23 @@ pub fn colliding_aabbs(chunks: &WorldChunks, area: Aabb) -> Vec<Aabb> {
         }
     }
     boxes
+}
+
+/// `Block.getCollisionBoundingBoxFromPool` for a world cell, in world space.
+/// Deep snow layers collide as a half slab.
+pub(crate) fn block_collision_box(chunks: &WorldChunks, x: i32, y: i32, z: i32) -> Option<Aabb> {
+    let block = chunks.block_at(x, y, z)?;
+    let (min, max) = if block == crate::block::id::Id::SnowLayer && chunks.metadata_at(x, y, z) >= 3
+    {
+        ([0.0; 3], [1.0, 0.5, 1.0])
+    } else {
+        collision_bounds(block)?
+    };
+    let origin = Vec3::new(x as f32, y as f32, z as f32);
+    Some(Aabb::new(
+        origin + Vec3::from_array(min),
+        origin + Vec3::from_array(max),
+    ))
 }
 
 /// Run Beta's living-entity ground movement for each emitted world tick.

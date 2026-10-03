@@ -5,19 +5,25 @@
     pbr_functions::{apply_pbr_lighting, main_pass_post_lighting_processing},
     pbr_types::STANDARD_MATERIAL_FLAGS_UNLIT_BIT,
     mesh_functions,
+    mesh_view_bindings::globals,
 }
 
-fn srgb_to_linear(color: vec3<f32>) -> vec3<f32> {
-    let low = color / 12.92;
-    let high = pow((color + 0.055) / 1.055, vec3(2.4));
-    return select(high, low, color <= vec3(0.04045));
+/// `x` is the layer: 0 a lit skin, 1 a glow (spider eyes), 2 an additive
+/// charge. `y` scrolls the texture, in UV units per second.
+@group(#{MATERIAL_BIND_GROUP}) @binding(100)
+var<uniform> creature_params: vec4<f32>;
+
+/// Per-box state packed in `MeshTag`. See `creature_tag` in `shading.rs`.
+struct Tag {
+    brightness: f32,
+    hurt: f32,
+    flash: f32,
+    alpha: f32,
 }
 
-/// `MeshTag` holds the complement of an sRGB tint in RGB and the entity's
-/// world brightness in alpha. See `creature_tag` in `shading.rs`.
-fn creature_tint(instance_index: u32) -> vec4<f32> {
-    let tag = unpack4x8unorm(~mesh_functions::get_tag(instance_index));
-    return vec4(srgb_to_linear(tag.rgb), tag.a);
+fn creature_tag(instance_index: u32) -> Tag {
+    let packed = unpack4x8unorm(mesh_functions::get_tag(instance_index));
+    return Tag(1.0 - packed.x, packed.y, packed.z, 1.0 - packed.w);
 }
 
 /// `RenderHelper.enableStandardItemLighting`: two lights fixed in the world,
@@ -29,22 +35,54 @@ fn item_lighting(normal: vec3<f32>) -> f32 {
 }
 
 @fragment
-fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> FragmentOutput {
+fn fragment(vertex: VertexOutput, @builtin(front_facing) is_front: bool) -> FragmentOutput {
+    var in = vertex;
+#ifdef VERTEX_UVS_A
+    in.uv += vec2(globals.time * creature_params.y);
+#endif
     var pbr_input = pbr_input_from_standard_material(in, is_front);
-    pbr_input.material.base_color = alpha_discard(pbr_input.material, pbr_input.material.base_color);
-    let tint = creature_tint(in.instance_index);
-    let base = pbr_input.material.base_color;
-
+    let tag = creature_tag(in.instance_index);
+    let mode = u32(creature_params.x + 0.5);
+    let shade = item_lighting(pbr_input.N);
     var out: FragmentOutput;
+
+    if mode == 2u {
+        // `RenderCreeper`'s charge: half-bright, unlit, added on top.
+        let base = pbr_input.material.base_color;
+        out.color = vec4(base.rgb * 0.5, 1.0);
+        out.color = main_pass_post_lighting_processing(pbr_input, out.color);
+        return out;
+    }
+    if mode == 1u {
+        // `RenderSpider`'s eyes: lit but not darkened, fading in at night.
+        let base = pbr_input.material.base_color;
+        out.color = vec4(base.rgb * min(shade, 1.0), base.a * tag.alpha);
+        out.color = main_pass_post_lighting_processing(pbr_input, out.color);
+        return out;
+    }
+
+    pbr_input.material.base_color = alpha_discard(pbr_input.material, pbr_input.material.base_color);
+    let base = pbr_input.material.base_color;
+    var color: vec3<f32>;
+    var hurt_tone: vec3<f32>;
+    var flash_tone: vec3<f32>;
     if (pbr_input.material.flags & STANDARD_MATERIAL_FLAGS_UNLIT_BIT) == 0u {
-        pbr_input.material.base_color = vec4(base.rgb * tint.rgb, base.a);
-        out.color = apply_pbr_lighting(pbr_input);
+        color = apply_pbr_lighting(pbr_input).rgb;
+        let level = max(color.r, max(color.g, color.b));
+        hurt_tone = vec3(level, 0.0, 0.0);
+        flash_tone = vec3(level);
     } else {
         // Fixed-function lighting clamps the lit vertex color before it
-        // modulates the texture.
-        let light = min(tint.rgb * tint.a * item_lighting(pbr_input.N), vec3(1.0));
-        out.color = vec4(base.rgb * light, base.a);
+        // modulates the texture. Both overlays are lit the same way.
+        let light = min(tag.brightness * shade, 1.0);
+        color = base.rgb * light;
+        hurt_tone = vec3(light, 0.0, 0.0);
+        flash_tone = vec3(min(shade, 1.0));
     }
+    // `RenderLiving`'s red pass while hurt or dying, then a creeper's flash.
+    color = mix(color, hurt_tone, tag.hurt * 0.4);
+    color = mix(color, flash_tone, tag.flash);
+    out.color = vec4(color, base.a * tag.alpha);
     out.color = main_pass_post_lighting_processing(pbr_input, out.color);
     return out;
 }

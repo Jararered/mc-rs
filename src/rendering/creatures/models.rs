@@ -16,6 +16,7 @@ use bevy::prelude::*;
 use bevy::render::render_resource::PrimitiveTopology;
 
 use crate::entity::mobs::MobKind;
+use crate::item::ItemId;
 
 /// Every Beta mob skin is 64×32 texels.
 const TEXTURE_SIZE: Vec2 = Vec2::new(64.0, 32.0);
@@ -31,6 +32,9 @@ pub struct Cuboid {
     pub origin: Vec3,
     pub size: [u8; 3],
     pub inflate: f32,
+    /// `ModelRenderer.mirror`: the box's X extent is flipped, so the skin
+    /// reads left-to-right reversed, as for a biped's left limbs.
+    pub mirror: bool,
 }
 
 /// Which render pass draws a part: the main model, or `RenderPig`'s and
@@ -43,6 +47,14 @@ pub enum Layer {
     /// `ModelSheep1` in `sheep_fur.png`, tinted by the fleece and drawn
     /// until sheared.
     Fleece,
+    /// `RenderSpider`'s second pass: `spider_eyes.png` blended over the
+    /// head, more opaque the darker it is.
+    Eyes,
+    /// `RenderCreeper`'s `ModelCreeper(2.0)` in a scrolling `power.png`,
+    /// added over a charged creeper.
+    Charge,
+    /// `RenderSlime`'s translucent outer cube, `ModelSlime(0)`.
+    SlimeOuter,
 }
 
 /// How `setRotationAngles` and `setLivingAnimations` move a part.
@@ -65,6 +77,14 @@ pub enum Role {
     /// `ModelSquid`'s tentacles bend about X by the tentacle angle.
     Tentacle,
     Wolf(WolfPart),
+    /// `ModelZombie`'s arms, held straight out and swaying a little.
+    ZombieArm {
+        right: bool,
+    },
+    /// One of `ModelSpider`'s eight legs, numbered from 1.
+    SpiderLeg(u8),
+    /// `ModelGhast`'s tentacles drift about X with age; each has its own phase.
+    GhastTentacle(u8),
 }
 
 /// `ModelWolf` repositions most parts when the wolf sits.
@@ -122,12 +142,18 @@ fn part(
             origin: Vec3::from_array(origin),
             size,
             inflate,
+            mirror: false,
         },
         pivot: Vec3::from_array(pivot),
         rotation: Vec3::ZERO,
         role,
         layer,
     }
+}
+
+fn mirrored(mut part: Part) -> Part {
+    part.cuboid.mirror = true;
+    part
 }
 
 fn rotated(mut part: Part, rotation: Vec3) -> Part {
@@ -196,8 +222,311 @@ pub fn model(kind: MobKind) -> Vec<Part> {
         MobKind::Chicken => chicken(),
         MobKind::Squid => squid(),
         MobKind::Wolf => wolf(),
-        _ => Vec::new(),
+        MobKind::Zombie | MobKind::PigZombie => biped(false),
+        MobKind::Skeleton => biped(true),
+        MobKind::Creeper => {
+            let mut parts = creeper(0.0, Layer::Base);
+            parts.extend(creeper(2.0, Layer::Charge));
+            parts
+        }
+        MobKind::Spider => spider(),
+        MobKind::Slime => slime(),
+        MobKind::Ghast => ghast(),
     }
+}
+
+/// `ModelZombie`, or `ModelSkeleton`'s thinner limbs on the same frame.
+fn biped(skeleton: bool) -> Vec<Part> {
+    let base = Layer::Base;
+    let (limb_origin, limb) = if skeleton {
+        ([-1.0, 0.0, -1.0], [2, 12, 2])
+    } else {
+        ([-2.0, 0.0, -2.0], [4, 12, 4])
+    };
+    let (right_arm, left_arm) = if skeleton {
+        ([-1.0, -2.0, -1.0], [-1.0, -2.0, -1.0])
+    } else {
+        ([-3.0, -2.0, -2.0], [-1.0, -2.0, -2.0])
+    };
+    vec![
+        part(
+            [0, 0],
+            [-4.0, -8.0, -4.0],
+            [8, 8, 8],
+            0.0,
+            [0.0; 3],
+            HEAD,
+            base,
+        ),
+        part(
+            [16, 16],
+            [-4.0, 0.0, -2.0],
+            [8, 12, 4],
+            0.0,
+            [0.0; 3],
+            Role::Fixed,
+            base,
+        ),
+        part(
+            [40, 16],
+            right_arm,
+            limb,
+            0.0,
+            [-5.0, 2.0, 0.0],
+            Role::ZombieArm { right: true },
+            base,
+        ),
+        mirrored(part(
+            [40, 16],
+            left_arm,
+            limb,
+            0.0,
+            [5.0, 2.0, 0.0],
+            Role::ZombieArm { right: false },
+            base,
+        )),
+        part(
+            [0, 16],
+            limb_origin,
+            limb,
+            0.0,
+            [-2.0, 12.0, 0.0],
+            Role::Leg { phase: 0.0 },
+            base,
+        ),
+        mirrored(part(
+            [0, 16],
+            limb_origin,
+            limb,
+            0.0,
+            [2.0, 12.0, 0.0],
+            Role::Leg { phase: PI },
+            base,
+        )),
+        // `bipedHeadwear`, a half-pixel larger, drawn last.
+        part(
+            [32, 0],
+            [-4.0, -8.0, -4.0],
+            [8, 8, 8],
+            0.5,
+            [0.0; 3],
+            HEAD,
+            base,
+        ),
+    ]
+}
+
+/// `ModelCreeper(inflate)`: a head on a body over four short legs.
+fn creeper(inflate: f32, layer: Layer) -> Vec<Part> {
+    let leg = |x: f32, z: f32, phase: f32| {
+        part(
+            [0, 16],
+            [-2.0, 0.0, -2.0],
+            [4, 6, 4],
+            inflate,
+            [x, 16.0, z],
+            Role::Leg { phase },
+            layer,
+        )
+    };
+    vec![
+        part(
+            [0, 0],
+            [-4.0, -8.0, -4.0],
+            [8, 8, 8],
+            inflate,
+            [0.0, 4.0, 0.0],
+            HEAD,
+            layer,
+        ),
+        part(
+            [16, 16],
+            [-4.0, 0.0, -2.0],
+            [8, 12, 4],
+            inflate,
+            [0.0, 4.0, 0.0],
+            Role::Fixed,
+            layer,
+        ),
+        leg(-2.0, 4.0, 0.0),
+        leg(2.0, 4.0, PI),
+        leg(-2.0, -4.0, PI),
+        leg(2.0, -4.0, 0.0),
+    ]
+}
+
+/// `ModelSpider`: head, neck, abdomen, and four legs a side. The eyes pass
+/// redraws the head.
+fn spider() -> Vec<Part> {
+    let base = Layer::Base;
+    let head = |layer: Layer| {
+        part(
+            [32, 4],
+            [-4.0, -4.0, -8.0],
+            [8, 8, 8],
+            0.0,
+            [0.0, 15.0, -3.0],
+            HEAD,
+            layer,
+        )
+    };
+    let mut parts = vec![
+        head(base),
+        part(
+            [0, 0],
+            [-3.0, -3.0, -3.0],
+            [6, 6, 6],
+            0.0,
+            [0.0, 15.0, 0.0],
+            Role::Fixed,
+            base,
+        ),
+        part(
+            [0, 12],
+            [-5.0, -4.0, -6.0],
+            [10, 8, 12],
+            0.0,
+            [0.0, 15.0, 9.0],
+            Role::Fixed,
+            base,
+        ),
+    ];
+    for n in 1..=8u8 {
+        let left = n % 2 == 1;
+        let z = [2.0, 2.0, 1.0, 1.0, 0.0, 0.0, -1.0, -1.0][usize::from(n - 1)];
+        parts.push(part(
+            [18, 0],
+            [if left { -15.0 } else { -1.0 }, -1.0, -1.0],
+            [16, 2, 2],
+            0.0,
+            [if left { -4.0 } else { 4.0 }, 15.0, z],
+            Role::SpiderLeg(n),
+            base,
+        ));
+    }
+    parts.push(head(Layer::Eyes));
+    parts
+}
+
+/// `ModelSlime(16)`, the core with its eyes and mouth, and the translucent
+/// `ModelSlime(0)` cube around it.
+fn slime() -> Vec<Part> {
+    let base = Layer::Base;
+    vec![
+        part(
+            [0, 16],
+            [-3.0, 17.0, -3.0],
+            [6, 6, 6],
+            0.0,
+            [0.0; 3],
+            Role::Fixed,
+            base,
+        ),
+        part(
+            [32, 0],
+            [-3.25, 18.0, -3.5],
+            [2, 2, 2],
+            0.0,
+            [0.0; 3],
+            Role::Fixed,
+            base,
+        ),
+        part(
+            [32, 4],
+            [1.25, 18.0, -3.5],
+            [2, 2, 2],
+            0.0,
+            [0.0; 3],
+            Role::Fixed,
+            base,
+        ),
+        part(
+            [32, 8],
+            [0.0, 21.0, -3.5],
+            [1, 1, 1],
+            0.0,
+            [0.0; 3],
+            Role::Fixed,
+            base,
+        ),
+        part(
+            [0, 0],
+            [-4.0, 16.0, -4.0],
+            [8, 8, 8],
+            0.0,
+            [0.0; 3],
+            Role::Fixed,
+            Layer::SlimeOuter,
+        ),
+    ]
+}
+
+/// `ModelGhast`: a cube trailing nine tentacles whose lengths come from
+/// `new Random(1660)`.
+fn ghast() -> Vec<Part> {
+    let mut parts = vec![part(
+        [0, 0],
+        [-8.0, -8.0, -8.0],
+        [16, 16, 16],
+        0.0,
+        [0.0, 8.0, 0.0],
+        Role::Fixed,
+        Layer::Base,
+    )];
+    let mut rng = crate::random::JavaRandom::new(1660);
+    for i in 0..9u8 {
+        let column = f32::from(i % 3) - f32::from(i / 3 % 2) * 0.5 + 0.25;
+        let x = (column / 2.0 * 2.0 - 1.0) * 5.0;
+        let z = (f32::from(i / 3) / 2.0 * 2.0 - 1.0) * 5.0;
+        let length = rng.next_int(7) as u8 + 8;
+        parts.push(part(
+            [0, 0],
+            [-1.0, 0.0, -1.0],
+            [2, length, 2],
+            0.0,
+            [x, 15.0, z],
+            Role::GhastTentacle(i),
+            Layer::Base,
+        ));
+    }
+    parts
+}
+
+/// `getHeldItem`: skeletons carry a bow and zombie pigmen a gold sword.
+pub fn held_item(kind: MobKind) -> Option<ItemId> {
+    match kind {
+        MobKind::Skeleton => Some(ItemId::Bow),
+        MobKind::PigZombie => Some(ItemId::GoldSword),
+        _ => None,
+    }
+}
+
+/// `RenderBiped.renderEquippedItems` and `ItemRenderer.renderItem`, as a
+/// transform from the right arm's frame (model pixels) to an extruded
+/// sprite spanning the unit square. Swords and tools are held point up;
+/// other items, like the bow, lie across the hand.
+pub fn held_item_transform(full_3d: bool) -> Transform {
+    let degrees = f32::to_radians;
+    let into_hand = Mat4::from_translation(Vec3::new(-0.0625, 0.4375, 0.0625));
+    let grip = if full_3d {
+        Mat4::from_translation(Vec3::new(0.0, 0.1875, 0.0))
+            * Mat4::from_scale(Vec3::new(0.625, -0.625, 0.625))
+            * Mat4::from_rotation_x(degrees(-100.0))
+            * Mat4::from_rotation_y(degrees(45.0))
+    } else {
+        Mat4::from_translation(Vec3::new(0.25, 0.1875, -0.1875))
+            * Mat4::from_scale(Vec3::splat(0.375))
+            * Mat4::from_rotation_z(degrees(60.0))
+            * Mat4::from_rotation_x(degrees(-90.0))
+            * Mat4::from_rotation_z(degrees(20.0))
+    };
+    let sprite = Mat4::from_translation(Vec3::new(0.0, -0.3, 0.0))
+        * Mat4::from_scale(Vec3::splat(1.5))
+        * Mat4::from_rotation_y(degrees(50.0))
+        * Mat4::from_rotation_z(degrees(335.0))
+        * Mat4::from_translation(Vec3::new(-0.9375, -0.0625, 0.0));
+    // The arm's frame is in pixels; these offsets are in blocks.
+    Transform::from_matrix(Mat4::from_scale(Vec3::splat(16.0)) * into_hand * grip * sprite)
 }
 
 /// `ModelCow`: a deeper head with horns, a larger body, udders, and legs
@@ -571,8 +900,62 @@ pub fn pose(part: &Part, input: &PoseInput) -> Transform {
             zyx(Vec3::new(input.special, part.rotation.y, 0.0)),
         ),
         Role::Wolf(wolf) => wolf_pose(wolf, part.pivot, input, head_yaw, head_pitch),
+        Role::ZombieArm { right } => {
+            // `ModelZombie.setRotationAngles`, with no swing in progress.
+            let sway = (input.special * 0.09).cos() * 0.05 + 0.05;
+            let bob = (input.special * 0.067).sin() * 0.05;
+            let rotation = if right {
+                Vec3::new(-FRAC_PI_2 + bob, -0.1, sway)
+            } else {
+                Vec3::new(-FRAC_PI_2 - bob, 0.1, -sway)
+            };
+            (part.pivot, zyx(rotation))
+        }
+        Role::SpiderLeg(n) => (part.pivot, zyx(spider_leg(n, input))),
+        Role::GhastTentacle(i) => {
+            let x = 0.2 * (input.special * 0.3 + f32::from(i)).sin() + 0.4;
+            (part.pivot, zyx(Vec3::X * x))
+        }
     };
     Transform::from_translation(pivot).with_rotation(rotation)
+}
+
+/// `ModelSpider.setRotationAngles` for one leg: splayed out and back, each
+/// pair stepping a quarter cycle after the last.
+fn spider_leg(n: u8, input: &PoseInput) -> Vec3 {
+    let index = usize::from(n - 1);
+    let pair = index / 2;
+    let sign = if n % 2 == 1 { 1.0 } else { -1.0 };
+    let quarter = FRAC_PI_4;
+    let eighth = FRAC_PI_4 / 2.0;
+    let rest_z = [
+        -quarter,
+        quarter,
+        -quarter * 0.74,
+        quarter * 0.74,
+        -quarter * 0.74,
+        quarter * 0.74,
+        -quarter,
+        quarter,
+    ];
+    let rest_y = [
+        eighth * 2.0,
+        -eighth * 2.0,
+        eighth,
+        -eighth,
+        -eighth,
+        eighth,
+        -eighth * 2.0,
+        eighth * 2.0,
+    ];
+    let phase = [0.0, PI, FRAC_PI_2, 3.0 * FRAC_PI_2][pair];
+    let reach = -((input.limb_swing * 0.6662 * 2.0 + phase).cos() * 0.4) * input.limb_amount;
+    let lift = ((input.limb_swing * 0.6662 + phase).sin() * 0.4).abs() * input.limb_amount;
+    Vec3::new(
+        0.0,
+        rest_y[index] + sign * reach,
+        rest_z[index] + sign * lift,
+    )
 }
 
 /// `ModelWolf.setLivingAnimations` followed by `setRotationAngles`. Head
@@ -640,23 +1023,60 @@ pub fn wolf_tail(angry: bool, tamed: bool, health: i16) -> f32 {
     }
 }
 
+/// How `RenderLiving` places a model this frame.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Frame {
+    /// `renderYawOffset`, in degrees.
+    pub body_yaw: f32,
+    /// `RenderSquid`'s pitch and spin, in degrees.
+    pub squid: Option<(f32, f32)>,
+    /// `preRenderCallback`'s scale: a creeper's swell, a slime's size and
+    /// squish, a ghast's bulk.
+    pub scale: Vec3,
+    /// `rotateCorpse`'s tip onto the side while dying, in degrees.
+    pub death_tilt: f32,
+}
+
+impl Frame {
+    pub fn facing(body_yaw: f32) -> Self {
+        Self {
+            body_yaw,
+            squid: None,
+            scale: Vec3::ONE,
+            death_tilt: 0.0,
+        }
+    }
+}
+
+/// `RenderLiving.rotateCorpse`'s tilt: up to `max` degrees, easing in over
+/// the death animation.
+pub fn death_tilt(death_time: f32, max: f32) -> f32 {
+    if death_time <= 0.0 {
+        return 0.0;
+    }
+    ((death_time - 1.0) / 20.0 * 1.6).max(0.0).sqrt().min(1.0) * max
+}
+
 /// `RenderLiving` from the feet into model pixels: turn to the body's yaw,
-/// flip upside down (`glScalef(-1, -1, 1)`), lift, and scale by 1/16.
-/// `RenderSquid` also tips the body by its pitch and spins it by its own
-/// yaw about a point half a block up.
-pub fn model_transform(body_yaw: f32, squid: Option<(f32, f32)>) -> Transform {
-    let mut corpse = Quat::from_rotation_y((180.0 - body_yaw).to_radians());
-    let mut translation = Vec3::Y * LIFT;
-    if let Some((pitch, yaw)) = squid {
+/// tip over if dying, flip upside down (`glScalef(-1, -1, 1)`), scale, lift,
+/// and scale by 1/16. `RenderSquid` instead tips the body by its pitch and
+/// spins it by its own yaw about a point half a block up.
+pub fn model_transform(frame: Frame) -> Transform {
+    let mut corpse = Quat::from_rotation_y((180.0 - frame.body_yaw).to_radians());
+    let lift = Vec3::Y * LIFT * frame.scale.y;
+    let translation = if let Some((pitch, yaw)) = frame.squid {
         corpse = corpse
             * Quat::from_rotation_x(pitch.to_radians())
             * Quat::from_rotation_y(yaw.to_radians());
-        translation = Vec3::Y * 0.5 + corpse * (Vec3::Y * (LIFT - 1.2));
-    }
+        Vec3::Y * 0.5 + corpse * (lift - Vec3::Y * 1.2)
+    } else {
+        corpse *= Quat::from_rotation_z(frame.death_tilt.to_radians());
+        corpse * lift
+    };
     Transform {
         translation,
         rotation: corpse * Quat::from_rotation_z(PI),
-        scale: Vec3::splat(1.0 / 16.0),
+        scale: frame.scale / 16.0,
     }
 }
 
@@ -665,8 +1085,11 @@ pub fn model_transform(body_yaw: f32, squid: Option<(f32, f32)>) -> Transform {
 pub fn cuboid_mesh(cuboid: &Cuboid) -> Mesh {
     let [w, h, d] = cuboid.size.map(f32::from);
     let [u, v] = cuboid.texture.map(f32::from);
-    let low = cuboid.origin - Vec3::splat(cuboid.inflate);
-    let high = cuboid.origin + Vec3::new(w, h, d) + Vec3::splat(cuboid.inflate);
+    let mut low = cuboid.origin - Vec3::splat(cuboid.inflate);
+    let mut high = cuboid.origin + Vec3::new(w, h, d) + Vec3::splat(cuboid.inflate);
+    if cuboid.mirror {
+        std::mem::swap(&mut low.x, &mut high.x);
+    }
     let corner = |x: bool, y: bool, z: bool| {
         Vec3::new(
             if x { high.x } else { low.x },
@@ -704,18 +1127,23 @@ pub fn cuboid_mesh(cuboid: &Cuboid) -> Mesh {
     let mut indices = Vec::with_capacity(36);
     for (vertices, [u1, v1, u2, v2]) in faces {
         let base = positions.len() as u16;
-        let [a, b, c, _] = vertices.map(|i| corners[i]);
-        // `TexturedQuad.draw`, with Beta's reversed `subtract`.
-        let normal = (c - b).cross(a - b).normalize();
         let low_uv = Vec2::new(u1, v1) / TEXTURE_SIZE + inset;
         let high_uv = Vec2::new(u2, v2) / TEXTURE_SIZE - inset;
-        for (vertex, uv) in vertices.into_iter().zip([
-            Vec2::new(high_uv.x, low_uv.y),
-            low_uv,
-            Vec2::new(low_uv.x, high_uv.y),
-            high_uv,
-        ]) {
-            positions.push(corners[vertex].to_array());
+        let mut quad = [
+            (corners[vertices[0]], Vec2::new(high_uv.x, low_uv.y)),
+            (corners[vertices[1]], low_uv),
+            (corners[vertices[2]], Vec2::new(low_uv.x, high_uv.y)),
+            (corners[vertices[3]], high_uv),
+        ];
+        // `TexturedQuad.flipFace` keeps a mirrored box's faces outward.
+        if cuboid.mirror {
+            quad.reverse();
+        }
+        // `TexturedQuad.draw`, with Beta's reversed `subtract`.
+        let [(a, _), (b, _), (c, _), _] = quad;
+        let normal = (c - b).cross(a - b).normalize();
+        for (corner, uv) in quad {
+            positions.push(corner.to_array());
             normals.push(normal.to_array());
             uvs.push(uv.to_array());
         }

@@ -2,6 +2,9 @@ use bevy::prelude::*;
 use game::app::settings::Difficulty;
 use game::entity::EntitySize;
 use game::entity::StepDistance;
+use game::entity::creature::Bounce;
+use game::entity::creature::Fuse;
+use game::entity::creature::Hover;
 use game::entity::creature::Living;
 use game::entity::creature::Swim;
 use game::entity::creature::Wings;
@@ -162,8 +165,11 @@ fn large_slimes_split_into_four_smaller_slimes_on_death() {
         slime,
         Vec3::new(7., 10., 7.),
     );
-    app.world_mut().resource_mut::<WorldTick>().advance(0.05);
-    app.world_mut().run_schedule(Update);
+    // The body tips over for 20 ticks before it splits.
+    for _ in 0..21 {
+        app.world_mut().resource_mut::<WorldTick>().advance(0.05);
+        app.world_mut().run_schedule(Update);
+    }
     let sizes: Vec<_> = app
         .world_mut()
         .query::<&Mob>()
@@ -207,34 +213,48 @@ fn primed_tnt_damages_nearby_players_and_removes_weak_blocks() {
 }
 
 #[test]
-fn standing_in_fire_keeps_hurting_mobs_after_reignition() {
+fn fire_contact_hurts_once_per_invulnerability_window() {
     let mut app = mob_app();
-    app.world_mut()
-        .resource_mut::<WorldChunks>()
-        .get_mut(ChunkPosition::ZERO)
-        .unwrap()
-        .chunk
-        .set(7, 10, 7, game::block::id::Id::Fire);
+    {
+        let mut chunks = app.world_mut().resource_mut::<WorldChunks>();
+        let chunk = &mut chunks.get_mut(ChunkPosition::ZERO).unwrap().chunk;
+        // A one-block pit with fire at the bottom.
+        for x in 6..=8 {
+            for z in 6..=8 {
+                chunk.set(x, 9, z, game::block::id::Id::Stone);
+                for y in 10..=12 {
+                    chunk.set(x, y, z, game::block::id::Id::Stone);
+                }
+            }
+        }
+        for y in 10..=12 {
+            chunk.set(7, y, 7, game::block::id::Id::Air);
+        }
+        chunk.set(7, 10, 7, game::block::id::Id::Fire);
+    }
     spawn(
         &mut app.world_mut().commands(),
-        Mob::new(MobKind::Zombie, 42),
-        Vec3::new(7., 10., 7.),
+        Mob::new(MobKind::Pig, 42),
+        Vec3::new(7.5, 10., 7.5),
     );
     for _ in 0..20 {
         app.world_mut().resource_mut::<WorldTick>().advance(0.05);
         app.world_mut().run_schedule(Update);
     }
-    let health = app
+    let (mob, living) = app
         .world_mut()
-        .query::<&Mob>()
+        .query::<(&Mob, &Living)>()
         .single(app.world())
-        .unwrap()
-        .health;
-    assert_eq!(health, 19);
+        .unwrap();
+    // Touching fire deals 1 a tick, but after each hit the pig is
+    // invulnerable for 10 ticks: hits land on ticks 1 and 12.
+    assert_eq!(mob.health, 8);
+    assert!(mob.fire_ticks > 0);
+    assert!(living.invulnerable());
 }
 
 /// A grass field with the player standing at `player_feet`.
-fn creature_app(chunks: WorldChunks, player_feet: Vec3) -> App {
+pub fn creature_app(chunks: WorldChunks, player_feet: Vec3) -> App {
     let mut app = App::new();
     app.add_plugins(MinimalPlugins).add_plugins(WorldPlugin);
     *app.world_mut().resource_mut::<WorldChunks>() = chunks;
@@ -246,43 +266,48 @@ fn creature_app(chunks: WorldChunks, player_feet: Vec3) -> App {
     app
 }
 
-fn run_ticks(app: &mut App, ticks: u32) {
+pub fn run_ticks(app: &mut App, ticks: u32) {
     for _ in 0..ticks {
         app.world_mut().resource_mut::<WorldTick>().advance(0.05);
         app.world_mut().run_schedule(Update);
     }
 }
 
-fn summon(app: &mut App, mob: Mob, feet: Vec3) -> Entity {
+pub fn summon(app: &mut App, mob: Mob, feet: Vec3) -> Entity {
     let entity = spawn(&mut app.world_mut().commands(), mob, feet);
     app.world_mut().flush();
     entity
 }
 
-fn feet_of(app: &App, entity: Entity) -> Vec3 {
+pub fn feet_of(app: &App, entity: Entity) -> Vec3 {
     app.world().get::<Transform>(entity).unwrap().translation
 }
 
 #[test]
-fn creatures_get_beta_living_state_and_hostile_mobs_do_not() {
+fn every_mob_runs_beta_living_with_its_own_parts() {
     let mut app = creature_app(super::pathfinding::field(4), Vec3::new(0.5, 5.0, 8.5));
     for kind in MobKind::ALL {
         let entity = summon(&mut app, Mob::new(kind, 7), Vec3::new(0.5, 5.0, 0.5));
         let world = app.world();
-        assert_eq!(
-            world.get::<Living>(entity).is_some(),
-            !kind.hostile(),
-            "{kind:?}"
-        );
+        assert!(world.get::<Living>(entity).is_some(), "{kind:?}");
         assert_eq!(
             world.get::<Wings>(entity).is_some(),
             kind == MobKind::Chicken
         );
         assert_eq!(world.get::<Swim>(entity).is_some(), kind == MobKind::Squid);
-        // `EntityWolf.canTriggerWalking` keeps wolves off farmland.
+        assert_eq!(
+            world.get::<Fuse>(entity).is_some(),
+            kind == MobKind::Creeper
+        );
+        assert_eq!(
+            world.get::<Bounce>(entity).is_some(),
+            kind == MobKind::Slime
+        );
+        assert_eq!(world.get::<Hover>(entity).is_some(), kind == MobKind::Ghast);
+        // `canTriggerWalking` keeps wolves and spiders off farmland.
         assert_eq!(
             world.get::<StepDistance>(entity).is_some(),
-            !kind.hostile() && kind != MobKind::Wolf
+            !matches!(kind, MobKind::Wolf | MobKind::Spider)
         );
     }
 }

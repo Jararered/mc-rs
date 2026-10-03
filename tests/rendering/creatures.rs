@@ -7,6 +7,7 @@ use bevy::prelude::*;
 use game::entity::mobs::MobKind;
 use game::rendering::creatures::creature_tag;
 use game::rendering::creatures::models;
+use game::rendering::creatures::models::Frame;
 use game::rendering::creatures::models::Layer;
 use game::rendering::creatures::models::Part;
 use game::rendering::creatures::models::PoseInput;
@@ -28,7 +29,7 @@ fn uvs(mesh: &Mesh) -> Vec<Vec2> {
 
 /// World-space corners of a posed part, relative to the feet.
 fn posed_corners(part: &Part, input: &PoseInput, body_yaw: f32) -> Vec<Vec3> {
-    let frame = models::model_transform(body_yaw, None);
+    let frame = models::model_transform(Frame::facing(body_yaw));
     let pose = models::pose(part, input);
     floats3(&models::cuboid_mesh(&part.cuboid), Mesh::ATTRIBUTE_POSITION)
         .into_iter()
@@ -220,7 +221,10 @@ fn squid_tentacles_ring_the_body() {
     }
     // Upright, the top of the mantle sits 0.31 above `RenderSquid`'s turning
     // point, half a block above the feet.
-    let frame = models::model_transform(0.0, Some((0.0, 0.0)));
+    let frame = models::model_transform(Frame {
+        squid: Some((0.0, 0.0)),
+        ..Frame::facing(0.0)
+    });
     let rest = PoseInput::default();
     let mantle = models::pose(&parts[0], &rest);
     let top = frame.transform_point(mantle.transform_point(Vec3::new(0.0, -8.0, 0.0)));
@@ -229,12 +233,178 @@ fn squid_tentacles_ring_the_body() {
 
 #[test]
 fn an_untagged_creature_draws_white_at_full_brightness() {
-    assert_eq!(creature_tag(Color::WHITE, 1.0), MeshTag::default());
-    assert_ne!(creature_tag(Color::WHITE, 0.5), MeshTag::default());
+    assert_eq!(creature_tag(1.0, false, 0.0, 1.0), MeshTag::default());
+    assert_ne!(creature_tag(0.5, false, 0.0, 1.0), MeshTag::default());
+    assert_ne!(creature_tag(1.0, true, 0.0, 1.0), MeshTag::default());
 }
 
 #[test]
 fn tamed_wolf_tails_droop_as_they_lose_health() {
     assert!(models::wolf_tail(true, false, 8) > models::wolf_tail(false, false, 8));
     assert!(models::wolf_tail(false, true, 20) > models::wolf_tail(false, true, 4));
+}
+
+#[test]
+fn hostile_mobs_stand_at_beta_heights() {
+    // Zombies and skeletons top out at their headwear, half a pixel above
+    // the head; the creeper at its head; the spider at its abdomen. Beta's
+    // `ModelCreeper` sets its legs two pixels short, so it hovers. A
+    // spider rests on the tips of its splayed legs.
+    for (kind, bottom, top) in [
+        (MobKind::Zombie, 0.007_812_5, 2.039_062_5),
+        (MobKind::Skeleton, 0.007_812_5, 2.039_062_5),
+        (MobKind::PigZombie, 0.007_812_5, 2.039_062_5),
+        (MobKind::Creeper, 0.132_812_5, 1.757_812_5),
+        (MobKind::Spider, 0.026_1, 0.820_312_5),
+    ] {
+        let (min, max) = bounds(kind, Layer::Base, &PoseInput::default());
+        assert!(
+            (min.y - bottom).abs() < 1e-3,
+            "{kind:?} bottom at {}",
+            min.y
+        );
+        assert!((max.y - top).abs() < 1e-3, "{kind:?} top at {}", max.y);
+    }
+}
+
+#[test]
+fn zombies_hold_their_arms_out_in_front() {
+    let parts = models::model(MobKind::Zombie);
+    let rest = PoseInput::default();
+    let arm = center(&parts[2], &rest, 0.0);
+    let body = center(&parts[1], &rest, 0.0);
+    // Facing +Z, the arm reaches forward of the body at shoulder height.
+    assert!(arm.z - body.z > 0.2, "{arm} vs {body}");
+    assert!(arm.y > body.y);
+}
+
+#[test]
+fn mirrored_limbs_read_the_skin_reversed() {
+    let parts = models::model(MobKind::Zombie);
+    let (right, left) = (parts[4], parts[5]);
+    assert!(!right.cuboid.mirror && left.cuboid.mirror);
+    let front_u = |part: Part| {
+        let mesh = models::cuboid_mesh(&part.cuboid);
+        let normals = floats3(&mesh, Mesh::ATTRIBUTE_NORMAL);
+        let positions = floats3(&mesh, Mesh::ATTRIBUTE_POSITION);
+        let uv = uvs(&mesh);
+        let front: Vec<usize> = (0..normals.len())
+            .filter(|&i| normals[i].distance(Vec3::NEG_Z) < 1e-5)
+            .collect();
+        assert_eq!(front.len(), 4, "a mirrored box keeps outward faces");
+        let high_x = front
+            .iter()
+            .copied()
+            .max_by(|&a, &b| positions[a].x.total_cmp(&positions[b].x))
+            .unwrap();
+        uv[high_x].x
+    };
+    // The same texels, laid the other way across the front face.
+    assert!(front_u(left) < front_u(right));
+}
+
+#[test]
+fn spiders_splay_eight_legs_and_glow_at_the_head() {
+    let parts = models::model(MobKind::Spider);
+    let legs = parts
+        .iter()
+        .filter(|part| matches!(part.role, models::Role::SpiderLeg(_)))
+        .count();
+    assert_eq!(legs, 8);
+    let eyes: Vec<_> = parts
+        .iter()
+        .filter(|part| part.layer == Layer::Eyes)
+        .collect();
+    assert_eq!(eyes.len(), 1);
+    assert_eq!(eyes[0].cuboid, parts[0].cuboid);
+    // Left legs reach out to -X, right legs to +X.
+    let rest = PoseInput::default();
+    for part in &parts[3..11] {
+        let models::Role::SpiderLeg(n) = part.role else {
+            unreachable!()
+        };
+        let reach = center(part, &rest, 0.0).x;
+        assert!(
+            if n % 2 == 1 {
+                reach < -0.4
+            } else {
+                reach > 0.4
+            },
+            "leg {n}: {reach}"
+        );
+    }
+}
+
+#[test]
+fn ghasts_trail_nine_tentacles_of_seeded_lengths() {
+    let parts = models::model(MobKind::Ghast);
+    let lengths: Vec<u8> = parts[1..].iter().map(|part| part.cuboid.size[1]).collect();
+    assert_eq!(lengths.len(), 9);
+    assert!(lengths.iter().all(|length| (8..=14).contains(length)));
+    // `new Random(1660)` decides them, so every ghast looks the same.
+    assert_eq!(
+        lengths,
+        models::model(MobKind::Ghast)[1..]
+            .iter()
+            .map(|p| p.cuboid.size[1])
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn slimes_and_creepers_carry_their_second_pass() {
+    let slime = models::model(MobKind::Slime);
+    assert_eq!(
+        slime
+            .iter()
+            .filter(|part| part.layer == Layer::SlimeOuter)
+            .count(),
+        1
+    );
+    let creeper = models::model(MobKind::Creeper);
+    let charge: Vec<_> = creeper
+        .iter()
+        .filter(|part| part.layer == Layer::Charge)
+        .collect();
+    assert_eq!(charge.len(), 6);
+    assert!(charge.iter().all(|part| part.cuboid.inflate == 2.0));
+}
+
+#[test]
+fn dying_mobs_tip_over_onto_their_side() {
+    assert_eq!(models::death_tilt(0.0, 90.0), 0.0);
+    assert!(models::death_tilt(5.0, 90.0) > 30.0);
+    assert_eq!(models::death_tilt(20.0, 90.0), 90.0);
+    let parts = models::model(MobKind::Pig);
+    let input = PoseInput::default();
+    let upright = models::model_transform(Frame::facing(0.0));
+    let fallen = models::model_transform(Frame {
+        death_tilt: 90.0,
+        ..Frame::facing(0.0)
+    });
+    let head = |frame: Transform| {
+        frame.transform_point(models::pose(&parts[0], &input).transform_point(Vec3::ZERO))
+    };
+    // Tipped over, the head drops toward the ground.
+    assert!(head(fallen).y < head(upright).y - 0.3);
+}
+
+#[test]
+fn held_items_sit_in_the_right_hand() {
+    assert_eq!(
+        models::held_item(MobKind::Skeleton),
+        Some(game::item::ItemId::Bow)
+    );
+    assert_eq!(
+        models::held_item(MobKind::PigZombie),
+        Some(game::item::ItemId::GoldSword)
+    );
+    assert_eq!(models::held_item(MobKind::Zombie), None);
+    // The sprite's center ends up near the end of the arm, which hangs to
+    // +12 pixels from the shoulder.
+    for full_3d in [false, true] {
+        let held = models::held_item_transform(full_3d);
+        let center = held.transform_point(Vec3::new(0.5, 0.5, -1.0 / 32.0));
+        assert!(center.length() < 16.0 && center.y > 4.0, "{center}");
+    }
 }

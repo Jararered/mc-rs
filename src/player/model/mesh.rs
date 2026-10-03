@@ -181,7 +181,7 @@ pub(super) fn block_mesh(id: u8, look: Appearance) -> Mesh {
 }
 
 /// Two faces and four sets of sixteen strips, matching ItemRenderer's pixel-depth model.
-pub(super) fn sprite_mesh(tile: u8, tint: [u8; 3], terrain: bool) -> Mesh {
+pub(crate) fn sprite_mesh(tile: u8, tint: [u8; 3], terrain: bool) -> Mesh {
     let mut b = Builder::new();
     let u = |x: f32, y: f32| tile_uv(tile, x, y, terrain);
     let z = -1.0 / 16.0;

@@ -15,19 +15,27 @@ use crate::entity::PreviousTick;
 use crate::entity::StepDistance;
 use crate::entity::StepHeight;
 use crate::entity::Velocity;
+use crate::entity::combat::Source;
+use crate::entity::combat::tick_player_combat;
+use crate::entity::creature::Bounce;
+use crate::entity::creature::Fuse;
+use crate::entity::creature::Hover;
 use crate::entity::creature::Living;
 use crate::entity::creature::Swim;
 use crate::entity::creature::Wings;
 use crate::entity::creature::tick_creatures;
+use crate::entity::drops::items::spawn_entity_drop;
+pub use crate::entity::explosion::Explosion;
+use crate::entity::explosion::ExplosionRandom;
+use crate::entity::explosion::apply_explosions;
+use crate::entity::projectiles::tick_projectiles;
 use crate::item::ItemId;
 use crate::item::ItemStack;
 use crate::physics::PhysicsSet;
-use crate::physics::raycast_blocks;
 use crate::player::Player;
-use crate::player::PlayerHealth;
+use crate::random::ItemRng;
 use crate::random::JavaRandom;
 use crate::world::biome::Biome;
-use crate::world::block_ticks::BlockTicks;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::ChunkPosition;
@@ -37,7 +45,6 @@ use crate::world::environment::skylight_subtracted;
 use crate::world::lighting::LightCache;
 use crate::world::lighting::combined_light;
 use crate::world::persistence::WorldPersistence;
-use crate::world::streaming::WorldStreaming;
 use crate::world::tick::WorldTick;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -144,6 +151,15 @@ impl MobKind {
         )
     }
 
+    /// Beta's `EntityMob`s. Slimes and ghasts are hostile without being
+    /// `EntityMob`s, so they neither path to the player nor seek the dark.
+    pub fn is_monster(self) -> bool {
+        matches!(
+            self,
+            Self::Spider | Self::Zombie | Self::Skeleton | Self::Creeper | Self::PigZombie
+        )
+    }
+
     pub fn texture(self, state: &Mob) -> &'static str {
         match self {
             Self::Wolf if state.tamed => "mob/wolf_tame.png",
@@ -179,12 +195,11 @@ pub struct Mob {
     pub angry: bool,
     pub charged: bool,
     pub owner: Option<String>,
+    /// A creeper's `timeSinceIgnited`.
     pub fuse: i16,
-    pub cooldown: u16,
     pub egg_timer: u16,
-    pub fire_ticks: u16,
-    pub wander_yaw: f32,
-    pub wander_ticks: u16,
+    /// `Entity.fire`: burning while positive, `-1` once doused.
+    pub fire_ticks: i16,
     pub rng: JavaRandom,
 }
 
@@ -279,11 +294,8 @@ impl Mob {
             charged: false,
             owner: None,
             fuse: 0,
-            cooldown: 0,
             egg_timer,
             fire_ticks: 0,
-            wander_yaw: 0.0,
-            wander_ticks: 0,
             rng,
         }
     }
@@ -300,21 +312,8 @@ pub struct SpawnMob {
 }
 
 #[derive(Component)]
-pub struct MobProjectile {
-    pub velocity: Vec3,
-    pub fireball: bool,
-    pub age: u16,
-}
-
-#[derive(Component)]
 pub struct PrimedTnt {
     pub fuse: u16,
-}
-
-#[derive(Message, Clone, Copy)]
-pub struct Explosion {
-    pub center: Vec3,
-    pub strength: f32,
 }
 
 pub fn prime_tnt(commands: &mut Commands, position: Vec3, fuse: u16) {
@@ -377,14 +376,15 @@ impl Plugin for MobPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<MobRandom>()
             .add_message::<SpawnMob>()
+            .init_resource::<ExplosionRandom>()
             .add_message::<Explosion>()
             .add_systems(
                 Update,
                 (
                     natural_spawning,
                     materialize_spawns,
+                    tick_player_combat,
                     tick_creatures,
-                    tick_mobs,
                     tick_projectiles,
                     tick_spawners,
                     tick_tnt,
@@ -503,14 +503,9 @@ fn mobs_active(screen: Option<Res<State<AppScreen>>>) -> bool {
     screen.is_none_or(|s| *s.get() == AppScreen::Playing)
 }
 
-/// Spawn a new mob. Creatures face a random direction, as
-/// `SpawnerAnimals` places them.
+/// Spawn a new mob facing a random direction, as `SpawnerAnimals` places them.
 pub fn spawn(commands: &mut Commands, mut mob: Mob, feet: Vec3) -> Entity {
-    let yaw = if mob.kind.hostile() {
-        0.0
-    } else {
-        mob.rng.next_float() * 360.0
-    };
+    let yaw = mob.rng.next_float() * 360.0;
     spawn_facing(commands, mob, feet, yaw)
 }
 
@@ -518,6 +513,7 @@ fn spawn_facing(commands: &mut Commands, mut mob: Mob, feet: Vec3, yaw: f32) -> 
     let size = mob.kind.size(mob.variant);
     let kind = mob.kind;
     let swim = (kind == MobKind::Squid).then(|| Swim::new(&mut mob.rng));
+    let bounce = (kind == MobKind::Slime).then(|| Bounce::new(&mut mob.rng));
     let entity = commands
         .spawn((
             Name::new(format!("Mob: {}", kind.name())),
@@ -528,28 +524,32 @@ fn spawn_facing(commands: &mut Commands, mut mob: Mob, feet: Vec3, yaw: f32) -> 
             Velocity::default(),
             Transform::from_translation(feet),
             Visibility::Inherited,
+            Living::facing(yaw),
             mob,
         ))
         .id();
     let mut entity_commands = commands.entity(entity);
-    if kind.hostile() {
-        if kind == MobKind::Ghast {
-            entity_commands.insert(crate::entity::Flying);
-        } else {
-            entity_commands.insert(Gravity::DEFAULT);
-        }
-        return entity;
-    }
-    entity_commands.insert(Living::facing(yaw));
-    // `EntityWolf.canTriggerWalking` is false: wolves never trample.
-    if kind != MobKind::Wolf {
+    // `canTriggerWalking` is false for wolves and spiders: they never trample.
+    if !matches!(kind, MobKind::Wolf | MobKind::Spider) {
         entity_commands.insert(StepDistance::default());
     }
-    if kind == MobKind::Chicken {
-        entity_commands.insert(Wings::default());
+    match kind {
+        MobKind::Chicken => {
+            entity_commands.insert(Wings::default());
+        }
+        MobKind::Creeper => {
+            entity_commands.insert(Fuse::default());
+        }
+        MobKind::Ghast => {
+            entity_commands.insert(Hover::default());
+        }
+        _ => {}
     }
     if let Some(swim) = swim {
         entity_commands.insert(swim);
+    }
+    if let Some(bounce) = bounce {
+        entity_commands.insert(bounce);
     }
     entity
 }
@@ -838,284 +838,6 @@ fn natural_spawning(
     }
 }
 
-fn tick_mobs(
-    mut commands: Commands,
-    tick: Res<WorldTick>,
-    settings: Option<Res<GameSettings>>,
-    mut player: Query<(&Transform, &mut PlayerHealth), With<Player>>,
-    mut mobs: Query<
-        (
-            Entity,
-            &mut Mob,
-            &mut Transform,
-            &mut Velocity,
-            &CollisionState,
-            &EntitySize,
-            &mut PreviousTick,
-        ),
-        (Without<Player>, Without<Living>),
-    >,
-    world: Res<WorldChunks>,
-    mut explosions: MessageWriter<Explosion>,
-    light: Res<LightCache>,
-    weather: Option<Res<crate::world::weather::WorldWeather>>,
-) {
-    let raining = weather.as_ref().is_some_and(|w| w.is_raining());
-    let difficulty = settings
-        .as_ref()
-        .map_or(Difficulty::Normal, |s| s.difficulty);
-    let Ok((player, mut player_health)) = player.single_mut() else {
-        return;
-    };
-    for (entity, mut mob, mut transform, mut velocity, collision, size, mut previous) in &mut mobs {
-        if difficulty == Difficulty::Peaceful && mob.kind.hostile() {
-            commands.entity(entity).despawn();
-            continue;
-        }
-        let distance = transform.translation.distance_squared(player.translation);
-        if !world.contains(ChunkPosition::from_world(
-            transform.translation.x,
-            transform.translation.z,
-        )) {
-            commands.entity(entity).despawn();
-            continue;
-        }
-        for step in 0..tick.ticks_this_frame() {
-            previous.0 = transform.translation;
-            let now = tick
-                .world_time()
-                .saturating_sub(u64::from(tick.ticks_this_frame() - step - 1));
-            mob.age = mob.age.saturating_add(1);
-            mob.cooldown = mob.cooldown.saturating_sub(1);
-            let foot = transform.translation.floor().as_ivec3();
-            update_fire(&mut mob, &world, transform.translation, raining);
-            if matches!(mob.kind, MobKind::Zombie | MobKind::Skeleton)
-                && now % 20 == 0
-                && exposed_to_sky(&world, foot)
-                && light
-                    .channels(foot.x, foot.y + 1, foot.z)
-                    .is_some_and(|(sky, _)| sky >= 12)
-                && skylight_subtracted(celestial_angle(now, 0.0))
-                    .saturating_add(weather.as_ref().map_or(0, |w| w.skylight_penalty()))
-                    < 4
-            {
-                mob.fire_ticks = 160;
-            }
-            if mob.age > 600 && distance > 32.0 * 32.0 && mob.rng.next_int(800) == 0 {
-                commands.entity(entity).despawn();
-                break;
-            }
-            burn(&mut mob, now);
-            if mob.health <= 0 {
-                kill_mob(&mut commands, entity, &mut mob, transform.translation);
-                break;
-            }
-            if mob.kind == MobKind::Ghast {
-                mob.fuse = (mob.fuse - 1).max(0);
-                let from = transform.translation + Vec3::Y * 2.0;
-                let toward = player.translation - from;
-                if distance < 64.0 * 64.0
-                    && mob.cooldown == 0
-                    && raycast_blocks(&world, from, toward, toward.length()).is_none()
-                {
-                    launch(
-                        &mut commands,
-                        transform.translation + Vec3::Y * 2.0,
-                        player.translation,
-                        true,
-                    );
-                    mob.cooldown = 60;
-                    mob.fuse = 20;
-                }
-                if mob.age % 50 == 0 {
-                    mob.wander_yaw = mob.rng.next_float() * std::f32::consts::TAU;
-                }
-                velocity.0 = Vec3::new(
-                    mob.wander_yaw.cos(),
-                    (mob.rng.next_float() - 0.5) * 0.1,
-                    mob.wander_yaw.sin(),
-                ) * 1.8;
-                transform.rotation =
-                    Quat::from_rotation_y(-mob.wander_yaw - std::f32::consts::FRAC_PI_2);
-                continue;
-            }
-            let chase = (mob.kind != MobKind::PigZombie
-                && (mob.kind != MobKind::Spider || tick.world_time() % 24000 > 12000))
-                || mob.angry;
-            let eye = transform.translation + Vec3::Y * (size.height * 0.85);
-            let toward = player.translation - eye;
-            let visible = raycast_blocks(&world, eye, toward, toward.length()).is_none();
-            let target = if chase && visible && distance < 256.0 {
-                let diff = player.translation - transform.translation;
-                Some(Vec3::new(diff.x, 0.0, diff.z).normalize_or_zero())
-            } else {
-                None
-            };
-            if mob.kind == MobKind::Skeleton
-                && target.is_some()
-                && mob.cooldown == 0
-                && raycast_blocks(
-                    &world,
-                    transform.translation + Vec3::Y * 1.5,
-                    (player.translation - transform.translation).normalize_or_zero(),
-                    distance.sqrt(),
-                )
-                .is_none()
-            {
-                launch(
-                    &mut commands,
-                    transform.translation + Vec3::Y * 1.5,
-                    player.translation,
-                    false,
-                );
-                mob.cooldown = 30;
-            }
-            if mob.wander_ticks == 0 {
-                mob.wander_ticks = 20 + mob.rng.next_int(60) as u16;
-                mob.wander_yaw = mob.rng.next_float() * std::f32::consts::TAU;
-            } else {
-                mob.wander_ticks -= 1;
-            }
-            let dir = target.unwrap_or(Vec3::new(mob.wander_yaw.cos(), 0.0, mob.wander_yaw.sin()));
-            let speed = if target.is_some() { 3.2 } else { 1.1 };
-            velocity.0.x = dir.x * speed;
-            velocity.0.z = dir.z * speed;
-            if dir != Vec3::ZERO {
-                transform.rotation = Quat::from_rotation_y(-dir.x.atan2(-dir.z));
-            }
-            if collision.on_ground
-                && (collision.collided_x
-                    || collision.collided_z
-                    || mob.kind == MobKind::Slime && mob.age % 25 == 0)
-            {
-                velocity.0.y = 8.4;
-            }
-            if mob.kind == MobKind::Creeper {
-                if target.is_some() && distance < if mob.fuse > 0 { 49.0 } else { 9.0 } {
-                    mob.fuse += 1;
-                } else {
-                    mob.fuse = (mob.fuse - 1).max(0);
-                }
-            } else if visible
-                && target.is_some()
-                && mob.cooldown == 0
-                && distance < (size.width + 1.3).powi(2)
-            {
-                if mob.kind != MobKind::Skeleton && mob.kind != MobKind::Ghast || mob.angry {
-                    if mob.kind == MobKind::Slime && mob.variant == 1 {
-                        continue;
-                    }
-                    let damage = match mob.kind {
-                        MobKind::Zombie | MobKind::PigZombie => 5,
-                        _ => 2,
-                    };
-                    player_health.current = player_health
-                        .current
-                        .saturating_sub(difficulty.mob_damage(damage));
-                    mob.cooldown = 20;
-                }
-            }
-            if mob.kind == MobKind::Creeper && mob.fuse >= 30 {
-                explosions.write(Explosion {
-                    center: transform.translation,
-                    strength: if mob.charged { 6.0 } else { 3.0 },
-                });
-                commands.entity(entity).despawn();
-                break;
-            }
-        }
-    }
-}
-
-/// Water and rain put a mob out; standing in fire or lava sets it alight.
-pub(crate) fn update_fire(mob: &mut Mob, chunks: &WorldChunks, feet: Vec3, raining: bool) {
-    let foot = feet.floor().as_ivec3();
-    let occupied = chunks.block_at(foot.x, foot.y, foot.z);
-    let in_water = matches!(occupied, Some(Id::Water | Id::FlowingWater));
-    if in_water || raining && exposed_to_sky(chunks, foot) {
-        mob.fire_ticks = 0;
-    } else if matches!(occupied, Some(Id::Fire | Id::Lava | Id::FlowingLava)) {
-        mob.fire_ticks = if occupied == Some(Id::Fire) { 160 } else { 300 };
-    }
-}
-
-/// A burning mob loses a heart-half each second until the fire runs out.
-pub(crate) fn burn(mob: &mut Mob, now: u64) {
-    if mob.fire_ticks > 0 {
-        mob.fire_ticks -= 1;
-        if now % 20 == 0 && !matches!(mob.kind, MobKind::Ghast | MobKind::PigZombie) {
-            mob.health -= 1;
-        }
-    }
-}
-
-fn exposed_to_sky(chunks: &WorldChunks, foot: IVec3) -> bool {
-    ((foot.y + 1).max(0)..CHUNK_HEIGHT as i32).all(|y| {
-        chunks
-            .block_at(foot.x, y, foot.z)
-            .is_some_and(|block| !is_opaque_cube(block))
-    })
-}
-
-fn launch(commands: &mut Commands, origin: Vec3, target: Vec3, fireball: bool) {
-    let direction = (target - origin).normalize_or_zero();
-    commands.spawn((
-        Transform::from_translation(origin),
-        MobProjectile {
-            velocity: direction * if fireball { 12.0 } else { 17.0 },
-            fireball,
-            age: 0,
-        },
-    ));
-}
-
-fn tick_projectiles(
-    mut commands: Commands,
-    tick: Res<WorldTick>,
-    mut projectiles: Query<(Entity, &mut Transform, &mut MobProjectile), Without<Player>>,
-    mut player: Query<(&Transform, &mut PlayerHealth), With<Player>>,
-    world: Res<WorldChunks>,
-    settings: Option<Res<GameSettings>>,
-    mut explosions: MessageWriter<Explosion>,
-) {
-    for (entity, mut transform, mut projectile) in &mut projectiles {
-        for _ in 0..tick.ticks_this_frame() {
-            projectile.age += 1;
-            let from = transform.translation;
-            let motion = projectile.velocity * 0.05;
-            transform.translation += motion;
-            if !projectile.fireball {
-                projectile.velocity.y -= 0.4;
-            }
-            transform.rotation =
-                Quat::from_rotation_arc(Vec3::NEG_Z, projectile.velocity.normalize_or_zero());
-            let player_hit = player.single_mut().is_ok_and(|(target, _)| {
-                target.translation.distance_squared(transform.translation) < 0.9
-            });
-            let blocked = raycast_blocks(&world, from, motion, motion.length()).is_some();
-            if player_hit || blocked || projectile.age > 120 {
-                if projectile.fireball {
-                    explosions.write(Explosion {
-                        center: transform.translation,
-                        strength: 1.0,
-                    });
-                }
-                if player_hit && let Ok((_, mut health)) = player.single_mut() {
-                    let damage = if projectile.fireball { 6 } else { 4 };
-                    health.current = health.current.saturating_sub(
-                        settings
-                            .as_ref()
-                            .map_or(Difficulty::Normal, |s| s.difficulty)
-                            .mob_damage(damage),
-                    );
-                }
-                commands.entity(entity).despawn();
-                break;
-            }
-        }
-    }
-}
-
 fn tick_tnt(
     mut commands: Commands,
     tick: Res<WorldTick>,
@@ -1132,167 +854,17 @@ fn tick_tnt(
             explosions.write(Explosion {
                 center: transform.translation,
                 strength: 4.0,
+                flaming: false,
+                source: Source::Environment,
             });
             commands.entity(entity).despawn();
         }
     }
 }
 
-fn apply_explosions(
-    mut commands: Commands,
-    mut explosions: MessageReader<Explosion>,
-    mut chunks: ResMut<WorldChunks>,
-    mut ticks: Option<ResMut<BlockTicks>>,
-    mut streaming: Option<ResMut<WorldStreaming>>,
-    mut persistence: Option<ResMut<WorldPersistence>>,
-    mut mobs: Query<(&mut Mob, &Transform)>,
-    mut player: Query<(&Transform, &mut PlayerHealth), With<Player>>,
-) {
-    for &explosion in explosions.read() {
-        explode(
-            &mut commands,
-            &mut chunks,
-            &mut ticks,
-            &mut streaming,
-            &mut persistence,
-            explosion.center,
-            explosion.strength,
-        );
-        let radius = explosion.strength * 2.0;
-        for (mut mob, transform) in &mut mobs {
-            let distance = transform.translation.distance(explosion.center);
-            if distance < radius {
-                mob.health -= ((1.0 - distance / radius) * explosion.strength * 7.0) as i16;
-            }
-        }
-        if let Ok((transform, mut health)) = player.single_mut() {
-            let distance = transform.translation.distance(explosion.center);
-            if distance < radius {
-                health.current = health
-                    .current
-                    .saturating_sub(((1.0 - distance / radius) * explosion.strength * 7.0) as u8);
-            }
-        }
-    }
-}
-
-fn explode(
-    commands: &mut Commands,
-    chunks: &mut WorldChunks,
-    ticks: &mut Option<ResMut<BlockTicks>>,
-    streaming: &mut Option<ResMut<WorldStreaming>>,
-    persistence: &mut Option<ResMut<WorldPersistence>>,
-    center: Vec3,
-    strength: f32,
-) {
-    let c = center.floor().as_ivec3();
-    let radius = strength.ceil() as i32;
-    for x in c.x - radius..=c.x + radius {
-        for y in (c.y - radius).max(0)..=(c.y + radius).min(CHUNK_HEIGHT as i32 - 1) {
-            for z in c.z - radius..=c.z + radius {
-                if Vec3::new(x as f32 + 0.5, y as f32 + 0.5, z as f32 + 0.5).distance(center)
-                    > strength
-                {
-                    continue;
-                }
-                let Some(block) = chunks.block_at(x, y, z) else {
-                    continue;
-                };
-                if matches!(
-                    block,
-                    Id::Air
-                        | Id::Bedrock
-                        | Id::Water
-                        | Id::FlowingWater
-                        | Id::Lava
-                        | Id::FlowingLava
-                ) {
-                    continue;
-                }
-                if matches!(block, Id::Obsidian | Id::MobSpawner) {
-                    continue;
-                }
-                let at = IVec3::new(x, y, z);
-                let meta = chunks.metadata_at(x, y, z);
-                if let Some(previous) = chunks.set_block(x, y, z, Id::Air) {
-                    if previous == Id::Tnt {
-                        prime_tnt(
-                            commands,
-                            Vec3::new(x as f32 + 0.5, y as f32, z as f32 + 0.5),
-                            15,
-                        );
-                    }
-                    if let Some(ticks) = ticks.as_deref_mut() {
-                        ticks.block_changed(at, previous, meta);
-                    }
-                    if let Some(streaming) = streaming.as_deref_mut() {
-                        streaming.request_block_update(x, y, z);
-                    }
-                    if let Some(persistence) = persistence.as_deref_mut() {
-                        persistence.mark_dirty(ChunkPosition::from_block(x, z));
-                    }
-                }
-            }
-        }
-    }
-}
-
-pub(crate) fn kill_mob(commands: &mut Commands, entity: Entity, mob: &mut Mob, feet: Vec3) {
-    if mob.kind == MobKind::Slime && mob.variant > 1 {
-        for offset in [
-            Vec3::new(-0.3, 0.0, -0.3),
-            Vec3::new(0.3, 0.0, -0.3),
-            Vec3::new(-0.3, 0.0, 0.3),
-            Vec3::new(0.3, 0.0, 0.3),
-        ] {
-            let mut child = Mob::new(MobKind::Slime, mob.rng.next_long() as u64);
-            child.variant = mob.variant / 2;
-            child.health = MobKind::Slime.health(child.variant);
-            spawn(commands, child, feet + offset);
-        }
-    } else if mob.kind == MobKind::Sheep && !mob.sheared {
-        drop_item(
-            commands,
-            ItemId::from_u16(35).unwrap(),
-            u16::from(mob.variant),
-            feet,
-        );
-    } else {
-        let item = match mob.kind {
-            MobKind::Spider => Some(ItemId::String),
-            MobKind::Zombie => Some(ItemId::Feather),
-            MobKind::Skeleton => Some(ItemId::Arrow),
-            MobKind::Creeper | MobKind::Ghast => Some(ItemId::Gunpowder),
-            MobKind::Slime if mob.variant == 1 => Some(ItemId::Slimeball),
-            MobKind::Pig => Some(if mob.fire_ticks > 0 {
-                ItemId::CookedPorkchop
-            } else {
-                ItemId::RawPorkchop
-            }),
-            MobKind::Chicken => Some(ItemId::Feather),
-            MobKind::Cow => Some(ItemId::Leather),
-            MobKind::Squid => Some(ItemId::Dye),
-            MobKind::PigZombie => Some(ItemId::CookedPorkchop),
-            _ => None,
-        };
-        if let Some(item) = item {
-            for _ in 0..mob.rng.next_int(3) {
-                drop_item(commands, item, 0, feet);
-            }
-        }
-        if mob.kind == MobKind::Skeleton {
-            for _ in 0..mob.rng.next_int(3) {
-                drop_item(commands, ItemId::Bone, 0, feet);
-            }
-        }
-    }
-    commands.entity(entity).despawn();
-}
-
-pub fn drop_item(commands: &mut Commands, item: ItemId, data: u16, feet: Vec3) {
+/// `EntityLiving.entityDropItem`: one item at a mob's feet.
+pub fn drop_item(commands: &mut Commands, rng: &mut ItemRng, item: ItemId, data: u16, feet: Vec3) {
     if let Ok(stack) = ItemStack::with_data(item, 1, data) {
-        let cell = feet.floor().as_ivec3();
-        let mut rng = crate::random::ItemRng::default();
-        crate::entity::drops::items::spawn_block_drop(commands, &mut rng, cell, stack);
+        spawn_entity_drop(commands, rng, feet, stack);
     }
 }

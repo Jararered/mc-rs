@@ -6,6 +6,7 @@ mod generation;
 mod persistence;
 mod streaming;
 
+mod combat;
 mod mobs;
 mod pathfinding;
 mod runtime;

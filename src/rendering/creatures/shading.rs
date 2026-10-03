@@ -3,9 +3,9 @@
 //! `RenderManager` colors each entity by the world brightness at its body,
 //! and `RenderHelper.enableStandardItemLighting` shades its faces with two
 //! fixed lights. Under old lighting the fragment extension reproduces both;
-//! otherwise Bevy's lights do the shading and only the tint applies. The
-//! brightness and the sheep's fleece tint ride in [`MeshTag`], so neither
-//! rewrites a material.
+//! otherwise Bevy's lights do the shading. `RenderLiving`'s red hurt pass and
+//! a creeper's white flash are mixed over the result. All of this per-entity
+//! state rides in [`MeshTag`], so none of it rewrites a material.
 
 use bevy::asset::load_internal_asset;
 use bevy::asset::uuid_handle;
@@ -23,8 +23,36 @@ const CREATURE_SHADER_HANDLE: Handle<Shader> = uuid_handle!("8d1e4c7a-52b3-4f69-
 /// `StandardMaterial` lit like a Beta entity.
 pub type CreatureMaterial = ExtendedMaterial<StandardMaterial, CreatureShading>;
 
+/// How a creature material draws, as `creature.wgsl` reads it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Pass {
+    /// A skin, lit like an entity.
+    Skin,
+    /// Spider eyes: lit but never darkened, faded by the tag's alpha.
+    Glow,
+    /// A charged creeper's aura: half bright and added on top.
+    Charge,
+}
+
 #[derive(Asset, AsBindGroup, Reflect, Debug, Clone, Default)]
-pub struct CreatureShading {}
+pub struct CreatureShading {
+    /// `x`: the [`Pass`]. `y`: texture scroll in UV units per second.
+    #[uniform(100)]
+    pub params: Vec4,
+}
+
+impl CreatureShading {
+    pub fn new(pass: Pass, scroll: f32) -> Self {
+        let mode = match pass {
+            Pass::Skin => 0.0,
+            Pass::Glow => 1.0,
+            Pass::Charge => 2.0,
+        };
+        Self {
+            params: Vec4::new(mode, scroll, 0.0, 0.0),
+        }
+    }
+}
 
 impl MaterialExtension for CreatureShading {
     fn fragment_shader() -> ShaderRef {
@@ -32,14 +60,16 @@ impl MaterialExtension for CreatureShading {
     }
 }
 
-/// Pack an sRGB tint and a brightness for the creature shader. The tag holds
-/// the complement, so an untagged mesh draws white at full brightness.
-pub fn creature_tag(tint: Color, brightness: f32) -> MeshTag {
-    let srgb = tint.to_srgba();
+/// Pack the world brightness, the red hurt pass, the white flash's opacity,
+/// and a layer opacity. The brightness and opacity are stored inverted so an
+/// untagged mesh draws at full brightness, unhurt, and opaque.
+pub fn creature_tag(brightness: f32, hurt: bool, flash: f32, alpha: f32) -> MeshTag {
     let byte = |channel: f32| (channel.clamp(0.0, 1.0) * 255.0).round() as u32;
-    let packed =
-        byte(srgb.red) | byte(srgb.green) << 8 | byte(srgb.blue) << 16 | byte(brightness) << 24;
-    MeshTag(!packed)
+    let packed = (255 - byte(brightness))
+        | u32::from(hurt) * 255 << 8
+        | byte(flash) << 16
+        | (255 - byte(alpha)) << 24;
+    MeshTag(packed)
 }
 
 pub(super) fn plugin(app: &mut App) {

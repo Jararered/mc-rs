@@ -3,14 +3,26 @@ use bevy::prelude::*;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::app::settings::Difficulty;
 use crate::app::state::AppScreen;
 use crate::block::id::Id;
 use crate::block::properties::is_opaque_cube;
+use crate::entity::Velocity;
+use crate::entity::combat::Hit;
+use crate::entity::combat::PlayerCombat;
+use crate::entity::combat::drop_loot;
+use crate::entity::combat::hurt_creature;
+use crate::entity::combat::hurt_player;
+use crate::entity::creature::Living;
 use crate::entity::mobs::Mob;
 use crate::entity::mobs::MobKind;
 use crate::entity::mobs::SpawnMob;
+use crate::entity::projectiles::victim;
+use crate::inventory::Inventory;
+use crate::item::ItemStack;
 use crate::player::Player;
 use crate::player::PlayerHealth;
+use crate::random::ItemRng;
 use crate::random::JavaRandom;
 use crate::world::biome::Biome;
 use crate::world::chunk::CHUNK_HEIGHT;
@@ -176,10 +188,22 @@ fn apply_lightning(
     mut ticks: ResMut<crate::world::block_ticks::BlockTicks>,
     mut streaming: Option<ResMut<crate::world::streaming::WorldStreaming>>,
     mut persistence: Option<ResMut<crate::world::persistence::WorldPersistence>>,
-    mut mobs: Query<(Entity, &mut Mob, &Transform)>,
-    mut player: Query<(&Transform, &mut PlayerHealth), With<Player>>,
+    mut mobs: Query<(Entity, &mut Mob, &mut Living, &mut Velocity, &Transform), Without<Player>>,
+    mut player: Query<
+        (
+            &Transform,
+            Option<&mut PlayerHealth>,
+            Option<&mut PlayerCombat>,
+            &mut Velocity,
+            Option<&mut Inventory>,
+        ),
+        With<Player>,
+    >,
     mut spawn: MessageWriter<SpawnMob>,
+    mut loot: Local<ItemRng>,
+    mut spare_armor: Local<[Option<ItemStack>; 4]>,
 ) {
+    let mut player = player.single_mut().ok();
     for &LightningStrike(center) in strikes.read() {
         let at = center.floor().as_ivec3();
         if chunks.block_at(at.x, at.y, at.z) == Some(Id::Air)
@@ -198,29 +222,54 @@ fn apply_lightning(
                 }
             }
         }
-        for (entity, mut mob, transform) in &mut mobs {
-            if transform.translation.distance_squared(center) > 9.0 {
+        for (entity, mut mob, mut living, mut velocity, transform) in &mut mobs {
+            let feet = transform.translation;
+            if feet.distance_squared(center) > 9.0 {
                 continue;
             }
             if mob.kind == MobKind::Pig {
                 commands.entity(entity).despawn();
                 spawn.write(SpawnMob {
                     kind: MobKind::PigZombie,
-                    feet: transform.translation,
+                    feet,
                     explicit: true,
                     variant: 0,
                 });
-            } else if mob.kind == MobKind::Creeper {
+                continue;
+            }
+            if mob.kind == MobKind::Creeper {
                 mob.charged = true;
-            } else {
-                mob.fire_ticks = 160;
-                mob.health -= 5;
+            }
+            // `Entity.onStruckByLightning`: five points of fire damage, and
+            // the body catches fire.
+            if !matches!(mob.kind, MobKind::Ghast | MobKind::PigZombie) {
+                let wound = hurt_creature(
+                    &mut mob,
+                    &mut living,
+                    &mut velocity,
+                    feet,
+                    Hit::environment(5),
+                );
+                if wound.died {
+                    drop_loot(&mut commands, &mut loot, &mut mob, feet);
+                }
+            }
+            mob.fire_ticks += 1;
+            if mob.fire_ticks == 0 {
+                mob.fire_ticks = 300;
             }
         }
-        if let Ok((transform, mut health)) = player.single_mut()
-            && transform.translation.distance_squared(center) <= 9.0
+        if player
+            .as_ref()
+            .is_some_and(|(transform, ..)| transform.translation.distance_squared(center) <= 9.0)
+            && let Some(mut victim) = victim(&mut player, &mut spare_armor)
         {
-            health.current = health.current.saturating_sub(5);
+            hurt_player(
+                &mut victim,
+                Hit::environment(5),
+                Difficulty::Normal,
+                &mut loot,
+            );
         }
     }
 }

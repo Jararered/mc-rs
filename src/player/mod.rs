@@ -14,10 +14,12 @@ use crate::entity::Gravity;
 use crate::entity::StepDistance;
 use crate::entity::StepHeight;
 use crate::entity::Velocity;
+use crate::entity::combat::HURT_TICKS;
+use crate::entity::combat::PlayerCombat;
 use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
 mod interaction;
-mod model;
+pub(crate) mod model;
 
 pub use interaction::editing::PLACED_BLOCK;
 pub use interaction::editing::break_block;
@@ -112,7 +114,8 @@ impl Plugin for PlayerPlugin {
     StepDistance,
     FlySpeed,
     PlayerMovementInput,
-    PlayerInterpolation
+    PlayerInterpolation,
+    PlayerCombat
 )]
 pub struct Player;
 
@@ -429,6 +432,7 @@ fn update_camera_bobbing(
             &CollisionState,
             &mut CameraBobbing,
             &Children,
+            Option<&PlayerCombat>,
         ),
         (With<Player>, Without<PlayerCamera>, Without<Flying>),
     >,
@@ -439,7 +443,7 @@ fn update_camera_bobbing(
         return;
     }
 
-    for (transform, interpolation, velocity, collision, mut bob, children) in &mut players {
+    for (transform, interpolation, velocity, collision, mut bob, children, combat) in &mut players {
         let horizontal_motion = velocity.0.xz().length() * dt;
         bob.distance_walked += horizontal_motion * 0.6;
 
@@ -461,11 +465,13 @@ fn update_camera_bobbing(
             .previous_position
             .lerp(current, tick.partial().clamp(0.0, 1.0));
         let render_offset = transform.rotation.inverse() * (interpolated - current);
+        let hurt = combat.map_or(Mat4::IDENTITY, |combat| hurt_pose(combat, tick.partial()));
 
         for child in children {
             if let Ok(mut camera) = cameras.get_mut(*child) {
                 camera.set_if_neq(Transform::from_matrix(
                     Mat4::from_translation(render_offset)
+                        * hurt
                         * if settings.view_bobbing {
                             camera_bob_pose(&bob)
                         } else {
@@ -475,6 +481,21 @@ fn update_camera_bobbing(
             }
         }
     }
+}
+
+/// `EntityRenderer.hurtCameraEffect`: a hit rolls the view up to 14° away
+/// from the side it came from, easing back over the hurt time.
+fn hurt_pose(combat: &PlayerCombat, partial: f32) -> Mat4 {
+    let elapsed = f32::from(combat.hurt_time) - partial;
+    if elapsed < 0.0 {
+        return Mat4::IDENTITY;
+    }
+    let progress = elapsed / f32::from(HURT_TICKS);
+    let roll = (progress.powi(4) * std::f32::consts::PI).sin() * 14.0;
+    let side = combat.attacked_at_yaw.to_radians();
+    Mat4::from_rotation_y(-side)
+        * Mat4::from_rotation_z((-roll).to_radians())
+        * Mat4::from_rotation_y(side)
 }
 
 fn camera_bob_pose(bob: &CameraBobbing) -> Mat4 {

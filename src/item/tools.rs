@@ -84,6 +84,38 @@ fn kind(id: ItemId) -> Option<Kind> {
     })
 }
 
+/// `InventoryPlayer.getDamageVsEntity`: `ItemSword` deals `4 + 2 *` its
+/// material's damage, `ItemTool` its base (shovel 1, pickaxe 2, axe 3) plus
+/// the material's damage, and anything else, or an empty hand, deals 1.
+pub fn damage_vs_entity(held: Option<ItemStack>) -> i16 {
+    let Some(kind) = held.and_then(|stack| kind(stack.item())) else {
+        return 1;
+    };
+    let material = |tier: Tier| match tier {
+        Tier::Wood | Tier::Gold => 0,
+        Tier::Stone => 1,
+        Tier::Iron => 2,
+        Tier::Diamond => 3,
+    };
+    match kind {
+        Kind::Sword(tier) => 4 + material(tier) * 2,
+        Kind::Shovel(tier) => 1 + material(tier),
+        Kind::Pick(tier) => 2 + material(tier),
+        Kind::Axe(tier) => 3 + material(tier),
+        Kind::Hoe(_) | Kind::Shears => 1,
+    }
+}
+
+/// `Item.hitEntity` wear: a sword loses 1 durability per hit and a tool 2.
+/// Hoes and shears are plain items in Beta and do not wear.
+pub fn hit_durability(held: ItemStack) -> u16 {
+    match kind(held.item()) {
+        Some(Kind::Sword(_)) => 1,
+        Some(Kind::Pick(_) | Kind::Axe(_) | Kind::Shovel(_)) => 2,
+        _ => 0,
+    }
+}
+
 /// Whether an item is one of Beta's hoes.
 pub fn is_hoe(id: ItemId) -> bool {
     matches!(kind(id), Some(Kind::Hoe(_)))

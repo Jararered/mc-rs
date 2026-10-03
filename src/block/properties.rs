@@ -198,6 +198,42 @@ pub fn hardness(block: Id) -> f32 {
     definition::properties(block).hardness
 }
 
+/// `Block.getExplosionResistance`: `blockResistance / 5`. `setHardness` raises
+/// the resistance to five times the hardness, and an explicit `setResistance`
+/// afterwards replaces it with three times its argument. Stairs copy their
+/// material's resistance. Still lava keeps Beta's hardness of 100.
+pub fn explosion_resistance(block: Id) -> f32 {
+    let explicit = match block.item_form().0 {
+        Id::Bedrock => Some(6_000_000.0),
+        Id::Obsidian => Some(2000.0),
+        Id::Stone
+        | Id::Cobblestone
+        | Id::GoldBlock
+        | Id::IronBlock
+        | Id::DoubleStoneSlab
+        | Id::StoneSlab
+        | Id::Bricks
+        | Id::MossyCobblestone
+        | Id::DiamondBlock
+        | Id::Jukebox
+        | Id::CobblestoneStairs => Some(10.0),
+        Id::WoodenPlanks
+        | Id::GoldOre
+        | Id::IronOre
+        | Id::CoalOre
+        | Id::LapisOre
+        | Id::LapisBlock
+        | Id::DiamondOre
+        | Id::RedstoneOre
+        | Id::LitRedstoneOre
+        | Id::Fence
+        | Id::WoodenStairs => Some(5.0),
+        Id::Lava => return 100.0,
+        _ => None,
+    };
+    explicit.map_or_else(|| hardness(block).max(0.0), |resistance| resistance * 0.6)
+}
+
 /// Empty-hand `InventoryPlayer.canHarvestBlock`.
 pub fn harvestable_by_hand(block: Id) -> bool {
     definition::properties(block).harvestable_by_hand

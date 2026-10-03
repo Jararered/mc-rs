@@ -1,28 +1,42 @@
-//! Beta 1.7.3 creatures: pigs, cows, sheep, chickens, wolves, and squid.
+//! Beta 1.7.3 mobs, simulated as `EntityLiving` every world tick.
 //!
-//! Each world tick transcribes `Entity.onEntityUpdate`, `EntityLiving.onLivingUpdate`,
-//! and the tail of `EntityLiving.onUpdate`, in Beta's blocks-per-tick units:
+//! Each tick transcribes `Entity.onEntityUpdate`, `EntityLiving.onEntityUpdate`
+//! and `onLivingUpdate`, and the tail of `EntityLiving.onUpdate`, in Beta's
+//! blocks-per-tick units:
 //!
+//! - Fire, lava, drowning, suffocation, and falling hurt through the shared
+//!   damage rules in [`super::combat`]. A mob whose health runs out drops its
+//!   loot at once and tips over for 20 ticks before it is removed.
 //! - `EntityCreature.updatePlayerActionState` walks a [`Path`] from the Beta
-//!   [`Pathfinder`]. About one tick in eighty a creature picks the best of ten
-//!   random nearby cells by `EntityAnimal.getBlockPathWeight` (grass above all,
-//!   then light) and paths there. Between paths it falls back to
+//!   [`Pathfinder`]. A creature with a target paths to the player and attacks
+//!   when it can see them; otherwise it now and then picks the best of ten
+//!   random nearby cells and walks there. Animals prefer grass and light,
+//!   monsters the dark. Between paths it falls back to
 //!   `EntityLiving.updatePlayerActionState`: idle head turns, glancing at a
-//!   player within eight blocks, and despawning when far from the player.
-//! - `moveEntityWithHeading` accelerates along the body's yaw with Beta's
+//!   player within eight blocks, and despawning when far from them.
+//! - `moveEntityWithHeading` accelerates along the head's yaw with Beta's
 //!   ground friction, water and lava drag, ladders, and step-up.
-//! - Chickens flap and fall slowly, and lay eggs. Squid swim with
-//!   `EntitySquid`'s pulses. Tamed wolves sit and follow their owner.
 //!
-//! Hostile mobs still use the steering in [`super::mobs`]. Attacking is not
-//! simulated here yet: an angry wolf paths after the player, but its bite and
-//! wild wolves hunting sheep are left for combat.
+//! Each kind's own behavior lives in [`animals`] and [`monsters`]. Mobs only
+//! ever target the player: Beta's retaliation against other mobs is not
+//! simulated.
 
-use std::f32::consts::PI;
-use std::f32::consts::TAU;
+mod animals;
+mod monsters;
 
+pub use animals::Swim;
+pub use animals::Wings;
+pub use monsters::Bounce;
+pub use monsters::Fuse;
+pub use monsters::Hover;
+
+use bevy::ecs::query::QueryData;
 use bevy::prelude::*;
 
+use crate::app::settings::Difficulty;
+use crate::app::settings::GameSettings;
+use crate::block::fluids::is_water;
+use crate::block::fluids::percent_air;
 use crate::block::id::Id;
 use crate::block::properties::is_opaque_cube;
 use crate::block::properties::slipperiness;
@@ -32,27 +46,34 @@ use crate::entity::PreviousTick;
 use crate::entity::StepDistance;
 use crate::entity::StepHeight;
 use crate::entity::Velocity;
+use crate::entity::combat::DEATH_TICKS;
+use crate::entity::combat::Hit;
+use crate::entity::combat::PlayerCombat;
+use crate::entity::combat::Victim;
+use crate::entity::combat::drop_loot;
+use crate::entity::combat::hurt_creature;
+use crate::entity::combat::remove_dead;
+use crate::entity::mobs::Explosion;
 use crate::entity::mobs::Mob;
 use crate::entity::mobs::MobKind;
-use crate::entity::mobs::burn;
-use crate::entity::mobs::drop_item;
-use crate::entity::mobs::kill_mob;
-use crate::entity::mobs::update_fire;
 use crate::entity::pathfinding::Path;
 use crate::entity::pathfinding::Pathfinder;
-use crate::item::ItemId;
+use crate::inventory::Inventory;
+use crate::item::ItemStack;
 use crate::physics::Aabb;
 use crate::physics::WATER_CURRENT_PER_TICK;
 use crate::physics::colliding_aabbs;
 use crate::physics::intersects_liquid;
 use crate::physics::lava_contains;
 use crate::physics::move_entity;
+use crate::physics::raycast_blocks;
 use crate::physics::step_on_block;
 use crate::physics::water_movement;
 use crate::player::Player;
 use crate::player::PlayerHealth;
-use crate::random::JavaRandom;
+use crate::random::ItemRng;
 use crate::world::block_ticks::BlockTicks;
+use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
 use crate::world::environment::celestial_angle;
@@ -68,16 +89,15 @@ use crate::world::weather::WorldWeather;
 const JUMP_MOTION: f32 = 0.42;
 /// `EntityPlayer.getEyeHeight`. A player's `posY` is already at its eyes.
 const PLAYER_EYE_HEIGHT: f32 = 0.12;
-/// `EntityLiving.moveSpeed`, which `EntityWolf` raises.
-const MOVE_SPEED: f32 = 0.7;
-const WOLF_MOVE_SPEED: f32 = 1.1;
+/// `Entity.maxAir`.
+pub const MAX_AIR: i16 = 300;
 
-/// `EntityLiving` facing, steering, and walk-cycle state. Angles are Beta's
-/// degrees: yaw 0 faces +Z and 90 faces -X; positive pitch looks down.
+/// `EntityLiving` facing, steering, walk-cycle, and damage state. Angles are
+/// Beta's degrees: yaw 0 faces +Z and 90 faces -X; positive pitch looks down.
 ///
-/// Bodies with this component are moved by [`tick_creatures`], not by the
-/// generic `integrate_bodies`.
-#[derive(Component, Clone, Debug, Default)]
+/// Every mob carries this. Bodies with it are moved by [`tick_creatures`],
+/// not by the generic `integrate_bodies`.
+#[derive(Component, Clone, Debug)]
 pub struct Living {
     /// `rotationYaw`: where the head faces.
     pub yaw: f32,
@@ -94,20 +114,42 @@ pub struct Living {
     /// `legYaw`: how far the legs swing, from 0 standing to 1 at a trot.
     pub limb_amount: f32,
     pub prev_limb_amount: f32,
+    /// `hurtTime`: counts down from 10 after a hit; the body flashes red.
+    pub hurt_time: i16,
+    /// `deathTime`: ticks since health ran out. The body tips over meanwhile.
+    pub death_time: i16,
+    /// `attackedAtYaw`.
+    pub attacked_at_yaw: f32,
+    /// `entityAge`: ticks spent idle, which gates despawning.
+    pub(crate) entity_age: u32,
+    /// `heartsLife` and `field_9346_af`: the invulnerability window.
+    pub(crate) hearts_life: i16,
+    pub(crate) last_damage: i16,
+    /// `playerToAttack`: the player is this creature's target.
+    pub(crate) chasing: bool,
     move_forward: f32,
     move_strafing: f32,
     random_yaw_velocity: f32,
     jumping: bool,
     /// `Entity.inWater`, from this tick's `handleWaterMovement`.
     in_water: bool,
-    /// `entityAge`: ticks spent idle, which gates despawning.
-    entity_age: u32,
     /// `currentTarget` and `numTicksToChaseTarget`: the player being looked
     /// at, and for how many more ticks.
     looking: Option<i32>,
-    /// `playerToAttack`. Only angry wolves set it.
-    chasing: bool,
     path: Option<Path>,
+    /// `attackTime`: the cooldown between attacks.
+    attack_time: i16,
+    fall_distance: f32,
+    air: i16,
+    /// `EntityCreature.hasAttacked`: this tick's attack holds the creature in
+    /// place instead of letting it wander.
+    has_attacked: bool,
+}
+
+impl Default for Living {
+    fn default() -> Self {
+        Self::facing(0.0)
+    }
 }
 
 impl Living {
@@ -115,9 +157,31 @@ impl Living {
         Self {
             yaw,
             prev_yaw: yaw,
+            pitch: 0.0,
+            prev_pitch: 0.0,
             body_yaw: yaw,
             prev_body_yaw: yaw,
-            ..default()
+            limb_swing: 0.0,
+            limb_amount: 0.0,
+            prev_limb_amount: 0.0,
+            hurt_time: 0,
+            death_time: 0,
+            attacked_at_yaw: 0.0,
+            entity_age: 0,
+            hearts_life: 0,
+            last_damage: 0,
+            chasing: false,
+            move_forward: 0.0,
+            move_strafing: 0.0,
+            random_yaw_velocity: 0.0,
+            jumping: false,
+            in_water: false,
+            looking: None,
+            path: None,
+            attack_time: 0,
+            fall_distance: 0.0,
+            air: MAX_AIR,
+            has_attacked: false,
         }
     }
 
@@ -135,111 +199,50 @@ impl Living {
     pub fn entity_age(&self) -> u32 {
         self.entity_age
     }
-}
 
-/// `EntityChicken`'s wing flap. Its render angle is
-/// `(sin(rotation) + 1) * flap_speed`.
-#[derive(Component, Clone, Debug)]
-pub struct Wings {
-    /// `wingRotation` and `oFlap`.
-    pub rotation: f32,
-    pub prev_rotation: f32,
-    /// `destPos` and `oFlapSpeed`: 0 on the ground, rising to 1 in the air.
-    pub flap_speed: f32,
-    pub prev_flap_speed: f32,
-    /// `wingRotDelta`.
-    rotation_delta: f32,
-}
-
-impl Default for Wings {
-    fn default() -> Self {
-        Self {
-            rotation: 0.0,
-            prev_rotation: 0.0,
-            flap_speed: 0.0,
-            prev_flap_speed: 0.0,
-            rotation_delta: 1.0,
-        }
+    /// Whether the creature has the player as its target.
+    pub fn chasing(&self) -> bool {
+        self.chasing
     }
-}
 
-impl Wings {
-    /// `RenderChicken.getWingRotation`.
-    pub fn angle(&self, partial: f32) -> f32 {
-        let rotation = self.prev_rotation + (self.rotation - self.prev_rotation) * partial;
-        let speed = self.prev_flap_speed + (self.flap_speed - self.prev_flap_speed) * partial;
-        (rotation.sin() + 1.0) * speed
+    /// Whether the creature is still within its post-hit invulnerability.
+    pub fn invulnerable(&self) -> bool {
+        self.hearts_life > 10
     }
-}
-
-/// `EntitySquid`'s swimming pulse. Pitch and yaw are degrees, and only the
-/// renderer reads them.
-#[derive(Component, Clone, Debug)]
-pub struct Swim {
-    /// `squidPitch`: 0 upright, -90 lying on its side out of water.
-    pub pitch: f32,
-    pub prev_pitch: f32,
-    /// `squidYaw`: a spin about the body's own axis.
-    pub yaw: f32,
-    pub prev_yaw: f32,
-    /// `tentacleAngle`.
-    pub tentacle: f32,
-    pub prev_tentacle: f32,
-    /// `squidRotation`: progress through one stroke, `0..TAU`.
-    rotation: f32,
-    rotation_velocity: f32,
-    motion_speed: f32,
-    rotate_speed: f32,
-    /// `randomMotionVecX/Y/Z`.
-    heading: Vec3,
-}
-
-impl Swim {
-    pub fn new(rng: &mut JavaRandom) -> Self {
-        Self {
-            pitch: 0.0,
-            prev_pitch: 0.0,
-            yaw: 0.0,
-            prev_yaw: 0.0,
-            tentacle: 0.0,
-            prev_tentacle: 0.0,
-            rotation: 0.0,
-            rotation_velocity: stroke_velocity(rng),
-            motion_speed: 0.0,
-            rotate_speed: 0.0,
-            heading: Vec3::ZERO,
-        }
-    }
-}
-
-/// `1 / (nextFloat + 1) * 0.2`: how fast a squid strokes.
-fn stroke_velocity(rng: &mut JavaRandom) -> f32 {
-    1.0 / (rng.next_float() + 1.0) * 0.2
 }
 
 /// How a creature's tick ended.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Fate {
     Alive,
+    /// `setEntityDead` without dying: despawned, or a creeper that exploded.
     Despawned,
-    Killed,
+    /// Its death animation finished.
+    Removed,
 }
 
-/// The player, as creatures see it.
+/// The player, as creatures see it this frame.
 #[derive(Clone, Copy)]
-struct Target {
+pub(crate) struct Target {
     /// Beta's player `posY` sits at the eyes, so this is the player's `pos`.
-    eye: Vec3,
-    feet: Vec3,
-    alive: bool,
+    pub eye: Vec3,
+    pub feet: Vec3,
+    pub alive: bool,
+}
+
+impl Target {
+    fn aabb(&self) -> Aabb {
+        EntitySize::PLAYER.aabb(self.eye)
+    }
 }
 
 /// World state shared by every creature this frame.
-struct Surroundings<'a> {
+pub(crate) struct Surroundings<'a> {
     chunks: &'a WorldChunks,
     light: &'a LightCache,
     raining: bool,
     skylight_subtracted: u8,
+    difficulty: Difficulty,
     player: Option<Target>,
     /// Pushable bodies at the start of the frame, for `applyEntityCollision`.
     crowd: &'a [(Entity, Aabb)],
@@ -268,18 +271,60 @@ impl Surroundings<'_> {
         }
     }
 
-    /// `EntityAnimal.getBlockPathWeight`.
-    fn path_weight(&self, x: i32, y: i32, z: i32) -> f32 {
-        if self.chunks.block_at(x, y - 1, z) == Some(Id::Grass) {
-            10.0
-        } else {
-            beta_brightness(self.light_value(x, y, z)) - 0.5
-        }
+    /// `World.getLightBrightness`.
+    fn brightness(&self, x: i32, y: i32, z: i32) -> f32 {
+        beta_brightness(self.light_value(x, y, z))
+    }
+
+    /// `World.isDaytime`.
+    fn daytime(&self) -> bool {
+        self.skylight_subtracted < 4
+    }
+
+    /// `World.canBlockSeeTheSky`: at or above the column's light height.
+    fn can_see_sky(&self, x: i32, y: i32, z: i32) -> bool {
+        self.chunks
+            .get(ChunkPosition::from_block(x, z))
+            .is_some_and(|chunk| {
+                let local_x = x.rem_euclid(CHUNK_SIZE as i32) as usize;
+                let local_z = z.rem_euclid(CHUNK_SIZE as i32) as usize;
+                y >= i32::from(chunk.heightmap.get(local_x, local_z))
+            })
+    }
+
+    /// `World.canBlockBeRainedOn`, the rain half of `Entity.isWet`.
+    fn rained_on(&self, cell: IVec3) -> bool {
+        self.raining && self.can_see_sky(cell.x, cell.y, cell.z)
+    }
+
+    /// `rayTraceBlocks(from, to) == null`.
+    fn clear_line(&self, from: Vec3, to: Vec3) -> bool {
+        let delta = to - from;
+        raycast_blocks(self.chunks, from, delta, delta.length()).is_none()
     }
 }
 
+/// The mutable world a creature's tick reaches beyond itself.
+pub(crate) struct Effects<'a, 'w, 's> {
+    pub commands: &'a mut Commands<'w, 's>,
+    pub loot: &'a mut ItemRng,
+    pub explosions: &'a mut Vec<Explosion>,
+    pub block_ticks: Option<&'a mut BlockTicks>,
+    pub victim: Option<Victim<'a>>,
+}
+
+/// The optional, kind-specific components a creature carries.
+struct Traits<'a> {
+    wings: Option<&'a mut Wings>,
+    swim: Option<&'a mut Swim>,
+    fuse: Option<&'a mut Fuse>,
+    bounce: Option<&'a mut Bounce>,
+    hover: Option<&'a mut Hover>,
+    steps: Option<&'a mut StepDistance>,
+}
+
 /// One creature's simulated state while its ticks run.
-struct Body<'a> {
+pub(crate) struct Body<'a> {
     entity: Entity,
     mob: &'a mut Mob,
     living: &'a mut Living,
@@ -297,63 +342,75 @@ struct Body<'a> {
     teleported: bool,
 }
 
-/// Run each creature's Beta update once per world tick this frame.
+#[derive(QueryData)]
+#[query_data(mutable)]
+pub(crate) struct CreatureItem {
+    entity: Entity,
+    mob: &'static mut Mob,
+    living: &'static mut Living,
+    transform: &'static mut Transform,
+    velocity: &'static mut Velocity,
+    collision: &'static mut CollisionState,
+    size: &'static EntitySize,
+    step_height: &'static StepHeight,
+    previous: &'static mut PreviousTick,
+    wings: Option<&'static mut Wings>,
+    swim: Option<&'static mut Swim>,
+    fuse: Option<&'static mut Fuse>,
+    bounce: Option<&'static mut Bounce>,
+    hover: Option<&'static mut Hover>,
+    steps: Option<&'static mut StepDistance>,
+}
+
+/// Run each mob's Beta update once per world tick this frame.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn tick_creatures(
     mut commands: Commands,
     tick: Res<WorldTick>,
     chunks: Res<WorldChunks>,
     light: Res<LightCache>,
     weather: Option<Res<WorldWeather>>,
+    settings: Option<Res<GameSettings>>,
     mut block_ticks: Option<ResMut<BlockTicks>>,
-    player: Query<(&Transform, &EntitySize, Option<&PlayerHealth>), With<Player>>,
-    others: Query<(Entity, &Transform, &EntitySize), (With<Mob>, Without<Living>, Without<Player>)>,
-    mut creatures: Query<
+    mut explosion_writer: MessageWriter<Explosion>,
+    mut player: Query<
         (
-            Entity,
-            &mut Mob,
-            &mut Living,
-            &mut Transform,
+            &Transform,
+            Option<&mut PlayerHealth>,
+            Option<&mut PlayerCombat>,
             &mut Velocity,
-            &mut CollisionState,
-            &EntitySize,
-            &StepHeight,
-            &mut PreviousTick,
-            Option<&mut Wings>,
-            Option<&mut Swim>,
-            Option<&mut StepDistance>,
+            Option<&mut Inventory>,
         ),
-        Without<Player>,
+        With<Player>,
     >,
+    mut creatures: Query<CreatureItem, Without<Player>>,
     mut pathfinder: Local<Pathfinder>,
     mut crowd: Local<Vec<(Entity, Aabb)>>,
+    mut loot: Local<ItemRng>,
+    mut explosions: Local<Vec<Explosion>>,
+    mut spare_armor: Local<[Option<ItemStack>; 4]>,
 ) {
     let ticks = tick.ticks_this_frame();
     if ticks == 0 {
         return;
     }
-    let player = player
-        .single()
-        .ok()
-        .map(|(transform, size, health)| Target {
-            eye: transform.translation,
-            feet: transform.translation - Vec3::Y * size.y_offset,
-            alive: health.is_none_or(|health| health.current > 0),
-        });
+    let difficulty = settings
+        .as_ref()
+        .map_or(Difficulty::Normal, |settings| settings.difficulty);
+    let mut player = player.single_mut().ok();
+    let target = player.as_ref().map(|(transform, health, ..)| Target {
+        eye: transform.translation,
+        feet: transform.translation - Vec3::Y * EntitySize::PLAYER.y_offset,
+        alive: health.as_ref().is_none_or(|health| health.current > 0),
+    });
     crowd.clear();
     crowd.extend(
         creatures
             .iter()
-            .map(|(entity, _, _, transform, _, _, size, ..)| {
-                (entity, size.aabb(transform.translation))
-            }),
+            .map(|item| (item.entity, item.size.aabb(item.transform.translation))),
     );
-    crowd.extend(
-        others
-            .iter()
-            .map(|(entity, transform, size)| (entity, size.aabb(transform.translation))),
-    );
-    if let Some(player) = player {
-        crowd.push((Entity::PLACEHOLDER, EntitySize::PLAYER.aabb(player.eye)));
+    if let Some(target) = target {
+        crowd.push((Entity::PLACEHOLDER, target.aabb()));
     }
     let penalty = weather
         .as_ref()
@@ -365,77 +422,92 @@ pub(crate) fn tick_creatures(
         skylight_subtracted: skylight_subtracted(celestial_angle(tick.world_time(), 0.0))
             .saturating_add(penalty)
             .min(15),
-        player,
+        difficulty,
+        player: target,
         crowd: crowd.as_slice(),
     };
+    let victim = player
+        .as_mut()
+        .and_then(|(transform, health, combat, velocity, inventory)| {
+            let (bevy_yaw, _, _) = transform.rotation.to_euler(EulerRot::YXZ);
+            Some(Victim {
+                health: health.as_mut()?.as_mut(),
+                combat: combat.as_mut()?.as_mut(),
+                velocity: velocity.as_mut(),
+                armor: match inventory {
+                    Some(inventory) => &mut inventory.as_mut().armor,
+                    None => &mut *spare_armor,
+                },
+                eye: transform.translation,
+                yaw: (std::f32::consts::PI - bevy_yaw).to_degrees(),
+            })
+        });
+    explosions.clear();
+    let mut fx = Effects {
+        commands: &mut commands,
+        loot: &mut loot,
+        explosions: &mut explosions,
+        block_ticks: block_ticks.as_deref_mut(),
+        victim,
+    };
 
-    for (
-        entity,
-        mut mob,
-        mut living,
-        mut transform,
-        mut velocity,
-        mut collision,
-        size,
-        step_height,
-        mut previous,
-        mut wings,
-        mut swim,
-        mut steps,
-    ) in &mut creatures
-    {
-        if !chunks.contains(ChunkPosition::from_world(
-            transform.translation.x,
-            transform.translation.z,
-        )) {
-            commands.entity(entity).despawn();
+    for mut item in &mut creatures {
+        let entity = item.entity;
+        if difficulty == Difficulty::Peaceful && item.mob.kind.hostile()
+            || !chunks.contains(ChunkPosition::from_world(
+                item.transform.translation.x,
+                item.transform.translation.z,
+            ))
+        {
+            fx.commands.entity(entity).despawn();
             continue;
         }
         let mut body = Body {
             entity,
-            mob: &mut mob,
-            living: &mut living,
-            size: *size,
-            step_height: step_height.0,
-            feet: transform.translation,
-            previous: transform.translation,
-            motion: velocity.0 * TICK_SECONDS,
-            collision: *collision,
+            mob: &mut item.mob,
+            living: &mut item.living,
+            size: *item.size,
+            step_height: item.step_height.0,
+            feet: item.transform.translation,
+            previous: item.transform.translation,
+            motion: item.velocity.0 * TICK_SECONDS,
+            collision: *item.collision,
             dead: false,
             teleported: false,
         };
+        let mut traits = Traits {
+            wings: item.wings.as_deref_mut(),
+            swim: item.swim.as_deref_mut(),
+            fuse: item.fuse.as_deref_mut(),
+            bounce: item.bounce.as_deref_mut(),
+            hover: item.hover.as_deref_mut(),
+            steps: item.steps.as_deref_mut(),
+        };
         let mut fate = Fate::Alive;
-        for step in 0..ticks {
-            let now = tick
-                .world_time()
-                .saturating_sub(u64::from(ticks - step - 1));
-            previous.0 = body.feet;
-            fate = body.tick(
-                &world,
-                &mut pathfinder,
-                now,
-                wings.as_deref_mut(),
-                swim.as_deref_mut(),
-                steps.as_deref_mut(),
-                block_ticks.as_deref_mut(),
-                &mut commands,
-            );
+        for _ in 0..ticks {
+            item.previous.0 = body.feet;
+            fate = body.tick(&world, &mut pathfinder, &mut traits, &mut fx);
             if fate != Fate::Alive {
                 break;
             }
         }
-        if body.teleported {
-            previous.0 = body.feet;
+        let teleported = body.teleported;
+        let feet = body.feet;
+        let motion = body.motion;
+        let collision = body.collision;
+        if teleported {
+            item.previous.0 = feet;
         }
-        transform.translation = body.feet;
-        velocity.0 = body.motion / TICK_SECONDS;
-        *collision = body.collision;
+        item.velocity.0 = motion / TICK_SECONDS;
+        *item.collision = collision;
+        item.transform.translation = feet;
         match fate {
             Fate::Alive => {}
-            Fate::Despawned => commands.entity(entity).despawn(),
-            Fate::Killed => kill_mob(&mut commands, entity, &mut mob, transform.translation),
+            Fate::Despawned => fx.commands.entity(entity).despawn(),
+            Fate::Removed => remove_dead(fx.commands, entity, &mut item.mob, feet),
         }
     }
+    explosion_writer.write_batch(explosions.drain(..));
 }
 
 impl Body<'_> {
@@ -447,22 +519,56 @@ impl Body<'_> {
         self.mob.kind == kind
     }
 
+    fn alive(&self) -> bool {
+        self.mob.health > 0
+    }
+
     /// `getEyeHeight`, which `EntityWolf` lowers.
     fn eye_height(&self) -> f32 {
         self.size.height * if self.is(MobKind::Wolf) { 0.8 } else { 0.85 }
     }
 
-    #[allow(clippy::too_many_arguments)]
+    fn eye(&self) -> Vec3 {
+        self.feet + Vec3::Y * self.eye_height()
+    }
+
+    /// `Entity.getEntityBrightness`: the light two-thirds of the way up.
+    fn brightness(&self, world: &Surroundings) -> f32 {
+        world.brightness(
+            self.feet.x.floor() as i32,
+            (self.feet.y + self.size.height * 0.66).floor() as i32,
+            self.feet.z.floor() as i32,
+        )
+    }
+
+    /// `EntityLiving.canEntityBeSeen`, eye to eye.
+    fn can_see(&self, world: &Surroundings, player: &Target) -> bool {
+        world.clear_line(self.eye(), player.eye + Vec3::Y * PLAYER_EYE_HEIGHT)
+    }
+
+    /// `Entity.isImmuneToFire`.
+    fn fire_immune(&self) -> bool {
+        matches!(self.mob.kind, MobKind::Ghast | MobKind::PigZombie)
+    }
+
+    /// `attackEntityFrom` against this creature, dropping its loot if the
+    /// hit kills it.
+    fn hurt(&mut self, hit: Hit, fx: &mut Effects) -> bool {
+        let mut velocity = Velocity(self.motion / TICK_SECONDS);
+        let wound = hurt_creature(self.mob, self.living, &mut velocity, self.feet, hit);
+        self.motion = velocity.0 * TICK_SECONDS;
+        if wound.died {
+            drop_loot(fx.commands, fx.loot, self.mob, self.feet);
+        }
+        wound.landed
+    }
+
     fn tick(
         &mut self,
         world: &Surroundings,
         pathfinder: &mut Pathfinder,
-        now: u64,
-        wings: Option<&mut Wings>,
-        swim: Option<&mut Swim>,
-        steps: Option<&mut StepDistance>,
-        block_ticks: Option<&mut BlockTicks>,
-        commands: &mut Commands,
+        traits: &mut Traits,
+        fx: &mut Effects,
     ) -> Fate {
         self.previous = self.feet;
         let living = &mut *self.living;
@@ -470,35 +576,91 @@ impl Body<'_> {
         living.prev_pitch = living.pitch;
         living.prev_body_yaw = living.body_yaw;
         self.mob.age = self.mob.age.saturating_add(1);
+        let was_on_ground = self.collision.on_ground;
+        if let Some(fuse) = traits.fuse.as_deref_mut() {
+            fuse.prev = self.mob.fuse;
+        }
+        if let Some(bounce) = traits.bounce.as_deref_mut() {
+            bounce.prev_squish = bounce.squish;
+        }
 
-        // `Entity.onEntityUpdate`: the water current pushes, and puts out fire.
-        let (in_water, current) = water_movement(
-            grow(self.aabb(), Vec3::new(-0.001, -0.401, -0.001)),
-            world.chunks,
-        );
+        // `Entity.onEntityUpdate`.
+        let band = grow(self.aabb(), Vec3::new(-0.001, -0.401, -0.001));
+        let (in_water, current) = water_movement(band, world.chunks);
         self.living.in_water = in_water;
         self.motion += current * WATER_CURRENT_PER_TICK;
         if in_water {
+            self.living.fall_distance = 0.0;
             self.mob.fire_ticks = 0;
         }
-        update_fire(self.mob, world.chunks, self.feet, world.raining);
-        burn(self.mob, now);
-        if self.mob.health <= 0 {
-            return Fate::Killed;
+        if self.mob.fire_ticks > 0 {
+            if self.fire_immune() {
+                self.mob.fire_ticks = (self.mob.fire_ticks - 4).max(0);
+            } else {
+                if self.mob.fire_ticks % 20 == 0 {
+                    self.hurt(Hit::environment(1), fx);
+                }
+                self.mob.fire_ticks -= 1;
+            }
+        }
+        if lava_contains(self.aabb(), world.chunks) && !self.fire_immune() {
+            self.hurt(Hit::environment(4), fx);
+            self.mob.fire_ticks = 600;
+        }
+        if self.feet.y < -64.0 {
+            self.hurt(Hit::environment(4), fx);
         }
 
-        // `EntityLiving.onLivingUpdate`.
-        let mut swim = swim;
-        if let Some(swim) = swim.as_deref_mut() {
-            self.squid_action(world, swim);
+        // `EntityLiving.onEntityUpdate`.
+        if self.alive() && self.inside_opaque_block(world) {
+            self.hurt(Hit::environment(1), fx);
+        }
+        if self.alive() && !self.is(MobKind::Squid) && self.head_in_water(world) {
+            self.living.air -= 1;
+            if self.living.air == -20 {
+                self.living.air = 0;
+                self.hurt(Hit::environment(2), fx);
+            }
+            self.mob.fire_ticks = 0;
         } else {
-            let has_attacked = self.creature_action(world, pathfinder);
-            if self.is(MobKind::Wolf) {
-                self.wolf_action(world, pathfinder, has_attacked);
+            self.living.air = MAX_AIR;
+        }
+        let alive = self.alive();
+        let living = &mut *self.living;
+        living.attack_time = (living.attack_time - 1).max(0);
+        living.hurt_time = (living.hurt_time - 1).max(0);
+        living.hearts_life = (living.hearts_life - 1).max(0);
+        if !alive {
+            living.death_time += 1;
+            if living.death_time > DEATH_TICKS {
+                return Fate::Removed;
+            }
+        }
+
+        // `EntityLiving.onLivingUpdate`, with each kind's prelude.
+        self.living_prelude(world);
+        if !self.alive() {
+            // `isMovementBlocked`.
+            let living = &mut *self.living;
+            living.jumping = false;
+            living.move_strafing = 0.0;
+            living.move_forward = 0.0;
+            living.random_yaw_velocity = 0.0;
+        } else {
+            match self.mob.kind {
+                MobKind::Squid => self.squid_action(world, traits.swim.as_deref_mut()),
+                MobKind::Slime => self.slime_action(world, traits.bounce.as_deref_mut()),
+                MobKind::Ghast => self.ghast_action(world, traits.hover.as_deref_mut(), fx),
+                _ => {
+                    let has_attacked = self.creature_action(world, pathfinder, traits, fx);
+                    if self.is(MobKind::Wolf) {
+                        self.wolf_action(world, pathfinder, has_attacked);
+                    }
+                }
             }
         }
         let in_lava = lava_contains(self.aabb(), world.chunks);
-        let in_water = if swim.is_some() {
+        let in_water = if self.is(MobKind::Squid) {
             self.squid_in_water(world)
         } else {
             self.living.in_water
@@ -513,21 +675,18 @@ impl Body<'_> {
         self.living.move_strafing *= 0.98;
         self.living.move_forward *= 0.98;
         self.living.random_yaw_velocity *= 0.9;
-        if swim.is_some() {
+        match self.mob.kind {
             // `EntitySquid.moveEntityWithHeading` only applies its motion.
-            self.move_entity(world.chunks, steps, block_ticks);
-        } else {
-            self.move_with_heading(world.chunks, in_lava, steps, block_ticks);
+            MobKind::Squid => self.move_entity(world, traits.steps.as_deref_mut(), fx),
+            MobKind::Ghast => self.fly_with_heading(world, in_lava, fx),
+            _ => self.move_with_heading(world, in_lava, traits.steps.as_deref_mut(), fx),
         }
         self.push_apart(world);
-        if let Some(wings) = wings {
-            self.flap(wings, commands);
-        }
-        if let Some(swim) = swim {
-            self.swim(world, swim);
-        }
+        self.living_epilogue(world, traits, fx);
 
+        // The tail of `EntityLiving.onUpdate`, then each kind's `onUpdate`.
         self.update_body_yaw();
+        self.update_epilogue(was_on_ground, traits);
         if self.dead {
             Fate::Despawned
         } else {
@@ -535,10 +694,49 @@ impl Body<'_> {
         }
     }
 
-    /// `EntityCreature.updatePlayerActionState`. Returns `hasAttacked`, which
-    /// is really "may not wander": a sitting wolf.
-    fn creature_action(&mut self, world: &Surroundings, pathfinder: &mut Pathfinder) -> bool {
-        let has_attacked = self.is(MobKind::Wolf) && self.mob.sitting;
+    /// `Entity.isEntityInsideOpaqueBlock`: eight points around the eyes.
+    fn inside_opaque_block(&self, world: &Surroundings) -> bool {
+        (0..8).any(|i| {
+            let dx = ((i & 1) as f32 - 0.5) * self.size.width * 0.9;
+            let dy = (((i >> 1) & 1) as f32 - 0.5) * 0.1;
+            let dz = (((i >> 2) & 1) as f32 - 0.5) * self.size.width * 0.9;
+            let at = self.eye() + Vec3::new(dx, dy, dz);
+            world
+                .chunks
+                .block_at(
+                    at.x.floor() as i32,
+                    at.y.floor() as i32,
+                    at.z.floor() as i32,
+                )
+                .is_some_and(is_opaque_cube)
+        })
+    }
+
+    /// `Entity.isInsideOfMaterial(Material.water)` at eye level.
+    fn head_in_water(&self, world: &Surroundings) -> bool {
+        let eye = self.eye();
+        let (x, y, z) = (
+            eye.x.floor() as i32,
+            eye.y.floor() as i32,
+            eye.z.floor() as i32,
+        );
+        world.chunks.block_at(x, y, z).is_some_and(is_water) && {
+            let surface =
+                (y + 1) as f32 - (percent_air(world.chunks.metadata_at(x, y, z)) - 0.111_111_11);
+            eye.y < surface
+        }
+    }
+
+    /// `EntityCreature.updatePlayerActionState`. Returns `hasAttacked`: the
+    /// creature stood still to attack or was told to sit.
+    fn creature_action(
+        &mut self,
+        world: &Surroundings,
+        pathfinder: &mut Pathfinder,
+        traits: &mut Traits,
+        fx: &mut Effects,
+    ) -> bool {
+        self.living.has_attacked = self.is(MobKind::Wolf) && self.mob.sitting;
         if self.mob.sitting {
             // `EntityWolf.interact` drops the path when told to sit.
             self.living.path = None;
@@ -550,9 +748,16 @@ impl Body<'_> {
             }
         } else if !world.player.is_some_and(|player| player.alive) {
             self.living.chasing = false;
+        } else if let Some(player) = world.player {
+            let distance = player.eye.distance(self.feet);
+            if self.can_see(world, &player) {
+                self.attack_player(world, &player, distance, traits, fx);
+            } else {
+                self.attack_blocked_player(distance, traits);
+            }
         }
-        // `attackEntity` and `attackBlockedEntity` arrive with combat.
 
+        let has_attacked = self.living.has_attacked;
         let rng = &mut self.mob.rng;
         if has_attacked
             || !self.living.chasing
@@ -685,7 +890,7 @@ impl Body<'_> {
             let x = (self.feet.x + rng.next_int(13) as f32 - 6.0).floor() as i32;
             let y = (self.feet.y + rng.next_int(7) as f32 - 3.0).floor() as i32;
             let z = (self.feet.z + rng.next_int(13) as f32 - 6.0).floor() as i32;
-            let weight = world.path_weight(x, y, z);
+            let weight = self.path_weight(world, x, y, z);
             if weight > best_weight {
                 best_weight = weight;
                 best = Some(IVec3::new(x, y, z));
@@ -697,7 +902,18 @@ impl Body<'_> {
         }
     }
 
-    /// `EntityLiving.despawnEntity`. Beta's animals despawn like monsters,
+    /// `getBlockPathWeight`: monsters seek the dark, animals grass and light.
+    fn path_weight(&self, world: &Surroundings, x: i32, y: i32, z: i32) -> f32 {
+        if self.mob.kind.is_monster() {
+            0.5 - world.brightness(x, y, z)
+        } else if world.chunks.block_at(x, y - 1, z) == Some(Id::Grass) {
+            10.0
+        } else {
+            world.brightness(x, y, z) - 0.5
+        }
+    }
+
+    /// `EntityLiving.despawnEntity`. Every mob despawns far from the player,
     /// except a tamed wolf.
     fn despawn(&mut self, world: &Surroundings) {
         let Some(player) = world.player else {
@@ -719,26 +935,22 @@ impl Body<'_> {
         }
     }
 
-    /// `EntityWolf.findPlayerToAttack`.
-    fn find_player_to_attack(&self, world: &Surroundings) -> bool {
-        self.is(MobKind::Wolf)
-            && self.mob.angry
-            && world
-                .player
-                .is_some_and(|player| player.eye.distance_squared(self.feet) < 256.0)
-    }
-
     /// `World.getPathToEntity(this, playerToAttack, 16)`.
     fn path_to_player(&self, world: &Surroundings, pathfinder: &mut Pathfinder) -> Option<Path> {
         let player = world.player?;
         pathfinder.path_to_feet(world.chunks, self.feet, self.size, player.feet, 16.0)
     }
 
+    /// `EntityLiving.moveSpeed` and its overrides.
     fn move_speed(&self) -> f32 {
-        if self.is(MobKind::Wolf) {
-            WOLF_MOVE_SPEED
-        } else {
-            MOVE_SPEED
+        match self.mob.kind {
+            MobKind::Wolf => 1.1,
+            MobKind::Zombie => 0.5,
+            // `EntityPigZombie.onUpdate` quickens once it has a target.
+            MobKind::PigZombie if self.living.chasing => 0.95,
+            MobKind::PigZombie => 0.5,
+            MobKind::Spider => 0.8,
+            _ => 0.7,
         }
     }
 
@@ -764,102 +976,21 @@ impl Body<'_> {
         self.living.yaw = update_rotation(self.living.yaw, yaw, max_yaw);
     }
 
-    /// `EntityWolf.updatePlayerActionState` after its `super` call. Hunting
-    /// sheep waits for combat.
-    fn wolf_action(
-        &mut self,
-        world: &Surroundings,
-        pathfinder: &mut Pathfinder,
-        has_attacked: bool,
-    ) {
-        if !has_attacked
-            && self.living.path.is_none()
-            && self.mob.tamed
-            && let Some(owner) = world.player
-        {
-            let distance = owner.eye.distance(self.feet);
-            if distance > 5.0 {
-                self.follow_owner(world, pathfinder, owner, distance);
-            }
-        }
-        if self.living.in_water {
-            self.mob.sitting = false;
-        }
-    }
-
-    /// `EntityWolf.getPathOrWalkableBlock`: path to the owner, or jump to a
-    /// free cell around them when they are far away and out of reach.
-    fn follow_owner(
-        &mut self,
-        world: &Surroundings,
-        pathfinder: &mut Pathfinder,
-        owner: Target,
-        distance: f32,
-    ) {
-        let path = pathfinder.path_to_feet(world.chunks, self.feet, self.size, owner.feet, 16.0);
-        if path.is_some() || distance <= 12.0 {
-            self.living.path = path;
-            return;
-        }
-        let normal_cube = |x, y, z| world.chunks.block_at(x, y, z).is_some_and(is_opaque_cube);
-        let x = owner.eye.x.floor() as i32 - 2;
-        let z = owner.eye.z.floor() as i32 - 2;
-        let y = owner.feet.y.floor() as i32;
-        for i in 0..=4 {
-            for j in 0..=4 {
-                if (i < 1 || j < 1 || i > 3 || j > 3)
-                    && normal_cube(x + i, y - 1, z + j)
-                    && !normal_cube(x + i, y, z + j)
-                    && !normal_cube(x + i, y + 1, z + j)
-                {
-                    self.feet = Vec3::new((x + i) as f32 + 0.5, y as f32, (z + j) as f32 + 0.5);
-                    self.previous = self.feet;
-                    self.teleported = true;
-                    return;
-                }
-            }
-        }
-    }
-
-    /// `EntitySquid.updatePlayerActionState`: pick a new swim direction now
-    /// and then, or whenever it leaves the water.
-    fn squid_action(&mut self, world: &Surroundings, swim: &mut Swim) {
-        let rng = &mut self.mob.rng;
-        if rng.next_int(50) == 0 || !self.living.in_water || swim.heading == Vec3::ZERO {
-            let angle = rng.next_float() * TAU;
-            swim.heading = Vec3::new(
-                angle.cos() * 0.2,
-                -0.1 + rng.next_float() * 0.2,
-                angle.sin() * 0.2,
-            );
-        }
-        self.despawn(world);
-    }
-
-    /// `EntitySquid.isInWater`, which also pushes the squid along the
-    /// current. Its box shrinks by 0.6 from above and below, so for part of
-    /// each block the scan is empty and a squid near the surface sinks back.
-    fn squid_in_water(&mut self, world: &Surroundings) -> bool {
-        let (in_water, current) =
-            water_movement(grow(self.aabb(), Vec3::new(0.0, -0.6, 0.0)), world.chunks);
-        self.motion += current * WATER_CURRENT_PER_TICK;
-        in_water
-    }
-
     /// `EntityLiving.moveEntityWithHeading`.
     fn move_with_heading(
         &mut self,
-        chunks: &WorldChunks,
+        world: &Surroundings,
         in_lava: bool,
         steps: Option<&mut StepDistance>,
-        block_ticks: Option<&mut BlockTicks>,
+        fx: &mut Effects,
     ) {
         let strafe = self.living.move_strafing;
         let forward = self.living.move_forward;
+        let chunks = world.chunks;
         if self.living.in_water || in_lava {
             let start_y = self.feet.y;
             self.move_flying(strafe, forward, 0.02);
-            self.move_entity(chunks, steps, block_ticks);
+            self.move_entity(world, steps, fx);
             self.motion *= if self.living.in_water { 0.8 } else { 0.5 };
             self.motion.y -= 0.02;
             if (self.collision.collided_x || self.collision.collided_z)
@@ -883,13 +1014,13 @@ impl Body<'_> {
             };
             self.move_flying(strafe, forward, acceleration);
             let friction = self.ground_friction(chunks);
-            let on_ladder = self.on_ladder(chunks);
-            if on_ladder {
+            if self.on_ladder(chunks) {
                 self.motion.x = self.motion.x.clamp(-0.15, 0.15);
                 self.motion.z = self.motion.z.clamp(-0.15, 0.15);
+                self.living.fall_distance = 0.0;
                 self.motion.y = self.motion.y.max(-0.15);
             }
-            self.move_entity(chunks, steps, block_ticks);
+            self.move_entity(world, steps, fx);
             if (self.collision.collided_x || self.collision.collided_z) && self.on_ladder(chunks) {
                 self.motion.y = 0.2;
             }
@@ -897,7 +1028,34 @@ impl Body<'_> {
             self.motion.x *= friction;
             self.motion.z *= friction;
         }
+        self.swing_limbs();
+    }
 
+    /// `EntityFlying.moveEntityWithHeading`: the same drag, but no gravity.
+    fn fly_with_heading(&mut self, world: &Surroundings, in_lava: bool, fx: &mut Effects) {
+        let strafe = self.living.move_strafing;
+        let forward = self.living.move_forward;
+        if self.living.in_water || in_lava {
+            self.move_flying(strafe, forward, 0.02);
+            self.move_entity(world, None, fx);
+            self.motion *= if self.living.in_water { 0.8 } else { 0.5 };
+        } else {
+            let friction = self.ground_friction(world.chunks);
+            let acceleration = if self.collision.on_ground {
+                0.1 * (0.162_771_36 / (friction * friction * friction))
+            } else {
+                0.02
+            };
+            self.move_flying(strafe, forward, acceleration);
+            let friction = self.ground_friction(world.chunks);
+            self.move_entity(world, None, fx);
+            self.motion *= friction;
+        }
+        self.swing_limbs();
+    }
+
+    /// The walk-cycle bookkeeping at the end of `moveEntityWithHeading`.
+    fn swing_limbs(&mut self) {
         let living = &mut *self.living;
         living.prev_limb_amount = living.limb_amount;
         let travelled = ((self.feet.x - self.previous.x).powi(2)
@@ -923,15 +1081,20 @@ impl Body<'_> {
         }
     }
 
-    /// `EntityLiving.isOnLadder`.
+    /// `EntityLiving.isOnLadder`. A spider treats any wall it bumps as one,
+    /// and a ghast never climbs.
     fn on_ladder(&self, chunks: &WorldChunks) -> bool {
-        chunks
-            .block_at(
-                self.feet.x.floor() as i32,
-                self.aabb().min.y.floor() as i32,
-                self.feet.z.floor() as i32,
-            )
-            .is_some_and(|block| block.is_ladder())
+        match self.mob.kind {
+            MobKind::Spider => self.collision.collided_x || self.collision.collided_z,
+            MobKind::Ghast => false,
+            _ => chunks
+                .block_at(
+                    self.feet.x.floor() as i32,
+                    self.aabb().min.y.floor() as i32,
+                    self.feet.z.floor() as i32,
+                )
+                .is_some_and(|block| block.is_ladder()),
+        }
     }
 
     /// `Entity.isOffsetPositionInLiquid`, which despite its name is true when
@@ -954,23 +1117,32 @@ impl Body<'_> {
         self.motion.z += forward * cos + strafe * sin;
     }
 
-    /// `Entity.moveEntity`: collide, step up, stop on blocked axes, and count
-    /// steps for `onEntityWalking`.
+    /// `Entity.moveEntity`: collide, step up, stop on blocked axes, take fall
+    /// damage on landing, count steps for `onEntityWalking`, and catch fire
+    /// from fire or lava the body touches.
     fn move_entity(
         &mut self,
-        chunks: &WorldChunks,
+        world: &Surroundings,
         steps: Option<&mut StepDistance>,
-        block_ticks: Option<&mut BlockTicks>,
+        fx: &mut Effects,
     ) {
         let movement = move_entity(
             self.aabb(),
             self.motion,
             self.step_height,
             self.collision.on_ground,
-            chunks,
+            world.chunks,
         );
         self.feet = self.size.position_from_aabb(movement.aabb);
         self.collision = movement.collision;
+        // `updateFallState`.
+        if movement.collision.on_ground {
+            if self.living.fall_distance > 0.0 {
+                self.fall(fx);
+            }
+        } else if movement.displacement.y < 0.0 {
+            self.living.fall_distance -= movement.displacement.y;
+        }
         if movement.collision.collided_x {
             self.motion.x = 0.0;
         }
@@ -980,7 +1152,46 @@ impl Body<'_> {
         if movement.collision.collided_z {
             self.motion.z = 0.0;
         }
-        step_on_block(steps, block_ticks, chunks, movement, false);
+        step_on_block(
+            steps,
+            fx.block_ticks.as_deref_mut(),
+            world.chunks,
+            movement,
+            false,
+        );
+
+        let foot = self.feet.floor().as_ivec3();
+        let wet = self.living.in_water || world.rained_on(foot);
+        if touching_fire(world.chunks, grow(self.aabb(), Vec3::splat(-0.001))) {
+            if !self.fire_immune() {
+                self.hurt(Hit::environment(1), fx);
+            }
+            if !wet {
+                self.mob.fire_ticks += 1;
+                if self.mob.fire_ticks == 0 {
+                    self.mob.fire_ticks = 300;
+                }
+            }
+        } else if self.mob.fire_ticks <= 0 {
+            // `-fireResistance`.
+            self.mob.fire_ticks = -1;
+        }
+        if wet && self.mob.fire_ticks > 0 {
+            self.mob.fire_ticks = -1;
+        }
+    }
+
+    /// `EntityLiving.fall`: three blocks free, then a point per block.
+    /// Chickens and ghasts never take it.
+    fn fall(&mut self, fx: &mut Effects) {
+        let distance = std::mem::take(&mut self.living.fall_distance);
+        if matches!(self.mob.kind, MobKind::Chicken | MobKind::Ghast) {
+            return;
+        }
+        let damage = (distance - 3.0).ceil() as i16;
+        if damage > 0 {
+            self.hurt(Hit::environment(damage), fx);
+        }
     }
 
     /// `applyEntityCollision` against every pushable body nearby. Both bodies'
@@ -1006,72 +1217,6 @@ impl Body<'_> {
         }
     }
 
-    /// `EntityChicken.onLivingUpdate` after its `super` call.
-    fn flap(&mut self, wings: &mut Wings, commands: &mut Commands) {
-        let on_ground = self.collision.on_ground;
-        wings.prev_rotation = wings.rotation;
-        wings.prev_flap_speed = wings.flap_speed;
-        let lift = if on_ground { -1.0 } else { 4.0 };
-        wings.flap_speed = (wings.flap_speed + lift * 0.3).clamp(0.0, 1.0);
-        if !on_ground && wings.rotation_delta < 1.0 {
-            wings.rotation_delta = 1.0;
-        }
-        wings.rotation_delta *= 0.9;
-        if !on_ground && self.motion.y < 0.0 {
-            self.motion.y *= 0.6;
-        }
-        wings.rotation += wings.rotation_delta * 2.0;
-        self.mob.egg_timer = self.mob.egg_timer.saturating_sub(1);
-        if self.mob.egg_timer == 0 {
-            drop_item(commands, ItemId::Egg, 0, self.feet);
-            self.mob.egg_timer = self.mob.rng.next_int(6000) as u16 + 6000;
-        }
-    }
-
-    /// `EntitySquid.onLivingUpdate` after its `super` call.
-    fn swim(&mut self, world: &Surroundings, swim: &mut Swim) {
-        swim.prev_pitch = swim.pitch;
-        swim.prev_yaw = swim.yaw;
-        swim.prev_tentacle = swim.tentacle;
-        swim.rotation += swim.rotation_velocity;
-        if swim.rotation > TAU {
-            swim.rotation -= TAU;
-            if self.mob.rng.next_int(10) == 0 {
-                swim.rotation_velocity = stroke_velocity(&mut self.mob.rng);
-            }
-        }
-        if self.squid_in_water(world) {
-            if swim.rotation < PI {
-                let stroke = swim.rotation / PI;
-                swim.tentacle = (stroke * stroke * PI).sin() * PI * 0.25;
-                if stroke > 0.75 {
-                    swim.motion_speed = 1.0;
-                    swim.rotate_speed = 1.0;
-                } else {
-                    swim.rotate_speed *= 0.8;
-                }
-            } else {
-                swim.tentacle = 0.0;
-                swim.motion_speed *= 0.9;
-                swim.rotate_speed *= 0.99;
-            }
-            self.motion = swim.heading * swim.motion_speed;
-            let horizontal = (self.motion.x * self.motion.x + self.motion.z * self.motion.z).sqrt();
-            let living = &mut *self.living;
-            living.body_yaw +=
-                (-self.motion.x.atan2(self.motion.z).to_degrees() - living.body_yaw) * 0.1;
-            living.yaw = living.body_yaw;
-            swim.yaw += PI * swim.rotate_speed * 1.5;
-            swim.pitch += (-horizontal.atan2(self.motion.y).to_degrees() - swim.pitch) * 0.1;
-        } else {
-            swim.tentacle = swim.rotation.sin().abs() * PI * 0.25;
-            self.motion.x = 0.0;
-            self.motion.y = (self.motion.y - 0.08) * 0.98;
-            self.motion.z = 0.0;
-            swim.pitch += (-90.0 - swim.pitch) * 0.02;
-        }
-    }
-
     /// The tail of `EntityLiving.onUpdate`: the body turns toward the
     /// direction of travel and is kept within 75° of the head.
     fn update_body_yaw(&mut self) {
@@ -1094,6 +1239,22 @@ impl Body<'_> {
         living.prev_body_yaw = near_angle(living.prev_body_yaw, living.body_yaw);
         living.prev_pitch = near_angle(living.prev_pitch, living.pitch);
     }
+}
+
+/// `World.isBoundingBoxBurning`: fire or lava in any cell the box spans.
+fn touching_fire(chunks: &WorldChunks, area: Aabb) -> bool {
+    let min = area.min.floor().as_ivec3();
+    let max = (area.max + Vec3::ONE).floor().as_ivec3();
+    (min.x..max.x).any(|x| {
+        (min.y..max.y).any(|y| {
+            (min.z..max.z).any(|z| {
+                matches!(
+                    chunks.block_at(x, y, z),
+                    Some(Id::Fire | Id::Lava | Id::FlowingLava)
+                )
+            })
+        })
+    })
 }
 
 /// Beta's `AxisAlignedBB.expand`: grow (or, with negative amounts, shrink)

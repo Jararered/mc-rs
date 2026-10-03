@@ -12,10 +12,14 @@ pub struct WorldPlugin;
 
 impl Plugin for WorldPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<WorldChunks>()
-            .init_resource::<WorldTick>()
-            .add_plugins(BlockTicksPlugin)
-            .add_systems(First, super::tick::advance_world_tick)
-            .add_systems(Update, super::furnace::tick_furnaces);
+        app.add_plugins((
+            crate::entity::mobs::MobPlugin,
+            super::weather::WeatherPlugin,
+        ))
+        .init_resource::<WorldChunks>()
+        .init_resource::<WorldTick>()
+        .add_plugins(BlockTicksPlugin)
+        .add_systems(First, super::tick::advance_world_tick)
+        .add_systems(Update, super::furnace::tick_furnaces);
     }
 }

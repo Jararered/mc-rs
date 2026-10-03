@@ -554,6 +554,7 @@ fn spawn_layer(
 
 fn update_atmosphere(
     tick: Res<WorldTick>,
+    weather: Option<Res<crate::world::weather::WorldWeather>>,
     settings: Res<GameSettings>,
     chunks: Res<WorldChunks>,
     state: Option<Res<State<AppScreen>>>,
@@ -587,7 +588,9 @@ fn update_atmosphere(
         Medium::Air => {}
     }
 
-    let subtracted = skylight_subtracted(angle);
+    let subtracted = skylight_subtracted(angle)
+        .saturating_add(weather.as_ref().map_or(0, |w| w.skylight_penalty()))
+        .min(15);
     let brightness = eye.map_or_else(
         || beta_brightness(15u8.saturating_sub(subtracted)),
         |eye| eye_brightness(&chunks, eye.translation, subtracted),

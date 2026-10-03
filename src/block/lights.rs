@@ -10,6 +10,7 @@ impl BlockDefinition for Definition {
         matches!(
             id,
             Id::Torch
+                | Id::Fire
                 | Id::Glowstone
                 | Id::JackOLantern
                 | Id::TorchWest
@@ -24,19 +25,27 @@ impl BlockDefinition for Definition {
     }
 
     fn opaque_cube(&self, id: Id) -> bool {
-        !is_torch(id)
+        !is_torch(id) && id != Id::Fire
     }
 
     fn light_opacity(&self, id: Id) -> u8 {
-        if is_torch(id) { 0 } else { 15 }
+        if is_torch(id) || id == Id::Fire {
+            0
+        } else {
+            15
+        }
     }
 
     fn light_emission(&self, id: Id) -> u8 {
-        if matches!(id, Id::Glowstone | Id::JackOLantern) || is_torch(id) {
+        if matches!(id, Id::Glowstone | Id::JackOLantern | Id::Fire) || is_torch(id) {
             15
         } else {
             0
         }
+    }
+
+    fn crossed_plant(&self, id: Id) -> bool {
+        id == Id::Fire
     }
 
     fn torch(&self, id: Id) -> bool {
@@ -54,7 +63,13 @@ fn properties(id: Id) -> BlockProperties {
                 ..BlockProperties::non_colliding(0.0)
             }
         }
-        Id::Fire => BlockProperties::solid(0.0),
+        Id::Fire => BlockProperties {
+            light_emission: 15,
+            targetable: false,
+            replaceable: true,
+            crossed_plant: true,
+            ..BlockProperties::non_colliding(0.0)
+        },
         Id::UnlitRedstoneTorch => BlockProperties::solid(0.0),
         Id::RedstoneTorch => BlockProperties::solid(0.0),
         Id::Glowstone => BlockProperties {

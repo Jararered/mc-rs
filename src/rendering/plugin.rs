@@ -24,6 +24,9 @@ pub struct WorldRenderingPlugin;
 impl Plugin for WorldRenderingPlugin {
     fn build(&self, app: &mut App) {
         super::sky::plugin(app);
+        super::mobs::plugin(app);
+        super::creatures::plugin(app);
+        super::weather::plugin(app);
         super::clouds::plugin(app);
         app.add_plugins(TerrainTexturePlugin)
             .insert_resource(ClearColor(Color::srgb(0.53, 0.73, 0.95)))

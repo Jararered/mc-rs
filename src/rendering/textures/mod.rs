@@ -283,13 +283,16 @@ fn apply_graphics_materials(
 /// block material uniforms once; no mesh is rebuilt.
 fn update_block_lighting(
     tick: Option<Res<WorldTick>>,
+    weather: Option<Res<crate::world::weather::WorldWeather>>,
     handles: BlockMaterials,
     mut materials: ResMut<Assets<BlockMaterial>>,
 ) {
     let Some(tick) = tick else {
         return;
     };
-    let subtracted = skylight_subtracted(celestial_angle(tick.world_time(), tick.partial()));
+    let subtracted = skylight_subtracted(celestial_angle(tick.world_time(), tick.partial()))
+        .saturating_add(weather.as_ref().map_or(0, |w| w.skylight_penalty()))
+        .min(15);
     for handle in handles.handles() {
         let unchanged = materials.get(handle).is_none_or(|material| {
             material.extension.settings.lighting().skylight_subtracted == subtracted
@@ -505,6 +508,7 @@ pub fn block_tile(block: crate::block::id::Id, face: usize, fancy_graphics: bool
         Id::SugarCane => (9, 4),
         Id::Clay => (8, 4),
         Id::MobSpawner => (1, 4),
+        Id::Fire => (15, 1),
         Id::ChestNorth | Id::ChestEast | Id::ChestSouth | Id::ChestWest | Id::Chest
             if face == 0 || face == 1 =>
         {

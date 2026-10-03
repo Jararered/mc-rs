@@ -11,6 +11,10 @@ use bevy::asset::AssetPlugin;
 use bevy::mesh::MeshPlugin;
 use bevy::prelude::*;
 use game::block::id::Id;
+use game::entity::mobs::Mob;
+use game::entity::mobs::MobKind;
+use game::entity::mobs::MobRecord;
+use game::entity::mobs::MobSpawner;
 use game::item::ItemStack;
 use game::player::Player;
 use game::world::chunk::CHUNK_HEIGHT;
@@ -31,6 +35,7 @@ use game::world::persistence::chunk_file_name;
 use game::world::persistence::region_dir_name;
 use game::world::persistence::region_of;
 use game::world::plugin::WorldPlugin;
+use game::world::weather::WorldWeather;
 
 /// A unique, empty directory under the system temp directory.
 fn temp_saves(label: &str) -> PathBuf {
@@ -118,6 +123,59 @@ fn manifest_records_the_seed_and_name() {
     assert_eq!(manifest.name, "Test World");
     assert_eq!(manifest.format_version, FORMAT_VERSION);
     assert!(manifest.created_unix_millis > 0);
+}
+
+#[test]
+fn weather_and_spawner_mobs_round_trip_without_changing_older_saves() {
+    let saves = temp_saves("creatures-weather");
+    let storage = WorldStorage::create(&saves, 9, "Creatures").unwrap();
+    let mut weather = WorldWeather {
+        raining: true,
+        thundering: true,
+        rain_time: 200,
+        thunder_time: 100,
+        ..default()
+    };
+    weather.rain_strength = 1.0;
+    storage.set_weather(&weather);
+    storage
+        .save_player(&StoredPlayer::from_transform(&Transform::default()))
+        .unwrap();
+    let reopened = WorldStorage::open(storage.root().to_path_buf()).unwrap();
+    assert!(reopened.manifest().weather.raining);
+    assert_eq!(reopened.manifest().weather.rain_time, 200);
+    let player = StoredPlayer::from_transform(&Transform::default()).with_health(7);
+    storage.save_player(&player).unwrap();
+    assert_eq!(reopened.load_player().unwrap().health, 7);
+
+    let pos = ChunkPosition::ZERO;
+    let mut generated = OverworldGenerator::new(9).generate(pos);
+    generated.chunk.set(2, 40, 3, Id::MobSpawner);
+    let index = Chunk::index(2, 40, 3);
+    let spawner = MobSpawner {
+        kind: MobKind::Skeleton,
+        delay: 407,
+        rng_state: 42,
+    };
+    generated.chunk.insert_spawner(index, spawner);
+    let mut sheep = Mob::new(MobKind::Sheep, 123);
+    sheep.sheared = true;
+    sheep.health = 7;
+    generated.chunk.set_mob_records(vec![MobRecord {
+        mob: sheep,
+        feet: [2.5, 42.0, 3.5],
+        velocity: [0.0, 0.1, 0.0],
+        yaw: 135.0,
+    }]);
+    storage.save_chunk(pos, &generated).unwrap();
+    let loaded = reopened.load_chunk(pos).unwrap();
+    assert_eq!(*loaded.chunk.spawners().next().unwrap().1, spawner);
+    let loaded_mob = &loaded.chunk.mob_records()[0];
+    assert_eq!(loaded_mob.mob.kind, MobKind::Sheep);
+    assert!(loaded_mob.mob.sheared);
+    assert_eq!(loaded_mob.mob.health, 7);
+    assert_eq!(loaded_mob.feet, [2.5, 42.0, 3.5]);
+    assert_eq!(loaded_mob.yaw, 135.0);
 }
 
 #[test]
@@ -593,6 +651,80 @@ fn a_drain_spreads_more_chunks_than_one_frame_can_hold() {
             .iter()
             .all(|position| storage.load_chunk(*position).is_some())),
         "the drain left chunks behind"
+    );
+}
+
+#[test]
+fn a_chunk_unloads_without_the_mobs_that_left_it_since_the_autosave() {
+    let saves = temp_saves("mob-unload");
+    let mut app = draining_app(&saves);
+    let player = app
+        .world_mut()
+        .spawn((Player, Transform::from_xyz(8.0, 100.0, 8.0)))
+        .id();
+    run_until_spawn_chunk(&mut app);
+    assert!(run_until(&mut app, Duration::from_secs(30), |app| {
+        let streaming = app
+            .world()
+            .resource::<game::world::streaming::WorldStreaming>();
+        streaming.generating_job_count() == 0 && streaming.populating_job_count() == 0
+    }));
+
+    // The autosave writes a pig into the spawn chunk's records.
+    let ground = (0..CHUNK_HEIGHT as i32)
+        .rev()
+        .find(|&y| {
+            app.world()
+                .resource::<WorldChunks>()
+                .block_at(8, y, 8)
+                .is_some_and(|block| block != Id::Air)
+        })
+        .unwrap();
+    super::mobs::summon(
+        &mut app,
+        Mob::new(MobKind::Pig, 1),
+        Vec3::new(8.5, (ground + 1) as f32, 8.5),
+    );
+    let storage = app
+        .world()
+        .resource::<WorldPersistence>()
+        .storage()
+        .expect("persistence should be enabled")
+        .clone();
+    let saved_mobs = || {
+        storage
+            .load_chunk(ChunkPosition::ZERO)
+            .map_or(0, |chunk| chunk.chunk.mob_records().len())
+    };
+    assert!(run_until(
+        &mut app,
+        Duration::from_secs(20),
+        |_| saved_mobs() > 0
+    ));
+
+    // Every mob dies, then the player leaves before another autosave runs.
+    let mobs: Vec<Entity> = app
+        .world_mut()
+        .query_filtered::<Entity, With<Mob>>()
+        .iter(app.world())
+        .collect();
+    for mob in mobs {
+        app.world_mut().despawn(mob);
+    }
+    app.world_mut()
+        .get_mut::<Transform>(player)
+        .unwrap()
+        .translation
+        .x = 3200.0;
+    assert!(
+        run_until(&mut app, Duration::from_secs(20), |app| {
+            !app.world()
+                .resource::<WorldChunks>()
+                .contains(ChunkPosition::ZERO)
+                && saved_mobs() == 0
+        }),
+        "the unloaded chunk kept {} mobs from the last autosave",
+        saved_mobs()
     );
 }
 

@@ -168,6 +168,20 @@ pub fn spawn_block_drop(
     );
 }
 
+/// `EntityLiving.entityDropItem`: an item dropped at a creature's feet, with
+/// the `EntityItem` constructor's hop. Pickup waits 10 ticks.
+pub fn spawn_entity_drop(commands: &mut Commands, rng: &mut ItemRng, feet: Vec3, stack: ItemStack) {
+    spawn_item(
+        commands,
+        feet + Vec3::Y * EntitySize::DROPPED_ITEM.y_offset,
+        stack,
+        item_constructor_motion(rng.unit(), rng.unit()),
+        PICKUP_DELAY_TICKS,
+        rng.unit() * std::f32::consts::TAU,
+        rng.next_u64(),
+    );
+}
+
 /// Spill chest contents as Beta-style random piles when the chest block breaks.
 pub fn spawn_chest_drops(
     commands: &mut Commands,

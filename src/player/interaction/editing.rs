@@ -23,12 +23,17 @@ use crate::block::properties::plant_grows_on;
 use crate::block::properties::sugar_cane_can_stay;
 use crate::entity::CollisionState;
 use crate::entity::EntitySize;
+use crate::entity::Velocity;
+use crate::entity::combat::bordered;
+use crate::entity::combat::pick;
 use crate::entity::drops::blocks::natural_drops;
 use crate::entity::drops::blocks::player_break_drops_with_metadata;
 use crate::entity::drops::items::spawn_block_drop;
 use crate::entity::drops::items::spawn_chest_drops;
 use crate::entity::drops::items::spawn_thrown_item;
 use crate::entity::particles::block::BlockParticles;
+use crate::entity::projectiles::FIREBALL_SIZE;
+use crate::entity::projectiles::Fireball;
 use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
 use crate::inventory::session::ActiveWorkbench;
@@ -43,8 +48,15 @@ use crate::physics::Aabb;
 use crate::physics::BLOCK_REACH;
 use crate::physics::BlockFace;
 use crate::physics::BlockHit;
+use crate::physics::block_hit_distance;
 use crate::physics::raycast_blocks;
 use crate::physics::raycast_blocks_or_liquid;
+use crate::player::interaction::attack::ENTITY_REACH;
+use crate::player::interaction::attack::FIREBALL_BORDER;
+use crate::player::interaction::attack::MOB_BORDER;
+use crate::player::interaction::attack::MobTarget;
+use crate::player::interaction::attack::attack;
+use crate::player::interaction::attack::interact;
 use crate::random::ItemRng;
 use crate::world::block_ticks::BlockEvent;
 use crate::world::block_ticks::BlockTicks;
@@ -75,6 +87,13 @@ pub(crate) struct BlockInteractState {
     mining: MiningState,
 }
 
+/// What the crosshair rests on.
+#[derive(Clone, Copy)]
+enum Pointed {
+    Mob(Entity),
+    Fireball(Entity),
+}
+
 pub(crate) fn interact_blocks(
     mut commands: Commands,
     tick: Res<WorldTick>,
@@ -88,6 +107,7 @@ pub(crate) fn interact_blocks(
             &CollisionState,
             &mut Hotbar,
             &mut Inventory,
+            &Velocity,
         ),
         With<Player>,
     >,
@@ -98,7 +118,11 @@ pub(crate) fn interact_blocks(
         Option<ResMut<WorldPersistence>>,
         Option<ResMut<BlockTicks>>,
     ),
-    mut particles: Option<ResMut<BlockParticles>>,
+    (mut particles, mut mobs, mut fireballs): (
+        Option<ResMut<BlockParticles>>,
+        Query<MobTarget, Without<Player>>,
+        Query<(Entity, &mut Fireball, &Transform), Without<Player>>,
+    ),
     mut focus: ResMut<BlockFocus>,
     mut state: Local<BlockInteractState>,
     mut inventory_screen: ResMut<InventorySession>,
@@ -121,7 +145,8 @@ pub(crate) fn interact_blocks(
         return;
     }
 
-    let Ok((transform, size, collision, mut hotbar, mut inventory)) = player.single_mut() else {
+    let Ok((transform, size, collision, mut hotbar, mut inventory, velocity)) = player.single_mut()
+    else {
         *focus = BlockFocus::default();
         return;
     };
@@ -171,6 +196,56 @@ pub(crate) fn interact_blocks(
         view_rotation * Vec3::NEG_Z,
         BLOCK_REACH,
     );
+    if !inventory_screen.open && (left_click || right_click) {
+        let look = view_rotation * Vec3::NEG_Z;
+        // `getMouseOver`: an entity counts only nearer than the block in view.
+        let reach = hit.map_or(ENTITY_REACH, |hit| {
+            block_hit_distance(&chunks, &hit, view_origin, look).min(ENTITY_REACH)
+        });
+        let pointed = pick(
+            view_origin,
+            look,
+            reach,
+            mobs.iter()
+                .map(|mob| {
+                    let aabb = mob.size.aabb(mob.transform.translation);
+                    (Pointed::Mob(mob.entity), bordered(aabb, MOB_BORDER))
+                })
+                .chain(fireballs.iter().map(|(entity, _, transform)| {
+                    let aabb = FIREBALL_SIZE.aabb(transform.translation);
+                    (Pointed::Fireball(entity), bordered(aabb, FIREBALL_BORDER))
+                })),
+        );
+        if let Some(pointed) = pointed {
+            match pointed {
+                Pointed::Mob(target) if left_click => attack(
+                    &mut commands,
+                    &mut item_rng,
+                    &mut mobs,
+                    target,
+                    transform.translation,
+                    velocity.0.y < 0.0,
+                    &mut hotbar,
+                ),
+                Pointed::Mob(target) => interact(
+                    &mut commands,
+                    &mut item_rng,
+                    &mut mobs,
+                    target,
+                    &mut hotbar,
+                    &mut inventory,
+                ),
+                Pointed::Fireball(target) => {
+                    if left_click && let Ok((_, mut fireball, _)) = fireballs.get_mut(target) {
+                        fireball.deflect(look);
+                    }
+                }
+            }
+            state.mining.reset();
+            *focus = BlockFocus::default();
+            return;
+        }
+    }
     if right_click && !inventory_screen.open && hit.is_some_and(|hit| hit.block.is_furnace()) {
         let hit = hit.expect("checked above");
         close_crafting_session(

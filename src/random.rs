@@ -2,7 +2,7 @@
 ///
 /// Used for deterministic world generation, star placement, item pile offsets,
 /// and any other simulation code that must produce the same sequence as Beta.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct JavaRandom {
     state: u64,
 }
@@ -84,10 +84,7 @@ impl JavaRandom {
 fn java_string_hash(text: &str) -> i32 {
     let mut hash: i32 = 0;
     for unit in text.encode_utf16() {
-        // Java widens each UTF-16 code unit to a signed 32-bit int, so a
-        // surrogate in a non-BMP character contributes as a negative value.
-        let unit = i32::from(unit) - 0x1_0000 * i32::from(unit >= 0x8000);
-        hash = hash.wrapping_mul(31).wrapping_add(unit);
+        hash = hash.wrapping_mul(31).wrapping_add(i32::from(unit));
     }
     hash
 }

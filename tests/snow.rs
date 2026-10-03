@@ -37,7 +37,7 @@ fn generated(chunk: Chunk) -> GeneratedChunk {
 }
 
 #[test]
-fn snow_layer_is_non_opaque_and_has_one_eighth_selection_and_collision_height() {
+fn thin_snow_is_non_opaque_with_selection_but_no_collision() {
     assert!(!is_opaque_cube(Id::SnowLayer));
     assert!(is_opaque_cube(Id::Snow));
     assert_eq!(light_opacity(Id::SnowLayer), 0);
@@ -46,10 +46,7 @@ fn snow_layer_is_non_opaque_and_has_one_eighth_selection_and_collision_height() 
         selection_bounds(Id::SnowLayer),
         ([0.0; 3], [1.0, 0.125, 1.0])
     );
-    assert_eq!(
-        collision_bounds(Id::SnowLayer),
-        Some(([0.0; 3], [1.0, 0.125, 1.0]))
-    );
+    assert_eq!(collision_bounds(Id::SnowLayer), None);
     assert_eq!(collision_bounds(Id::Snow), Some(([0.0; 3], [1.0; 3])));
 }
 
@@ -120,8 +117,21 @@ fn snow_layer_ray_and_entity_collision_stop_at_its_top() {
     assert!(colliding_aabbs(&chunks, above_layer).is_empty());
     let intersects_layer = Aabb::new(Vec3::new(8.2, 64.1, 8.2), Vec3::new(8.8, 64.2, 8.8));
     let collisions = colliding_aabbs(&chunks, intersects_layer);
+    assert!(collisions.is_empty());
+
+    chunks
+        .get_mut(ChunkPosition::ZERO)
+        .unwrap()
+        .chunk
+        .set_with_metadata(8, 64, 8, Id::SnowLayer, 3);
+    assert!(
+        raycast_blocks(&chunks, Vec3::new(7.0, 64.4, 8.5), Vec3::X, BLOCK_REACH)
+            .is_some_and(|hit| hit.block == Id::SnowLayer)
+    );
+    let intersects_layer = Aabb::new(Vec3::new(8.2, 64.4, 8.2), Vec3::new(8.8, 64.6, 8.8));
+    let collisions = colliding_aabbs(&chunks, intersects_layer);
     assert_eq!(collisions.len(), 1);
-    assert!((collisions[0].max.y - 64.125).abs() < f32::EPSILON);
+    assert!((collisions[0].max.y - 64.5).abs() < f32::EPSILON);
 }
 
 #[test]

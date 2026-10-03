@@ -256,6 +256,21 @@ impl PopulationWorld {
         }
     }
 
+    pub fn set_spawner(&mut self, x: i32, y: i32, z: i32, kind: crate::entity::mobs::MobKind) {
+        self.set(x, y, z, Id::MobSpawner);
+        if let Some((index, lx, lz)) = self.locate(x, z)
+            && (0..HEIGHT).contains(&y)
+        {
+            self.chunks[index].chunk.insert_spawner(
+                Chunk::index(lx, y as usize, lz),
+                crate::entity::mobs::MobSpawner {
+                    kind,
+                    ..Default::default()
+                },
+            );
+        }
+    }
+
     /// `World.getHeightValue`.
     pub fn height(&self, x: i32, z: i32) -> i32 {
         self.locate(x, z).map_or(0, |(chunk, lx, lz)| {

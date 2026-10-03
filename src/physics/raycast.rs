@@ -1,5 +1,6 @@
 //! DDA voxel raycast against loaded chunks.
 
+use bevy::prelude::IVec3;
 use bevy::prelude::Vec3;
 
 use crate::block::fluids::is_liquid;
@@ -91,6 +92,98 @@ fn raycast(
     include_liquid: bool,
 ) -> Option<BlockHit> {
     let direction = direction.normalize_or_zero();
+    walk(origin, direction, max_distance, |x, y, z, face| {
+        hit_at(
+            chunks,
+            x,
+            y,
+            z,
+            face,
+            origin,
+            direction,
+            max_distance,
+            include_liquid,
+        )
+    })
+}
+
+/// Distance from `origin` to where the ray enters `hit`'s selection box:
+/// Beta's `objectMouseOver.hitVec.distanceTo(eye)`.
+pub fn block_hit_distance(
+    chunks: &WorldChunks,
+    hit: &BlockHit,
+    origin: Vec3,
+    direction: Vec3,
+) -> f32 {
+    let (min, mut max) = selection_bounds(hit.block);
+    if hit.block == Id::SnowLayer {
+        max[1] = (f32::from(chunks.metadata_at(hit.x, hit.y, hit.z).min(7)) + 1.0) / 8.0;
+    }
+    let cell = Vec3::new(hit.x as f32, hit.y as f32, hit.z as f32);
+    segment_entry(
+        origin,
+        direction.normalize_or_zero(),
+        cell + Vec3::from_array(min),
+        cell + Vec3::from_array(max),
+        f32::INFINITY,
+    )
+    .unwrap_or(0.0)
+}
+
+/// `World.rayTraceBlocks_do_do(from, to, false, true)`, as arrows trace their
+/// flight: the first block with a collision box that the segment enters, and
+/// the point where it enters. Plants, torches, and fluids are passed through.
+pub fn raycast_collision(chunks: &WorldChunks, from: Vec3, to: Vec3) -> Option<(IVec3, Vec3)> {
+    let delta = to - from;
+    let length = delta.length();
+    let direction = delta.normalize_or_zero();
+    if direction == Vec3::ZERO {
+        return None;
+    }
+    walk(from, direction, length, |x, y, z, _| {
+        let collider = super::block_collision_box(chunks, x, y, z)?;
+        let t = segment_entry(from, direction, collider.min, collider.max, length)?;
+        Some((IVec3::new(x, y, z), from + direction * t))
+    })
+}
+
+/// Where a ray from `origin` first enters a box, if within `reach`. A ray
+/// starting inside the box enters at 0.
+pub fn segment_entry(
+    origin: Vec3,
+    direction: Vec3,
+    min: Vec3,
+    max: Vec3,
+    reach: f32,
+) -> Option<f32> {
+    let mut enter = 0.0_f32;
+    let mut exit = reach;
+    for axis in 0..3 {
+        if direction[axis].abs() < f32::EPSILON {
+            if origin[axis] < min[axis] || origin[axis] > max[axis] {
+                return None;
+            }
+        } else {
+            let a = (min[axis] - origin[axis]) / direction[axis];
+            let b = (max[axis] - origin[axis]) / direction[axis];
+            enter = enter.max(a.min(b));
+            exit = exit.min(a.max(b));
+            if enter > exit {
+                return None;
+            }
+        }
+    }
+    Some(enter)
+}
+
+/// Visit each cell a ray crosses within `max_distance`, starting with the
+/// cell holding `origin`, until `visit` returns a value.
+fn walk<T>(
+    origin: Vec3,
+    direction: Vec3,
+    max_distance: f32,
+    mut visit: impl FnMut(i32, i32, i32, BlockFace) -> Option<T>,
+) -> Option<T> {
     if direction == Vec3::ZERO || !(max_distance > 0.0) {
         return None;
     }
@@ -99,17 +192,7 @@ fn raycast(
     let mut y = origin.y.floor() as i32;
     let mut z = origin.z.floor() as i32;
 
-    if let Some(hit) = hit_at(
-        chunks,
-        x,
-        y,
-        z,
-        entry_face(direction),
-        origin,
-        direction,
-        max_distance,
-        include_liquid,
-    ) {
+    if let Some(hit) = visit(x, y, z, entry_face(direction)) {
         return Some(hit);
     }
 
@@ -167,17 +250,7 @@ fn raycast(
         if t > max_distance {
             return None;
         }
-        if let Some(hit) = hit_at(
-            chunks,
-            x,
-            y,
-            z,
-            face,
-            origin,
-            direction,
-            max_distance,
-            include_liquid,
-        ) {
+        if let Some(hit) = visit(x, y, z, face) {
             return Some(hit);
         }
     }
@@ -200,7 +273,10 @@ fn hit_at(
         return None;
     }
     if is_torch(block) || matches!(block, Id::SnowLayer | Id::Farmland | Id::Crops) {
-        let (min, max) = selection_bounds(block);
+        let (min, mut max) = selection_bounds(block);
+        if block == Id::SnowLayer {
+            max[1] = (f32::from(chunks.metadata_at(x, y, z).min(7)) + 1.0) / 8.0;
+        }
         let block_origin = Vec3::new(x as f32, y as f32, z as f32);
         if !ray_intersects_box(
             origin,
@@ -222,24 +298,7 @@ fn hit_at(
 }
 
 fn ray_intersects_box(origin: Vec3, direction: Vec3, min: Vec3, max: Vec3, reach: f32) -> bool {
-    let mut enter = 0.0_f32;
-    let mut exit = reach;
-    for axis in 0..3 {
-        if direction[axis].abs() < f32::EPSILON {
-            if origin[axis] < min[axis] || origin[axis] > max[axis] {
-                return false;
-            }
-        } else {
-            let a = (min[axis] - origin[axis]) / direction[axis];
-            let b = (max[axis] - origin[axis]) / direction[axis];
-            enter = enter.max(a.min(b));
-            exit = exit.min(a.max(b));
-            if enter > exit {
-                return false;
-            }
-        }
-    }
-    true
+    segment_entry(origin, direction, min, max, reach).is_some()
 }
 
 fn entry_face(direction: Vec3) -> BlockFace {

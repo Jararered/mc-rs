@@ -6,7 +6,7 @@ use game::random::parse_seed;
 #[test]
 fn numeric_text_is_the_long_itself() {
     assert_eq!(parse_seed("0"), 0);
-    assert_eq!(parse_seed("123"), 48690);
+    assert_eq!(parse_seed("123"), 123);
     // The reference server world's seed is negative; it must keep its bit
     // pattern rather than wrapping into a different magnitude.
     assert_eq!(
@@ -42,7 +42,7 @@ fn text_seeds_use_java_string_hash() {
     // Reference values computed as `h = h * 31 + c` over the ASCII code units.
     assert_eq!(parse_seed("a"), 97);
     assert_eq!(parse_seed("hello"), 99_162_322);
-    assert_eq!(parse_seed("glacier"), 94_597_462_447);
+    assert_eq!(parse_seed("glacier"), 108_181_935);
     assert_eq!(parse_seed(""), 0);
 }
 

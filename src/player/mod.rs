@@ -14,9 +14,12 @@ use crate::entity::Gravity;
 use crate::entity::StepDistance;
 use crate::entity::StepHeight;
 use crate::entity::Velocity;
+use crate::entity::combat::HURT_TICKS;
+use crate::entity::combat::PlayerCombat;
 use crate::inventory::Hotbar;
+use crate::inventory::Inventory;
 mod interaction;
-mod model;
+pub(crate) mod model;
 
 pub use interaction::editing::PLACED_BLOCK;
 pub use interaction::editing::break_block;
@@ -90,6 +93,12 @@ impl Plugin for PlayerPlugin {
                 update_camera_bobbing
                     .after(PhysicsSet::Integrate)
                     .run_if(in_state(AppScreen::Playing)),
+            )
+            .add_systems(
+                Update,
+                tick_player_survival
+                    .after(PhysicsSet::Integrate)
+                    .run_if(in_state(AppScreen::Playing)),
             );
     }
 }
@@ -105,7 +114,8 @@ impl Plugin for PlayerPlugin {
     StepDistance,
     FlySpeed,
     PlayerMovementInput,
-    PlayerInterpolation
+    PlayerInterpolation,
+    PlayerCombat
 )]
 pub struct Player;
 
@@ -189,6 +199,140 @@ impl PlayerHealth {
     }
 }
 
+#[derive(Default)]
+struct SurvivalState {
+    death_ticks: u16,
+    fire_ticks: u16,
+}
+
+fn tick_player_survival(
+    tick: Res<WorldTick>,
+    chunks: Res<WorldChunks>,
+    weather: Option<Res<crate::world::weather::WorldWeather>>,
+    mut player: Query<
+        (
+            &mut Transform,
+            &mut PlayerHealth,
+            &mut Velocity,
+            &mut CollisionState,
+            &mut Hotbar,
+            &mut Inventory,
+            &mut PlayerInterpolation,
+        ),
+        With<Player>,
+    >,
+    mut commands: Commands,
+    mut rng: Local<crate::random::ItemRng>,
+    mut survival: Local<SurvivalState>,
+    mut persistence: Option<ResMut<WorldPersistence>>,
+) {
+    let Ok((
+        mut transform,
+        mut health,
+        mut velocity,
+        mut collision,
+        mut hotbar,
+        mut inventory,
+        mut interpolation,
+    )) = player.single_mut()
+    else {
+        return;
+    };
+    for step in 0..tick.ticks_this_frame() {
+        if health.current == 0 {
+            if survival.death_ticks == 0 {
+                let cell = (transform.translation - Vec3::Y * EntitySize::PLAYER.y_offset)
+                    .floor()
+                    .as_ivec3();
+                let Inventory {
+                    main,
+                    crafting,
+                    armor,
+                    carried,
+                } = &mut *inventory;
+                for slot in hotbar
+                    .slots
+                    .iter_mut()
+                    .chain(main.iter_mut())
+                    .chain(crafting.iter_mut())
+                    .chain(armor.iter_mut())
+                    .chain(std::iter::once(carried))
+                {
+                    if let Some(stack) = slot.take() {
+                        crate::entity::drops::items::spawn_block_drop(
+                            &mut commands,
+                            &mut rng,
+                            cell,
+                            stack,
+                        );
+                    }
+                }
+                if let Some(persistence) = persistence.as_deref_mut() {
+                    persistence.mark_dirty(ChunkPosition::from_block(cell.x, cell.z));
+                }
+                survival.death_ticks = 40;
+                survival.fire_ticks = 0;
+            } else {
+                survival.death_ticks -= 1;
+                if survival.death_ticks == 0 {
+                    *transform = default_spawn_transform(&chunks);
+                    interpolation.previous_position = transform.translation;
+                    velocity.0 = Vec3::ZERO;
+                    *collision = CollisionState::default();
+                    health.current = MAX_PLAYER_HEALTH;
+                }
+            }
+            continue;
+        }
+        let feet = transform.translation - Vec3::Y * EntitySize::PLAYER.y_offset;
+        let (x, y, z) = (
+            feet.x.floor() as i32,
+            feet.y.floor() as i32,
+            feet.z.floor() as i32,
+        );
+        let block = chunks
+            .block_at(x, y, z)
+            .unwrap_or(crate::block::id::Id::Air);
+        if matches!(
+            block,
+            crate::block::id::Id::Water | crate::block::id::Id::FlowingWater
+        ) {
+            survival.fire_ticks = 0;
+        } else if matches!(
+            block,
+            crate::block::id::Id::Fire
+                | crate::block::id::Id::Lava
+                | crate::block::id::Id::FlowingLava
+        ) {
+            survival.fire_ticks = if block == crate::block::id::Id::Fire {
+                160
+            } else {
+                300
+            };
+        }
+        if weather.as_ref().is_some_and(|w| w.is_raining())
+            && (y..crate::world::chunk::CHUNK_HEIGHT as i32).all(|above| {
+                !chunks
+                    .block_at(x, above, z)
+                    .is_some_and(crate::block::properties::is_opaque_cube)
+            })
+        {
+            survival.fire_ticks = 0;
+        }
+        if survival.fire_ticks > 0 {
+            survival.fire_ticks -= 1;
+            if tick
+                .world_time()
+                .saturating_sub(u64::from(tick.ticks_this_frame() - step - 1))
+                % 20
+                == 0
+            {
+                health.current = health.current.saturating_sub(1);
+            }
+        }
+    }
+}
+
 /// Horizontal movement speeds in blocks per second.
 const WALK_SPEED: f32 = 4.317;
 const SPRINT_SPEED: f32 = 5.612;
@@ -228,7 +372,11 @@ fn spawn_player(
     let mut entity = commands.spawn((
         Name::new("Player"),
         Player,
-        PlayerHealth::default(),
+        PlayerHealth {
+            current: saved
+                .as_ref()
+                .map_or(MAX_PLAYER_HEALTH, |p| p.health.min(MAX_PLAYER_HEALTH)),
+        },
         hotbar,
         inventory,
         CameraBobbing::default(),
@@ -284,6 +432,7 @@ fn update_camera_bobbing(
             &CollisionState,
             &mut CameraBobbing,
             &Children,
+            Option<&PlayerCombat>,
         ),
         (With<Player>, Without<PlayerCamera>, Without<Flying>),
     >,
@@ -294,7 +443,7 @@ fn update_camera_bobbing(
         return;
     }
 
-    for (transform, interpolation, velocity, collision, mut bob, children) in &mut players {
+    for (transform, interpolation, velocity, collision, mut bob, children, combat) in &mut players {
         let horizontal_motion = velocity.0.xz().length() * dt;
         bob.distance_walked += horizontal_motion * 0.6;
 
@@ -316,11 +465,13 @@ fn update_camera_bobbing(
             .previous_position
             .lerp(current, tick.partial().clamp(0.0, 1.0));
         let render_offset = transform.rotation.inverse() * (interpolated - current);
+        let hurt = combat.map_or(Mat4::IDENTITY, |combat| hurt_pose(combat, tick.partial()));
 
         for child in children {
             if let Ok(mut camera) = cameras.get_mut(*child) {
                 camera.set_if_neq(Transform::from_matrix(
                     Mat4::from_translation(render_offset)
+                        * hurt
                         * if settings.view_bobbing {
                             camera_bob_pose(&bob)
                         } else {
@@ -330,6 +481,21 @@ fn update_camera_bobbing(
             }
         }
     }
+}
+
+/// `EntityRenderer.hurtCameraEffect`: a hit rolls the view up to 14° away
+/// from the side it came from, easing back over the hurt time.
+fn hurt_pose(combat: &PlayerCombat, partial: f32) -> Mat4 {
+    let elapsed = f32::from(combat.hurt_time) - partial;
+    if elapsed < 0.0 {
+        return Mat4::IDENTITY;
+    }
+    let progress = elapsed / f32::from(HURT_TICKS);
+    let roll = (progress.powi(4) * std::f32::consts::PI).sin() * 14.0;
+    let side = combat.attacked_at_yaw.to_radians();
+    Mat4::from_rotation_y(-side)
+        * Mat4::from_rotation_z((-roll).to_radians())
+        * Mat4::from_rotation_y(side)
 }
 
 fn camera_bob_pose(bob: &CameraBobbing) -> Mat4 {

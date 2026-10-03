@@ -7,6 +7,8 @@ use crate::entity::EntitySize;
 use crate::entity::Velocity;
 use crate::entity::drops::items::spawn_block_drop;
 use crate::entity::drops::items::spawn_chest_drops;
+use crate::entity::mobs::Mob;
+use crate::entity::mobs::spawn;
 use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
 use crate::player::Player;
@@ -59,6 +61,7 @@ pub(super) struct CommandContext<'w, 's> {
     wireframe: Option<ResMut<'w, MeshWireframe>>,
     block_materials: Option<ResMut<'w, Assets<BlockMaterial>>>,
     line_raster: Option<Res<'w, LineRasterSupported>>,
+    weather: Option<ResMut<'w, crate::world::weather::WorldWeather>>,
 }
 
 pub(super) fn submit_chat(
@@ -86,6 +89,7 @@ impl CommandContext<'_, '_> {
             wireframe,
             block_materials,
             line_raster,
+            weather,
         } = self;
         if !message.starts_with('/') {
             chat.push(format!("<Player> {message}"));
@@ -211,6 +215,46 @@ impl CommandContext<'_, '_> {
                     "Teleported to {}, {}, {}",
                     destination.x, destination.y, destination.z
                 )
+            }
+            ChatCommand::Summon(kind) => {
+                let feet =
+                    transform.translation - Vec3::Y * size.y_offset + *transform.forward() * 2.0;
+                if !chunks.contains(ChunkPosition::from_world(feet.x, feet.z)) {
+                    "Cannot summon into an unloaded chunk".to_owned()
+                } else {
+                    spawn(commands, Mob::new(kind, clock.world_time()), feet);
+                    format!("Summoned {}", kind.name())
+                }
+            }
+            ChatCommand::Weather {
+                raining,
+                thundering,
+            } => {
+                if let Some(weather) = weather.as_deref_mut() {
+                    weather.raining = raining;
+                    weather.thundering = thundering;
+                    weather.rain_time = if raining { 12_000 } else { 168_000 };
+                    weather.thunder_time = if thundering { 12_000 } else { 168_000 };
+                    weather.rain_strength = if raining { 1.0 } else { 0.0 };
+                    weather.thunder_strength = if thundering { 1.0 } else { 0.0 };
+                    if let Some(storage) =
+                        persistence.as_deref().and_then(WorldPersistence::storage)
+                    {
+                        storage.set_weather(weather);
+                    }
+                    format!(
+                        "Weather: {}",
+                        if thundering {
+                            "thunder"
+                        } else if raining {
+                            "rain"
+                        } else {
+                            "clear"
+                        }
+                    )
+                } else {
+                    "Weather is unavailable".to_owned()
+                }
             }
             ChatCommand::SetBlock { position, block } => {
                 // Chunk replacement clears container storage. Spill it first,

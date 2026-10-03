@@ -12,3 +12,4 @@ pub mod persistence;
 pub mod plugin;
 pub mod streaming;
 pub mod tick;
+pub mod weather;

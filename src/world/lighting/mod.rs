@@ -1,9 +1,9 @@
-use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::hash::Hasher;
 use std::sync::Arc;
 use std::sync::OnceLock;
 
+use bevy::platform::collections::HashMap;
 use bevy::prelude::Resource;
 
 use crate::block::definition::BlockProperties;

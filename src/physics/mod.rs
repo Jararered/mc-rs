@@ -1,15 +1,19 @@
 //! Voxel AABB collision, matching Beta 1.7.3 `Entity.moveEntity`.
 //!
-//! Bodies are Bevy entities with [`Velocity`] and [`EntitySize`]. The player is
-//! the first user; later mobs reuse the same move.
+//! Bodies are Bevy entities with [`Velocity`] and [`EntitySize`]. The player
+//! and creatures ([`Living`]) run Beta's per-tick movement on [`move_entity`];
+//! `integrate_bodies` moves the remaining bodies, including hostile mobs.
 
 mod raycast;
 
 pub use raycast::BLOCK_REACH;
 pub use raycast::BlockFace;
 pub use raycast::BlockHit;
+pub use raycast::block_hit_distance;
 pub use raycast::raycast_blocks;
 pub use raycast::raycast_blocks_or_liquid;
+pub use raycast::raycast_collision;
+pub use raycast::segment_entry;
 
 use bevy::prelude::*;
 
@@ -29,6 +33,7 @@ use crate::entity::Gravity;
 use crate::entity::StepDistance;
 use crate::entity::StepHeight;
 use crate::entity::Velocity;
+use crate::entity::creature::Living;
 use crate::player::Player;
 use crate::player::PlayerInterpolation;
 use crate::player::PlayerMovementInput;
@@ -387,13 +392,8 @@ pub fn colliding_aabbs(chunks: &WorldChunks, area: Aabb) -> Vec<Aabb> {
                 }
                 let block = if y < 0 {
                     Aabb::from_block(x, y, z)
-                } else if let Some((min, max)) = chunks.block_at(x, y, z).and_then(collision_bounds)
-                {
-                    let origin = Vec3::new(x as f32, y as f32, z as f32);
-                    Aabb::new(
-                        origin + Vec3::from_array(min),
-                        origin + Vec3::from_array(max),
-                    )
+                } else if let Some(block) = block_collision_box(chunks, x, y, z) {
+                    block
                 } else {
                     continue;
                 };
@@ -404,6 +404,23 @@ pub fn colliding_aabbs(chunks: &WorldChunks, area: Aabb) -> Vec<Aabb> {
         }
     }
     boxes
+}
+
+/// `Block.getCollisionBoundingBoxFromPool` for a world cell, in world space.
+/// Deep snow layers collide as a half slab.
+pub(crate) fn block_collision_box(chunks: &WorldChunks, x: i32, y: i32, z: i32) -> Option<Aabb> {
+    let block = chunks.block_at(x, y, z)?;
+    let (min, max) = if block == crate::block::id::Id::SnowLayer && chunks.metadata_at(x, y, z) >= 3
+    {
+        ([0.0; 3], [1.0, 0.5, 1.0])
+    } else {
+        collision_bounds(block)?
+    };
+    let origin = Vec3::new(x as f32, y as f32, z as f32);
+    Some(Aabb::new(
+        origin + Vec3::from_array(min),
+        origin + Vec3::from_array(max),
+    ))
 }
 
 /// Run Beta's living-entity ground movement for each emitted world tick.
@@ -627,7 +644,7 @@ fn integrate_player(
 
 /// `Entity.moveEntity`'s step tracking: a finished step calls
 /// `onEntityWalking` on the block 0.2 below the feet.
-fn step_on_block(
+pub(crate) fn step_on_block(
     steps: Option<&mut StepDistance>,
     block_ticks: Option<&mut BlockTicks>,
     chunks: &WorldChunks,
@@ -746,6 +763,28 @@ pub fn water_current(area: Aabb, chunks: &WorldChunks) -> (bool, Vec3) {
     (immersed, flow.normalize_or_zero())
 }
 
+/// `World.handleMaterialAcceleration` for water, exactly as
+/// `Entity.handleWaterMovement` and `EntitySquid.isInWater` call it. Beta
+/// compares each water surface with the top of the scanned cell range rather
+/// than with the box, so any water in the cells `area` spans counts. A box
+/// shrunk past zero height can span no cells at all.
+pub fn water_movement(area: Aabb, chunks: &WorldChunks) -> (bool, Vec3) {
+    let (min_x, max_x, min_y, max_y, min_z, max_z) = block_range(area);
+    let mut immersed = false;
+    let mut flow = Vec3::ZERO;
+    for x in min_x..max_x {
+        for y in min_y..max_y {
+            for z in min_z..max_z {
+                if chunks.block_at(x, y, z).is_some_and(is_water) {
+                    immersed = true;
+                    flow += water_flow_vector(x, y, z, chunks);
+                }
+            }
+        }
+    }
+    (immersed, flow.normalize_or_zero())
+}
+
 /// `BlockFluid.getFlowVector` for water, normalized.
 fn water_flow_vector(x: i32, y: i32, z: i32, chunks: &WorldChunks) -> Vec3 {
     let [flow_x, flow_z] = flow_vector(Fluid::Water, x, y, z, |x, y, z| {
@@ -764,7 +803,9 @@ fn liquid_surface_y(metadata: u8, y: i32) -> f32 {
     y as f32 + 1.0 - percent_air(metadata)
 }
 
-fn lava_contains(aabb: Aabb, chunks: &WorldChunks) -> bool {
+/// `Entity.handleLavaMovement`: lava within the box, inset 0.1 at the sides
+/// and 0.4 at the top and bottom.
+pub fn lava_contains(aabb: Aabb, chunks: &WorldChunks) -> bool {
     let area = Aabb::new(
         aabb.min + Vec3::new(0.1, 0.4, 0.1),
         aabb.max - Vec3::new(0.1, 0.4, 0.1),
@@ -772,7 +813,8 @@ fn lava_contains(aabb: Aabb, chunks: &WorldChunks) -> bool {
     contains_liquid_material(area, chunks, is_lava)
 }
 
-fn intersects_liquid(aabb: Aabb, chunks: &WorldChunks) -> bool {
+/// `World.getIsAnyLiquid`.
+pub fn intersects_liquid(aabb: Aabb, chunks: &WorldChunks) -> bool {
     contains_liquid_material(aabb, chunks, |block| is_water(block) || is_lava(block))
 }
 
@@ -819,7 +861,7 @@ fn integrate_bodies(
             Option<&Gravity>,
             Option<&Flying>,
         ),
-        (Without<DroppedItem>, Without<Player>),
+        (Without<DroppedItem>, Without<Player>, Without<Living>),
     >,
 ) {
     let dt = time.delta_secs().min(MAX_STEP_SECS);
@@ -844,7 +886,7 @@ fn integrate_bodies(
             continue;
         }
 
-        // Generic bodies (future mobs included) use blocks/second. Convert
+        // Generic bodies (hostile mobs included) use blocks/second. Convert
         // Beta's per-tick current to that unit, once per emitted world tick.
         if tick.ticks_this_frame() > 0 {
             velocity.0 += water_current(size.aabb(transform.translation), &chunks).1

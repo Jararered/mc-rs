@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use bevy::platform::collections::HashMap as FastHashMap;
 use bevy::prelude::Resource;
 
 use crate::block::id::Id;
@@ -70,6 +71,10 @@ pub struct Chunk {
     chests: HashMap<usize, Chest>,
     /// Scheduled ticks saved with the chunk. Empty while the chunk is live.
     pending_ticks: Vec<PendingTick>,
+    mob_records: Vec<crate::entity::mobs::MobRecord>,
+    spawners: HashMap<usize, crate::entity::mobs::MobSpawner>,
+    /// Counts block and metadata writes. Not saved.
+    revision: u32,
 }
 
 impl Chunk {
@@ -80,6 +85,9 @@ impl Chunk {
             furnaces: HashMap::new(),
             chests: HashMap::new(),
             pending_ticks: Vec::new(),
+            mob_records: Vec::new(),
+            spawners: HashMap::new(),
+            revision: 0,
         }
     }
 
@@ -102,12 +110,21 @@ impl Chunk {
             .filter(|(_, block)| block.is_chest())
             .map(|(index, _)| (index, Chest::default()))
             .collect();
+        let spawners = blocks
+            .iter()
+            .enumerate()
+            .filter(|(_, block)| **block == Id::MobSpawner)
+            .map(|(index, _)| (index, Default::default()))
+            .collect();
         Self {
             blocks: blocks.into_iter().map(Id::as_u8).collect(),
             metadata: None,
             furnaces,
             chests,
             pending_ticks: Vec::new(),
+            mob_records: Vec::new(),
+            spawners,
+            revision: 0,
         }
     }
 
@@ -131,18 +148,58 @@ impl Chunk {
         let chests = indices(Id::is_chest)
             .map(|index| (index, Chest::default()))
             .collect();
+        let spawners = indices(|block| block == Id::MobSpawner)
+            .map(|index| (index, Default::default()))
+            .collect();
         Self {
             blocks: blocks.into(),
             metadata: None,
             furnaces,
             chests,
             pending_ticks: Vec::new(),
+            mob_records: Vec::new(),
+            spawners,
+            revision: 0,
         }
+    }
+
+    /// Advances with every block or metadata write, so a reader that
+    /// remembers it can tell whether the chunk has changed since.
+    pub fn revision(&self) -> u32 {
+        self.revision
     }
 
     /// Scheduled ticks stored with this chunk while it is out of the world.
     pub fn pending_ticks(&self) -> &[PendingTick] {
         &self.pending_ticks
+    }
+
+    pub fn mob_records(&self) -> &[crate::entity::mobs::MobRecord] {
+        &self.mob_records
+    }
+
+    pub fn take_mob_records(&mut self) -> Vec<crate::entity::mobs::MobRecord> {
+        std::mem::take(&mut self.mob_records)
+    }
+
+    pub fn set_mob_records(&mut self, records: Vec<crate::entity::mobs::MobRecord>) {
+        self.mob_records = records;
+    }
+
+    pub fn spawners(&self) -> impl Iterator<Item = (usize, &crate::entity::mobs::MobSpawner)> {
+        self.spawners
+            .iter()
+            .map(|(&index, spawner)| (index, spawner))
+    }
+
+    pub fn insert_spawner(&mut self, index: usize, spawner: crate::entity::mobs::MobSpawner) {
+        if index < CHUNK_VOLUME && self.blocks[index] == Id::MobSpawner.as_u8() {
+            self.spawners.insert(index, spawner);
+        }
+    }
+
+    pub fn spawner_mut(&mut self, index: usize) -> Option<&mut crate::entity::mobs::MobSpawner> {
+        self.spawners.get_mut(&index)
     }
 
     pub fn set_pending_ticks(&mut self, ticks: Vec<PendingTick>) {
@@ -166,6 +223,7 @@ impl Chunk {
     /// Replace every metadata value from packed nibbles in the
     /// [`Self::raw_metadata`] layout. A wrong length clears the metadata.
     pub fn set_raw_metadata(&mut self, packed: Vec<u8>) {
+        self.revision = self.revision.wrapping_add(1);
         self.metadata = (packed.len() == METADATA_BYTES && packed.iter().any(|&byte| byte != 0))
             .then(|| packed.into());
     }
@@ -200,6 +258,7 @@ impl Chunk {
         if self.metadata_at_index(index) == value {
             return;
         }
+        self.revision = self.revision.wrapping_add(1);
         let packed = Arc::make_mut(
             self.metadata
                 .get_or_insert_with(|| vec![0; METADATA_BYTES].into()),
@@ -245,6 +304,12 @@ impl Chunk {
     }
 
     fn set_block_only(&mut self, index: usize, block: Id) {
+        self.revision = self.revision.wrapping_add(1);
+        if block != Id::MobSpawner {
+            self.spawners.remove(&index);
+        } else {
+            self.spawners.entry(index).or_insert_with(Default::default);
+        }
         let previous = Id::from(self.blocks[index]);
         if is_furnace(previous) && !is_furnace(block) {
             self.furnaces.remove(&index);
@@ -310,7 +375,10 @@ impl Default for Chunk {
 
 #[derive(Resource, Default)]
 pub struct WorldChunks {
-    chunks: HashMap<ChunkPosition, GeneratedChunk>,
+    /// Every `block_at` probes this map, so it uses Bevy's fixed foldhash
+    /// rather than SipHash. That also keeps iteration order the same between
+    /// runs.
+    chunks: FastHashMap<ChunkPosition, GeneratedChunk>,
     membership_revision: u64,
 }
 

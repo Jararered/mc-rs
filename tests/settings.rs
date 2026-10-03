@@ -13,6 +13,7 @@ use bevy::state::app::StatesPlugin;
 use game::app::settings::AMBIENT_ONLY_SCALE;
 use game::app::settings::DEFAULT_CLOUD_HEIGHT;
 use game::app::settings::DEFAULT_FOV;
+use game::app::settings::Difficulty;
 use game::app::settings::GameSettings;
 use game::app::settings::GraphicsQuality;
 use game::app::settings::MAX_BRIGHTNESS;
@@ -404,6 +405,7 @@ fn settings_round_trip_through_json() {
         mouse_sensitivity: 1.5,
         view_bobbing: false,
         fullscreen: true,
+        difficulty: Difficulty::Hard,
     };
     save_settings(&path, &settings).unwrap();
     assert_eq!(load_settings(&path), settings);
@@ -416,6 +418,7 @@ fn settings_json_fills_in_missing_menu_fields() {
     fs::write(&path, r#"{ "render_distance": 16 }"#).unwrap();
     let loaded = load_settings(&path);
     assert_eq!(loaded.render_distance, 16);
+    assert_eq!(loaded.difficulty, Difficulty::Normal);
     assert_eq!(loaded.brightness, GameSettings::default().brightness);
     assert_eq!(loaded.fov, DEFAULT_FOV);
     assert_eq!(loaded.cloud_height, DEFAULT_CLOUD_HEIGHT);
@@ -1006,7 +1009,7 @@ fn settings_resize_scroll_and_tab_reset() {
             .iter(app.world())
             .filter(|node| node.grid_template_columns == vec![RepeatedGridTrack::flex(2, 1.0)])
             .count(),
-        2
+        3
     );
     app.world_mut()
         .get_mut::<Window>(window)
@@ -1019,7 +1022,7 @@ fn settings_resize_scroll_and_tab_reset() {
             .iter(app.world())
             .filter(|node| node.grid_template_columns == vec![RepeatedGridTrack::flex(1, 1.0)])
             .count(),
-        2
+        3
     );
     let content = app
         .world_mut()

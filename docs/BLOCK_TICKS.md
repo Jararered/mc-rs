@@ -84,7 +84,7 @@ searches with `area_loaded` the way the Java does with `checkChunksExist`.
 | `isBlockOpaqueCube`, `isBlockNormalCube`, `getBlockMaterial().isSolid()` | `is_opaque_cube`, `is_normal_cube`, `is_solid` |
 | `getBlockLightValue`, `getFullBlockLightValue` | `light`, `full_light` |
 | `getSavedLightValue(Block/Sky)` | `block_light`, `sky_light` |
-| `canBlockSeeTheSky`, `canBlockBeRainedOn`, `findTopSolidBlock` | `sees_sky`, `rained_on` (always false: no weather), `top_solid_block` |
+| `canBlockSeeTheSky`, `canBlockBeRainedOn`, `findTopSolidBlock` | `sees_sky`, `rained_on`, `top_solid_block` |
 | `BiomeGenBase.getEnableSnow` | `snows_at(x, z)` |
 | `setBlock`, `setBlockAndMetadata`, `setBlockMetadata` | `set_block`, `set_block_and_metadata`, `set_metadata` |
 | `setBlockWithNotify`, `setBlockAndMetadataWithNotify`, `setBlockMetadataWithNotify` | `set_block_notify`, `set_block_and_metadata_notify`, `set_metadata_notify` |

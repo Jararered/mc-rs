@@ -4,6 +4,7 @@ use game::chat::commands::ChatCommand;
 use game::chat::commands::give_to_inventory;
 use game::chat::commands::set_loaded_block;
 use game::chat::registry::CommandRegistry;
+use game::entity::mobs::MobKind;
 use game::inventory::Hotbar;
 use game::inventory::Inventory;
 use game::item::ItemId;
@@ -21,6 +22,17 @@ use game::world::chunk::WorldChunks;
 
 #[test]
 fn parses_numeric_beta_ids_and_three_commands() {
+    assert_eq!(
+        parse_command("/summon skeleton").unwrap(),
+        ChatCommand::Summon(MobKind::Skeleton)
+    );
+    assert_eq!(
+        parse_command("/weather thunder").unwrap(),
+        ChatCommand::Weather {
+            raining: true,
+            thundering: true
+        }
+    );
     assert_eq!(
         parse_command("/give 264 70").unwrap(),
         ChatCommand::Give {
@@ -98,6 +110,8 @@ fn bad_arguments_are_rejected_without_running_a_command() {
         "/wireframe set 255",
         "/wireframe on extra",
         "/wireframe set 9 extra",
+        "/summon giant",
+        "/weather sandstorm",
     ] {
         assert!(parse_command(line).is_err(), "accepted {line}");
     }
@@ -322,6 +336,7 @@ fn submitted_commands_change_player_inventory_and_world() {
             minecraft: Handle::default(),
         })
         .insert_resource(world_with(chunk))
+        .insert_resource(game::world::weather::WorldWeather::default())
         .insert_resource(BlockTicks::default())
         .add_plugins((ChatPlugin, ChatUiPlugin));
     let window = app
@@ -350,7 +365,13 @@ fn submitted_commands_change_player_inventory_and_world() {
         .set(AppScreen::Playing);
     app.update();
 
-    for command in ["/tp 5 80 6", "/give 264 70", "/setblock 1 70 2 1"] {
+    for command in [
+        "/tp 5 80 6",
+        "/give 264 70",
+        "/setblock 1 70 2 1",
+        "/weather rain",
+        "/summon sheep",
+    ] {
         app.world_mut()
             .resource_mut::<ButtonInput<KeyCode>>()
             .press(KeyCode::KeyT);
@@ -393,6 +414,19 @@ fn submitted_commands_change_player_inventory_and_world() {
         Some(Id::Stone)
     );
     assert!(app.world().resource::<BlockTicks>().has_pending_events());
+    assert!(
+        app.world()
+            .resource::<game::world::weather::WorldWeather>()
+            .raining
+    );
+    assert_eq!(
+        app.world_mut()
+            .query::<&game::entity::mobs::Mob>()
+            .iter(app.world())
+            .filter(|mob| mob.kind == MobKind::Sheep)
+            .count(),
+        1
+    );
 }
 
 #[test]

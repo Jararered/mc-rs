@@ -31,7 +31,7 @@
 //! - Light comes from [`LightCache`](super::lighting::LightCache), the light
 //!   each chunk had at its last mesh job, rather than light arrays updated
 //!   with every edit.
-//! - There is no weather, so nothing is rained on and snow never accumulates.
+//! - Weather is shared with world simulation; missing weather means clear skies.
 
 use std::collections::HashMap;
 use std::collections::VecDeque;
@@ -132,6 +132,8 @@ pub enum TickEffect {
     /// Spawn a falling block entity for `block`, which is still at
     /// `position`.
     FallingBlock { position: IVec3, block: Id },
+    /// TNT ignited by fire becomes an entity with a burning fuse.
+    PrimedTnt { position: IVec3, fuse: u16 },
 }
 
 /// The block update state of the loaded world.
@@ -143,6 +145,8 @@ pub struct BlockTicks {
     /// Beta `World.field_9437_g`, the LCG that picks random tick cells.
     update_lcg: i32,
     time: u64,
+    raining: bool,
+    weather_penalty: u8,
     events: Vec<BlockEvent>,
     changes: Vec<BlockChange>,
     effects: Vec<TickEffect>,
@@ -168,12 +172,23 @@ impl BlockTicks {
             random,
             update_lcg,
             time: 0,
+            raining: false,
+            weather_penalty: 0,
             events: Vec::new(),
             changes: Vec::new(),
             effects: Vec::new(),
             deferred: VecDeque::new(),
             candidates: Vec::with_capacity(RANDOM_TICKS_PER_CHUNK),
         }
+    }
+
+    /// Overworld precipitation, copied from the shared 20 Hz weather state.
+    pub fn set_raining(&mut self, raining: bool) {
+        self.raining = raining;
+    }
+
+    pub fn set_weather_penalty(&mut self, penalty: u8) {
+        self.weather_penalty = penalty.min(15);
     }
 
     /// The last world tick processed.
@@ -263,7 +278,9 @@ impl BlockTicks {
         light: &'a mut LightCache,
         time: u64,
     ) -> TickWorld<'a> {
-        let subtracted = skylight_subtracted(celestial_angle(time, 0.0));
+        let subtracted = skylight_subtracted(celestial_angle(time, 0.0))
+            .saturating_add(self.weather_penalty)
+            .min(15);
         TickWorld::new(chunks, self, light, time, subtracted)
     }
 

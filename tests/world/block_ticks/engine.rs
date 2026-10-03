@@ -107,6 +107,7 @@ fn due_ticks_run_in_due_order_then_scheduling_order() {
         .into_iter()
         .map(|effect| match effect {
             TickEffect::FallingBlock { position, .. } => position,
+            TickEffect::PrimedTnt { position, .. } => position,
             other => panic!("unexpected {other:?}"),
         })
         .collect();

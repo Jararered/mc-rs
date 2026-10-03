@@ -165,6 +165,7 @@ fn weather_and_spawner_mobs_round_trip_without_changing_older_saves() {
         mob: sheep,
         feet: [2.5, 42.0, 3.5],
         velocity: [0.0, 0.1, 0.0],
+        yaw: 135.0,
     }]);
     storage.save_chunk(pos, &generated).unwrap();
     let loaded = reopened.load_chunk(pos).unwrap();
@@ -174,6 +175,7 @@ fn weather_and_spawner_mobs_round_trip_without_changing_older_saves() {
     assert!(loaded_mob.mob.sheared);
     assert_eq!(loaded_mob.mob.health, 7);
     assert_eq!(loaded_mob.feet, [2.5, 42.0, 3.5]);
+    assert_eq!(loaded_mob.yaw, 135.0);
 }
 
 #[test]

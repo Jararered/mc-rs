@@ -1,6 +1,10 @@
 use bevy::prelude::*;
 use game::app::settings::Difficulty;
 use game::entity::EntitySize;
+use game::entity::StepDistance;
+use game::entity::creature::Living;
+use game::entity::creature::Swim;
+use game::entity::creature::Wings;
 use game::entity::mobs::Mob;
 use game::entity::mobs::MobKind;
 use game::entity::mobs::PrimedTnt;
@@ -227,4 +231,193 @@ fn standing_in_fire_keeps_hurting_mobs_after_reignition() {
         .unwrap()
         .health;
     assert_eq!(health, 19);
+}
+
+/// A grass field with the player standing at `player_feet`.
+fn creature_app(chunks: WorldChunks, player_feet: Vec3) -> App {
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins).add_plugins(WorldPlugin);
+    *app.world_mut().resource_mut::<WorldChunks>() = chunks;
+    app.world_mut().spawn((
+        Player,
+        PlayerHealth::default(),
+        Transform::from_translation(player_feet + Vec3::Y * EntitySize::PLAYER.y_offset),
+    ));
+    app
+}
+
+fn run_ticks(app: &mut App, ticks: u32) {
+    for _ in 0..ticks {
+        app.world_mut().resource_mut::<WorldTick>().advance(0.05);
+        app.world_mut().run_schedule(Update);
+    }
+}
+
+fn summon(app: &mut App, mob: Mob, feet: Vec3) -> Entity {
+    let entity = spawn(&mut app.world_mut().commands(), mob, feet);
+    app.world_mut().flush();
+    entity
+}
+
+fn feet_of(app: &App, entity: Entity) -> Vec3 {
+    app.world().get::<Transform>(entity).unwrap().translation
+}
+
+#[test]
+fn creatures_get_beta_living_state_and_hostile_mobs_do_not() {
+    let mut app = creature_app(super::pathfinding::field(4), Vec3::new(0.5, 5.0, 8.5));
+    for kind in MobKind::ALL {
+        let entity = summon(&mut app, Mob::new(kind, 7), Vec3::new(0.5, 5.0, 0.5));
+        let world = app.world();
+        assert_eq!(
+            world.get::<Living>(entity).is_some(),
+            !kind.hostile(),
+            "{kind:?}"
+        );
+        assert_eq!(
+            world.get::<Wings>(entity).is_some(),
+            kind == MobKind::Chicken
+        );
+        assert_eq!(world.get::<Swim>(entity).is_some(), kind == MobKind::Squid);
+        // `EntityWolf.canTriggerWalking` keeps wolves off farmland.
+        assert_eq!(
+            world.get::<StepDistance>(entity).is_some(),
+            !kind.hostile() && kind != MobKind::Wolf
+        );
+    }
+}
+
+#[test]
+fn pigs_wander_along_paths_over_grass() {
+    let mut app = creature_app(super::pathfinding::field(4), Vec3::new(0.5, 5.0, 12.5));
+    let start = Vec3::new(0.5, 5.0, 0.5);
+    let pig = summon(&mut app, Mob::new(MobKind::Pig, 42), start);
+    let mut walked_a_path = false;
+    let mut swung_legs = false;
+    for _ in 0..600 {
+        run_ticks(&mut app, 1);
+        let living = app.world().get::<Living>(pig).expect("a nearby pig stays");
+        walked_a_path |= living.path().is_some();
+        swung_legs |= living.limb_amount > 0.2;
+        let feet = feet_of(&app, pig);
+        assert!((feet.y - 5.0).abs() < 1e-3, "pig left the ground at {feet}");
+    }
+    assert!(walked_a_path);
+    assert!(swung_legs);
+    let moved = feet_of(&app, pig) - start;
+    assert!(moved.x.hypot(moved.z) > 1.0, "pig stayed put: {moved}");
+}
+
+#[test]
+fn chickens_flap_and_fall_slowly() {
+    let mut app = creature_app(super::pathfinding::field(4), Vec3::new(0.5, 5.0, 12.5));
+    let chicken = summon(
+        &mut app,
+        Mob::new(MobKind::Chicken, 3),
+        Vec3::new(0.5, 30.0, 0.5),
+    );
+    let pig = summon(
+        &mut app,
+        Mob::new(MobKind::Pig, 3),
+        Vec3::new(4.5, 30.0, 0.5),
+    );
+    run_ticks(&mut app, 20);
+    let chicken_drop = 30.0 - feet_of(&app, chicken).y;
+    let pig_drop = 30.0 - feet_of(&app, pig).y;
+    assert!(
+        chicken_drop < 3.0 && pig_drop > 10.0,
+        "{chicken_drop} vs {pig_drop}"
+    );
+    let wings = app.world().get::<Wings>(chicken).unwrap();
+    assert_eq!(wings.flap_speed, 1.0);
+    assert!(wings.angle(0.0) > 0.0);
+
+    run_ticks(&mut app, 400);
+    assert!((feet_of(&app, chicken).y - 5.0).abs() < 1e-3);
+    assert_eq!(app.world().get::<Wings>(chicken).unwrap().flap_speed, 0.0);
+}
+
+#[test]
+fn squid_swim_in_pulses_and_stay_in_the_water() {
+    let mut chunks = super::pathfinding::field(4);
+    for x in -14..=14 {
+        for z in -14..=14 {
+            for y in 5..=14 {
+                chunks.set_block(x, y, z, game::block::id::Id::Water);
+            }
+        }
+    }
+    let mut app = creature_app(chunks, Vec3::new(0.5, 15.0, 15.5));
+    let start = Vec3::new(0.5, 9.0, 0.5);
+    let squid = summon(&mut app, Mob::new(MobKind::Squid, 11), start);
+    let mut tentacles = Vec::new();
+    for _ in 0..300 {
+        run_ticks(&mut app, 1);
+        tentacles.push(app.world().get::<Swim>(squid).unwrap().tentacle);
+        let feet = feet_of(&app, squid);
+        assert!(
+            feet.y >= 5.0 && feet.y < 15.0,
+            "squid left the water at {feet}"
+        );
+    }
+    assert!(tentacles.iter().any(|angle| *angle > 0.5));
+    assert!(tentacles.contains(&0.0));
+    let moved = feet_of(&app, squid) - start;
+    assert!(moved.length() > 1.0, "squid stayed put: {moved}");
+}
+
+#[test]
+fn tamed_wolves_follow_their_owner_until_told_to_sit() {
+    let owner = Vec3::new(10.5, 5.0, 0.5);
+    let mut app = creature_app(super::pathfinding::field(4), owner);
+    let mut tamed = Mob::new(MobKind::Wolf, 5);
+    tamed.tamed = true;
+    let follower = summon(&mut app, tamed.clone(), Vec3::new(0.5, 5.0, 0.5));
+    tamed.sitting = true;
+    let sitter = summon(&mut app, tamed, Vec3::new(0.5, 5.0, -4.5));
+    // Like Beta, a tamed wolf still takes the odd wander path near its
+    // owner, and paths back once it strays more than five blocks.
+    let mut closest = f32::INFINITY;
+    for tick in 0..400 {
+        run_ticks(&mut app, 1);
+        let distance = feet_of(&app, follower).distance(owner);
+        closest = closest.min(distance);
+        if tick > 200 {
+            assert!(distance < 10.0, "the wolf wandered off to {distance}");
+        }
+    }
+    assert!(closest < 3.0, "the wolf never reached its owner: {closest}");
+    let sat = feet_of(&app, sitter);
+    assert!(
+        (sat.x - 0.5).abs() < 1e-3 && (sat.z + 4.5).abs() < 1e-3,
+        "{sat}"
+    );
+}
+
+#[test]
+fn creatures_far_from_the_player_despawn_but_tamed_wolves_stay() {
+    let mut app = creature_app(super::pathfinding::field(4), Vec3::new(140.5, 5.0, 0.5));
+    let pig = summon(
+        &mut app,
+        Mob::new(MobKind::Pig, 1),
+        Vec3::new(0.5, 5.0, 0.5),
+    );
+    let mut wolf = Mob::new(MobKind::Wolf, 1);
+    wolf.tamed = true;
+    wolf.sitting = true;
+    let wolf = summon(&mut app, wolf, Vec3::new(4.5, 5.0, 0.5));
+    run_ticks(&mut app, 40);
+    assert!(app.world().get_entity(pig).is_err());
+    assert!(app.world().get_entity(wolf).is_ok());
+}
+
+#[test]
+fn the_player_shoves_creatures_aside() {
+    let mut app = creature_app(super::pathfinding::field(4), Vec3::new(0.8, 5.0, 0.5));
+    let mut sitter = Mob::new(MobKind::Wolf, 2);
+    sitter.tamed = true;
+    sitter.sitting = true;
+    let wolf = summon(&mut app, sitter, Vec3::new(0.5, 5.0, 0.5));
+    run_ticks(&mut app, 10);
+    assert!(feet_of(&app, wolf).x < 0.2, "{}", feet_of(&app, wolf));
 }

@@ -11,6 +11,7 @@ use crate::app::settings::GameSettings;
 use crate::app::state::AppScreen;
 use crate::entity::DroppedItem;
 use crate::entity::Velocity;
+use crate::entity::creature::Living;
 use crate::entity::drops::items::DroppedItemState;
 use crate::entity::drops::items::ItemMotion;
 use crate::entity::drops::items::PickupAnimation;
@@ -191,7 +192,7 @@ pub(crate) fn stream_chunks(
         ),
         Without<PickupAnimation>,
     >,
-    mobs: Query<(Entity, &Transform, &Velocity, &Mob)>,
+    mobs: Query<(Entity, &Transform, &Velocity, &Mob, Option<&Living>)>,
     mut last_unload_sweep: Local<Option<(ChunkPosition, i32)>>,
     mut ticks: Option<ResMut<BlockTicks>>,
     mut light: Option<ResMut<LightCache>>,
@@ -299,15 +300,16 @@ pub(crate) fn stream_chunks(
                     commands.entity(entity).despawn();
                 }
                 let mut saved_mobs = Vec::new();
-                for (entity, transform, velocity, mob) in &mobs {
+                for (entity, transform, velocity, mob, living) in &mobs {
                     if ChunkPosition::from_world(transform.translation.x, transform.translation.z)
                         == position
                     {
-                        saved_mobs.push(MobRecord {
-                            mob: mob.clone(),
-                            feet: transform.translation.to_array(),
-                            velocity: velocity.0.to_array(),
-                        });
+                        saved_mobs.push(MobRecord::capture(
+                            mob,
+                            transform.translation,
+                            velocity.0,
+                            living,
+                        ));
                         commands.entity(entity).despawn();
                     }
                 }

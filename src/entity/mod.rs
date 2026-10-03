@@ -7,10 +7,12 @@ use bevy::prelude::*;
 
 use crate::item::ItemStack;
 
+pub mod creature;
 pub mod drops;
 pub mod falling_block;
 pub mod mobs;
 pub mod particles;
+pub mod pathfinding;
 pub mod shadow;
 
 /// An independently simulated inventory stack lying in the world.

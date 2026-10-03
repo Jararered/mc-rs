@@ -2,6 +2,7 @@
 
 pub mod appearance;
 pub mod clouds;
+pub mod creatures;
 pub mod icons;
 mod item_tiles;
 pub mod meshing;

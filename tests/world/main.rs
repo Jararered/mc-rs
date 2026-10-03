@@ -7,6 +7,7 @@ mod persistence;
 mod streaming;
 
 mod mobs;
+mod pathfinding;
 mod runtime;
 mod weather;
 

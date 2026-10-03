@@ -12,8 +12,13 @@ use crate::entity::CollisionState;
 use crate::entity::EntitySize;
 use crate::entity::Gravity;
 use crate::entity::PreviousTick;
+use crate::entity::StepDistance;
 use crate::entity::StepHeight;
 use crate::entity::Velocity;
+use crate::entity::creature::Living;
+use crate::entity::creature::Swim;
+use crate::entity::creature::Wings;
+use crate::entity::creature::tick_creatures;
 use crate::item::ItemId;
 use crate::item::ItemStack;
 use crate::physics::PhysicsSet;
@@ -188,6 +193,20 @@ pub struct MobRecord {
     pub mob: Mob,
     pub feet: [f32; 3],
     pub velocity: [f32; 3],
+    /// Beta's saved `Rotation` yaw, in degrees. Older saves face south.
+    #[serde(default)]
+    pub yaw: f32,
+}
+
+impl MobRecord {
+    pub fn capture(mob: &Mob, feet: Vec3, velocity: Vec3, living: Option<&Living>) -> Self {
+        Self {
+            mob: mob.clone(),
+            feet: feet.to_array(),
+            velocity: velocity.to_array(),
+            yaw: living.map_or(0.0, |living| living.yaw),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -208,7 +227,12 @@ impl Default for MobSpawner {
 }
 
 pub fn spawn_saved(commands: &mut Commands, record: MobRecord) {
-    let entity = spawn(commands, record.mob, Vec3::from_array(record.feet));
+    let entity = spawn_facing(
+        commands,
+        record.mob,
+        Vec3::from_array(record.feet),
+        record.yaw,
+    );
     commands
         .entity(entity)
         .insert(Velocity(Vec3::from_array(record.velocity)));
@@ -359,6 +383,7 @@ impl Plugin for MobPlugin {
                 (
                     natural_spawning,
                     materialize_spawns,
+                    tick_creatures,
                     tick_mobs,
                     tick_projectiles,
                     tick_spawners,
@@ -478,12 +503,24 @@ fn mobs_active(screen: Option<Res<State<AppScreen>>>) -> bool {
     screen.is_none_or(|s| *s.get() == AppScreen::Playing)
 }
 
-pub fn spawn(commands: &mut Commands, mob: Mob, feet: Vec3) -> Entity {
+/// Spawn a new mob. Creatures face a random direction, as
+/// `SpawnerAnimals` places them.
+pub fn spawn(commands: &mut Commands, mut mob: Mob, feet: Vec3) -> Entity {
+    let yaw = if mob.kind.hostile() {
+        0.0
+    } else {
+        mob.rng.next_float() * 360.0
+    };
+    spawn_facing(commands, mob, feet, yaw)
+}
+
+fn spawn_facing(commands: &mut Commands, mut mob: Mob, feet: Vec3, yaw: f32) -> Entity {
     let size = mob.kind.size(mob.variant);
-    let flying = mob.kind == MobKind::Ghast;
+    let kind = mob.kind;
+    let swim = (kind == MobKind::Squid).then(|| Swim::new(&mut mob.rng));
     let entity = commands
         .spawn((
-            Name::new(format!("Mob: {}", mob.kind.name())),
+            Name::new(format!("Mob: {}", kind.name())),
             PreviousTick(feet),
             size,
             StepHeight(0.5),
@@ -494,10 +531,25 @@ pub fn spawn(commands: &mut Commands, mob: Mob, feet: Vec3) -> Entity {
             mob,
         ))
         .id();
-    if flying {
-        commands.entity(entity).insert(crate::entity::Flying);
-    } else {
-        commands.entity(entity).insert(Gravity::DEFAULT);
+    let mut entity_commands = commands.entity(entity);
+    if kind.hostile() {
+        if kind == MobKind::Ghast {
+            entity_commands.insert(crate::entity::Flying);
+        } else {
+            entity_commands.insert(Gravity::DEFAULT);
+        }
+        return entity;
+    }
+    entity_commands.insert(Living::facing(yaw));
+    // `EntityWolf.canTriggerWalking` is false: wolves never trample.
+    if kind != MobKind::Wolf {
+        entity_commands.insert(StepDistance::default());
+    }
+    if kind == MobKind::Chicken {
+        entity_commands.insert(Wings::default());
+    }
+    if let Some(swim) = swim {
+        entity_commands.insert(swim);
     }
     entity
 }
@@ -801,13 +853,14 @@ fn tick_mobs(
             &EntitySize,
             &mut PreviousTick,
         ),
-        Without<Player>,
+        (Without<Player>, Without<Living>),
     >,
     world: Res<WorldChunks>,
     mut explosions: MessageWriter<Explosion>,
     light: Res<LightCache>,
     weather: Option<Res<crate::world::weather::WorldWeather>>,
 ) {
+    let raining = weather.as_ref().is_some_and(|w| w.is_raining());
     let difficulty = settings
         .as_ref()
         .map_or(Difficulty::Normal, |s| s.difficulty);
@@ -835,15 +888,7 @@ fn tick_mobs(
             mob.age = mob.age.saturating_add(1);
             mob.cooldown = mob.cooldown.saturating_sub(1);
             let foot = transform.translation.floor().as_ivec3();
-            let occupied = world.block_at(foot.x, foot.y, foot.z);
-            let in_water = matches!(occupied, Some(Id::Water | Id::FlowingWater));
-            if in_water
-                || weather.as_ref().is_some_and(|w| w.is_raining()) && exposed_to_sky(&world, foot)
-            {
-                mob.fire_ticks = 0;
-            } else if matches!(occupied, Some(Id::Fire | Id::Lava | Id::FlowingLava)) {
-                mob.fire_ticks = if occupied == Some(Id::Fire) { 160 } else { 300 };
-            }
+            update_fire(&mut mob, &world, transform.translation, raining);
             if matches!(mob.kind, MobKind::Zombie | MobKind::Skeleton)
                 && now % 20 == 0
                 && exposed_to_sky(&world, foot)
@@ -856,66 +901,14 @@ fn tick_mobs(
             {
                 mob.fire_ticks = 160;
             }
-            if mob.kind.hostile()
-                && !mob.tamed
-                && mob.age > 600
-                && distance > 32.0 * 32.0
-                && mob.rng.next_int(800) == 0
-            {
+            if mob.age > 600 && distance > 32.0 * 32.0 && mob.rng.next_int(800) == 0 {
                 commands.entity(entity).despawn();
                 break;
             }
-            if mob.fire_ticks > 0 {
-                mob.fire_ticks -= 1;
-                if now % 20 == 0 && !matches!(mob.kind, MobKind::Ghast | MobKind::PigZombie) {
-                    mob.health -= 1;
-                }
-            }
+            burn(&mut mob, now);
             if mob.health <= 0 {
                 kill_mob(&mut commands, entity, &mut mob, transform.translation);
                 break;
-            }
-            if mob.kind == MobKind::Chicken {
-                if mob.egg_timer > 0 {
-                    mob.egg_timer -= 1;
-                }
-                if mob.egg_timer == 0 {
-                    mob.egg_timer = 6000 + mob.rng.next_int(6000) as u16;
-                    drop_item(&mut commands, ItemId::Egg, 0, transform.translation);
-                }
-                if velocity.0.y < 0.0 {
-                    velocity.0.y *= 0.6;
-                }
-            }
-            if mob.sitting {
-                velocity.0.x = 0.0;
-                velocity.0.z = 0.0;
-                continue;
-            }
-            if mob.kind == MobKind::Squid {
-                if mob.age % 50 == 0 {
-                    mob.wander_yaw = mob.rng.next_float() * std::f32::consts::TAU;
-                }
-                let dir = Vec3::new(
-                    mob.wander_yaw.cos(),
-                    (mob.rng.next_float() - 0.5) * 0.3,
-                    mob.wander_yaw.sin(),
-                );
-                velocity.0 = if world
-                    .block_at(
-                        transform.translation.x as i32,
-                        transform.translation.y as i32,
-                        transform.translation.z as i32,
-                    )
-                    .is_some_and(|block| matches!(block, Id::Water | Id::FlowingWater))
-                {
-                    dir * 1.8
-                } else {
-                    Vec3::new(0.0, -2.0, 0.0)
-                };
-                transform.rotation =
-                    Quat::from_rotation_y(-mob.wander_yaw - std::f32::consts::FRAC_PI_2);
-                continue;
             }
             if mob.kind == MobKind::Ghast {
                 mob.fuse = (mob.fuse - 1).max(0);
@@ -946,22 +939,13 @@ fn tick_mobs(
                     Quat::from_rotation_y(-mob.wander_yaw - std::f32::consts::FRAC_PI_2);
                 continue;
             }
-            let chase = (mob.kind.hostile()
-                && mob.kind != MobKind::PigZombie
+            let chase = (mob.kind != MobKind::PigZombie
                 && (mob.kind != MobKind::Spider || tick.world_time() % 24000 > 12000))
-                || mob.angry
-                || mob.tamed;
+                || mob.angry;
             let eye = transform.translation + Vec3::Y * (size.height * 0.85);
             let toward = player.translation - eye;
             let visible = raycast_blocks(&world, eye, toward, toward.length()).is_none();
-            let target = if chase
-                && (visible || mob.tamed)
-                && distance
-                    < if mob.kind == MobKind::Wolf {
-                        25.0
-                    } else {
-                        256.0
-                    } {
+            let target = if chase && visible && distance < 256.0 {
                 let diff = player.translation - transform.translation;
                 Some(Vec3::new(diff.x, 0.0, diff.z).normalize_or_zero())
             } else {
@@ -1017,24 +1001,12 @@ fn tick_mobs(
                 && mob.cooldown == 0
                 && distance < (size.width + 1.3).powi(2)
             {
-                if mob.kind != MobKind::Skeleton
-                    && mob.kind != MobKind::Ghast
-                    && mob.kind != MobKind::Wolf
-                    || mob.angry
-                {
+                if mob.kind != MobKind::Skeleton && mob.kind != MobKind::Ghast || mob.angry {
                     if mob.kind == MobKind::Slime && mob.variant == 1 {
                         continue;
                     }
                     let damage = match mob.kind {
                         MobKind::Zombie | MobKind::PigZombie => 5,
-                        MobKind::Spider | MobKind::Slime => 2,
-                        MobKind::Wolf => {
-                            if mob.tamed {
-                                4
-                            } else {
-                                2
-                            }
-                        }
                         _ => 2,
                     };
                     player_health.current = player_health
@@ -1051,6 +1023,28 @@ fn tick_mobs(
                 commands.entity(entity).despawn();
                 break;
             }
+        }
+    }
+}
+
+/// Water and rain put a mob out; standing in fire or lava sets it alight.
+pub(crate) fn update_fire(mob: &mut Mob, chunks: &WorldChunks, feet: Vec3, raining: bool) {
+    let foot = feet.floor().as_ivec3();
+    let occupied = chunks.block_at(foot.x, foot.y, foot.z);
+    let in_water = matches!(occupied, Some(Id::Water | Id::FlowingWater));
+    if in_water || raining && exposed_to_sky(chunks, foot) {
+        mob.fire_ticks = 0;
+    } else if matches!(occupied, Some(Id::Fire | Id::Lava | Id::FlowingLava)) {
+        mob.fire_ticks = if occupied == Some(Id::Fire) { 160 } else { 300 };
+    }
+}
+
+/// A burning mob loses a heart-half each second until the fire runs out.
+pub(crate) fn burn(mob: &mut Mob, now: u64) {
+    if mob.fire_ticks > 0 {
+        mob.fire_ticks -= 1;
+        if now % 20 == 0 && !matches!(mob.kind, MobKind::Ghast | MobKind::PigZombie) {
+            mob.health -= 1;
         }
     }
 }
@@ -1243,7 +1237,7 @@ fn explode(
     }
 }
 
-fn kill_mob(commands: &mut Commands, entity: Entity, mob: &mut Mob, feet: Vec3) {
+pub(crate) fn kill_mob(commands: &mut Commands, entity: Entity, mob: &mut Mob, feet: Vec3) {
     if mob.kind == MobKind::Slime && mob.variant > 1 {
         for offset in [
             Vec3::new(-0.3, 0.0, -0.3),

@@ -1423,6 +1423,7 @@ fn flush_persistence(
         &Transform,
         &crate::entity::Velocity,
         &crate::entity::mobs::Mob,
+        Option<&crate::entity::creature::Living>,
     )>,
     time: Res<Time>,
     tick: Option<Res<crate::world::tick::WorldTick>>,
@@ -1451,18 +1452,19 @@ fn flush_persistence(
     if autosave_due || exiting {
         let mut by_chunk: HashMap<ChunkPosition, Vec<crate::entity::mobs::MobRecord>> =
             HashMap::new();
-        for (transform, velocity, mob) in &mobs {
+        for (transform, velocity, mob, living) in &mobs {
             by_chunk
                 .entry(ChunkPosition::from_world(
                     transform.translation.x,
                     transform.translation.z,
                 ))
                 .or_default()
-                .push(crate::entity::mobs::MobRecord {
-                    mob: mob.clone(),
-                    feet: transform.translation.to_array(),
-                    velocity: velocity.0.to_array(),
-                });
+                .push(crate::entity::mobs::MobRecord::capture(
+                    mob,
+                    transform.translation,
+                    velocity.0,
+                    living,
+                ));
         }
         let positions: Vec<_> = chunks.positions().collect();
         for position in positions {

@@ -1,4 +1,6 @@
-//! Articulated cuboid mob models. Meshes and materials are shared between instances.
+//! Placeholder cuboid models for hostile mobs, and projectile and primed TNT
+//! meshes. Meshes and materials are shared between instances. Creatures use
+//! Beta's own models in [`super::creatures`].
 use bevy::asset::RenderAssetUsages;
 use bevy::mesh::Indices;
 use bevy::prelude::*;
@@ -9,6 +11,7 @@ use crate::app::settings::GameSettings;
 use crate::app::state::AppScreen;
 use crate::entity::PreviousTick;
 use crate::entity::Velocity;
+use crate::entity::creature::Living;
 use crate::entity::mobs::Mob;
 use crate::entity::mobs::MobKind;
 use crate::entity::mobs::MobProjectile;
@@ -25,7 +28,6 @@ struct CuboidKey {
 struct MobAssets {
     meshes: HashMap<CuboidKey, Handle<Mesh>>,
     materials: HashMap<&'static str, Handle<StandardMaterial>>,
-    wool: Vec<Handle<StandardMaterial>>,
     arrow_mesh: Handle<Mesh>,
     fireball_mesh: Handle<Mesh>,
     tnt_mesh: Handle<Mesh>,
@@ -40,8 +42,6 @@ struct MobPart {
     index: usize,
     pivot: Vec3,
     swing: f32,
-    fur: bool,
-    saddle: bool,
     eyes: bool,
     charged: bool,
 }
@@ -52,8 +52,6 @@ struct Part {
     uv: [u8; 2],
     at: Vec3,
     swing: f32,
-    fur: bool,
-    saddle: bool,
     eyes: bool,
     charged: bool,
 }
@@ -65,8 +63,6 @@ impl Part {
             uv,
             at,
             swing,
-            fur: false,
-            saddle: false,
             eyes: false,
             charged: false,
         }
@@ -92,15 +88,11 @@ fn prepare_mob_assets(
     settings: Res<GameSettings>,
 ) {
     let mut lookup = HashMap::new();
-    for kind in MobKind::ALL {
+    for kind in MobKind::ALL.into_iter().filter(|kind| kind.hostile()) {
         let sample = Mob::new(kind, 1);
         for texture in [
             kind.texture(&sample),
-            "mob/wolf_angry.png",
-            "mob/wolf_tame.png",
             "mob/ghast_fire.png",
-            "mob/sheep_fur.png",
-            "mob/saddle.png",
             "mob/spider_eyes.png",
         ] {
             if lookup.contains_key(texture) {
@@ -142,40 +134,6 @@ fn prepare_mob_assets(
             ..default()
         }),
     );
-    // The old wool texture is white. EntitySheep.fleeceColorTable tints its layer.
-    const COLORS: [[u8; 3]; 16] = [
-        [255, 255, 255],
-        [243, 178, 51],
-        [229, 127, 217],
-        [153, 178, 242],
-        [229, 229, 51],
-        [127, 204, 25],
-        [242, 178, 204],
-        [76, 76, 76],
-        [153, 153, 153],
-        [76, 153, 178],
-        [178, 102, 229],
-        [51, 102, 204],
-        [127, 102, 76],
-        [102, 127, 51],
-        [204, 76, 76],
-        [25, 25, 25],
-    ];
-    let wool = COLORS
-        .into_iter()
-        .map(|[r, g, b]| {
-            materials.add(StandardMaterial {
-                base_color: Color::srgb_u8(r, g, b),
-                base_color_texture: std::path::Path::new("assets/mob/sheep_fur.png")
-                    .exists()
-                    .then(|| server.load("mob/sheep_fur.png")),
-                unlit: settings.old_lighting,
-                alpha_mode: AlphaMode::Mask(0.5),
-                double_sided: true,
-                ..default()
-            })
-        })
-        .collect();
     // Populate shared meshes once per distinct face layout, not per entity.
     let mut built = HashMap::new();
     for kind in MobKind::ALL {
@@ -190,7 +148,6 @@ fn prepare_mob_assets(
     commands.insert_resource(MobAssets {
         meshes: built,
         materials: lookup,
-        wool,
         arrow_mesh: meshes.add(Cuboid::new(0.06, 0.06, 0.6)),
         fireball_mesh: meshes.add(Sphere::new(0.25)),
         tnt_mesh: meshes.add(Cuboid::new(0.98, 0.98, 0.98)),
@@ -240,11 +197,7 @@ fn fallback_color(kind: MobKind) -> Color {
         MobKind::Slime => Color::srgb_u8(98, 194, 88),
         MobKind::Zombie | MobKind::PigZombie => Color::srgb_u8(86, 130, 76),
         MobKind::Spider => Color::srgb_u8(52, 45, 40),
-        MobKind::Wolf => Color::srgb_u8(159, 152, 136),
-        MobKind::Pig => Color::srgb_u8(237, 167, 175),
-        MobKind::Chicken => Color::srgb_u8(236, 230, 216),
-        MobKind::Ghast | MobKind::Sheep | MobKind::Skeleton => Color::srgb_u8(209, 209, 206),
-        _ => Color::srgb_u8(124, 93, 74),
+        _ => Color::srgb_u8(209, 209, 206),
     }
 }
 
@@ -285,19 +238,6 @@ fn parts(kind: MobKind) -> Vec<Part> {
             result
         }
         MobKind::Slime => vec![p([16, 16, 16], [0, 0], Vec3::new(0., 0.5, 0.), 0.)],
-        MobKind::Squid => {
-            let mut result = vec![p([12, 16, 12], [0, 0], Vec3::new(0., 0.85, 0.), 0.)];
-            for i in 0..8 {
-                let angle = i as f32 * std::f32::consts::TAU / 8.;
-                result.push(p(
-                    [2, 18, 2],
-                    [48, 0],
-                    Vec3::new(angle.cos() * 0.32, -0.08, angle.sin() * 0.32),
-                    1.,
-                ));
-            }
-            result
-        }
         MobKind::Zombie | MobKind::Skeleton | MobKind::PigZombie | MobKind::Creeper => {
             let mut result = vec![
                 p([8, 8, 8], [0, 0], Vec3::new(0., 1.55, 0.), 0.),
@@ -337,62 +277,14 @@ fn parts(kind: MobKind) -> Vec<Part> {
             }
             result
         }
-        _ => {
-            let (head, body, leg, height) = match kind {
-                MobKind::Chicken => ([4, 6, 3], [6, 8, 6], [2, 4, 2], 0.55),
-                MobKind::Wolf => ([6, 6, 4], [6, 9, 6], [2, 8, 2], 0.85),
-                MobKind::Sheep => ([6, 6, 8], [8, 16, 6], [4, 6, 4], 1.3),
-                MobKind::Cow => ([8, 8, 6], [10, 16, 8], [4, 12, 4], 1.3),
-                _ => ([8, 8, 8], [10, 16, 8], [4, 6, 4], 0.9),
-            };
-            let mut result = vec![
-                p(head, [0, 0], Vec3::new(0., height - 0.27, -0.48), 0.),
-                p(body, [28, 8], Vec3::new(0., height - 0.55, 0.12), 0.),
-            ];
-            for x in [-0.31, 0.31] {
-                for z in [-0.31, 0.35] {
-                    result.push(p(
-                        leg,
-                        [0, 16],
-                        Vec3::new(x, 0.22, z),
-                        if x * z > 0. { 1. } else { -1. },
-                    ));
-                }
-            }
-            if kind == MobKind::Sheep {
-                let mut fur = p(
-                    [12, 18, 10],
-                    [28, 8],
-                    Vec3::new(0., height - 0.55, 0.12),
-                    0.,
-                );
-                fur.fur = true;
-                result.push(fur);
-                let mut head = p([8, 8, 10], [0, 0], Vec3::new(0., height - 0.27, -0.48), 0.);
-                head.fur = true;
-                result.push(head);
-                for x in [-0.31, 0.31] {
-                    for z in [-0.31, 0.35] {
-                        let mut leg = p([6, 8, 6], [0, 16], Vec3::new(x, 0.22, z), 0.);
-                        leg.fur = true;
-                        result.push(leg);
-                    }
-                }
-            }
-            if kind == MobKind::Pig {
-                let mut saddle = p(body, [28, 8], Vec3::new(0., height - 0.55, 0.12), 0.);
-                saddle.saddle = true;
-                result.push(saddle);
-            }
-            result
-        }
+        _ => Vec::new(),
     }
 }
 
 fn add_mob_models(
     mut commands: Commands,
     assets: Res<MobAssets>,
-    mobs: Query<(Entity, &Mob), Added<Mob>>,
+    mobs: Query<(Entity, &Mob), (Added<Mob>, Without<Living>)>,
 ) {
     for (entity, mob) in &mobs {
         let parts = parts(mob.kind);
@@ -406,11 +298,7 @@ fn add_mob_models(
                     dims: part.dims,
                     uv: part.uv,
                 };
-                let selected = if part.fur {
-                    &assets.wool[mob.variant.min(15) as usize]
-                } else if part.saddle {
-                    assets.materials.get("mob/saddle.png").unwrap_or(material)
-                } else if part.eyes {
+                let selected = if part.eyes {
                     assets
                         .materials
                         .get("mob/spider_eyes.png")
@@ -428,16 +316,11 @@ fn add_mob_models(
                         index,
                         pivot: part.at,
                         swing: part.swing,
-                        fur: part.fur,
-                        saddle: part.saddle,
                         eyes: part.eyes,
                         charged: part.charged,
                     },
                     Transform::from_translation(part.at),
-                    if part.fur && mob.sheared
-                        || part.saddle && !mob.saddled
-                        || part.charged && !mob.charged
-                    {
+                    if part.charged && !mob.charged {
                         Visibility::Hidden
                     } else {
                         Visibility::Inherited
@@ -473,27 +356,19 @@ fn animate_mob_models(
                 material.unlit = settings.old_lighting;
             }
         }
-        for material in &assets.wool {
-            if let Some(mut material) = materials.get_mut(material) {
-                material.unlit = settings.old_lighting;
-            }
-        }
     }
     for (part, mut pose, mut visibility, mut material) in &mut parts {
         let Ok((mob, root, velocity, previous)) = mobs.get(part.owner) else {
             continue;
         };
-        if part.fur || part.saddle || part.charged {
-            *visibility = if part.fur && mob.sheared
-                || part.saddle && !mob.saddled
-                || part.charged && !mob.charged
-            {
+        if part.charged {
+            *visibility = if !mob.charged {
                 Visibility::Hidden
             } else {
                 Visibility::Inherited
             };
         }
-        if !part.fur && !part.saddle && !part.eyes && !part.charged {
+        if !part.eyes && !part.charged {
             if let Some(new) = assets.materials.get(mob.kind.texture(mob)) {
                 if material.0 != *new {
                     material.0 = new.clone();

@@ -313,7 +313,9 @@ pub(crate) fn stream_chunks(
                         commands.entity(entity).despawn();
                     }
                 }
-                if !saved_mobs.is_empty() {
+                // Records left by the last autosave are stale: mobs that died
+                // or walked off since would come back on the next load.
+                if !saved_mobs.is_empty() || !chunk.chunk.mob_records().is_empty() {
                     chunk.chunk.set_mob_records(saved_mobs);
                     if let Some(persistence) = persistence.as_deref_mut() {
                         persistence.mark_dirty(position);

@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use bevy::platform::collections::HashMap as FastHashMap;
 use bevy::prelude::Resource;
 
 use crate::block::id::Id;
@@ -72,6 +73,8 @@ pub struct Chunk {
     pending_ticks: Vec<PendingTick>,
     mob_records: Vec<crate::entity::mobs::MobRecord>,
     spawners: HashMap<usize, crate::entity::mobs::MobSpawner>,
+    /// Counts block and metadata writes. Not saved.
+    revision: u32,
 }
 
 impl Chunk {
@@ -84,6 +87,7 @@ impl Chunk {
             pending_ticks: Vec::new(),
             mob_records: Vec::new(),
             spawners: HashMap::new(),
+            revision: 0,
         }
     }
 
@@ -120,6 +124,7 @@ impl Chunk {
             pending_ticks: Vec::new(),
             mob_records: Vec::new(),
             spawners,
+            revision: 0,
         }
     }
 
@@ -154,7 +159,14 @@ impl Chunk {
             pending_ticks: Vec::new(),
             mob_records: Vec::new(),
             spawners,
+            revision: 0,
         }
+    }
+
+    /// Advances with every block or metadata write, so a reader that
+    /// remembers it can tell whether the chunk has changed since.
+    pub fn revision(&self) -> u32 {
+        self.revision
     }
 
     /// Scheduled ticks stored with this chunk while it is out of the world.
@@ -211,6 +223,7 @@ impl Chunk {
     /// Replace every metadata value from packed nibbles in the
     /// [`Self::raw_metadata`] layout. A wrong length clears the metadata.
     pub fn set_raw_metadata(&mut self, packed: Vec<u8>) {
+        self.revision = self.revision.wrapping_add(1);
         self.metadata = (packed.len() == METADATA_BYTES && packed.iter().any(|&byte| byte != 0))
             .then(|| packed.into());
     }
@@ -245,6 +258,7 @@ impl Chunk {
         if self.metadata_at_index(index) == value {
             return;
         }
+        self.revision = self.revision.wrapping_add(1);
         let packed = Arc::make_mut(
             self.metadata
                 .get_or_insert_with(|| vec![0; METADATA_BYTES].into()),
@@ -290,6 +304,7 @@ impl Chunk {
     }
 
     fn set_block_only(&mut self, index: usize, block: Id) {
+        self.revision = self.revision.wrapping_add(1);
         if block != Id::MobSpawner {
             self.spawners.remove(&index);
         } else {
@@ -360,7 +375,10 @@ impl Default for Chunk {
 
 #[derive(Resource, Default)]
 pub struct WorldChunks {
-    chunks: HashMap<ChunkPosition, GeneratedChunk>,
+    /// Every `block_at` probes this map, so it uses Bevy's fixed foldhash
+    /// rather than SipHash. That also keeps iteration order the same between
+    /// runs.
+    chunks: FastHashMap<ChunkPosition, GeneratedChunk>,
     membership_revision: u64,
 }
 

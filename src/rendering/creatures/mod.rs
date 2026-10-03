@@ -11,7 +11,7 @@ pub mod models;
 mod projectiles;
 mod shading;
 
-use std::collections::HashMap;
+use std::time::Instant;
 
 use bevy::camera::visibility::VisibilitySystems;
 use bevy::image::ImageAddressMode;
@@ -20,11 +20,13 @@ use bevy::image::ImageSampler;
 use bevy::image::ImageSamplerDescriptor;
 use bevy::material::OpaqueRendererMethod;
 use bevy::mesh::MeshTag;
+use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use bevy::transform::TransformSystems;
 
 use crate::app::settings::GameSettings;
 use crate::app::state::AppScreen;
+use crate::entity::EntityDiagnostics;
 use crate::entity::EntitySize;
 use crate::entity::PreviousTick;
 use crate::entity::creature::Bounce;
@@ -100,6 +102,8 @@ const FLEECE: [[f32; 3]; 16] = [
     [0.1, 0.1, 0.1],
 ];
 
+/// Posing looks up every box's model and skin each frame, so these maps use
+/// Bevy's foldhash.
 #[derive(Resource)]
 struct CreatureAssets {
     models: HashMap<MobKind, Vec<(Part, Handle<Mesh>)>>,
@@ -427,7 +431,10 @@ fn pose_creatures(
         (Without<CreatureModel>, Without<Mob>),
     >,
     mut held: Query<&mut MeshTag, (With<HeldItem>, Without<CreaturePart>)>,
+    mut diagnostics: Option<ResMut<EntityDiagnostics>>,
 ) {
+    let start = Instant::now();
+    let mut posed = 0;
     let partial = tick.partial();
     let lerp = |from: f32, to: f32| from + (to - from) * partial;
     let subtracted = skylight_subtracted(celestial_angle(tick.world_time(), partial))
@@ -546,6 +553,7 @@ fn pose_creatures(
             let Some((definition, _)) = definitions.get(part.0) else {
                 continue;
             };
+            posed += 1;
             pose.set_if_neq(models::pose(definition, &input));
             shown.set_if_neq(visibility(layer_visible(mob, definition.layer)));
             let next = match definition.layer {
@@ -570,6 +578,10 @@ fn pose_creatures(
                 material.0 = skin;
             }
         }
+    }
+    if let Some(diagnostics) = diagnostics.as_deref_mut() {
+        diagnostics.posing.record(start.elapsed());
+        diagnostics.parts = posed;
     }
 }
 

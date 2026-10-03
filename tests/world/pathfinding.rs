@@ -3,6 +3,8 @@
 use bevy::prelude::*;
 use game::block::id::Id;
 use game::entity::mobs::MobKind;
+use game::entity::pathfinding::LastSearch;
+use game::entity::pathfinding::Path;
 use game::entity::pathfinding::Pathfinder;
 use game::world::biome::Biome;
 use game::world::chunk::Chunk;
@@ -177,4 +179,120 @@ fn path_positions_center_the_body_on_each_cell() {
     path.advance();
     path.advance();
     assert!(path.is_finished());
+}
+
+/// The feet of a player standing on a three-block pillar at the origin.
+fn pillar(chunks: &mut WorldChunks) -> Vec3 {
+    for y in 5..=7 {
+        chunks.set_block(0, y, 0, Id::Stone);
+    }
+    Vec3::new(0.5, 8.0, 0.5)
+}
+
+/// A zombie at `feet` chasing `player`, reusing its `last` search.
+fn chase(
+    finder: &mut Pathfinder,
+    chunks: &WorldChunks,
+    feet: Vec3,
+    player: Vec3,
+    last: &mut LastSearch,
+) -> Option<Path> {
+    finder.path_to_feet_reusing(chunks, feet, MobKind::Zombie.size(0), player, 16.0, last)
+}
+
+fn fresh(chunks: &WorldChunks, feet: Vec3, player: Vec3) -> Option<Path> {
+    Pathfinder::default().path_to_feet(chunks, feet, MobKind::Zombie.size(0), player, 16.0)
+}
+
+#[test]
+fn an_unchanged_chase_reuses_the_last_search() {
+    let mut chunks = field(4);
+    let player = pillar(&mut chunks);
+    let zombie = Vec3::new(6.5, 5.0, 0.5);
+    let mut finder = Pathfinder::default();
+    let mut last = LastSearch::default();
+    let first = chase(&mut finder, &chunks, zombie, player, &mut last);
+    // Shuffling within the same cell asks the same question.
+    let again = chase(
+        &mut finder,
+        &chunks,
+        zombie + Vec3::new(0.2, 0.0, 0.1),
+        player,
+        &mut last,
+    );
+    assert!(first.is_some());
+    assert_eq!(again, first);
+    assert_eq!(first, fresh(&chunks, zombie, player));
+    let stats = finder.take_stats();
+    assert_eq!((stats.searches, stats.reused), (1, 1));
+
+    // At the foot of the pillar no node is closer: no path, and still reused.
+    let foot = Vec3::new(1.5, 5.0, 0.5);
+    assert_eq!(chase(&mut finder, &chunks, foot, player, &mut last), None);
+    assert_eq!(chase(&mut finder, &chunks, foot, player, &mut last), None);
+    let stats = finder.take_stats();
+    assert_eq!((stats.searches, stats.reused), (1, 1));
+}
+
+#[test]
+fn an_edit_the_search_could_see_runs_it_again() {
+    let mut chunks = field(4);
+    let player = pillar(&mut chunks);
+    let zombie = Vec3::new(6.5, 5.0, 0.5);
+    let mut finder = Pathfinder::default();
+    let mut last = LastSearch::default();
+    let before = chase(&mut finder, &chunks, zombie, player, &mut last);
+
+    // A step beside the pillar, then a second one, lets the zombie climb up.
+    chunks.set_block(1, 5, 0, Id::Stone);
+    chunks.set_block(2, 5, 0, Id::Stone);
+    chunks.set_block(1, 6, 0, Id::Stone);
+    let after = chase(&mut finder, &chunks, zombie, player, &mut last);
+    assert_ne!(after, before);
+    assert_eq!(after, fresh(&chunks, zombie, player));
+
+    // Opening a door changes only metadata, and that counts too.
+    chunks.set_block(4, 5, 0, Id::WoodenDoor);
+    chunks.set_block(4, 6, 0, Id::WoodenDoor);
+    let closed = chase(&mut finder, &chunks, zombie, player, &mut last);
+    assert_eq!(closed, fresh(&chunks, zombie, player));
+    chunks.set_metadata(4, 5, 0, 4);
+    chunks.set_metadata(4, 6, 0, 4);
+    let open = chase(&mut finder, &chunks, zombie, player, &mut last);
+    assert_eq!(open, fresh(&chunks, zombie, player));
+    let stats = finder.take_stats();
+    assert_eq!((stats.searches, stats.reused), (4, 0));
+}
+
+#[test]
+fn only_edits_inside_the_searched_region_count() {
+    let mut chunks = field(4);
+    let far = ChunkPosition { x: 6, z: 0 };
+    chunks.insert(
+        far,
+        super::block_ticks::generated(Chunk::new(), Biome::Plains),
+    );
+    let player = pillar(&mut chunks);
+    let zombie = Vec3::new(6.5, 5.0, 0.5);
+    let mut finder = Pathfinder::default();
+    let mut last = LastSearch::default();
+    let first = chase(&mut finder, &chunks, zombie, player, &mut last);
+
+    // The search sees the chunks within 32 blocks of the zombie; x = 100 is
+    // well beyond them.
+    chunks.set_block(100, 5, 0, Id::Stone);
+    assert_eq!(
+        chase(&mut finder, &chunks, zombie, player, &mut last),
+        first
+    );
+    assert_eq!(finder.take_stats().reused, 1);
+
+    // Loading or unloading any chunk asks again.
+    chunks.remove(far);
+    assert_eq!(
+        chase(&mut finder, &chunks, zombie, player, &mut last),
+        first
+    );
+    let stats = finder.take_stats();
+    assert_eq!((stats.searches, stats.reused), (1, 0));
 }

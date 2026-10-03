@@ -9,6 +9,7 @@ use crate::app::state::AppScreen;
 use crate::block::id::Id;
 use crate::block::properties::is_opaque_cube;
 use crate::entity::CollisionState;
+use crate::entity::EntityDiagnostics;
 use crate::entity::EntitySize;
 use crate::entity::Gravity;
 use crate::entity::PreviousTick;
@@ -375,6 +376,7 @@ pub struct MobPlugin;
 impl Plugin for MobPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<MobRandom>()
+            .init_resource::<EntityDiagnostics>()
             .add_message::<SpawnMob>()
             .init_resource::<ExplosionRandom>()
             .add_message::<Explosion>()
@@ -708,6 +710,7 @@ fn natural_spawning(
     mut requests: MessageWriter<SpawnMob>,
     mut random: ResMut<MobRandom>,
     persistence: Option<Res<crate::world::persistence::WorldPersistence>>,
+    mut diagnostics: Option<ResMut<EntityDiagnostics>>,
 ) {
     if tick.ticks_this_frame() == 0 {
         return;
@@ -715,6 +718,38 @@ fn natural_spawning(
     let Ok(player) = player.single() else {
         return;
     };
+    let start = std::time::Instant::now();
+    spawn_naturally(
+        &tick,
+        &chunks,
+        &light,
+        weather.as_deref(),
+        settings.as_deref(),
+        player,
+        &mobs,
+        &mut requests,
+        &mut random,
+        persistence.as_deref(),
+    );
+    if let Some(diagnostics) = diagnostics.as_deref_mut() {
+        diagnostics.spawning.record(start.elapsed());
+    }
+}
+
+/// `SpawnerAnimals.performSpawning` around one player.
+#[allow(clippy::too_many_arguments)]
+fn spawn_naturally(
+    tick: &WorldTick,
+    chunks: &WorldChunks,
+    light: &LightCache,
+    weather: Option<&crate::world::weather::WorldWeather>,
+    settings: Option<&GameSettings>,
+    player: &Transform,
+    mobs: &Query<(&Mob, &Transform)>,
+    requests: &mut MessageWriter<SpawnMob>,
+    random: &mut MobRandom,
+    persistence: Option<&crate::world::persistence::WorldPersistence>,
+) {
     let center = ChunkPosition::from_world(player.translation.x, player.translation.z);
     let radius = settings.as_ref().map_or(4, |s| s.render_distance.min(8));
     let difficulty = settings

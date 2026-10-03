@@ -5,7 +5,9 @@
 
 use bevy::prelude::*;
 
+use crate::entity::pathfinding::SearchStats;
 use crate::item::ItemStack;
+use crate::world::streaming::TimingStats;
 
 pub mod combat;
 pub mod creature;
@@ -17,6 +19,32 @@ pub mod particles;
 pub mod pathfinding;
 pub mod projectiles;
 pub mod shadow;
+
+/// Mob simulation and rendering costs collected since the last performance
+/// print.
+#[derive(Resource, Default)]
+pub struct EntityDiagnostics {
+    /// `tick_creatures`, once per frame that runs world ticks.
+    pub creatures: TimingStats,
+    /// World ticks those frames ran.
+    pub ticks: u64,
+    pub spawning: TimingStats,
+    pub posing: TimingStats,
+    pub searches: SearchStats,
+    /// Mobs and model boxes at the last sample.
+    pub mobs: usize,
+    pub parts: usize,
+}
+
+impl EntityDiagnostics {
+    pub fn take(&mut self) -> Self {
+        Self {
+            mobs: self.mobs,
+            parts: self.parts,
+            ..std::mem::take(self)
+        }
+    }
+}
 
 /// An independently simulated inventory stack lying in the world.
 #[derive(Component, Clone, Copy, Debug)]

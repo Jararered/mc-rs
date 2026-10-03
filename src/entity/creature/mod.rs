@@ -30,6 +30,8 @@ pub use monsters::Bounce;
 pub use monsters::Fuse;
 pub use monsters::Hover;
 
+use std::time::Instant;
+
 use bevy::ecs::query::QueryData;
 use bevy::prelude::*;
 
@@ -41,6 +43,7 @@ use crate::block::id::Id;
 use crate::block::properties::is_opaque_cube;
 use crate::block::properties::slipperiness;
 use crate::entity::CollisionState;
+use crate::entity::EntityDiagnostics;
 use crate::entity::EntitySize;
 use crate::entity::PreviousTick;
 use crate::entity::StepDistance;
@@ -56,6 +59,7 @@ use crate::entity::combat::remove_dead;
 use crate::entity::mobs::Explosion;
 use crate::entity::mobs::Mob;
 use crate::entity::mobs::MobKind;
+use crate::entity::pathfinding::LastSearch;
 use crate::entity::pathfinding::Path;
 use crate::entity::pathfinding::Pathfinder;
 use crate::inventory::Inventory;
@@ -137,6 +141,9 @@ pub struct Living {
     /// at, and for how many more ticks.
     looking: Option<i32>,
     path: Option<Path>,
+    /// The last search for the player's feet, chasing them or following them
+    /// as a wolf's owner.
+    last_chase: LastSearch,
     /// `attackTime`: the cooldown between attacks.
     attack_time: i16,
     fall_distance: f32,
@@ -178,6 +185,7 @@ impl Living {
             in_water: false,
             looking: None,
             path: None,
+            last_chase: LastSearch::default(),
             attack_time: 0,
             fall_distance: 0.0,
             air: MAX_AIR,
@@ -389,11 +397,13 @@ pub(crate) fn tick_creatures(
     mut loot: Local<ItemRng>,
     mut explosions: Local<Vec<Explosion>>,
     mut spare_armor: Local<[Option<ItemStack>; 4]>,
+    mut diagnostics: Option<ResMut<EntityDiagnostics>>,
 ) {
     let ticks = tick.ticks_this_frame();
     if ticks == 0 {
         return;
     }
+    let start = Instant::now();
     let difficulty = settings
         .as_ref()
         .map_or(Difficulty::Normal, |settings| settings.difficulty);
@@ -508,6 +518,12 @@ pub(crate) fn tick_creatures(
         }
     }
     explosion_writer.write_batch(explosions.drain(..));
+    if let Some(diagnostics) = diagnostics.as_deref_mut() {
+        diagnostics.creatures.record(start.elapsed());
+        diagnostics.ticks += u64::from(ticks);
+        diagnostics.searches.add(pathfinder.take_stats());
+        diagnostics.mobs = crowd.len() - usize::from(target.is_some());
+    }
 }
 
 impl Body<'_> {
@@ -935,10 +951,23 @@ impl Body<'_> {
         }
     }
 
-    /// `World.getPathToEntity(this, playerToAttack, 16)`.
-    fn path_to_player(&self, world: &Surroundings, pathfinder: &mut Pathfinder) -> Option<Path> {
+    /// `World.getPathToEntity(this, playerToAttack, 16)`. Beta repeats this
+    /// every tick while the creature has no path, so the answer to an
+    /// unchanged question is reused rather than searched again.
+    fn path_to_player(
+        &mut self,
+        world: &Surroundings,
+        pathfinder: &mut Pathfinder,
+    ) -> Option<Path> {
         let player = world.player?;
-        pathfinder.path_to_feet(world.chunks, self.feet, self.size, player.feet, 16.0)
+        pathfinder.path_to_feet_reusing(
+            world.chunks,
+            self.feet,
+            self.size,
+            player.feet,
+            16.0,
+            &mut self.living.last_chase,
+        )
     }
 
     /// `EntityLiving.moveSpeed` and its overrides.

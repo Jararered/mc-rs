@@ -7,6 +7,7 @@ use bevy::diagnostic::EntityCountDiagnosticsPlugin;
 use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
 use bevy::prelude::*;
 
+use crate::entity::EntityDiagnostics;
 use crate::world::chunk::WorldChunks;
 use crate::world::streaming::StreamingDiagnostics;
 use crate::world::streaming::TimingStats;
@@ -27,12 +28,36 @@ impl Plugin for DiagnosticsPlugin {
             DIAGNOSTICS_INTERVAL_SECS,
             TimerMode::Repeating,
         )))
+        .init_resource::<FrameSpikes>()
+        .add_systems(First, track_frame_spikes)
         .add_systems(Update, print_perf_stats.after(stream_chunks));
     }
 }
 
 #[derive(Resource)]
 struct DiagnosticsTimer(Timer);
+
+/// Real frame times since the last report. The frame-time diagnostics are
+/// smoothed, which hides a single stutter.
+#[derive(Resource, Default)]
+struct FrameSpikes(Vec<f32>);
+
+impl FrameSpikes {
+    /// The slowest frame, and how many frames took over twice the mean. The
+    /// mean follows the frame cap and the slower unfocused pacing, so neither
+    /// counts as a stutter.
+    fn take(&mut self) -> (f32, usize) {
+        let frames = std::mem::take(&mut self.0);
+        let mean = frames.iter().sum::<f32>() / frames.len().max(1) as f32;
+        let slowest = frames.iter().copied().fold(0.0, f32::max);
+        let long = frames.iter().filter(|ms| **ms > mean * 2.0).count();
+        (slowest, long)
+    }
+}
+
+fn track_frame_spikes(time: Res<Time<Real>>, mut spikes: ResMut<FrameSpikes>) {
+    spikes.0.push(time.delta_secs() * 1000.0);
+}
 
 fn print_perf_stats(
     time: Res<Time>,
@@ -41,6 +66,8 @@ fn print_perf_stats(
     chunks: Option<Res<WorldChunks>>,
     streaming: Option<Res<WorldStreaming>>,
     perf: Option<ResMut<StreamingDiagnostics>>,
+    entity_perf: Option<ResMut<EntityDiagnostics>>,
+    mut spikes: ResMut<FrameSpikes>,
 ) {
     timer.0.tick(time.delta());
     if !timer.0.just_finished() {
@@ -55,6 +82,7 @@ fn print_perf_stats(
         .map(|value| format!("{value:.0}"))
         .unwrap_or_else(|| "n/a".into());
     let entities = fmt_diag(&diagnostics, &EntityCountDiagnosticsPlugin::ENTITY_COUNT, 0);
+    let (slowest_ms, long) = spikes.take();
 
     let loaded_chunks = chunks.as_ref().map_or(0, |chunks| chunks.len());
     let (rendered, layers, mesh_bytes, generating, populating, meshing) =
@@ -87,10 +115,18 @@ fn print_perf_stats(
         ),
     };
 
+    let entity = entity_perf.map(|mut perf| perf.take()).unwrap_or_default();
+    let per_search = if entity.searches.searches > 0 {
+        entity.searches.nodes / entity.searches.searches
+    } else {
+        0
+    };
+
     info!(
         "performance ({DIAGNOSTICS_INTERVAL_SECS:.0}s)\n  \
          fps             {fps}\n  \
          frame time      {frame_ms} ms\n  \
+         slowest frame   {slowest_ms:.2} ms, {long} frames over twice the mean\n  \
          frames          {frames}\n  \
          entities        {entities}\n  \
          chunks          {loaded_chunks} loaded, {generating} generating, {populating} populating\n  \
@@ -100,11 +136,25 @@ fn print_perf_stats(
          chunk generate  {}\n  \
          chunk populate  {}\n  \
          chunk load      {}\n  \
-         mesh            {}",
+         mesh            {}\n  \
+         mobs            {} ({} model boxes)\n  \
+         mob ticks       {} over {} ticks\n  \
+         pathfinding     {} searches, {} nodes ({per_search} per search), {} repeats reused\n  \
+         mob spawning    {}\n  \
+         mob posing      {}",
         fmt_timing(&generate),
         fmt_timing(&populate),
         fmt_timing(&load),
         fmt_timing(&mesh),
+        entity.mobs,
+        entity.parts,
+        fmt_timing(&entity.creatures),
+        entity.ticks,
+        entity.searches.searches,
+        entity.searches.nodes,
+        entity.searches.reused,
+        fmt_timing(&entity.spawning),
+        fmt_timing(&entity.posing),
     );
 }
 
@@ -126,7 +176,7 @@ fn fmt_diag(store: &DiagnosticsStore, path: &DiagnosticPath, digits: usize) -> S
 fn fmt_timing(stats: &TimingStats) -> String {
     match (stats.average_ms(), stats.max_ms()) {
         (Some(average), Some(max)) => {
-            format!("{average:.1} ms avg, {max:.1} ms max (n={})", stats.count())
+            format!("{average:.2} ms avg, {max:.2} ms max (n={})", stats.count())
         }
         _ => "n/a".into(),
     }

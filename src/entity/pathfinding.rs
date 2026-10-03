@@ -8,8 +8,7 @@
 //! Like `World.getEntityPathToXYZ`, the search only sees the chunks of a
 //! bounded region around the walker; everything outside reads as air.
 
-use std::collections::HashMap;
-
+use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 
 use crate::block::fluids::is_lava;
@@ -75,6 +74,46 @@ struct Node {
     closed: bool,
 }
 
+/// How much searching a [`Pathfinder`] has done.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SearchStats {
+    /// Searches run.
+    pub searches: u64,
+    /// Nodes taken off the open heap across those searches.
+    pub nodes: u64,
+    /// Searches answered from the walker's identical previous search.
+    pub reused: u64,
+}
+
+impl SearchStats {
+    pub fn add(&mut self, other: Self) {
+        self.searches += other.searches;
+        self.nodes += other.nodes;
+        self.reused += other.reused;
+    }
+}
+
+/// Everything a search reads: its start and end cells, the body's span, the
+/// distance limit, and which chunks its region holds and their state. The
+/// search draws no random numbers, so two searches with the same key find the
+/// same path.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct SearchKey {
+    start: IVec3,
+    end: IVec3,
+    span: IVec3,
+    max_distance: u32,
+    /// The region's corner chunks, `(min.x, min.z, max.x, max.z)`.
+    region: [i32; 4],
+    membership: u64,
+    edits: u64,
+}
+
+/// One walker's last [`Pathfinder::path_to_feet_reusing`] search and the
+/// path it found.
+#[derive(Clone, Debug, Default)]
+pub struct LastSearch(Option<(SearchKey, Option<Path>)>);
+
 /// `Pathfinder` with its point map and heap kept between searches, so a
 /// search does not allocate once the buffers have grown.
 #[derive(Default)]
@@ -82,6 +121,7 @@ pub struct Pathfinder {
     nodes: Vec<Node>,
     lookup: HashMap<IVec3, u32>,
     heap: Vec<u32>,
+    stats: SearchStats,
 }
 
 /// What `getVerticalOffset` found in the cells a body would occupy.
@@ -98,6 +138,11 @@ enum Clearance {
 }
 
 impl Pathfinder {
+    /// The searching done since the last call.
+    pub fn take_stats(&mut self) -> SearchStats {
+        std::mem::take(&mut self.stats)
+    }
+
     /// `World.getEntityPathToXYZ`: path to the center of a block, as the
     /// wander AI uses.
     pub fn path_to_block(
@@ -132,6 +177,42 @@ impl Pathfinder {
         self.search(&region, feet, size, target, max_distance)
     }
 
+    /// [`Self::path_to_feet`] for a walker that may ask the same question
+    /// every tick, as a creature chasing the player does while it has no
+    /// path. When nothing the search would read has changed since the
+    /// walker's `last` search, that search's path is returned again instead of
+    /// searching.
+    pub fn path_to_feet_reusing(
+        &mut self,
+        chunks: &WorldChunks,
+        feet: Vec3,
+        size: EntitySize,
+        target: Vec3,
+        max_distance: f32,
+        last: &mut LastSearch,
+    ) -> Option<Path> {
+        let region = Region::new(chunks, feet, (max_distance + 16.0) as i32);
+        let (start, end, span) = cells(feet, size, target);
+        let key = SearchKey {
+            start,
+            end,
+            span,
+            max_distance: max_distance.to_bits(),
+            region: region.bounds,
+            membership: region.membership,
+            edits: region.edits,
+        };
+        if let Some((previous, path)) = &last.0
+            && *previous == key
+        {
+            self.stats.reused += 1;
+            return path.clone();
+        }
+        let path = self.search(&region, feet, size, target, max_distance);
+        last.0 = Some((key, path.clone()));
+        path
+    }
+
     /// `createEntityPathTo` and `addToPath`.
     fn search(
         &mut self,
@@ -144,18 +225,10 @@ impl Pathfinder {
         self.nodes.clear();
         self.lookup.clear();
         self.heap.clear();
-        let aabb = size.aabb(feet);
-        let start = self.open(aabb.min.floor().as_ivec3());
-        let end = self.open(IVec3::new(
-            (target.x - size.width / 2.0).floor() as i32,
-            target.y.floor() as i32,
-            (target.z - size.width / 2.0).floor() as i32,
-        ));
-        let span = IVec3::new(
-            (size.width + 1.0).floor() as i32,
-            (size.height + 1.0).floor() as i32,
-            (size.width + 1.0).floor() as i32,
-        );
+        self.stats.searches += 1;
+        let (start, end, span) = cells(feet, size, target);
+        let start = self.open(start);
+        let end = self.open(end);
 
         let to_end = self.distance(start, end);
         let node = &mut self.nodes[start as usize];
@@ -167,6 +240,7 @@ impl Pathfinder {
         let mut options = [0; 4];
         while !self.heap.is_empty() {
             let current = self.dequeue();
+            self.stats.nodes += 1;
             if current == end {
                 return Some(self.build(end));
             }
@@ -386,6 +460,22 @@ impl Pathfinder {
     }
 }
 
+/// The walker's start cell, the target's cell, and the cells the body spans.
+fn cells(feet: Vec3, size: EntitySize, target: Vec3) -> (IVec3, IVec3, IVec3) {
+    let start = size.aabb(feet).min.floor().as_ivec3();
+    let end = IVec3::new(
+        (target.x - size.width / 2.0).floor() as i32,
+        target.y.floor() as i32,
+        (target.z - size.width / 2.0).floor() as i32,
+    );
+    let span = IVec3::new(
+        (size.width + 1.0).floor() as i32,
+        (size.height + 1.0).floor() as i32,
+        (size.width + 1.0).floor() as i32,
+    );
+    (start, end, span)
+}
+
 /// Beta's `ChunkCache`: the chunks within `radius` blocks of the walker, by
 /// whole chunks. Blocks outside it, above or below the world, or in a chunk
 /// that is not loaded read as air.
@@ -393,6 +483,13 @@ struct Region<'a> {
     min: ChunkPosition,
     width: i32,
     chunks: Vec<Option<&'a Chunk>>,
+    /// `(min.x, min.z, max.x, max.z)` in chunks.
+    bounds: [i32; 4],
+    /// Which chunks were loaded anywhere, and how many writes the region's
+    /// chunks have taken. Together they change whenever anything the search
+    /// could read does.
+    membership: u64,
+    edits: u64,
 }
 
 impl<'a> Region<'a> {
@@ -408,15 +505,21 @@ impl<'a> Region<'a> {
         };
         let width = max.x - min.x + 1;
         let mut cached = Vec::with_capacity((width * (max.z - min.z + 1)) as usize);
+        let mut edits = 0;
         for z in min.z..=max.z {
             for x in min.x..=max.x {
-                cached.push(chunks.get(ChunkPosition { x, z }).map(|c| &c.chunk));
+                let chunk = chunks.get(ChunkPosition { x, z }).map(|c| &c.chunk);
+                edits += chunk.map_or(0, |chunk| u64::from(chunk.revision()));
+                cached.push(chunk);
             }
         }
         Self {
             min,
             width,
             chunks: cached,
+            bounds: [min.x, min.z, max.x, max.z],
+            membership: chunks.membership_revision(),
+            edits,
         }
     }
 

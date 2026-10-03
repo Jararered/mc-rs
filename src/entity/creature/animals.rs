@@ -231,7 +231,14 @@ impl Body<'_> {
         owner: Target,
         distance: f32,
     ) {
-        let path = pathfinder.path_to_feet(world.chunks, self.feet, self.size, owner.feet, 16.0);
+        let path = pathfinder.path_to_feet_reusing(
+            world.chunks,
+            self.feet,
+            self.size,
+            owner.feet,
+            16.0,
+            &mut self.living.last_chase,
+        );
         if path.is_some() || distance <= 12.0 {
             self.living.path = path;
             return;

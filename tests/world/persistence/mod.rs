@@ -655,6 +655,80 @@ fn a_drain_spreads_more_chunks_than_one_frame_can_hold() {
 }
 
 #[test]
+fn a_chunk_unloads_without_the_mobs_that_left_it_since_the_autosave() {
+    let saves = temp_saves("mob-unload");
+    let mut app = draining_app(&saves);
+    let player = app
+        .world_mut()
+        .spawn((Player, Transform::from_xyz(8.0, 100.0, 8.0)))
+        .id();
+    run_until_spawn_chunk(&mut app);
+    assert!(run_until(&mut app, Duration::from_secs(30), |app| {
+        let streaming = app
+            .world()
+            .resource::<game::world::streaming::WorldStreaming>();
+        streaming.generating_job_count() == 0 && streaming.populating_job_count() == 0
+    }));
+
+    // The autosave writes a pig into the spawn chunk's records.
+    let ground = (0..CHUNK_HEIGHT as i32)
+        .rev()
+        .find(|&y| {
+            app.world()
+                .resource::<WorldChunks>()
+                .block_at(8, y, 8)
+                .is_some_and(|block| block != Id::Air)
+        })
+        .unwrap();
+    super::mobs::summon(
+        &mut app,
+        Mob::new(MobKind::Pig, 1),
+        Vec3::new(8.5, (ground + 1) as f32, 8.5),
+    );
+    let storage = app
+        .world()
+        .resource::<WorldPersistence>()
+        .storage()
+        .expect("persistence should be enabled")
+        .clone();
+    let saved_mobs = || {
+        storage
+            .load_chunk(ChunkPosition::ZERO)
+            .map_or(0, |chunk| chunk.chunk.mob_records().len())
+    };
+    assert!(run_until(
+        &mut app,
+        Duration::from_secs(20),
+        |_| saved_mobs() > 0
+    ));
+
+    // Every mob dies, then the player leaves before another autosave runs.
+    let mobs: Vec<Entity> = app
+        .world_mut()
+        .query_filtered::<Entity, With<Mob>>()
+        .iter(app.world())
+        .collect();
+    for mob in mobs {
+        app.world_mut().despawn(mob);
+    }
+    app.world_mut()
+        .get_mut::<Transform>(player)
+        .unwrap()
+        .translation
+        .x = 3200.0;
+    assert!(
+        run_until(&mut app, Duration::from_secs(20), |app| {
+            !app.world()
+                .resource::<WorldChunks>()
+                .contains(ChunkPosition::ZERO)
+                && saved_mobs() == 0
+        }),
+        "the unloaded chunk kept {} mobs from the last autosave",
+        saved_mobs()
+    );
+}
+
+#[test]
 fn a_chunk_unloaded_while_its_write_is_in_flight_keeps_the_newer_edit() {
     let saves = temp_saves("in-flight");
     let mut app = draining_app(&saves);

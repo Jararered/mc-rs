@@ -3,6 +3,7 @@ use std::time::Duration;
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
 use game::block::blocks::Block;
+use game::block::direction::HorizontalFacing;
 use game::entity::CollisionState;
 use game::entity::EntitySize;
 use game::entity::Gravity;
@@ -110,11 +111,11 @@ fn air_and_water_do_not_block_movement() {
 #[test]
 fn ladder_collision_is_a_thin_plate_on_the_supporting_wall() {
     assert_eq!(
-        Block::LadderWest.collision_bounds(),
+        Block::Ladder.collision_bounds_for(Block::Ladder.facing_metadata(HorizontalFacing::West)),
         Some(([0.0, 0.0, 0.0], [0.125, 1.0, 1.0]))
     );
     assert_eq!(
-        Block::LadderSouth.collision_bounds(),
+        Block::Ladder.collision_bounds_for(Block::Ladder.facing_metadata(HorizontalFacing::South)),
         Some(([0.0, 0.0, 0.875], [1.0, 1.0, 1.0]))
     );
 }
@@ -124,7 +125,13 @@ fn horizontal_collision_with_a_ladder_starts_a_climb() {
     let mut chunk = Chunk::new();
     for y in 65..70 {
         chunk.set(8, y, 8, Block::Stone);
-        chunk.set(9, y, 8, Block::LadderWest);
+        chunk.set_with_metadata(
+            9,
+            y,
+            8,
+            Block::Ladder,
+            Block::Ladder.facing_metadata(HorizontalFacing::West),
+        );
     }
     let mut chunks = WorldChunks::default();
     chunks.insert(ChunkPosition::ZERO, generated(chunk));
@@ -174,7 +181,7 @@ fn raycast_only_hits_the_torch_near_its_visible_shaft() {
     chunks.insert(ChunkPosition::ZERO, generated(chunk));
 
     assert_eq!(
-        Block::Torch.selection_bounds(),
+        Block::Torch.selection_bounds_for(0),
         ([0.4, 0.0, 0.4], [0.6, 0.625, 0.6])
     );
     assert!(

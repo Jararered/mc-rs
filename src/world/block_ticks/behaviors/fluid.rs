@@ -350,8 +350,5 @@ impl BlockBehavior for Stationary {
 pub fn is_flammable(block: Block) -> bool {
     crate::world::furnace::is_wood_material(block)
         || block.is_chest()
-        || matches!(
-            block,
-            Block::Leaves | Block::SpruceLeaves | Block::BirchLeaves | Block::Wool | Block::Tnt
-        )
+        || matches!(block, Block::Leaves | Block::Wool | Block::Tnt)
 }

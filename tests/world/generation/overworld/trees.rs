@@ -21,14 +21,34 @@ fn count(chunk: &Chunk, block: Block) -> usize {
 }
 
 fn is_leaf(block: Block) -> bool {
-    matches!(
-        block,
-        Block::Leaves | Block::SpruceLeaves | Block::BirchLeaves
-    )
+    block == Block::Leaves
 }
 
 fn is_wood(block: Block) -> bool {
-    matches!(block, Block::Wood | Block::SpruceWood | Block::BirchWood)
+    block == Block::Wood
+}
+
+/// Beta metadata for the species of wood and leaves.
+const SPRUCE: u8 = 1;
+const BIRCH: u8 = 2;
+
+/// Blocks of `block` with `species` metadata.
+fn count_species(chunk: &Chunk, block: Block, species: u8) -> usize {
+    let mut total = 0;
+    for y in 0..CHUNK_HEIGHT {
+        for z in 0..CHUNK_SIZE {
+            for x in 0..CHUNK_SIZE {
+                if is_species(chunk, x, y, z, block, species) {
+                    total += 1;
+                }
+            }
+        }
+    }
+    total
+}
+
+fn is_species(chunk: &Chunk, x: usize, y: usize, z: usize, block: Block, species: u8) -> bool {
+    chunk.get(x, y, z) == Some(block) && chunk.metadata(x, y, z) & 3 == species
 }
 
 #[test]
@@ -85,8 +105,8 @@ fn taiga_chunks_generate_spruce_trees() {
                 if !contains_taiga {
                     continue;
                 }
-                let spruce_trunks = count(&generated.chunk, Block::SpruceWood);
-                let spruce_leaves = count(&generated.chunk, Block::SpruceLeaves);
+                let spruce_trunks = count_species(&generated.chunk, Block::Wood, SPRUCE);
+                let spruce_leaves = count_species(&generated.chunk, Block::Leaves, SPRUCE);
                 if spruce_trunks > 0 {
                     assert!(spruce_leaves > 0, "spruce trunks need spruce canopies");
                     return;
@@ -156,17 +176,11 @@ fn pumpkin_patches_generate_facing_pumpkins_on_grass() {
                         let Some(block) = generated.chunk.get(x, y, z) else {
                             continue;
                         };
-                        if !matches!(
-                            block,
-                            Block::PumpkinNorth
-                                | Block::PumpkinEast
-                                | Block::PumpkinSouth
-                                | Block::PumpkinWest
-                        ) {
+                        if block != Block::Pumpkin {
                             continue;
                         }
                         assert_eq!(generated.chunk.get(x, y - 1, z), Some(Block::Grass));
-                        assert!(block.pumpkin_facing().is_some());
+                        assert!(block.facing(generated.chunk.metadata(x, y, z)).is_some());
                         return;
                     }
                 }
@@ -179,13 +193,16 @@ fn pumpkin_patches_generate_facing_pumpkins_on_grass() {
 fn assert_wood_components_do_not_merge_trunks(
     chunk: &Chunk,
     chunk_pos: ChunkPosition,
-    wood: Block,
+    species: u8,
 ) {
+    let wood = |chunk: &Chunk, x: usize, y: usize, z: usize| {
+        is_species(chunk, x, y, z, Block::Wood, species)
+    };
     let mut visited = [[[false; CHUNK_SIZE]; CHUNK_SIZE]; CHUNK_HEIGHT];
     for y in 0..CHUNK_HEIGHT {
         for z in 0..CHUNK_SIZE {
             for x in 0..CHUNK_SIZE {
-                if visited[y][z][x] || chunk.get(x, y, z) != Some(wood) {
+                if visited[y][z][x] || !wood(chunk, x, y, z) {
                     continue;
                 }
                 let mut pending = vec![(x, y, z)];
@@ -195,8 +212,8 @@ fn assert_wood_components_do_not_merge_trunks(
                     if y > 0
                         && y + 2 < CHUNK_HEIGHT
                         && matches!(chunk.get(x, y - 1, z), Some(Block::Dirt | Block::Grass))
-                        && chunk.get(x, y + 1, z) == Some(wood)
-                        && chunk.get(x, y + 2, z) == Some(wood)
+                        && wood(chunk, x, y + 1, z)
+                        && wood(chunk, x, y + 2, z)
                     {
                         grounded_trunks.push((x, y, z));
                     }
@@ -212,7 +229,7 @@ fn assert_wood_components_do_not_merge_trunks(
                             && nz < CHUNK_SIZE
                             && ny < CHUNK_HEIGHT
                             && !visited[ny][nz][nx]
-                            && chunk.get(nx, ny, nz) == Some(wood)
+                            && wood(chunk, nx, ny, nz)
                         {
                             visited[ny][nz][nx] = true;
                             pending.push((nx, ny, nz));
@@ -221,7 +238,7 @@ fn assert_wood_components_do_not_merge_trunks(
                 }
                 assert!(
                     grounded_trunks.len() <= 1,
-                    "{wood:?} component in chunk ({}, {}) contains trunks at {grounded_trunks:?}",
+                    "species {species} wood component in chunk ({}, {}) contains trunks at {grounded_trunks:?}",
                     chunk_pos.x,
                     chunk_pos.z
                 );
@@ -239,12 +256,12 @@ fn tree_wood_components_do_not_merge_trunks() {
             for x in -1..=1 {
                 let position = ChunkPosition { x, z };
                 let generated = generator.generate(position);
-                for wood in [Block::BirchWood, Block::SpruceWood] {
-                    if count(&generated.chunk, wood) == 0 {
+                for species in [BIRCH, SPRUCE] {
+                    if count_species(&generated.chunk, Block::Wood, species) == 0 {
                         continue;
                     }
                     sampled = true;
-                    assert_wood_components_do_not_merge_trunks(&generated.chunk, position, wood);
+                    assert_wood_components_do_not_merge_trunks(&generated.chunk, position, species);
                 }
             }
         }
@@ -273,10 +290,8 @@ fn assert_trunks_start_on_ground(chunk: &Chunk, found_birch: &mut bool) {
     for z in 0..CHUNK_SIZE {
         for x in 0..CHUNK_SIZE {
             for y in 1..CHUNK_HEIGHT - 1 {
-                if chunk.get(x, y, z) != Some(Block::BirchWood)
-                    || chunk.get(x, y + 1, z) != Some(Block::BirchWood)
-                    || chunk.get(x, y - 1, z) == Some(Block::BirchWood)
-                {
+                let birch = |y| is_species(chunk, x, y, z, Block::Wood, BIRCH);
+                if !birch(y) || !birch(y + 1) || birch(y - 1) {
                     continue;
                 }
                 *found_birch = true;

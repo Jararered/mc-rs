@@ -48,18 +48,22 @@ fn paper_recipe_uses_three_sugar_cane_in_any_arrangement() {
 #[test]
 fn logs_craft_into_matching_species_of_planks() {
     let book = beta_recipe_book();
-    for (log, species, planks) in [
-        (Block::Wood, 0, Block::WoodenPlanks),
-        (Block::SpruceWood, 1, Block::SprucePlanks),
-        (Block::BirchWood, 2, Block::BirchPlanks),
+    for (species, planks) in [
+        (0, Block::WoodenPlanks),
+        (1, Block::WoodenPlanks),
+        (2, Block::WoodenPlanks),
     ] {
         let mut grid = CraftingGrid::player();
-        grid.set(0, 0, Some(ItemStack::from_block(log, 1).unwrap()));
+        grid.set(
+            0,
+            0,
+            Some(ItemStack::from_block_state(Block::Wood, species, 1).unwrap()),
+        );
         let output = book.find(&grid).expect("a log should craft into planks");
         assert_eq!(output.item(), block(Block::WoodenPlanks));
         assert_eq!(output.count(), 4);
-        assert_eq!(output.data(), species);
-        assert_eq!(output.runtime_block(), Some(planks));
+        assert_eq!(output.data(), u16::from(species));
+        assert_eq!(output.runtime_block(), Some((planks, species)));
     }
 }
 

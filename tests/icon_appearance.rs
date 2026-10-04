@@ -1,5 +1,5 @@
 use game::block::blocks::Block;
-use game::block::blocks::FurnaceFacing;
+use game::block::direction::HorizontalFacing;
 use game::rendering::appearance::Shape;
 use game::rendering::appearance::block_appearance;
 use game::rendering::appearance::item_tile;
@@ -54,34 +54,35 @@ fn standalone_items_use_beta_items_atlas_tiles() {
 
 #[test]
 fn crafting_table_uses_workbench_tiles_in_world_meshes() {
-    assert_eq!(block_tile(Block::CraftingTable, 0, true), (11, 2));
-    assert_eq!(block_tile(Block::CraftingTable, 1, true), (4, 0));
-    assert_eq!(block_tile(Block::CraftingTable, 2, true), (12, 3));
-    assert_eq!(block_tile(Block::CraftingTable, 3, true), (11, 3));
-    assert_eq!(block_tile(Block::CraftingTable, 4, true), (12, 3));
-    assert_eq!(block_tile(Block::CraftingTable, 5, true), (11, 3));
-    assert_ne!(block_tile(Block::CraftingTable, 0, true), (1, 0));
+    assert_eq!(block_tile(Block::CraftingTable, 0, 0, true), (11, 2));
+    assert_eq!(block_tile(Block::CraftingTable, 0, 1, true), (4, 0));
+    assert_eq!(block_tile(Block::CraftingTable, 0, 2, true), (12, 3));
+    assert_eq!(block_tile(Block::CraftingTable, 0, 3, true), (11, 3));
+    assert_eq!(block_tile(Block::CraftingTable, 0, 4, true), (12, 3));
+    assert_eq!(block_tile(Block::CraftingTable, 0, 5, true), (11, 3));
+    assert_ne!(block_tile(Block::CraftingTable, 0, 0, true), (1, 0));
 }
 
 #[test]
 fn snow_layer_and_snow_block_use_beta_snow_tile() {
-    assert_eq!(block_tile(Block::SnowLayer, 0, false), (2, 4));
-    assert_eq!(block_tile(Block::Snow, 0, false), (2, 4));
+    assert_eq!(block_tile(Block::SnowLayer, 0, 0, false), (2, 4));
+    assert_eq!(block_tile(Block::Snow, 0, 0, false), (2, 4));
 }
 
 #[test]
 fn furnace_faces_follow_orientation_and_lit_state() {
-    let furnace = Block::Furnace.with_furnace_state(FurnaceFacing::East, false);
-    let lit = Block::Furnace.with_furnace_state(FurnaceFacing::East, true);
+    let furnace = Block::Furnace;
+    let lit = Block::LitFurnace;
+    let east = Block::Furnace.facing_metadata(HorizontalFacing::East);
 
-    assert_eq!(block_tile(furnace, 0, false), (14, 3));
-    assert_eq!(block_tile(furnace, 2, false), (12, 2));
-    assert_eq!(block_tile(furnace, 3, false), (13, 2));
-    assert_eq!(block_tile(lit, 0, false), (14, 3));
-    assert_eq!(block_tile(lit, 2, false), (13, 3));
-    assert_eq!(block_tile(lit, 3, false), (13, 2));
-    assert_eq!(lit.furnace_facing(), Some(FurnaceFacing::East));
-    assert_eq!(lit.item_form(), (Block::Furnace, 0));
+    assert_eq!(block_tile(furnace, east, 0, false), (14, 3));
+    assert_eq!(block_tile(furnace, east, 2, false), (12, 2));
+    assert_eq!(block_tile(furnace, east, 3, false), (13, 2));
+    assert_eq!(block_tile(lit, east, 0, false), (14, 3));
+    assert_eq!(block_tile(lit, east, 2, false), (13, 3));
+    assert_eq!(block_tile(lit, east, 3, false), (13, 2));
+    assert_eq!(lit.facing(east), Some(HorizontalFacing::East));
+    assert_eq!(lit.item_form(east), (Block::Furnace, 0));
     assert_eq!(lit.as_u8(), Block::from_u8(lit.as_u8()).unwrap().as_u8());
 }
 

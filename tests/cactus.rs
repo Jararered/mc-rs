@@ -47,9 +47,9 @@ fn world_with(chunk: Chunk) -> WorldChunks {
 
 #[test]
 fn cactus_uses_species_faces_and_an_inset_world_mesh() {
-    assert_eq!(block_tile(Block::Cactus, 0, false), (5, 4));
-    assert_eq!(block_tile(Block::Cactus, 1, false), (7, 4));
-    assert_eq!(block_tile(Block::Cactus, 2, false), (6, 4));
+    assert_eq!(block_tile(Block::Cactus, 0, 0, false), (5, 4));
+    assert_eq!(block_tile(Block::Cactus, 0, 1, false), (7, 4));
+    assert_eq!(block_tile(Block::Cactus, 0, 2, false), (6, 4));
 
     let mut chunk = Chunk::new();
     chunk.set(1, 1, 1, Block::Cactus);
@@ -108,7 +108,7 @@ fn cactus_uses_species_faces_and_an_inset_world_mesh() {
     assert_eq!((top_min, top_max), (top_u0, top_u1));
 
     for face in 0..6 {
-        let tile = block_tile(Block::Cactus, face, false);
+        let tile = block_tile(Block::Cactus, 0, face, false);
         let (u0, v0, u1, v1) = atlas_tile_uvs(tile.0, tile.1);
         let face_uvs = &uvs[face * 4..face * 4 + 4];
         assert_eq!(
@@ -141,7 +141,7 @@ fn cactus_uses_species_faces_and_an_inset_world_mesh() {
         );
     }
 
-    let dropped = dropped_block_meshes(Block::Cactus, false, [1.0; 3], [1.0; 3]);
+    let dropped = dropped_block_meshes(Block::Cactus, 0, false, [1.0; 3], [1.0; 3]);
     assert!(dropped.alpha_masked);
     assert_eq!(dropped.body.vertex_count(), 24);
     let dropped_positions = dropped.body.positions();
@@ -185,7 +185,7 @@ fn cactus_placement_requires_sand_support_and_clear_sides() {
     };
     let player = Aabb::new(Vec3::new(0.0, 70.0, 0.0), Vec3::new(0.6, 71.8, 0.6));
     let cactus_stack = ItemStack::from_block(Block::Cactus, 1).unwrap();
-    assert_eq!(cactus_stack.runtime_block(), Some(Block::Cactus));
+    assert_eq!(cactus_stack.runtime_block(), Some((Block::Cactus, 0)));
 
     let mut supported = Chunk::new();
     supported.set(8, 64, 8, Block::Sand);
@@ -194,7 +194,7 @@ fn cactus_placement_requires_sand_support_and_clear_sides() {
         &mut chunks,
         hit,
         player,
-        cactus_stack.runtime_block().unwrap(),
+        cactus_stack.runtime_block().unwrap().0,
     ));
     assert_eq!(chunks.block_at(8, 65, 8), Some(Block::Cactus));
 

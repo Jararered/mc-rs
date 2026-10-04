@@ -47,7 +47,8 @@ impl Plugin for BlockParticlePlugin {
 
 #[derive(Clone, Copy, Debug)]
 enum ParticleRequest {
-    Break(BlockHit),
+    /// The block is already gone, so its metadata travels with the request.
+    Break(BlockHit, u8),
     Hit(BlockHit),
 }
 
@@ -72,7 +73,13 @@ impl Default for BlockParticles {
 
 impl BlockParticles {
     pub fn emit_break(&mut self, hit: BlockHit) {
-        self.requests.push(ParticleRequest::Break(hit));
+        self.emit_break_state(hit, 0);
+    }
+
+    /// [`Self::emit_break`] for a block whose metadata changes its texture,
+    /// such as a leaf or log species.
+    pub fn emit_break_state(&mut self, hit: BlockHit, metadata: u8) {
+        self.requests.push(ParticleRequest::Break(hit, metadata));
     }
 
     pub fn emit_hit(&mut self, hit: BlockHit) {
@@ -110,7 +117,9 @@ impl BlockParticles {
         let requests = std::mem::take(&mut self.requests);
         for request in requests {
             match request {
-                ParticleRequest::Break(hit) => self.spawn_break(hit, chunks, foliage, grass),
+                ParticleRequest::Break(hit, metadata) => {
+                    self.spawn_break(hit, metadata, chunks, foliage, grass)
+                }
                 ParticleRequest::Hit(hit) => self.spawn_hit(hit, chunks, foliage, grass),
             }
         }
@@ -119,6 +128,7 @@ impl BlockParticles {
     fn spawn_break(
         &mut self,
         hit: BlockHit,
+        metadata: u8,
         chunks: &WorldChunks,
         foliage: Option<&FoliageColors>,
         grass: Option<&GrassColors>,
@@ -131,8 +141,9 @@ impl BlockParticles {
                         / BURST_SIDE as f32;
                     let position = Vec3::new(hit.x as f32, hit.y as f32, hit.z as f32) + offset;
                     let outward = offset - Vec3::splat(0.5);
-                    let particle = self
-                        .new_particle(position, outward, hit.block, climate, foliage, grass, 1.0);
+                    let particle = self.new_particle(
+                        position, outward, hit.block, metadata, climate, foliage, grass, 1.0,
+                    );
                     self.push(particle);
                 }
             }
@@ -147,6 +158,7 @@ impl BlockParticles {
         grass: Option<&GrassColors>,
     ) {
         let climate = chunks.climate_at(hit.x, hit.z);
+        let metadata = chunks.metadata_at(hit.x, hit.y, hit.z);
         let mut offset = Vec3::new(
             0.1 + self.random() * 0.8,
             0.1 + self.random() * 0.8,
@@ -165,6 +177,7 @@ impl BlockParticles {
             position,
             Vec3::ZERO,
             hit.block,
+            metadata,
             climate,
             foliage,
             grass,
@@ -181,6 +194,7 @@ impl BlockParticles {
         position: Vec3,
         outward: Vec3,
         block: Block,
+        metadata: u8,
         climate: Option<Climate>,
         foliage: Option<&FoliageColors>,
         grass: Option<&GrassColors>,
@@ -197,17 +211,17 @@ impl BlockParticles {
         let jitter = Vec2::new(self.random() * 3.0, self.random() * 3.0);
         let size = (0.5 + self.random() * 0.5) * scale * 0.1;
         let max_age = (4.0 / (self.random() * 0.9 + 0.1)) as u8;
-        let (tile_x, tile_y) = block_tile(block, 1, true);
+        let (tile_x, tile_y) = block_tile(block, metadata, 1, true);
         let (u0, v0, u1, v1) = atlas_tile_uvs(tile_x, tile_y);
         let tile_size = Vec2::new(u1 - u0, v1 - v0);
         let patch_min = Vec2::new(u0, v0) + jitter * tile_size * 0.25;
         let patch_max = patch_min + tile_size * 0.24975;
         let block_tint = match block {
-            Block::TallGrass | Block::Fern => Some(grass.map_or_else(
+            Block::TallGrass => Some(grass.map_or_else(
                 || GrassColors::default().sample_optional(climate),
                 |colors| colors.sample_optional(climate),
             )),
-            Block::Leaves | Block::SpruceLeaves | Block::BirchLeaves => {
+            Block::Leaves => {
                 climate.map(|climate| foliage.map_or([0.28, 0.71, 0.09], |f| f.sample(climate)))
             }
             _ => None,

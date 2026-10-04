@@ -54,7 +54,6 @@ pub(super) fn table() -> [&'static dyn BlockBehavior; 256] {
             Block::Dandelion,
             Block::Rose,
             Block::TallGrass,
-            Block::Fern,
             Block::DeadBush,
         ],
         &plants::FLOWER,
@@ -66,16 +65,8 @@ pub(super) fn table() -> [&'static dyn BlockBehavior; 256] {
     );
     register(&mut table, &[Block::Cactus], &plants::CACTUS);
     register(&mut table, &[Block::SugarCane], &plants::REED);
-    register(
-        &mut table,
-        &[Block::Leaves, Block::SpruceLeaves, Block::BirchLeaves],
-        &leaves::LEAVES,
-    );
-    register(
-        &mut table,
-        &[Block::Wood, Block::SpruceWood, Block::BirchWood],
-        &leaves::LOG,
-    );
+    register(&mut table, &[Block::Leaves], &leaves::LEAVES);
+    register(&mut table, &[Block::Wood], &leaves::LOG);
     register(
         &mut table,
         &[Block::RedstoneOre, Block::LitRedstoneOre],
@@ -84,28 +75,8 @@ pub(super) fn table() -> [&'static dyn BlockBehavior; 256] {
     register(&mut table, &[Block::Ice], &snow::ICE);
     register(&mut table, &[Block::SnowLayer], &snow::SNOW_LAYER);
     register(&mut table, &[Block::Snow], &snow::SNOW_BLOCK);
-    register(
-        &mut table,
-        &[
-            Block::Torch,
-            Block::TorchWest,
-            Block::TorchEast,
-            Block::TorchNorth,
-            Block::TorchSouth,
-        ],
-        &attached::TORCH,
-    );
-    register(
-        &mut table,
-        &[
-            Block::Ladder,
-            Block::LadderNorth,
-            Block::LadderEast,
-            Block::LadderSouth,
-            Block::LadderWest,
-        ],
-        &attached::LADDER,
-    );
+    register(&mut table, &[Block::Torch], &attached::TORCH);
+    register(&mut table, &[Block::Ladder], &attached::LADDER);
     register(&mut table, &[Block::Sponge], &sponge::SPONGE);
     table
 }

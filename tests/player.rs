@@ -2,7 +2,7 @@ use bevy::mesh::VertexAttributeValues;
 use bevy::prelude::Mesh;
 use bevy::prelude::Vec3;
 use game::block::blocks::Block;
-use game::block::blocks::FurnaceFacing;
+use game::block::direction::HorizontalFacing;
 use game::block::fluids::FluidType;
 use game::block::properties::hand_mine_progress_per_tick;
 use game::entity::EntitySize;
@@ -160,14 +160,18 @@ fn placed_furnace_front_faces_the_player_and_survives_lit_transitions() {
         hit(8, 64, 8, BlockFace::Up, Block::Dirt),
         player,
         Block::Furnace,
-        FurnaceFacing::East,
+        0,
+        HorizontalFacing::East,
     ));
     let furnace = chunks.block_at(8, 65, 8).unwrap();
-    assert_eq!(furnace, Block::FurnaceEast);
-    assert_eq!(furnace.with_furnace_lit(true), Block::LitFurnaceEast);
+    let metadata = chunks.metadata_at(8, 65, 8);
+    assert_eq!(furnace, Block::Furnace);
+    assert_eq!(furnace.facing(metadata), Some(HorizontalFacing::East));
+    // Lighting the furnace swaps the block and keeps the facing.
+    chunks.set_block_with_metadata(8, 65, 8, Block::LitFurnace, metadata);
     assert_eq!(
-        furnace.with_furnace_lit(true).with_furnace_lit(false),
-        furnace
+        Block::LitFurnace.facing(chunks.metadata_at(8, 65, 8)),
+        Some(HorizontalFacing::East)
     );
 }
 
@@ -183,12 +187,15 @@ fn placed_ladder_attaches_to_the_clicked_wall_and_drops_as_a_ladder_item() {
         hit(8, 64, 8, BlockFace::East, Block::Stone),
         player,
         Block::Ladder,
-        FurnaceFacing::South,
+        0,
+        HorizontalFacing::South,
     ));
     let ladder = chunks.block_at(9, 64, 8).unwrap();
-    assert_eq!(ladder, Block::LadderWest);
-    assert_eq!(ladder.item_form(), (Block::Ladder, 0));
-    assert_eq!(ladder.item_form().0.placed(0), Some(Block::Ladder));
+    let metadata = chunks.metadata_at(9, 64, 8);
+    assert_eq!(ladder, Block::Ladder);
+    assert_eq!(ladder.facing(metadata), Some(HorizontalFacing::West));
+    assert_eq!(ladder.item_form(metadata), (Block::Ladder, 0));
+    assert_eq!(ladder.placed(0), Some((Block::Ladder, 0)));
     assert!(break_block(
         &mut chunks,
         hit(8, 64, 8, BlockFace::Up, Block::Stone)
@@ -208,9 +215,14 @@ fn placed_pumpkin_front_faces_the_player() {
         hit(8, 64, 8, BlockFace::Up, Block::Grass),
         player,
         Block::Pumpkin,
-        FurnaceFacing::East,
+        0,
+        HorizontalFacing::East,
     ));
-    assert_eq!(chunks.block_at(8, 65, 8), Some(Block::PumpkinEast));
+    assert_eq!(chunks.block_at(8, 65, 8), Some(Block::Pumpkin));
+    assert_eq!(
+        Block::Pumpkin.facing(chunks.metadata_at(8, 65, 8)),
+        Some(HorizontalFacing::East)
+    );
 }
 
 #[test]
@@ -264,7 +276,11 @@ fn torch_attaches_to_walls_and_drops_when_support_breaks() {
         hit(8, 64, 8, BlockFace::East, Block::Stone),
         player,
     ));
-    assert_eq!(chunks.block_at(9, 64, 8), Some(Block::TorchWest));
+    assert_eq!(chunks.block_at(9, 64, 8), Some(Block::Torch));
+    assert_eq!(
+        Block::Torch.facing(chunks.metadata_at(9, 64, 8)),
+        Some(HorizontalFacing::West)
+    );
     assert!(break_block(
         &mut chunks,
         hit(8, 64, 8, BlockFace::Up, Block::Stone),

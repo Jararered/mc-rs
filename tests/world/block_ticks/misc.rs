@@ -98,15 +98,19 @@ fn snow_layers_melt_in_torch_light_and_need_solid_ground() {
     );
 }
 
+/// Beta metadata: a torch on a wall to its west, a ladder against the wall to its north.
+const WEST_TORCH: u8 = 1;
+const NORTH_LADDER: u8 = 3;
+
 #[test]
 fn torches_and_ladders_break_off_when_their_wall_goes() {
     let mut world = TestWorld::new(1);
     world.set(at(8, 64, 8), Block::Stone);
-    world.set(at(9, 64, 8), Block::TorchWest);
-    world.set(at(8, 64, 9), Block::LadderNorth);
+    world.set_with_metadata(at(9, 64, 8), Block::Torch, WEST_TORCH);
+    world.set_with_metadata(at(8, 64, 9), Block::Ladder, NORTH_LADDER);
     world.set(at(8, 65, 8), Block::Torch);
     world.set(at(6, 65, 8), Block::Stone);
-    world.set(at(7, 65, 8), Block::TorchWest);
+    world.set_with_metadata(at(7, 65, 8), Block::Torch, WEST_TORCH);
     world.set(at(8, 66, 8), Block::Stone);
 
     world.place(at(8, 64, 8), Block::Air);
@@ -123,13 +127,10 @@ fn torches_and_ladders_break_off_when_their_wall_goes() {
         .map(|(_, block, _)| block)
         .collect();
     dropped.sort_by_key(|block| block.as_u8());
-    assert_eq!(
-        dropped,
-        vec![Block::Torch, Block::TorchWest, Block::LadderNorth]
-    );
+    assert_eq!(dropped, vec![Block::Torch, Block::Torch, Block::Ladder]);
     assert_eq!(
         world.block(at(7, 65, 8)),
-        Block::TorchWest,
+        Block::Torch,
         "other torches keep their walls"
     );
 }

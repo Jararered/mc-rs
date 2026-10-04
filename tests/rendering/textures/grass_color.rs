@@ -54,7 +54,7 @@ fn grass_color_varies_with_climate_within_one_biome() {
 fn crossed_grass_mesh_uses_each_column_biome_grass_color() {
     let mut chunk = Chunk::new();
     chunk.set(2, 64, 3, Block::TallGrass);
-    chunk.set(4, 64, 5, Block::Fern);
+    chunk.set_with_metadata(4, 64, 5, Block::TallGrass, 2);
     let wet = Climate {
         temperature: 0.5,
         humidity: 0.5,

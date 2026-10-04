@@ -1,4 +1,5 @@
 use game::block::blocks::Block;
+use game::block::direction::HorizontalFacing;
 use game::inventory::Hotbar;
 use game::item::Item;
 use game::item::ItemData;
@@ -52,7 +53,7 @@ fn registries_cover_beta_ranges_without_registering_holes_or_air_items() {
         (0..=u8::MAX)
             .filter(|raw| Block::from_u8(*raw).is_some())
             .count(),
-        128
+        97
     );
     assert_eq!(ItemRegistry::iter().count(), 202);
     for raw in 0..=u16::MAX {
@@ -71,19 +72,18 @@ fn registries_cover_beta_ranges_without_registering_holes_or_air_items() {
             Some(block) => {
                 assert_eq!(block.as_u8(), raw);
             }
-            None => assert!(raw > 96 && !(200..=208).contains(&raw) && !(209..=218).contains(&raw)),
+            None => assert!(raw > 96),
         }
     }
 }
 
 #[test]
-fn known_beta_identities_do_not_use_the_native_variant_ids() {
+fn known_beta_identities_are_the_only_block_ids() {
     assert_eq!(Block::Cake.as_u8(), 92);
     assert_eq!(Block::Repeater.as_u8(), 93);
     assert_eq!(Block::PoweredRepeater.as_u8(), 94);
     assert_eq!(Block::LockedChest.as_u8(), 95);
     assert_eq!(Block::Trapdoor.as_u8(), 96);
-    assert_eq!(Block::SpruceLeaves.as_u8(), 200);
     assert_eq!(Item::IronShovel.as_u16(), 256);
     assert_eq!(Item::Diamond.as_u16(), 264);
     assert_eq!(Item::WoodenDoor.as_u16(), 324);
@@ -92,7 +92,6 @@ fn known_beta_identities_do_not_use_the_native_variant_ids() {
     assert_eq!(Item::Record13.as_u16(), 2256);
     assert_eq!(Item::RecordCat.as_u16(), 2257);
     assert_eq!(Item::from_block(Block::Stone).unwrap().as_u16(), 1);
-    assert!(Item::from_block(Block::SpruceWood).is_none());
     assert_eq!(
         ItemRegistry::get(257).unwrap().item.to_string(),
         "IronPickaxe"
@@ -108,31 +107,15 @@ fn item_ids_format_as_their_rust_variants() {
 
 #[test]
 fn native_save_values_and_supported_states_round_trip() {
-    assert_eq!(Block::from_u8(200), Some(Block::SpruceLeaves));
-    assert_eq!(Block::from_u8(204), Some(Block::TorchWest));
     for raw in 0..=u8::MAX {
         if let Some(block) = Block::from_u8(raw) {
             assert_eq!(block.as_u8(), raw);
-            let (item_block, metadata) = block.item_form();
-            let placed = item_block.placed(metadata);
-            if matches!(
-                block,
-                Block::TorchWest | Block::TorchEast | Block::TorchNorth | Block::TorchSouth
-            ) {
-                assert_eq!(placed, Some(Block::Torch));
-            } else if matches!(
-                block,
-                Block::PumpkinNorth | Block::PumpkinEast | Block::PumpkinSouth | Block::PumpkinWest
-            ) {
-                assert_eq!(placed, Some(Block::Pumpkin));
-            } else if block.is_furnace() {
-                assert_eq!(placed, Some(Block::Furnace));
-            } else if block.is_chest() {
-                assert_eq!(placed, Some(Block::Chest));
-            } else if block.is_ladder() && block != Block::Ladder {
-                assert_eq!(placed, Some(Block::Ladder));
+            let (item_block, data) = block.item_form(0);
+            let placed = item_block.placed(data);
+            if block == Block::LitFurnace {
+                assert_eq!(placed, Some((Block::Furnace, 0)));
             } else if block.in_world() {
-                assert_eq!(placed, Some(block));
+                assert_eq!(placed, Some((block, 0)));
             }
         }
     }
@@ -198,33 +181,29 @@ fn beta_stack_and_durability_rules_include_pre_release_differences() {
 }
 
 #[test]
-fn species_survive_stacks_but_torch_attachments_do_not() {
-    let spruce = ItemStack::from_block(Block::SpruceWood, 4).unwrap();
-    assert_eq!(spruce.item(), Item::from_block(Block::Wood).unwrap());
-    assert_eq!(spruce.data(), 1);
-    assert_eq!(spruce.runtime_block(), Some(Block::SpruceWood));
-    let birch = ItemStack::from_block(Block::BirchLeaves, 4).unwrap();
-    assert_eq!(birch.item(), Item::from_block(Block::Leaves).unwrap());
-    assert_eq!(birch.data(), 2);
-    assert_eq!(birch.runtime_block(), Some(Block::BirchLeaves));
-    let spruce_planks = ItemStack::from_block(Block::SprucePlanks, 4).unwrap();
-    assert_eq!(
-        spruce_planks.item(),
-        Item::from_block(Block::WoodenPlanks).unwrap()
-    );
-    assert_eq!(spruce_planks.data(), 1);
-    assert_eq!(spruce_planks.runtime_block(), Some(Block::SprucePlanks));
-    let birch_planks = ItemStack::from_block(Block::BirchPlanks, 4).unwrap();
-    assert_eq!(
-        birch_planks.item(),
-        Item::from_block(Block::WoodenPlanks).unwrap()
-    );
-    assert_eq!(birch_planks.data(), 2);
-    assert_eq!(birch_planks.runtime_block(), Some(Block::BirchPlanks));
-    let torch = ItemStack::from_block(Block::TorchEast, 4).unwrap();
+fn species_survive_stacks_but_orientation_does_not() {
+    let wood = Item::from_block(Block::Wood).unwrap();
+    let leaves = Item::from_block(Block::Leaves).unwrap();
+    let planks = Item::from_block(Block::WoodenPlanks).unwrap();
+    for (block, item, species) in [
+        (Block::Wood, wood, 1),
+        (Block::Leaves, leaves, 2),
+        (Block::WoodenPlanks, planks, 1),
+        (Block::WoodenPlanks, planks, 2),
+    ] {
+        let stack = ItemStack::from_block_state(block, species, 4).unwrap();
+        assert_eq!(stack.item(), item);
+        assert_eq!(stack.data(), u16::from(species));
+        assert_eq!(stack.runtime_block(), Some((block, species)));
+    }
+    // A leaf's decay flag is not part of the stack.
+    let flagged = ItemStack::from_block_state(Block::Leaves, 1 | 8, 4).unwrap();
+    assert_eq!(flagged.data(), 1);
+    let east = Block::Torch.facing_metadata(HorizontalFacing::East);
+    let torch = ItemStack::from_block_state(Block::Torch, east, 4).unwrap();
     assert_eq!(torch.item(), Item::from_block(Block::Torch).unwrap());
     assert_eq!(torch.data(), 0);
-    assert_eq!(torch.runtime_block(), Some(Block::Torch));
+    assert_eq!(torch.runtime_block(), Some((Block::Torch, 0)));
     assert!(ItemStack::from_block(Block::Air, 1).is_err());
 }
 
@@ -311,8 +290,6 @@ fn tool_break_times_match_beta_173() {
     assert_eq!(t(Some(Item::GoldShovel), Block::Snow), Some(1));
 
     assert_eq!(t(Some(Item::Shears), Block::Leaves), Some(1));
-    assert_eq!(t(Some(Item::Shears), Block::SpruceLeaves), Some(1));
-    assert_eq!(t(Some(Item::Shears), Block::BirchLeaves), Some(1));
     assert_eq!(t(Some(Item::Shears), Block::Wool), Some(5));
     assert_eq!(str_vs_block(held(Item::Shears), Block::Cobweb), 15.0);
     assert_eq!(str_vs_block(held(Item::IronSword), Block::Cobweb), 15.0);
@@ -322,8 +299,6 @@ fn tool_break_times_match_beta_173() {
     assert_eq!(t(Some(Item::IronSword), Block::Stone), Some(150));
     assert_eq!(t(Some(Item::WoodenAxe), Block::Wood), Some(30));
     assert_eq!(t(Some(Item::DiamondAxe), Block::Wood), Some(8));
-    assert_eq!(t(Some(Item::DiamondAxe), Block::SpruceWood), Some(8));
-    assert_eq!(t(Some(Item::WoodenAxe), Block::BirchWood), Some(30));
     assert_eq!(t(Some(Item::WoodenAxe), Block::Bookshelf), Some(23));
     assert_eq!(t(Some(Item::DiamondAxe), Block::CraftingTable), Some(75));
     assert_eq!(t(None, Block::CraftingTable), Some(75));
@@ -447,7 +422,6 @@ fn block_breaks_spend_beta_durability() {
 
     let shears = ItemStack::new(Item::Shears, 1).unwrap();
     assert_eq!(break_durability(shears, Block::Leaves), 1);
-    assert_eq!(break_durability(shears, Block::BirchLeaves), 1);
     assert_eq!(break_durability(shears, Block::Wool), 0);
     assert_eq!(break_durability(shears, Block::Cobweb), 1);
     assert_eq!(break_durability(shears, Block::Stone), 0);

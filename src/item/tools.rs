@@ -119,17 +119,6 @@ pub fn is_hoe(item: Item) -> bool {
     matches!(tool_type(item), Some(ToolType::Hoe(_)))
 }
 
-fn is_log(block: Block) -> bool {
-    matches!(block, Block::Wood | Block::SpruceWood | Block::BirchWood)
-}
-
-fn is_leaves(block: Block) -> bool {
-    matches!(
-        block,
-        Block::Leaves | Block::SpruceLeaves | Block::BirchLeaves
-    )
-}
-
 /// `ItemPickaxe.blocksEffectiveAgainst`. Obsidian, redstone ore, furnaces,
 /// dispensers, bricks, and glowstone are absent on purpose.
 fn pick_effective(block: Block) -> bool {
@@ -157,12 +146,9 @@ fn pick_effective(block: Block) -> bool {
 /// `ItemAxe.blocksEffectiveAgainst`. Crafting tables, note blocks, jukeboxes,
 /// and pumpkins are wood or pumpkin and are not in this list.
 fn axe_effective(block: Block) -> bool {
-    is_log(block)
+    block == Block::Wood
         || block.is_chest()
-        || matches!(
-            block,
-            Block::WoodenPlanks | Block::SprucePlanks | Block::BirchPlanks | Block::Bookshelf
-        )
+        || matches!(block, Block::WoodenPlanks | Block::Bookshelf)
 }
 
 /// `ItemSpade.blocksEffectiveAgainst`. The snow block is the layered entry
@@ -192,7 +178,7 @@ pub fn str_vs_block(tool: Option<ItemStack>, block: Block) -> f32 {
         // `ItemSword.getStrVsBlock` is 15 on web and 1.5 on everything else.
         Some(ToolType::Sword(_)) if block == Block::Cobweb => 15.0,
         Some(ToolType::Sword(_)) => 1.5,
-        Some(ToolType::Shears) if is_leaves(block) || block == Block::Cobweb => 15.0,
+        Some(ToolType::Shears) if block.is_leaves() || block == Block::Cobweb => 15.0,
         Some(ToolType::Shears) if block == Block::Wool => 5.0,
         _ => 1.0,
     }
@@ -270,7 +256,7 @@ pub fn break_durability(tool: ItemStack, block: Block) -> u16 {
     match tool_type(tool.item()) {
         Some(ToolType::Pick(_) | ToolType::Axe(_) | ToolType::Shovel(_)) => 1,
         Some(ToolType::Sword(_)) => 2,
-        Some(ToolType::Shears) if is_leaves(block) || block == Block::Cobweb => 1,
+        Some(ToolType::Shears) if block.is_leaves() || block == Block::Cobweb => 1,
         _ => 0,
     }
 }

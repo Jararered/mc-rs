@@ -11,6 +11,7 @@ use crate::physics::PhysicsSet;
 use crate::rendering::textures::BlockMaterial;
 use crate::rendering::textures::TerrainMaterial;
 use crate::rendering::textures::atlas_tile_uvs;
+use crate::world::chunk::WorldChunks;
 
 use super::mining::destroy_stage;
 
@@ -162,8 +163,16 @@ fn sync_crack_texture(
     overlays.crack_texture = true;
 }
 
+/// The targeted block's selection box, rotated for torches and ladders by
+/// the metadata in the world.
+fn selection_bounds(chunks: Option<&WorldChunks>, hit: BlockHit) -> ([f32; 3], [f32; 3]) {
+    let metadata = chunks.map_or(0, |chunks| chunks.metadata_at(hit.x, hit.y, hit.z));
+    hit.block.selection_bounds_for(metadata)
+}
+
 fn update_block_overlays(
     focus: Res<BlockFocus>,
+    chunks: Option<Res<WorldChunks>>,
     overlays: Option<ResMut<BlockOverlays>>,
     meshes: Option<ResMut<Assets<Mesh>>>,
     mut views: Query<(&mut Transform, &mut Visibility)>,
@@ -174,7 +183,7 @@ fn update_block_overlays(
     };
 
     let block_transform = focus.hit.map(|hit| {
-        let (min, max) = hit.block.selection_bounds();
+        let (min, max) = selection_bounds(chunks.as_deref(), hit);
         let min = Vec3::from_array(min);
         let max = Vec3::from_array(max);
         Transform::from_translation(
@@ -220,14 +229,18 @@ fn hide_block_overlays(overlays: Option<Res<BlockOverlays>>, mut visible: Query<
 ///
 /// `Gizmos` needs `GizmoPlugin` (part of `DefaultPlugins`), which headless
 /// tests built on `MinimalPlugins` don't add, so this stays optional.
-fn draw_selection_outline(focus: Res<BlockFocus>, gizmos: Option<Gizmos>) {
+fn draw_selection_outline(
+    focus: Res<BlockFocus>,
+    chunks: Option<Res<WorldChunks>>,
+    gizmos: Option<Gizmos>,
+) {
     let Some(mut gizmos) = gizmos else {
         return;
     };
     let Some(hit) = focus.hit else {
         return;
     };
-    let (min, max) = hit.block.selection_bounds();
+    let (min, max) = selection_bounds(chunks.as_deref(), hit);
     let min = Vec3::from_array(min);
     let max = Vec3::from_array(max);
     let center = Vec3::new(hit.x as f32, hit.y as f32, hit.z as f32) + (min + max) * 0.5;

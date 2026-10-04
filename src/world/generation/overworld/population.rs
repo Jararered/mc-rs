@@ -7,6 +7,7 @@
 //! earlier ones exactly as Beta's do.
 
 use crate::block::blocks::Block;
+use crate::block::blocks::species;
 use crate::random::JavaRandom;
 use crate::world::chunk::ChunkPosition;
 
@@ -148,15 +149,15 @@ pub(super) fn populate(
     };
     for _ in 0..grass {
         // The rainforest fern roll comes before the patch position.
-        let block = if biome == Biome::Rainforest && rand.next_int(3) != 0 {
-            Block::Fern
+        let metadata = if biome == Biome::Rainforest && rand.next_int(3) != 0 {
+            species::FERN
         } else {
-            Block::TallGrass
+            0
         };
         let x = ox + rand.next_int(16) as i32 + 8;
         let y = rand.next_int(128) as i32;
         let z = oz + rand.next_int(16) as i32 + 8;
-        tall_grass_patch(world, rand, x, y, z, block);
+        tall_grass_patch(world, rand, x, y, z, metadata);
     }
 
     if biome == Biome::Desert {

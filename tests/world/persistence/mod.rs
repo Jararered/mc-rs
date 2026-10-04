@@ -11,10 +11,11 @@ use bevy::asset::AssetPlugin;
 use bevy::mesh::MeshPlugin;
 use bevy::prelude::*;
 use game::block::blocks::Block;
+use game::block::direction::HorizontalFacing;
 use game::entity::mobs::Mob;
-use game::entity::mobs::MobType;
 use game::entity::mobs::MobRecord;
 use game::entity::mobs::MobSpawner;
+use game::entity::mobs::MobType;
 use game::item::ItemStack;
 use game::player::Player;
 use game::world::chunk::CHUNK_HEIGHT;
@@ -25,6 +26,7 @@ use game::world::chunk::ChunkPosition;
 use game::world::chunk::PendingTick;
 use game::world::chunk::WorldChunks;
 use game::world::generation::overworld::OverworldGenerator;
+use game::world::persistence::CHUNK_FORMAT_VERSION;
 use game::world::persistence::FORMAT_VERSION;
 use game::world::persistence::PersistencePlugin;
 use game::world::persistence::REGION_SIZE;
@@ -185,21 +187,35 @@ fn chunk_round_trips_through_a_chunk_file() {
     let position = ChunkPosition { x: -1, z: 2 };
     let mut generated = OverworldGenerator::new(0).generate(position);
     for (x, facing) in [
-        (1, Block::PumpkinNorth),
-        (2, Block::PumpkinEast),
-        (3, Block::PumpkinSouth),
-        (4, Block::PumpkinWest),
+        (1, HorizontalFacing::North),
+        (2, HorizontalFacing::East),
+        (3, HorizontalFacing::South),
+        (4, HorizontalFacing::West),
     ] {
-        generated.chunk.set(x, 70, 1, facing);
+        generated.chunk.set_with_metadata(
+            x,
+            70,
+            1,
+            Block::Pumpkin,
+            Block::Pumpkin.facing_metadata(facing),
+        );
     }
     storage.save_chunk(position, &generated).unwrap();
 
     let loaded = storage.load_chunk(position).expect("chunk should load");
     assert_same_blocks(&loaded.chunk, &generated.chunk);
-    assert_eq!(loaded.chunk.get(1, 70, 1), Some(Block::PumpkinNorth));
-    assert_eq!(loaded.chunk.get(2, 70, 1), Some(Block::PumpkinEast));
-    assert_eq!(loaded.chunk.get(3, 70, 1), Some(Block::PumpkinSouth));
-    assert_eq!(loaded.chunk.get(4, 70, 1), Some(Block::PumpkinWest));
+    for (x, facing) in [
+        (1, HorizontalFacing::North),
+        (2, HorizontalFacing::East),
+        (3, HorizontalFacing::South),
+        (4, HorizontalFacing::West),
+    ] {
+        assert_eq!(loaded.chunk.get(x, 70, 1), Some(Block::Pumpkin));
+        assert_eq!(
+            Block::Pumpkin.facing(loaded.chunk.metadata(x, 70, 1)),
+            Some(facing)
+        );
+    }
     for z in 0..CHUNK_SIZE {
         for x in 0..CHUNK_SIZE {
             assert_eq!(loaded.heightmap.get(x, z), generated.heightmap.get(x, z));
@@ -254,11 +270,11 @@ fn block_metadata_and_pending_ticks_round_trip_through_a_chunk_file() {
 }
 
 #[test]
-fn legacy_species_bytes_stay_spruce_while_cake_uses_the_same_number() {
+fn chunks_saved_with_block_ids_for_species_and_facing_are_rejected() {
     assert_eq!(Block::Cake.as_u8(), 92);
     assert!(!Block::Cake.in_world());
-    let saves = temp_saves("legacy-spruce");
-    let storage = WorldStorage::create(&saves, 0, "Legacy").unwrap();
+    let saves = temp_saves("old-format");
+    let storage = WorldStorage::create(&saves, 0, "Old").unwrap();
     let position = ChunkPosition::ZERO;
     let generated = OverworldGenerator::new(0).generate(position);
     storage.save_chunk(position, &generated).unwrap();
@@ -268,19 +284,18 @@ fn legacy_species_bytes_stay_spruce_while_cake_uses_the_same_number() {
         .join(region_dir_name(region_of(position)))
         .join(chunk_file_name(position));
     let mut value: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-    let blocks = CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE;
-    value["runs"] = serde_json::json!([[92, blocks as u16]]);
+    assert_eq!(value["format_version"], CHUNK_FORMAT_VERSION);
+    // A version 1 chunk could hold ids 200..=230, which are not blocks now.
+    value["format_version"] = serde_json::json!(1);
     fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
-    let loaded = storage
-        .load_chunk(position)
-        .expect("legacy spruce byte still loads");
-    assert!(
-        loaded
-            .chunk
-            .blocks()
-            .iter()
-            .all(|block| *block == Block::SpruceLeaves)
-    );
+    assert!(storage.load_chunk(position).is_none());
+
+    // Ids outside Beta's range are rejected even under the current version.
+    let blocks = CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE;
+    value["format_version"] = serde_json::json!(CHUNK_FORMAT_VERSION);
+    value["runs"] = serde_json::json!([[200, blocks as u16]]);
+    fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+    assert!(storage.load_chunk(position).is_none());
 
     value["runs"] = serde_json::json!([[20, blocks as u16]]);
     fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();

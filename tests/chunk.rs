@@ -1,4 +1,5 @@
 use game::block::blocks::Block;
+use game::block::direction::HorizontalFacing;
 use game::rendering::meshing::BlockGeometry;
 use game::rendering::meshing::BlockLighting;
 use game::rendering::meshing::BlockVertex;
@@ -101,16 +102,16 @@ fn ambient_occlusion_darkens_enclosed_face_corners() {
 
 #[test]
 fn species_plank_meshes_apply_distinct_vertex_tints() {
-    let first_vertex_color = |block| {
+    let first_vertex_color = |species| {
         let mut chunk = Chunk::new();
-        chunk.set(1, 1, 1, block);
+        chunk.set_with_metadata(1, 1, 1, Block::WoodenPlanks, species);
         let mesh = mesh_chunk(&chunk, &Skylight::from_chunk(&chunk));
         mesh.colors(BlockLighting::default())[0]
     };
 
-    let oak = first_vertex_color(Block::WoodenPlanks);
-    let spruce = first_vertex_color(Block::SprucePlanks);
-    let birch = first_vertex_color(Block::BirchPlanks);
+    let oak = first_vertex_color(0);
+    let spruce = first_vertex_color(1);
+    let birch = first_vertex_color(2);
 
     assert_ne!(oak, spruce);
     assert_ne!(oak, birch);
@@ -744,8 +745,14 @@ fn set_block_updates_the_column_heightmap() {
 #[test]
 fn ladders_transmit_light_and_do_not_raise_the_surface_heightmap() {
     let mut chunk = Chunk::new();
-    chunk.set(3, 20, 4, Block::LadderWest);
-    assert_eq!(light_opacity(Block::LadderWest), 0);
+    chunk.set_with_metadata(
+        3,
+        20,
+        4,
+        Block::Ladder,
+        Block::Ladder.facing_metadata(HorizontalFacing::West),
+    );
+    assert_eq!(light_opacity(Block::Ladder), 0);
     assert_eq!(Heightmap::from_chunk(&chunk).get(3, 4), 0);
 }
 
@@ -817,7 +824,13 @@ fn torch_mesh_uses_a_narrow_shape_instead_of_a_cube() {
 #[test]
 fn ladder_mesh_uses_beta_tile_and_a_wall_plane() {
     let mut chunk = Chunk::new();
-    chunk.set(3, 5, 7, Block::LadderWest);
+    chunk.set_with_metadata(
+        3,
+        5,
+        7,
+        Block::Ladder,
+        Block::Ladder.facing_metadata(HorizontalFacing::West),
+    );
     let meshes = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), false);
     let positions = meshes.masked.positions();
     assert_eq!(positions.len(), 4);
@@ -826,7 +839,7 @@ fn ladder_mesh_uses_beta_tile_and_a_wall_plane() {
             .iter()
             .all(|position| (position[0] - 3.125).abs() < 1e-6)
     );
-    assert_eq!(block_tile(Block::LadderWest, 0, false), (3, 5));
+    assert_eq!(block_tile(Block::Ladder, 0, 0, false), (3, 5));
 
     let uvs = meshes.masked.uvs();
     let (u0, v0, u1, v1) = atlas_tile_uvs(3, 5);
@@ -841,14 +854,14 @@ fn wall_torch_rotates_the_floor_post_without_tapering_or_flattening_its_cap() {
     let distance = |a: [f32; 3], b: [f32; 3]| {
         ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
     };
-    for (block, tilted_axis, sign) in [
-        (Block::TorchWest, 0, 1.0),
-        (Block::TorchEast, 0, -1.0),
-        (Block::TorchNorth, 2, 1.0),
-        (Block::TorchSouth, 2, -1.0),
+    for (facing, tilted_axis, sign) in [
+        (HorizontalFacing::West, 0, 1.0),
+        (HorizontalFacing::East, 0, -1.0),
+        (HorizontalFacing::North, 2, 1.0),
+        (HorizontalFacing::South, 2, -1.0),
     ] {
         let mut chunk = Chunk::new();
-        chunk.set(8, 40, 8, block);
+        chunk.set_with_metadata(8, 40, 8, Block::Torch, Block::Torch.facing_metadata(facing));
         let light = Skylight::from_chunk(&chunk);
         let meshes = mesh_chunk_with_settings(&chunk, &light, false);
         let positions = meshes.grass_overlay.positions();
@@ -862,7 +875,8 @@ fn wall_torch_rotates_the_floor_post_without_tapering_or_flattening_its_cap() {
             "cap must tilt with shaft"
         );
         assert!(positions.iter().all(|point| point[1] > 40.25));
-        let (bounds_min, bounds_max) = block.selection_bounds();
+        let (bounds_min, bounds_max) =
+            Block::Torch.selection_bounds_for(Block::Torch.facing_metadata(facing));
         if sign > 0.0 {
             assert!(positions.iter().any(|point| point[tilted_axis] < 8.0));
             assert_eq!(bounds_min[tilted_axis], 0.0);
@@ -889,7 +903,7 @@ fn greedy_mesh_merges_a_uniform_stone_slab_into_one_top_quad() {
         quad.iter().all(|vertex| vertex.repeat_uv),
         "a wide quad tiles its atlas tile from the block position"
     );
-    let (tile_x, tile_y) = block_tile(Block::Stone, 0, false);
+    let (tile_x, tile_y) = block_tile(Block::Stone, 0, 0, false);
     assert!(
         quad.iter()
             .all(|vertex| vertex.texel.tile == [tile_x, tile_y] && vertex.texel.texel == [0, 0])

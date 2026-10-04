@@ -1,9 +1,10 @@
-//! Compact chunk block identity. Discriminants `0..=96` retain Beta block ids;
-//! private values encode species and oriented states in the current save format.
+//! Compact chunk block identity: Beta's block ids. Species (wood, leaves,
+//! planks, fern) and orientation (torches, ladders, furnaces, chests,
+//! pumpkins) live in the chunk's block metadata, as in Beta.
 
 use crate::block::definition;
+use crate::item::registry::ItemData;
 
-pub use super::state::FurnaceFacing;
 use num_enum::FromPrimitive;
 use num_enum::IntoPrimitive;
 
@@ -102,52 +103,22 @@ pub enum Block {
     Glowstone = 89,
     NetherPortal = 90,
     JackOLantern = 91,
-    // 92..=96 share numeric values with legacy chunk bytes. Decode maps
-    // those bytes to species and torch facings before `from_u8`.
     Cake = 92,
     Repeater = 93,
     PoweredRepeater = 94,
     LockedChest = 95,
     Trapdoor = 96,
-    // Beta stores wood and leaf species in block metadata. The chunk
-    // stores one value per block, so each species has its own variant.
-    SpruceLeaves = 200,
-    BirchLeaves = 201,
-    SpruceWood = 202,
-    BirchWood = 203,
-    // Wall attachment is a compact block value until chunk metadata
-    // exists. These discriminants belong to this save format.
-    TorchWest = 204,
-    TorchEast = 205,
-    TorchNorth = 206,
-    TorchSouth = 207,
-    /// Tall grass metadata 2. Beta stores this on the tall-grass block; chunks
-    /// have no metadata, so fern is its own value, like birch wood.
-    Fern = 208,
-    FurnaceNorth = 209,
-    FurnaceEast = 210,
-    FurnaceSouth = 211,
-    FurnaceWest = 212,
-    LitFurnaceNorth = 213,
-    LitFurnaceEast = 214,
-    LitFurnaceSouth = 215,
-    LitFurnaceWest = 216,
-    SprucePlanks = 217,
-    BirchPlanks = 218,
-    PumpkinNorth = 219,
-    PumpkinEast = 220,
-    PumpkinSouth = 221,
-    PumpkinWest = 222,
-    ChestNorth = 223,
-    ChestEast = 224,
-    ChestSouth = 225,
-    ChestWest = 226,
-    LadderNorth = 227,
-    LadderEast = 228,
-    LadderSouth = 229,
-    LadderWest = 230,
     #[num_enum(catch_all)]
     Unknown(u8),
+}
+
+/// Block metadata that selects a species. Wood, planks, and leaves read it as
+/// `metadata & 3`; tall grass reads [`FERN`] for the fern.
+pub mod species {
+    pub const OAK: u8 = 0;
+    pub const SPRUCE: u8 = 1;
+    pub const BIRCH: u8 = 2;
+    pub const FERN: u8 = 2;
 }
 
 impl Block {
@@ -172,16 +143,94 @@ impl Block {
 
     /// Blocks the simulation generates, meshes, and saves. Catalog-only values
     /// such as glass and cake are inventory identities.
-    pub fn in_world(self) -> bool {
-        super::definition::definition(self).in_world(self)
+    pub const fn in_world(self) -> bool {
+        matches!(
+            self,
+            Self::Air
+                | Self::Stone
+                | Self::Grass
+                | Self::Dirt
+                | Self::Cobblestone
+                | Self::WoodenPlanks
+                | Self::Bedrock
+                | Self::FlowingWater
+                | Self::Water
+                | Self::FlowingLava
+                | Self::Lava
+                | Self::Sand
+                | Self::Gravel
+                | Self::GoldOre
+                | Self::IronOre
+                | Self::CoalOre
+                | Self::Wood
+                | Self::Leaves
+                | Self::Sponge
+                | Self::LapisOre
+                | Self::LapisBlock
+                | Self::Dispenser
+                | Self::Sandstone
+                | Self::NoteBlock
+                | Self::TallGrass
+                | Self::DeadBush
+                | Self::Wool
+                | Self::Dandelion
+                | Self::Rose
+                | Self::BrownMushroom
+                | Self::RedMushroom
+                | Self::GoldBlock
+                | Self::IronBlock
+                | Self::DoubleStoneSlab
+                | Self::Bricks
+                | Self::Tnt
+                | Self::Bookshelf
+                | Self::MossyCobblestone
+                | Self::Obsidian
+                | Self::Torch
+                | Self::Fire
+                | Self::MobSpawner
+                | Self::Chest
+                | Self::DiamondOre
+                | Self::DiamondBlock
+                | Self::CraftingTable
+                | Self::Crops
+                | Self::Farmland
+                | Self::Furnace
+                | Self::LitFurnace
+                | Self::Ladder
+                | Self::RedstoneOre
+                | Self::LitRedstoneOre
+                | Self::SnowLayer
+                | Self::Ice
+                | Self::Snow
+                | Self::Cactus
+                | Self::Clay
+                | Self::SugarCane
+                | Self::Jukebox
+                | Self::Pumpkin
+                | Self::Netherrack
+                | Self::Glowstone
+                | Self::JackOLantern
+        )
     }
 
-    pub fn is_leaves(self) -> bool {
-        matches!(self, Block::SpruceLeaves | Block::BirchLeaves)
+    pub const fn is_torch(self) -> bool {
+        matches!(self, Self::Torch)
+    }
+
+    pub const fn is_ladder(self) -> bool {
+        matches!(self, Self::Ladder)
+    }
+
+    pub const fn is_chest(self) -> bool {
+        matches!(self, Self::Chest)
+    }
+
+    pub const fn is_leaves(self) -> bool {
+        matches!(self, Self::Leaves)
     }
 
     /// Local bounds used for picking and the hover outline.
-    pub fn selection_bounds(self) -> ([f32; 3], [f32; 3]) {
+    pub fn selection_bounds(self) -> definition::BlockBounds {
         definition::properties(self).selection_bounds
     }
 
@@ -241,9 +290,6 @@ impl Block {
 
     /// Beta's `Material.isSolid` classification.
     pub fn is_solid_material(self) -> bool {
-        if self.is_ladder() {
-            return false;
-        }
         !matches!(
             self,
             Self::Air
@@ -252,15 +298,10 @@ impl Block {
                 | Self::Lava
                 | Self::FlowingLava
                 | Self::Torch
-                | Self::TorchWest
-                | Self::TorchEast
-                | Self::TorchNorth
-                | Self::TorchSouth
                 | Self::DeadBush
                 | Self::TallGrass
                 | Self::Dandelion
                 | Self::Rose
-                | Self::Fern
                 | Self::BrownMushroom
                 | Self::RedMushroom
                 | Self::Fire
@@ -292,7 +333,7 @@ impl Block {
 
     /// Beta `Block.getExplosionResistance`.
     pub fn explosion_resistance(self) -> f32 {
-        let explicit = match self.item_form().0 {
+        let explicit = match self {
             Self::Bedrock => Some(6_000_000.0),
             Self::Obsidian => Some(2000.0),
             Self::Stone
@@ -323,14 +364,73 @@ impl Block {
         explicit.map_or_else(|| self.hardness().max(0.0), |resistance| resistance * 0.6)
     }
 
-    pub fn is_torch(self) -> bool {
-        matches!(
-            self,
-            Block::Torch
-                | Block::TorchWest
-                | Block::TorchEast
-                | Block::TorchNorth
-                | Block::TorchSouth
-        )
+    /// The part of `metadata` that changes how the block is drawn: the
+    /// species, or the facing. Decay flags and the like are not part of it.
+    pub const fn appearance_metadata(self, metadata: u8) -> u8 {
+        match self {
+            Self::Wood | Self::WoodenPlanks | Self::Leaves | Self::TallGrass => metadata & 3,
+            Self::Torch
+            | Self::Ladder
+            | Self::Furnace
+            | Self::LitFurnace
+            | Self::Chest
+            | Self::Pumpkin => metadata,
+            _ => 0,
+        }
+    }
+
+    /// Picking bounds for the block with `metadata`. Only torches and ladders
+    /// depend on it.
+    pub fn selection_bounds_for(self, metadata: u8) -> definition::BlockBounds {
+        match self {
+            Self::Torch | Self::Ladder => definition::oriented_bounds(self, metadata),
+            _ => self.selection_bounds(),
+        }
+    }
+
+    /// Collision bounds for the block with `metadata`. Only ladders depend on it.
+    pub fn collision_bounds_for(self, metadata: u8) -> Option<definition::BlockBounds> {
+        match self {
+            Self::Ladder => Some(definition::oriented_bounds(self, metadata)),
+            _ => self.collision_bounds(),
+        }
+    }
+
+    /// Stack identity for this block with `metadata`: the block that
+    /// represents the item, and its subtype. Species stays in the subtype;
+    /// orientation, leaf decay flags, and the lit furnace are dropped.
+    pub const fn item_form(self, metadata: u8) -> (Self, u8) {
+        match self {
+            Self::Wood | Self::WoodenPlanks | Self::Leaves => (self, metadata & 3),
+            Self::TallGrass if metadata & 3 == 2 => (self, 2),
+            Self::LitFurnace => (Self::Furnace, 0),
+            block => (block, 0),
+        }
+    }
+
+    /// The block and metadata a placed stack of `self` with item `data`
+    /// starts as. `None` for blocks the world does not simulate, and for
+    /// subtypes it does not implement.
+    pub fn placed(self, data: u8) -> Option<(Self, u8)> {
+        match (self, data) {
+            (Self::Wood | Self::WoodenPlanks | Self::Leaves, 0..=2) => Some((self, data)),
+            (Self::Torch, 0 | 5) => Some((Self::Torch, 0)),
+            (Self::Torch, 1..=4) => Some((Self::Torch, data)),
+            (Self::TallGrass, 0 | 1) => Some((Self::TallGrass, 0)),
+            (Self::TallGrass, 2) => Some((Self::TallGrass, 2)),
+            (Self::Ladder, 0 | 2) => Some((Self::Ladder, 0)),
+            (block, 0) if block.in_world() => Some((block, 0)),
+            _ => None,
+        }
+    }
+
+    /// Inventory subtype for the direct block item.
+    pub const fn item_data(self) -> ItemData {
+        match self {
+            Self::Sapling | Self::Wood | Self::Leaves | Self::WoodenPlanks => ItemData::Subtype(2),
+            Self::Wool => ItemData::Subtype(15),
+            Self::StoneSlab => ItemData::Subtype(3),
+            _ => ItemData::None,
+        }
     }
 }

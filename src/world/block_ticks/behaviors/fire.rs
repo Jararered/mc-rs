@@ -10,16 +10,12 @@ pub static FIRE: Fire = Fire;
 
 fn rates(block: Block) -> (u32, u32) {
     match block {
-        Block::WoodenPlanks
-        | Block::SprucePlanks
-        | Block::BirchPlanks
-        | Block::Fence
-        | Block::WoodenStairs => (5, 20),
-        Block::Wood | Block::SpruceWood | Block::BirchWood => (5, 5),
-        Block::Leaves | Block::SpruceLeaves | Block::BirchLeaves => (30, 60),
+        Block::WoodenPlanks | Block::Fence | Block::WoodenStairs => (5, 20),
+        Block::Wood => (5, 5),
+        Block::Leaves => (30, 60),
         Block::Bookshelf => (30, 20),
         Block::Tnt => (15, 100),
-        Block::TallGrass | Block::Fern => (60, 100),
+        Block::TallGrass => (60, 100),
         Block::Wool => (30, 60),
         _ => (0, 0),
     }

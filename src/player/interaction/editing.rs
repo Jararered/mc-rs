@@ -9,7 +9,7 @@ use bevy::window::CursorOptions;
 use bevy::window::PrimaryWindow;
 
 use crate::block::blocks::Block;
-use crate::block::blocks::FurnaceFacing;
+use crate::block::direction::HorizontalFacing;
 use crate::block::fluids::FluidType;
 use crate::block::fluids::is_water;
 use crate::block::properties::cactus_can_stay;
@@ -19,7 +19,7 @@ use crate::entity::EntitySize;
 use crate::entity::Velocity;
 use crate::entity::combat::bordered;
 use crate::entity::combat::pick;
-use crate::entity::drops::blocks::natural_drops;
+use crate::entity::drops::blocks::natural_drops_with_metadata;
 use crate::entity::drops::blocks::player_break_drops_with_metadata;
 use crate::entity::drops::items::spawn_block_drop;
 use crate::entity::drops::items::spawn_chest_drops;
@@ -54,7 +54,6 @@ use crate::random::ItemRng;
 use crate::world::block_ticks::BlockEvent;
 use crate::world::block_ticks::BlockTicks;
 use crate::world::block_ticks::behaviors::leaves::CHECK_DECAY;
-use crate::world::block_ticks::behaviors::leaves::is_leaves;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
@@ -435,12 +434,13 @@ pub(crate) fn interact_blocks(
             let target = hit.face.neighbor(hit.x, hit.y, hit.z);
             let replaced = chunks.block_at(target.0, target.1, target.2);
             let replaced_metadata = chunks.metadata_at(target.0, target.1, target.2);
-            let placed = stack.runtime_block().is_some_and(|block| {
+            let placed = stack.runtime_block().is_some_and(|(block, metadata)| {
                 place_selected_block_facing(
                     &mut chunks,
                     hit,
                     size.aabb(transform.translation),
                     block,
+                    metadata,
                     furnace_facing_toward_player(transform.rotation * Vec3::NEG_Z),
                 )
             });
@@ -451,8 +451,9 @@ pub(crate) fn interact_blocks(
                 let (x, y, z) = target;
                 // `ItemLeaves.getPlacedBlockMetadata`: placed leaves check
                 // for a log on their next random tick.
-                if chunks.block_at(x, y, z).is_some_and(is_leaves) {
-                    chunks.set_metadata(x, y, z, CHECK_DECAY);
+                if chunks.block_at(x, y, z).is_some_and(Block::is_leaves) {
+                    let species = chunks.metadata_at(x, y, z);
+                    chunks.set_metadata(x, y, z, species | CHECK_DECAY);
                 }
                 if let Some(replaced) = replaced {
                     push_event(
@@ -635,29 +636,13 @@ fn apply_break(
     hit: BlockHit,
 ) {
     let metadata = chunks.metadata_at(hit.x, hit.y, hit.z);
-    let mut attached =
-        [
-            (0, 1, 0, Block::Torch),
-            (1, 0, 0, Block::TorchWest),
-            (-1, 0, 0, Block::TorchEast),
-            (0, 0, 1, Block::TorchNorth),
-            (0, 0, -1, Block::TorchSouth),
-            (0, 0, 1, Block::LadderNorth),
-            (0, 0, -1, Block::LadderSouth),
-            (-1, 0, 0, Block::LadderEast),
-            (1, 0, 0, Block::LadderWest),
-        ]
-        .into_iter()
-        .filter_map(|(dx, dy, dz, attached_block)| {
-            (chunks.block_at(hit.x + dx, hit.y + dy, hit.z + dz) == Some(attached_block))
-                .then_some((hit.x + dx, hit.y + dy, hit.z + dz, attached_block))
-        })
-        .collect::<Vec<_>>();
+    let mut attached = attached_blocks(chunks, hit);
     if let Some(plant) = chunks
         .block_at(hit.x, hit.y + 1, hit.z)
         .filter(|block| (*block).is_crossed_plant())
     {
-        attached.push((hit.x, hit.y + 1, hit.z, plant));
+        let plant_metadata = chunks.metadata_at(hit.x, hit.y + 1, hit.z);
+        attached.push((hit.x, hit.y + 1, hit.z, plant, plant_metadata));
     }
     let furnace_drops = chunks
         .furnace_at(hit.x, hit.y, hit.z)
@@ -668,12 +653,10 @@ fn apply_break(
         .map(|chest| chest.slots.into_iter().flatten().collect::<Vec<_>>())
         .unwrap_or_default();
     let light_edit = hit.block.is_torch()
-        || hit.block.is_lit_furnace()
+        || hit.block == Block::LitFurnace
         || attached
             .iter()
-            .copied()
-            .into_iter()
-            .any(|(_, _, _, attached_block)| attached_block.is_torch());
+            .any(|&(_, _, _, attached_block, _)| attached_block.is_torch());
     let tool = hotbar.selected_stack();
     // `canHarvestBlock` gates the harvest drop. The tool still takes durability
     // when the block comes out, including a block the tool cannot harvest.
@@ -705,8 +688,8 @@ fn apply_break(
                 },
             );
         }
-        for (x, y, z, attached_block) in attached {
-            for stack in natural_drops(attached_block, rng) {
+        for (x, y, z, attached_block, attached_metadata) in attached {
+            for stack in natural_drops_with_metadata(attached_block, attached_metadata, rng) {
                 spawn_block_drop(commands, rng, IVec3::new(x, y, z), stack);
             }
             push_event(
@@ -714,12 +697,12 @@ fn apply_break(
                 BlockEvent::Changed {
                     position: IVec3::new(x, y, z),
                     previous: attached_block,
-                    metadata: 0,
+                    metadata: attached_metadata,
                 },
             );
         }
         if let Some(particles) = particles.as_deref_mut() {
-            particles.emit_break(hit);
+            particles.emit_break_state(hit, metadata);
         }
         notify_edit(streaming, persistence, hit.x, hit.y, hit.z, light_edit);
         if let Some(tool) = tool {
@@ -731,30 +714,50 @@ fn apply_break(
     }
 }
 
+/// Torches and ladders hanging on the block `hit` targets, and a torch
+/// standing on it, with their position and metadata.
+fn attached_blocks(chunks: &WorldChunks, hit: BlockHit) -> Vec<(i32, i32, i32, Block, u8)> {
+    // A torch on top has no facing; one beside the block hangs on its side.
+    let mut attached = Vec::new();
+    let mut push = |dx: i32, dy: i32, dz: i32, block: Block, facing: Option<HorizontalFacing>| {
+        let (x, y, z) = (hit.x + dx, hit.y + dy, hit.z + dz);
+        if chunks.block_at(x, y, z) != Some(block) {
+            return;
+        }
+        let metadata = chunks.metadata_at(x, y, z);
+        if block.facing(metadata) == facing {
+            attached.push((x, y, z, block, metadata));
+        }
+    };
+    push(0, 1, 0, Block::Torch, None);
+    for side in HorizontalFacing::ALL {
+        // The torch or ladder at `side` of the block names the block as its
+        // support, which lies on the opposite side of the attached cell.
+        let [dx, dy, dz] = side.offset();
+        let facing = match side {
+            HorizontalFacing::North => HorizontalFacing::South,
+            HorizontalFacing::South => HorizontalFacing::North,
+            HorizontalFacing::East => HorizontalFacing::West,
+            HorizontalFacing::West => HorizontalFacing::East,
+        };
+        push(dx, dy, dz, Block::Torch, Some(facing));
+        push(dx, dy, dz, Block::Ladder, Some(facing));
+    }
+    attached
+}
+
 /// Remove a targeted block. Bedrock and missing chunks are left unchanged.
 pub fn break_block(chunks: &mut WorldChunks, hit: BlockHit) -> bool {
     if !hit.block.is_breakable() {
         return false;
     }
+    let attached = attached_blocks(chunks, hit);
     let broken = chunks
         .set_block(hit.x, hit.y, hit.z, Block::Air)
         .is_some_and(|previous| previous != Block::Air);
     if broken {
-        for (dx, dy, dz, attached) in [
-            (0, 1, 0, Block::Torch),
-            (1, 0, 0, Block::TorchWest),
-            (-1, 0, 0, Block::TorchEast),
-            (0, 0, 1, Block::TorchNorth),
-            (0, 0, -1, Block::TorchSouth),
-            (0, 0, 1, Block::LadderNorth),
-            (0, 0, -1, Block::LadderSouth),
-            (-1, 0, 0, Block::LadderEast),
-            (1, 0, 0, Block::LadderWest),
-        ] {
-            let (x, y, z) = (hit.x + dx, hit.y + dy, hit.z + dz);
-            if chunks.block_at(x, y, z) == Some(attached) {
-                chunks.set_block(x, y, z, Block::Air);
-            }
+        for (x, y, z, _, _) in attached {
+            chunks.set_block(x, y, z, Block::Air);
         }
         if chunks
             .block_at(hit.x, hit.y + 1, hit.z)
@@ -777,7 +780,7 @@ pub fn place_selected_block(
     player: Aabb,
     selected: Block,
 ) -> bool {
-    place_selected_block_facing(chunks, hit, player, selected, FurnaceFacing::South)
+    place_selected_block_facing(chunks, hit, player, selected, 0, HorizontalFacing::South)
 }
 
 pub fn place_selected_block_facing(
@@ -785,7 +788,8 @@ pub fn place_selected_block_facing(
     hit: BlockHit,
     player: Aabb,
     selected: Block,
-    furnace_facing: FurnaceFacing,
+    species: u8,
+    front: HorizontalFacing,
 ) -> bool {
     let (x, y, z) = hit.face.neighbor(hit.x, hit.y, hit.z);
     if y < 0 || y >= CHUNK_HEIGHT as i32 {
@@ -852,28 +856,31 @@ pub fn place_selected_block_facing(
     if !hit.block.is_opaque_cube() && selected == Block::Torch {
         return false;
     }
-    let block = if selected == Block::Torch {
-        match hit.face {
-            BlockFace::Up => Block::Torch,
-            BlockFace::Down => return false,
-            BlockFace::West => Block::TorchEast,
-            BlockFace::East => Block::TorchWest,
-            BlockFace::North => Block::TorchSouth,
-            BlockFace::South => Block::TorchNorth,
+    let (block, metadata) = match selected {
+        Block::Torch => {
+            let support = match hit.face {
+                BlockFace::Up => None,
+                BlockFace::Down => return false,
+                BlockFace::West => Some(HorizontalFacing::East),
+                BlockFace::East => Some(HorizontalFacing::West),
+                BlockFace::North => Some(HorizontalFacing::South),
+                BlockFace::South => Some(HorizontalFacing::North),
+            };
+            (
+                selected,
+                support.map_or(0, |facing| selected.facing_metadata(facing)),
+            )
         }
-    } else if selected == Block::Furnace {
-        selected.with_furnace_state(furnace_facing, false)
-    } else if selected == Block::Pumpkin {
-        selected.with_pumpkin_facing(furnace_facing)
-    } else if selected == Block::Chest {
-        selected.with_chest_facing(furnace_facing)
-    } else if selected == Block::Ladder {
-        let Some(facing) = ladder_facing(chunks, x, y, z, hit.face, hit.block) else {
-            return false;
-        };
-        selected.with_ladder_support(facing)
-    } else {
-        selected
+        Block::Furnace | Block::Pumpkin | Block::Chest => {
+            (selected, selected.facing_metadata(front))
+        }
+        Block::Ladder => {
+            let Some(support) = ladder_facing(chunks, x, y, z, hit.face, hit.block) else {
+                return false;
+            };
+            (selected, selected.facing_metadata(support))
+        }
+        _ => (selected, species),
     };
     if block.is_opaque_cube()
         && player.intersects(Aabb::new(
@@ -884,8 +891,8 @@ pub fn place_selected_block_facing(
         return false;
     }
     chunks
-        .set_block(x, y, z, block)
-        .is_some_and(|previous| previous != block)
+        .set_block_with_metadata(x, y, z, block, metadata)
+        .is_some_and(|(previous, _)| previous != block)
 }
 
 fn ladder_facing(
@@ -895,11 +902,9 @@ fn ladder_facing(
     z: i32,
     hit_face: BlockFace,
     hit_block: Block,
-) -> Option<FurnaceFacing> {
-    let support_at = |facing: FurnaceFacing| {
-        let [dx, dy, dz] = Block::Ladder
-            .with_ladder_support(facing)
-            .ladder_support_offset()?;
+) -> Option<HorizontalFacing> {
+    let support_at = |facing: HorizontalFacing| {
+        let [dx, dy, dz] = facing.offset();
         chunks
             .block_at(x + dx, y + dy, z + dz)
             .filter(|block| (*block).is_opaque_cube())
@@ -907,19 +912,19 @@ fn ladder_facing(
     };
 
     let clicked_wall = match hit_face {
-        BlockFace::West if hit_block.is_opaque_cube() => Some(FurnaceFacing::East),
-        BlockFace::East if hit_block.is_opaque_cube() => Some(FurnaceFacing::West),
-        BlockFace::North if hit_block.is_opaque_cube() => Some(FurnaceFacing::South),
-        BlockFace::South if hit_block.is_opaque_cube() => Some(FurnaceFacing::North),
+        BlockFace::West if hit_block.is_opaque_cube() => Some(HorizontalFacing::East),
+        BlockFace::East if hit_block.is_opaque_cube() => Some(HorizontalFacing::West),
+        BlockFace::North if hit_block.is_opaque_cube() => Some(HorizontalFacing::South),
+        BlockFace::South if hit_block.is_opaque_cube() => Some(HorizontalFacing::North),
         _ => None,
     };
     clicked_wall
         .and_then(support_at)
         // Beta's onBlockPlaced fallback checks +Z, -Z, +X, -X.
-        .or_else(|| support_at(FurnaceFacing::South))
-        .or_else(|| support_at(FurnaceFacing::North))
-        .or_else(|| support_at(FurnaceFacing::East))
-        .or_else(|| support_at(FurnaceFacing::West))
+        .or_else(|| support_at(HorizontalFacing::South))
+        .or_else(|| support_at(HorizontalFacing::North))
+        .or_else(|| support_at(HorizontalFacing::East))
+        .or_else(|| support_at(HorizontalFacing::West))
 }
 
 fn chest_can_place_at(chunks: &WorldChunks, x: i32, y: i32, z: i32) -> bool {
@@ -937,18 +942,18 @@ fn chest_can_place_at(chunks: &WorldChunks, x: i32, y: i32, z: i32) -> bool {
     }
 }
 
-fn furnace_facing_toward_player(player_forward: Vec3) -> FurnaceFacing {
+fn furnace_facing_toward_player(player_forward: Vec3) -> HorizontalFacing {
     let toward_player = Vec2::new(-player_forward.x, -player_forward.z);
     if toward_player.x.abs() > toward_player.y.abs() {
         if toward_player.x >= 0.0 {
-            FurnaceFacing::East
+            HorizontalFacing::East
         } else {
-            FurnaceFacing::West
+            HorizontalFacing::West
         }
     } else if toward_player.y >= 0.0 {
-        FurnaceFacing::South
+        HorizontalFacing::South
     } else {
-        FurnaceFacing::North
+        HorizontalFacing::North
     }
 }
 

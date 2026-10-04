@@ -140,7 +140,7 @@ fn particle_colors(app: &mut App) -> Vec<[f32; 4]> {
 
 #[test]
 fn tall_grass_and_fern_break_and_hit_particles_use_biome_grass_tint() {
-    for block in [Block::TallGrass, Block::Fern] {
+    for (block, metadata) in [(Block::TallGrass, 0), (Block::TallGrass, 2)] {
         for breaking in [true, false] {
             let mut app = test_app();
             add_climate_chunk(&mut app);
@@ -152,7 +152,7 @@ fn tall_grass_and_fern_break_and_hit_particles_use_biome_grass_tint() {
             if breaking {
                 app.world_mut()
                     .resource_mut::<BlockParticles>()
-                    .emit_break(hit);
+                    .emit_break_state(hit, metadata);
             } else {
                 app.world_mut()
                     .resource_mut::<BlockParticles>()

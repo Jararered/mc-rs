@@ -44,7 +44,7 @@ fn world_with(chunk: Chunk) -> WorldChunks {
 
 #[test]
 fn sugar_cane_is_a_centered_crossed_plant_with_beta_appearance() {
-    assert_eq!(block_tile(Block::SugarCane, 0, false), (9, 4));
+    assert_eq!(block_tile(Block::SugarCane, 0, 0, false), (9, 4));
     assert!(!Block::SugarCane.is_opaque_cube());
     assert!(!Block::SugarCane.blocks_movement());
     assert_eq!(Block::SugarCane.collision_bounds(), None);
@@ -78,7 +78,7 @@ fn sugar_cane_is_a_centered_crossed_plant_with_beta_appearance() {
 #[test]
 fn sugar_cane_can_be_placed_on_watered_soil_or_sand_and_stacked() {
     let cane = ItemStack::new(Item::SugarCane, 1).unwrap();
-    assert_eq!(cane.runtime_block(), Some(Block::SugarCane));
+    assert_eq!(cane.runtime_block(), Some((Block::SugarCane, 0)));
     for soil in [Block::Grass, Block::Dirt, Block::Sand] {
         let mut chunk = Chunk::new();
         chunk.set(8, 64, 8, soil);
@@ -95,7 +95,7 @@ fn sugar_cane_can_be_placed_on_watered_soil_or_sand_and_stacked() {
             &mut chunks,
             base_hit,
             Aabb::new(Vec3::splat(100.0), Vec3::splat(101.0)),
-            cane.runtime_block().unwrap(),
+            cane.runtime_block().unwrap().0,
         ));
 
         let stack_hit = BlockHit {

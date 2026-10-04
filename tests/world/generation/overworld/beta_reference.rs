@@ -30,7 +30,7 @@ const CHUNKS: [(i32, i32, u64); 7] = [
 
 /// A block as the saved world stores it: Beta's ID in the high bits and, for
 /// logs, leaves, and tall grass, its species.
-fn beta_value(block: Block) -> u16 {
+fn beta_value(block: Block, metadata: u8) -> u16 {
     let (id, species) = match block {
         Block::Air
         | Block::Water
@@ -39,21 +39,14 @@ fn beta_value(block: Block) -> u16 {
         | Block::FlowingLava
         | Block::Gravel
         | Block::Obsidian => (0, 0),
-        Block::Wood => (17, 0),
-        Block::SpruceWood => (17, 1),
-        Block::BirchWood => (17, 2),
-        Block::Leaves => (18, 0),
-        Block::SpruceLeaves => (18, 1),
-        Block::BirchLeaves => (18, 2),
-        Block::TallGrass => (31, 1),
-        Block::Fern => (31, 2),
-        Block::PumpkinNorth | Block::PumpkinEast | Block::PumpkinSouth | Block::PumpkinWest => {
-            (86, 0)
-        }
-        Block::ChestNorth | Block::ChestEast | Block::ChestSouth | Block::ChestWest => (54, 0),
+        Block::Wood | Block::Leaves => (u16::from(block.as_u8()), metadata & 3),
+        // Tall grass with no metadata is Beta's metadata 1.
+        Block::TallGrass => (31, if metadata & 3 == 2 { 2 } else { 1 }),
+        // Facing is not part of what the hash pins.
+        Block::Pumpkin | Block::Chest => (u16::from(block.as_u8()), 0),
         other => (u16::from(other.as_u8()), 0),
     };
-    id << 4 | species
+    id << 4 | u16::from(species)
 }
 
 /// FNV-1a over [`beta_value`] in [`Chunk::index`] order.
@@ -61,7 +54,11 @@ fn hash(chunk: &Chunk) -> u64 {
     chunk
         .raw_blocks()
         .iter()
-        .map(|&raw| beta_value(Block::from(raw)))
+        .enumerate()
+        .map(|(index, &raw)| {
+            let (x, z, y) = (index % 16, index / 16 % 16, index / 256);
+            beta_value(Block::from(raw), chunk.metadata(x, y, z))
+        })
         .fold(0xcbf2_9ce4_8422_2325, |hash, value| {
             (hash ^ u64::from(value)).wrapping_mul(0x0000_0100_0000_01b3)
         })

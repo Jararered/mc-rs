@@ -54,11 +54,7 @@ fn dungeon_loot_contains_every_beta_entry_and_only_valid_counts() {
             .flatten()
         {
             match stack.item() {
-                Item::IronIngot
-                | Item::Wheat
-                | Item::Gunpowder
-                | Item::String
-                | Item::Redstone => {
+                Item::IronIngot | Item::Wheat | Item::Gunpowder | Item::String | Item::Redstone => {
                     assert!((1..=4).contains(&stack.count()));
                     assert_eq!(stack.data(), 0);
                 }

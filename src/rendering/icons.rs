@@ -421,7 +421,7 @@ fn triangle(
 }
 
 /// Useful for comparing native block states with the Beta item appearance.
-pub fn rasterize_icon(source: &[u8], width: u32, block: Block) -> Vec<u8> {
+pub fn rasterize_icon(source: &[u8], width: u32, block: Block, metadata: u8) -> Vec<u8> {
     let stride = width / 16;
     let image = Source {
         pixels: source.to_vec(),
@@ -436,6 +436,6 @@ pub fn rasterize_icon(source: &[u8], width: u32, block: Block) -> Vec<u8> {
     if width < 256 || width % 16 != 0 || source.len() != (width as usize * width as usize * 4) {
         return vec![0; (ICON_SIZE * ICON_SIZE * 4) as usize];
     }
-    let (block, metadata) = block.item_form();
+    let (block, metadata) = block.item_form(metadata);
     render_block_icon(&image, block.as_u8(), u16::from(metadata))
 }

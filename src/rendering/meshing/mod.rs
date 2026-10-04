@@ -3,6 +3,8 @@ use std::ops::Range;
 use bevy::prelude::Color;
 
 use crate::block::blocks::Block;
+use crate::block::blocks::species;
+use crate::block::direction::HorizontalFacing;
 use crate::block::fluids::FluidType;
 use crate::block::fluids::corner_height;
 use crate::block::fluids::flow_vector;
@@ -369,8 +371,8 @@ impl CornerShading {
 impl BlockGeometry {
     /// Beta's ladder is one transparent wall plane. The saved facing names the
     /// supporting wall; draw the texture toward the room side.
-    fn push_ladder(&mut self, origin: [f32; 3], block: Block) {
-        let (face_index, coordinate) = match block.ladder_support_offset() {
+    fn push_ladder(&mut self, origin: [f32; 3], metadata: u8) {
+        let (face_index, coordinate) = match Block::Ladder.support_offset(metadata) {
             Some([0, 0, -1]) => (FACE_SOUTH, 0.125),
             Some([0, 0, 1]) => (FACE_NORTH, 0.875),
             Some([1, 0, 0]) => (FACE_WEST, 0.875),
@@ -401,7 +403,8 @@ impl BlockGeometry {
 
     /// Build the same post for floor and wall attachments, then rotate its
     /// vertices and normals together so the cap follows the shaft.
-    fn push_torch(&mut self, origin: [f32; 3], block: Block) {
+    fn push_torch(&mut self, origin: [f32; 3], metadata: u8) {
+        let facing = Block::Torch.facing(metadata);
         let unit_cube = BlockFaceGeometry::unit_cube();
         for (face_index, face) in FACES.iter().enumerate() {
             if face_index == FACE_BOTTOM {
@@ -409,7 +412,7 @@ impl BlockGeometry {
             }
             let corners = unit_cube.face(face_index).corners.map(|corner| {
                 torch_point(
-                    block,
+                    facing,
                     [
                         0.5 + (corner[0] - 0.5) * 0.125,
                         corner[1] * 0.625,
@@ -435,7 +438,7 @@ impl BlockGeometry {
             };
             self.push_block_quad(
                 origin,
-                torch_normal(block, face.normal),
+                torch_normal(facing, face.normal),
                 corners,
                 texels,
                 [1.0; 3],
@@ -451,12 +454,13 @@ impl BlockGeometry {
         origin: [f32; 3],
         world: [i32; 3],
         block: Block,
+        metadata: u8,
         grass_tint: [f32; 3],
         light: u8,
     ) {
         // Beta jitters only Block.tallGrass in renderBlockReed. Fern is its
         // metadata-2 equivalent here; flowers and mushrooms stay centered.
-        let [dx, mut dy, dz] = if matches!(block, Block::TallGrass | Block::Fern) {
+        let [dx, mut dy, dz] = if matches!(block, Block::TallGrass) {
             crossed_plant_offset(world[0], world[1], world[2])
         } else {
             [0.0; 3]
@@ -472,12 +476,12 @@ impl BlockGeometry {
         } else {
             0.5 / std::f32::consts::SQRT_2
         };
-        let tint = if matches!(block, Block::TallGrass | Block::Fern) {
+        let tint = if matches!(block, Block::TallGrass) {
             grass_tint
         } else {
             [1.0, 1.0, 1.0]
         };
-        let (tile_x, tile_y) = block_tile(block, 0, false);
+        let (tile_x, tile_y) = block_tile(block, metadata, 0, false);
         let texels = tile_texels(tile_x, tile_y, [[0, 0], [0, 16], [16, 16], [16, 0]]);
         let inv_sqrt2 = std::f32::consts::FRAC_1_SQRT_2;
         let quads = [
@@ -563,13 +567,9 @@ impl BlockGeometry {
         tint: [f32; 3],
         shading: CornerShading,
         block: Block,
-        fancy_graphics: bool,
-        tile_override: Option<(u8, u8)>,
+        tile: (u8, u8),
     ) {
-        let texels = tile_override.map_or_else(
-            || face_texels_for_block(block, face_index, fancy_graphics),
-            |(tile_x, tile_y)| face_texels(tile_x, tile_y, face_index),
-        );
+        let texels = face_texels(tile.0, tile.1, face_index);
         let shape_height = match block {
             Block::SnowLayer => 0.125,
             Block::Farmland => 15.0 / 16.0,
@@ -788,12 +788,13 @@ impl<'a> Mesher<'a> {
                         continue;
                     }
                     let origin = [x as f32, (y - y_origin) as f32, z as f32];
+                    let metadata = chunk.metadata(x, y, z);
                     if block.is_torch() {
-                        meshes.grass_overlay.push_torch(origin, block);
+                        meshes.grass_overlay.push_torch(origin, metadata);
                         continue;
                     }
                     if block.is_ladder() {
-                        meshes.masked.push_ladder(origin, block);
+                        meshes.masked.push_ladder(origin, metadata);
                         continue;
                     }
                     let column = z * CHUNK_SIZE + x;
@@ -814,6 +815,7 @@ impl<'a> Mesher<'a> {
                                 y_origin,
                                 [x, y, z],
                                 block,
+                                metadata,
                                 grass_tint,
                             );
                         } else {
@@ -834,13 +836,14 @@ impl<'a> Mesher<'a> {
                             origin,
                             [self.origin_x + x as i32, y as i32, self.origin_z + z as i32],
                             block,
+                            metadata,
                             grass_tint,
                             light,
                         );
                         continue;
                     }
                     if shaped_block(block) {
-                        self.emit_shaped(meshes, origin, x, y, z, block, grass_tint);
+                        self.emit_shaped(meshes, origin, [x, y, z], block, metadata, grass_tint);
                         continue;
                     }
                     self.queue_cube(
@@ -850,6 +853,7 @@ impl<'a> Mesher<'a> {
                         y_origin,
                         [x, y, z],
                         block,
+                        metadata,
                         grass_tint,
                     );
                 }
@@ -859,17 +863,16 @@ impl<'a> Mesher<'a> {
     }
 
     /// Cactus, farmland, and chests keep per-face geometry.
-    #[allow(clippy::too_many_arguments)]
     fn emit_shaped(
         &self,
         meshes: &mut ChunkMeshes,
         origin: [f32; 3],
-        x: usize,
-        y: usize,
-        z: usize,
+        at: [usize; 3],
         block: Block,
+        metadata: u8,
         grass_tint: [f32; 3],
     ) {
+        let [x, y, z] = at;
         let chunk = self.chunk;
         let neighbors = self.neighbors;
         let skylight = self.skylight;
@@ -907,23 +910,25 @@ impl<'a> Mesher<'a> {
             } else {
                 block_tint(
                     block,
+                    metadata,
                     self.tints.as_ref().map(|tints| tints.foliage[column]),
                 )
             };
             let layer = if block == Block::Cactus {
                 &mut meshes.masked
-            } else if fancy_graphics && is_leaf(block) {
+            } else if fancy_graphics && block.is_leaves() {
                 &mut meshes.cutout
             } else {
                 &mut meshes.opaque
             };
-            let chest_tile =
-                chest_pair.map(|direction| double_chest_tile(block, direction, face_index));
+            let chest_tile = chest_pair
+                .map(|direction| double_chest_tile(block, metadata, direction, face_index));
             let wet_farmland_top =
-                block == Block::Farmland && face_index == FACE_TOP && chunk.metadata(x, y, z) > 0;
-            let tile_override = wet_farmland_top
+                block == Block::Farmland && face_index == FACE_TOP && metadata > 0;
+            let tile = wet_farmland_top
                 .then(|| farmland_top_tile(true))
-                .or(chest_tile);
+                .or(chest_tile)
+                .unwrap_or_else(|| block_tile(block, metadata, face_index, fancy_graphics));
             let shading = CornerShading {
                 light: face_corner_light(skylight, x, y, z, face, face_geometry),
                 ao: face_corner_ao(chunk, neighbors, x, y, z, face, face_geometry),
@@ -938,8 +943,7 @@ impl<'a> Mesher<'a> {
                 side_tint,
                 shading,
                 block,
-                fancy_graphics,
-                tile_override,
+                tile,
             );
             if grass_side && fancy_graphics {
                 meshes
@@ -960,6 +964,7 @@ impl<'a> Mesher<'a> {
         y_origin: usize,
         at: [usize; 3],
         block: Block,
+        metadata: u8,
         grass_tint: [f32; 3],
     ) {
         let [x, y, z] = at;
@@ -1015,17 +1020,17 @@ impl<'a> Mesher<'a> {
             let base = if block == Block::Grass && face_index == FACE_TOP {
                 grass_tint
             } else {
-                block_tint(block, foliage)
+                block_tint(block, metadata, foliage)
             };
             let side_tint = if grass_side { [1.0; 3] } else { base };
             let (tile_x, tile_y) = if snow_covered {
                 SNOWY_GRASS_SIDE_TILE
             } else {
-                block_tile(block, face_index, fancy_graphics)
+                block_tile(block, metadata, face_index, fancy_graphics)
             };
             let layer = if filtered_fluid == Some(FluidType::Water) {
                 LAYER_WATER
-            } else if fancy_graphics && is_leaf(block) {
+            } else if fancy_graphics && block.is_leaves() {
                 LAYER_CUTOUT
             } else {
                 LAYER_OPAQUE
@@ -1084,8 +1089,7 @@ impl<'a> Mesher<'a> {
                     side_tint,
                     shading,
                     block,
-                    fancy_graphics,
-                    Some((tile_x, tile_y)),
+                    (tile_x, tile_y),
                 );
                 if grass_overlay {
                     meshes
@@ -1374,16 +1378,17 @@ fn fluid_top_texels(
 }
 
 /// Whether the mesher draws two block states identically, including how
-/// they shape their neighbors' faces. Metadata only shows in fluid levels,
-/// crop stages, and whether farmland is wet; a flowing fluid and its still
-/// block draw alike.
+/// they shape their neighbors' faces. Metadata shows in fluid levels, crop
+/// stages, whether farmland is wet, and the species and facing
+/// ([`Block::appearance_metadata`]); a flowing fluid and its still block draw
+/// alike.
 pub fn same_appearance(block: Block, metadata: u8, other: Block, other_metadata: u8) -> bool {
     let key = |block: Block, metadata: u8| match FluidType::of(block) {
         Some(fluid) => (fluid.still(), metadata),
         None => match block {
             Block::Crops => (block, metadata),
             Block::Farmland => (block, u8::from(metadata > 0)),
-            _ => (block, 0),
+            _ => (block, block.appearance_metadata(metadata)),
         },
     };
     key(block, metadata) == key(other, other_metadata)
@@ -1503,13 +1508,6 @@ fn opaque_at(
         .is_some_and(Block::is_opaque_cube)
 }
 
-fn is_leaf(block: Block) -> bool {
-    matches!(
-        block,
-        Block::Leaves | Block::SpruceLeaves | Block::BirchLeaves
-    )
-}
-
 /// Return the sole, reciprocal chest neighbor for a valid pair.
 fn chest_pair_direction(
     chunk: &Chunk,
@@ -1567,11 +1565,16 @@ fn chest_geometry(pair_direction: Option<[i32; 3]>) -> BlockFaceGeometry {
     BlockFaceGeometry::from_bounds(bounds)
 }
 
-fn double_chest_tile(block: Block, pair_direction: [i32; 3], face: usize) -> (u8, u8) {
+fn double_chest_tile(
+    block: Block,
+    metadata: u8,
+    pair_direction: [i32; 3],
+    face: usize,
+) -> (u8, u8) {
     if face == FACE_TOP || face == FACE_BOTTOM {
         return (9, 1);
     }
-    let facing = block.chest_facing().unwrap_or_default();
+    let facing = block.facing(metadata).unwrap_or_default();
     let front = facing.face_index();
     let back = match front {
         FACE_EAST => FACE_WEST,
@@ -1586,10 +1589,7 @@ fn double_chest_tile(block: Block, pair_direction: [i32; 3], face: usize) -> (u8
     // The atlas stores each long double-chest face as two adjacent tiles.
     // Keep the halves in the same left-to-right order when viewed from front.
     let first_half = pair_direction[0] > 0 || pair_direction[2] > 0;
-    let first_is_left = matches!(
-        facing,
-        crate::block::blocks::FurnaceFacing::North | crate::block::blocks::FurnaceFacing::East
-    );
+    let first_is_left = matches!(facing, HorizontalFacing::North | HorizontalFacing::East);
     let left_half = first_half == first_is_left;
     let tile_x = if left_half { 9 } else { 10 };
     let tile_y = if face == front { 2 } else { 3 };
@@ -1646,18 +1646,13 @@ fn neighbor_hides_face(block: Block, neighbor: Option<Block>, fancy_graphics: bo
     {
         return false;
     }
-    if fancy_graphics && is_leaf(block) && is_leaf(neighbor) {
+    if fancy_graphics && block.is_leaves() && neighbor.is_leaves() {
         return false;
     }
-    if fancy_graphics && is_leaf(neighbor) && !is_leaf(block) {
+    if fancy_graphics && neighbor.is_leaves() && !block.is_leaves() {
         return false;
     }
     true
-}
-
-fn face_texels_for_block(block: Block, face: usize, fancy_graphics: bool) -> [AtlasTexel; 4] {
-    let (tile_x, tile_y) = block_tile(block, face, fancy_graphics);
-    face_texels(tile_x, tile_y, face)
 }
 
 /// Tile corners in the winding each face's geometry uses.
@@ -1674,21 +1669,26 @@ fn tile_texels(tile_x: u8, tile_y: u8, corners: [[u8; 2]; 4]) -> [AtlasTexel; 4]
     corners.map(|[u, v]| AtlasTexel::new(tile_x, tile_y, u, v))
 }
 
-fn block_tint(block: Block, foliage: Option<[f32; 3]>) -> [f32; 3] {
-    if block.is_lit_furnace() {
+fn block_tint(block: Block, metadata: u8, foliage: Option<[f32; 3]>) -> [f32; 3] {
+    if block == Block::LitFurnace {
         // The active face is a small flame, but Beta's lit furnace body also
         // appears subtly brighter than the idle block.
         return [BRIGHT_TINT; 3];
     }
     match block {
         Block::Water | Block::FlowingWater => WATER_TINT,
-        Block::Leaves => foliage.unwrap_or([0.28, 0.71, 0.09]),
-        Block::BirchLeaves => linear_rgb(128, 167, 85),
-        Block::SpruceLeaves => linear_rgb(97, 153, 97),
-        // Beta 1.7.3 only has the oak plank tile. These species variants use
-        // that tile with a color multiplier, matching the game's tint path.
-        Block::SprucePlanks => linear_rgb(214, 177, 131),
-        Block::BirchPlanks => linear_rgb(255, 246, 218),
+        Block::Leaves => match metadata & 3 {
+            species::BIRCH => linear_rgb(128, 167, 85),
+            species::SPRUCE => linear_rgb(97, 153, 97),
+            _ => foliage.unwrap_or([0.28, 0.71, 0.09]),
+        },
+        // Beta 1.7.3 only has the oak plank tile. The other species use that
+        // tile with a color multiplier, matching the game's tint path.
+        Block::WoodenPlanks => match metadata & 3 {
+            species::SPRUCE => linear_rgb(214, 177, 131),
+            species::BIRCH => linear_rgb(255, 246, 218),
+            _ => [1.0, 1.0, 1.0],
+        },
         _ => [1.0, 1.0, 1.0],
     }
 }
@@ -1710,6 +1710,7 @@ pub struct DroppedBlockMeshes {
 
 pub fn dropped_block_meshes(
     block: Block,
+    metadata: u8,
     fancy_graphics: bool,
     grass_tint: [f32; 3],
     foliage_tint: [f32; 3],
@@ -1725,7 +1726,7 @@ pub fn dropped_block_meshes(
         let tint = if block == Block::Grass && face_index == FACE_TOP {
             grass_tint
         } else {
-            block_tint(block, Some(foliage_tint))
+            block_tint(block, metadata, Some(foliage_tint))
         };
         // Items carry their face shade in the tint and ignore world light, so
         // they look the same under every lighting mode and time of day.
@@ -1734,7 +1735,10 @@ pub fn dropped_block_meshes(
             centered,
             face.normal,
             face_geometry.corners,
-            face_texels_for_block(block, face_index, fancy_graphics),
+            {
+                let (tile_x, tile_y) = block_tile(block, metadata, face_index, fancy_graphics);
+                face_texels(tile_x, tile_y, face_index)
+            },
             tint.map(|channel| channel * shade),
             CornerShading::FULL_BRIGHT,
         );
@@ -1751,7 +1755,7 @@ pub fn dropped_block_meshes(
     DroppedBlockMeshes {
         body,
         overlay: (!overlay.is_empty()).then_some(overlay),
-        cutout: fancy_graphics && is_leaf(block),
+        cutout: fancy_graphics && block.is_leaves(),
         alpha_masked: block == Block::Cactus,
     }
 }

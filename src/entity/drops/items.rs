@@ -495,12 +495,12 @@ pub fn item_piece_transform(
 
 /// Full cubes we already mesh in the world. Torch and ladder items use Beta's
 /// flat item sprite path rather than their in-world block render types.
-pub fn dropped_block_model(stack: ItemStack) -> Option<Block> {
-    let block = stack.runtime_block()?;
+pub fn dropped_block_model(stack: ItemStack) -> Option<(Block, u8)> {
+    let (block, metadata) = stack.runtime_block()?;
     if block.is_ladder() || block.is_torch() || block.is_crossed_plant() {
         None
     } else {
-        Some(block)
+        Some((block, metadata))
     }
 }
 
@@ -877,12 +877,13 @@ fn sync_item_rendering(
                 }
             }
             let offsets = item_pile_offsets(item_stack_copies(dropped.0.count()), cube, scale);
-            if let Some(block) = model {
+            if let Some((block, metadata)) = model {
                 spawn_block_pieces(
                     &mut commands,
                     &mut meshes,
                     entity,
                     block,
+                    metadata,
                     fancy,
                     climate_tints(
                         &world.chunks,
@@ -987,6 +988,7 @@ fn spawn_block_pieces(
     meshes: &mut Assets<Mesh>,
     parent: Entity,
     block: Block,
+    metadata: u8,
     fancy: bool,
     tints: ([f32; 3], [f32; 3]),
     terrain: Option<&TerrainMaterial>,
@@ -1002,7 +1004,7 @@ fn spawn_block_pieces(
     let Some(terrain) = terrain else {
         return;
     };
-    let built = dropped_block_meshes(block, fancy, tints.0, tints.1);
+    let built = dropped_block_meshes(block, metadata, fancy, tints.0, tints.1);
     let body = meshes.add(built.body.into_mesh());
     let overlay = built.overlay.map(|mesh| meshes.add(mesh.into_mesh()));
     let use_cutout = built.cutout;

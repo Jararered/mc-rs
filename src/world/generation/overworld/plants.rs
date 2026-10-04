@@ -69,13 +69,13 @@ pub(super) fn tall_grass_patch(
     x: i32,
     y: i32,
     z: i32,
-    block: Block,
+    metadata: u8,
 ) {
     let y = descend(world, x, y, z);
     for _ in 0..128 {
         let (x, y, z) = scatter(rand, x, y, z);
-        if world.is_air(x, y, z) && can_stay(world, x, y, z, block) {
-            world.set(x, y, z, block);
+        if world.is_air(x, y, z) && can_stay(world, x, y, z, Block::TallGrass) {
+            world.set_with_metadata(x, y, z, Block::TallGrass, metadata);
         }
     }
 }

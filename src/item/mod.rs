@@ -2,8 +2,8 @@
 pub mod registry;
 pub mod tools;
 use crate::block::blocks::Block;
-pub use registry::ItemData;
 pub use registry::Item;
+pub use registry::ItemData;
 pub use registry::ItemProperties;
 pub use registry::ItemRegistry;
 
@@ -55,9 +55,13 @@ impl ItemStack {
     }
 
     /// Direct block representation, not a mining-drop rule (stone may drop cobble).
-    /// Torch attachment is discarded; species metadata is retained.
     pub fn from_block(block: Block, count: u8) -> Result<Self, StackError> {
-        let (item_block, data) = block.item_form();
+        Self::from_block_state(block, 0, count)
+    }
+    /// [`Self::from_block`] for a placed block's metadata. Orientation is
+    /// discarded; species is retained.
+    pub fn from_block_state(block: Block, metadata: u8, count: u8) -> Result<Self, StackError> {
+        let (item_block, data) = block.item_form(metadata);
         let Some(item) = Item::from_block(item_block) else {
             return Err(StackError::UnknownItem(Item::BlockOrUnknown(u16::from(
                 item_block.as_u8(),
@@ -84,9 +88,10 @@ impl ItemStack {
         self.item.properties().expect("validated stack identity")
     }
 
-    /// Direct placement candidate for implemented block states. Special items
-    /// such as doors require their own use behavior.
-    pub fn runtime_block(self) -> Option<Block> {
+    /// Direct placement candidate for implemented block states: the block and
+    /// the metadata it starts with. Special items such as doors require their
+    /// own use behavior.
+    pub fn runtime_block(self) -> Option<(Block, u8)> {
         let block = self.definition().block?;
         block.placed(u8::try_from(self.data).ok()?)
     }

@@ -134,11 +134,7 @@ pub(crate) fn is_wood_material(block: Block) -> bool {
     matches!(
         block,
         Block::Wood
-            | Block::SpruceWood
-            | Block::BirchWood
             | Block::WoodenPlanks
-            | Block::SprucePlanks
-            | Block::BirchPlanks
             | Block::Chest
             | Block::CraftingTable
             | Block::Bookshelf
@@ -189,13 +185,19 @@ pub fn tick_furnaces(
         let block = chunks.block_at(x, y, z);
         if let Some(block) = block
             && block.is_furnace()
-            && block.is_lit_furnace() != burning
+            && (block == Block::LitFurnace) != burning
         {
-            let next = block.with_furnace_lit(burning);
-            chunks.set_block(x, y, z, next);
+            let next = if burning {
+                Block::LitFurnace
+            } else {
+                Block::Furnace
+            };
+            // The swap keeps the furnace's facing.
+            let facing = chunks.metadata_at(x, y, z);
+            chunks.set_block_with_metadata(x, y, z, next, facing);
             // `BlockFurnace.updateFurnaceBlockState` swaps with notify.
             if let Some(block_ticks) = block_ticks.as_deref_mut() {
-                block_ticks.block_changed(IVec3::new(x, y, z), block, 0);
+                block_ticks.block_changed(IVec3::new(x, y, z), block, facing);
             }
             if let Some(streaming) = streaming.as_deref_mut() {
                 streaming.request_block_update(x, y, z);

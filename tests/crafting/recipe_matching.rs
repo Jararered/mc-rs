@@ -34,10 +34,7 @@ fn shaped_recipes_offset_and_mirror_inside_three_by_three() {
 #[test]
 fn shapeless_matching_ignores_slot_order_and_data_can_be_exact() {
     let recipe = Recipe::Shapeless {
-        ingredients: vec![
-            Ingredient::exact(Item::Dye, 1),
-            Ingredient::any(Item::Dye),
-        ],
+        ingredients: vec![Ingredient::exact(Item::Dye, 1), Ingredient::any(Item::Dye)],
         output: stack(Item::Dye, 2),
     };
     let mut grid = CraftingGrid::player();

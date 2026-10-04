@@ -8,6 +8,7 @@ use bevy::prelude::*;
 
 pub mod icons;
 pub mod screens;
+pub mod slider;
 
 pub use screens::chat::ChatUiPlugin;
 pub use screens::hud::HudPlugin;

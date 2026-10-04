@@ -30,7 +30,7 @@ pub const DEFAULT_WIGGLE_LEAVES: bool = true;
 pub const MIN_CLOUD_HEIGHT: f32 = 16.0;
 pub const MAX_CLOUD_HEIGHT: f32 = 256.0;
 /// `WorldProvider.getCloudHeight()` for the sky provider.
-pub const DEFAULT_CLOUD_HEIGHT: f32 = 108.0;
+pub const DEFAULT_CLOUD_HEIGHT: f32 = 144.0;
 
 /// Client options file, relative to the working directory.
 pub const SETTINGS_FILE: &str = "settings.json";

@@ -19,7 +19,7 @@ use crate::entity::combat::HURT_TICKS;
 use crate::entity::combat::PlayerCombat;
 use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
-mod interaction;
+pub(crate) mod interaction;
 pub(crate) mod model;
 
 pub use interaction::editing::PLACED_BLOCK;
@@ -70,10 +70,15 @@ impl Plugin for PlayerPlugin {
         app.init_resource::<PauseMenu>()
             .init_resource::<crate::inventory::session::InventorySession>()
             .init_resource::<crate::inventory::session::ActiveWorkbench>()
-            .add_systems(PostStartup, spawn_player)
+            .add_systems(
+                PostStartup,
+                spawn_player.run_if(crate::world::persistence::starts_with_world),
+            )
             .add_systems(OnEnter(AppScreen::Playing), capture_mouse)
             .add_systems(OnEnter(AppScreen::Menu), release_mouse)
             .add_systems(OnEnter(AppScreen::Settings), release_mouse)
+            .add_systems(OnEnter(AppScreen::WorldSelect), release_mouse)
+            .add_systems(OnEnter(AppScreen::NewWorld), release_mouse)
             .add_systems(Update, apply_camera_fov)
             .add_systems(
                 Update,
@@ -347,7 +352,7 @@ const MIN_FLY_SPEED: f32 = 1.0;
 const MAX_FLY_SPEED: f32 = 50.0;
 const FLY_SPEED_STEP: f32 = 1.25;
 
-fn spawn_player(
+pub(crate) fn spawn_player(
     mut commands: Commands,
     chunks: Res<WorldChunks>,
     persistence: Option<Res<WorldPersistence>>,

@@ -256,6 +256,41 @@ pub struct WorldManifest {
     pub world_time: u64,
     #[serde(default)]
     pub weather: crate::world::weather::WorldWeather,
+    /// Difficulty chosen when the world was created, applied to the client
+    /// setting when the world loads. Worlds from before this field keep
+    /// whatever the player has selected.
+    #[serde(default)]
+    pub difficulty: Option<crate::app::settings::Difficulty>,
+}
+
+/// One world folder found in the saves directory.
+#[derive(Debug, Clone)]
+pub struct WorldSummary {
+    pub root: PathBuf,
+    pub manifest: WorldManifest,
+}
+
+/// Every readable world under `saves_directory`, most recently played first.
+pub fn list_worlds(saves_directory: &Path) -> Vec<WorldSummary> {
+    let Ok(entries) = fs::read_dir(saves_directory) else {
+        return Vec::new();
+    };
+    let mut worlds: Vec<WorldSummary> = entries
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.is_dir())
+        .filter_map(|root| {
+            let manifest = read_manifest(&root).ok()?;
+            Some(WorldSummary { root, manifest })
+        })
+        .collect();
+    worlds.sort_by(|a, b| {
+        b.manifest
+            .last_played_unix_millis
+            .cmp(&a.manifest.last_played_unix_millis)
+            .then_with(|| a.root.cmp(&b.root))
+    });
+    worlds
 }
 
 /// The region a chunk belongs to, as `(region_x, region_z)`.
@@ -288,6 +323,16 @@ pub struct WorldStorage {
 impl WorldStorage {
     /// Create a fresh world folder under `saves_directory`.
     pub fn create(saves_directory: &Path, seed: u64, name: &str) -> io::Result<Self> {
+        Self::create_with(saves_directory, seed, name, None)
+    }
+
+    /// Like [`Self::create`], recording the difficulty the world was made with.
+    pub fn create_with(
+        saves_directory: &Path,
+        seed: u64,
+        name: &str,
+        difficulty: Option<crate::app::settings::Difficulty>,
+    ) -> io::Result<Self> {
         fs::create_dir_all(saves_directory)?;
         let now = unix_millis();
         let folder = format!(
@@ -307,6 +352,7 @@ impl WorldStorage {
                 format_version: FORMAT_VERSION,
                 world_time: 0,
                 weather: default(),
+                difficulty,
             }),
         };
         storage.write_manifest()?;
@@ -910,11 +956,24 @@ fn civil_from_days(days: i64) -> (i64, u32, u32) {
 /// Configuration for [`PersistencePlugin`], inserted as a resource so tests can
 /// point a world at a temporary directory.
 #[derive(Resource, Clone)]
-struct PersistenceConfig {
-    saves_directory: PathBuf,
+pub(crate) struct PersistenceConfig {
+    pub(crate) saves_directory: PathBuf,
     seed: u64,
     autosave_seconds: f32,
+    /// No world loads at startup; the game picks one later through
+    /// [`PendingWorld`].
+    deferred: bool,
 }
+
+/// Run condition for the startup systems that load a world. They are skipped
+/// when the game chooses its world at runtime instead.
+pub(crate) fn starts_with_world(config: Option<Res<PersistenceConfig>>) -> bool {
+    config.is_none_or(|config| !config.deferred)
+}
+
+/// A world chosen at runtime, waiting for the load chain to install it.
+#[derive(Resource)]
+pub struct PendingWorld(pub Option<WorldStorage>);
 
 /// Adds world saving and loading to the app.
 ///
@@ -924,6 +983,7 @@ pub struct PersistencePlugin {
     saves_directory: PathBuf,
     seed: u64,
     autosave_seconds: f32,
+    deferred: bool,
 }
 
 impl PersistencePlugin {
@@ -932,7 +992,15 @@ impl PersistencePlugin {
             saves_directory: saves_directory.into(),
             seed: 0,
             autosave_seconds: AUTOSAVE_SECONDS,
+            deferred: false,
         }
+    }
+
+    /// Load no world at startup. The game installs one later by inserting a
+    /// [`PendingWorld`], so a menu can choose which world to play.
+    pub fn deferred(mut self) -> Self {
+        self.deferred = true;
+        self
     }
 
     pub fn with_seed(mut self, seed: u64) -> Self {
@@ -960,12 +1028,21 @@ impl Plugin for PersistencePlugin {
             saves_directory: self.saves_directory.clone(),
             seed: self.seed,
             autosave_seconds: self.autosave_seconds,
+            deferred: self.deferred,
         })
-        .add_systems(Startup, setup_persistence.before(setup_streaming))
+        .add_systems(
+            Startup,
+            setup_persistence
+                .before(setup_streaming)
+                .run_if(starts_with_world),
+        )
         // AppExit can be written by a UI system during Update. Run the save
         // pump after all Update systems so the exit message and the latest
         // player transform are both visible before Bevy shuts down.
-        .add_systems(Last, flush_persistence);
+        .add_systems(
+            Last,
+            flush_persistence.run_if(resource_exists::<WorldPersistence>),
+        );
     }
 }
 
@@ -1079,6 +1156,16 @@ impl WorldPersistence {
     /// never blocks a frame.
     pub fn request_save(&mut self) {
         self.save_requested = true;
+    }
+
+    /// True when nothing is waiting to be written: no drain, no write in flight,
+    /// no unsaved chunk the last save did not cover.
+    pub fn is_idle(&self) -> bool {
+        !self.draining
+            && !self.save_requested
+            && !self.player_pending
+            && self.writer.is_none()
+            && !self.has_work()
     }
 
     /// Regenerate from the world generator instead of loading from disk.
@@ -1367,27 +1454,75 @@ fn setup_persistence(
     config: Res<PersistenceConfig>,
     mut tick: Option<ResMut<crate::world::tick::WorldTick>>,
     mut weather: Option<ResMut<crate::world::weather::WorldWeather>>,
+    mut settings: Option<ResMut<crate::app::settings::GameSettings>>,
 ) {
     match WorldStorage::open_latest_or_create(&config.saves_directory, config.seed) {
-        Ok(storage) => {
-            info!(
-                "World '{}' loaded from {}",
-                storage.manifest().name,
-                storage.root().display()
-            );
-            if let Some(tick) = tick.as_deref_mut() {
-                tick.set_world_time(storage.manifest().world_time);
-            }
-            if let Some(weather) = weather.as_deref_mut() {
-                *weather = storage.manifest().weather;
-            }
-            commands.insert_resource(WorldPersistence::new(storage, config.autosave_seconds));
-        }
+        Ok(storage) => install_world(
+            &mut commands,
+            storage,
+            config.autosave_seconds,
+            tick.as_deref_mut(),
+            weather.as_deref_mut(),
+            settings.as_deref_mut(),
+        ),
         Err(error) => {
             warn!("World persistence disabled: {error}");
             commands.insert_resource(WorldPersistence::disabled());
         }
     }
+}
+
+/// Installs a world chosen at runtime: the first step of the load chain that
+/// [`PendingWorld`] starts.
+pub(crate) fn activate_pending_world(
+    mut commands: Commands,
+    config: Res<PersistenceConfig>,
+    mut pending: ResMut<PendingWorld>,
+    mut tick: Option<ResMut<crate::world::tick::WorldTick>>,
+    mut weather: Option<ResMut<crate::world::weather::WorldWeather>>,
+    mut settings: Option<ResMut<crate::app::settings::GameSettings>>,
+) {
+    match pending.0.take() {
+        Some(storage) => install_world(
+            &mut commands,
+            storage,
+            config.autosave_seconds,
+            tick.as_deref_mut(),
+            weather.as_deref_mut(),
+            settings.as_deref_mut(),
+        ),
+        None => commands.insert_resource(WorldPersistence::disabled()),
+    }
+}
+
+/// Makes `storage` the live world: its clock, weather and difficulty become the
+/// game's, and a [`WorldPersistence`] starts saving into it.
+fn install_world(
+    commands: &mut Commands,
+    storage: WorldStorage,
+    autosave_seconds: f32,
+    tick: Option<&mut crate::world::tick::WorldTick>,
+    weather: Option<&mut crate::world::weather::WorldWeather>,
+    settings: Option<&mut crate::app::settings::GameSettings>,
+) {
+    let manifest = storage.manifest();
+    info!(
+        "World '{}' loaded from {}",
+        manifest.name,
+        storage.root().display()
+    );
+    if let Some(tick) = tick {
+        tick.set_world_time(manifest.world_time);
+        // Ticks counted against the previous world's clock do not carry over.
+        tick.idle();
+    }
+    if let Some(weather) = weather {
+        *weather = manifest.weather;
+    }
+    if let (Some(settings), Some(difficulty)) = (settings, manifest.difficulty) {
+        settings.difficulty = difficulty;
+    }
+    commands.insert_resource(WorldPersistence::new(storage, autosave_seconds));
 }
 
 /// Save what has changed, without stalling the frame.

@@ -5,6 +5,9 @@ pub enum AppScreen {
     #[default]
     Menu,
     Settings,
+    /// The saved worlds, between the title screen and the game.
+    WorldSelect,
+    NewWorld,
     Playing,
 }
 

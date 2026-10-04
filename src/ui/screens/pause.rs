@@ -13,6 +13,7 @@ use bevy::window::PrimaryWindow;
 use super::menu::MenuTextures;
 use super::menu::button_rect;
 use super::menu::menu_font;
+use crate::app::session::WorldSession;
 use crate::app::state::AppScreen;
 use crate::app::state::PauseMenu;
 use crate::app::state::SettingsReturn;
@@ -29,6 +30,7 @@ impl Plugin for PauseMenuPlugin {
         app.init_resource::<PauseMenu>()
             .init_resource::<SettingsReturn>()
             .init_resource::<InventorySession>()
+            .init_resource::<WorldSession>()
             .add_systems(OnExit(AppScreen::Playing), despawn_pause)
             .add_systems(
                 Update,
@@ -172,6 +174,7 @@ fn handle_buttons(
     >,
     mut pause: ResMut<PauseMenu>,
     mut settings_return: ResMut<SettingsReturn>,
+    mut session: ResMut<WorldSession>,
     mut next_screen: ResMut<NextState<AppScreen>>,
     mut windows: Query<(&Window, &mut CursorOptions), With<PrimaryWindow>>,
 ) {
@@ -197,6 +200,8 @@ fn handle_buttons(
             PauseAction::QuitToTitle => {
                 pause.open = false;
                 settings_return.0 = AppScreen::Menu;
+                // Saves and unloads the world while the title screen shows.
+                session.request_leave();
                 next_screen.set(AppScreen::Menu);
             }
         }

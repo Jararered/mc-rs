@@ -28,12 +28,15 @@ pub struct MenuPlugin;
 impl Plugin for MenuPlugin {
     fn build(&self, app: &mut App) {
         panorama::plugin(app);
+        app.add_plugins(super::worlds::WorldsPlugin);
         app.init_resource::<SliderDrag>()
             .init_resource::<PauseMenu>()
             .init_resource::<SettingsReturn>();
         app.add_systems(PreStartup, load_menu_textures)
             .add_systems(OnExit(AppScreen::Menu), despawn_menu)
             .add_systems(OnExit(AppScreen::Settings), despawn_menu)
+            .add_systems(OnExit(AppScreen::WorldSelect), despawn_menu)
+            .add_systems(OnExit(AppScreen::NewWorld), despawn_menu)
             .add_systems(
                 Update,
                 (
@@ -86,7 +89,7 @@ enum MenuAction {
 }
 
 #[derive(Component, Clone, Copy)]
-enum SettingLabel {
+pub(super) enum SettingLabel {
     RenderDistance,
     Brightness,
     Fov,
@@ -111,7 +114,7 @@ enum SettingsTab {
 }
 
 #[derive(Component)]
-struct SettingsContent;
+pub(super) struct SettingsContent;
 
 fn layout_settings(
     windows: Query<&Window, With<PrimaryWindow>>,
@@ -227,7 +230,7 @@ pub(super) fn menu_font(textures: &MenuTextures, size: f32) -> TextFont {
         .with_font_smoothing(FontSmoothing::None)
 }
 
-fn spawn_root(commands: &mut Commands, textures: &MenuTextures, gap: f32) -> Entity {
+pub(super) fn spawn_root(commands: &mut Commands, textures: &MenuTextures, gap: f32) -> Entity {
     commands
         .spawn((
             MenuRoot,
@@ -257,6 +260,8 @@ fn ensure_menu(
     screen: Res<State<AppScreen>>,
     textures: Res<MenuTextures>,
     settings: Res<GameSettings>,
+    worlds: Res<super::worlds::WorldList>,
+    form: Res<super::worlds::NewWorldForm>,
     roots: Query<Entity, With<MenuRoot>>,
 ) {
     if !roots.is_empty() {
@@ -265,6 +270,10 @@ fn ensure_menu(
     match screen.get() {
         AppScreen::Menu => spawn_main_menu(&mut commands, &textures),
         AppScreen::Settings => spawn_settings_menu(&mut commands, &textures, &settings),
+        AppScreen::WorldSelect => {
+            super::worlds::spawn_world_select(&mut commands, &textures, &worlds)
+        }
+        AppScreen::NewWorld => super::worlds::spawn_new_world(&mut commands, &textures, &form),
         AppScreen::Playing => {}
     }
 }
@@ -315,219 +324,223 @@ fn spawn_main_menu(commands: &mut Commands, textures: &MenuTextures) {
 
 fn spawn_settings_menu(commands: &mut Commands, textures: &MenuTextures, settings: &GameSettings) {
     let root = spawn_root(commands, textures, 12.0);
-    commands.entity(root).insert(Node {
-        width: percent(100),
-        height: percent(100),
-        padding: UiRect::all(px(16)),
-        flex_direction: FlexDirection::Column,
-        align_items: AlignItems::Center,
-        row_gap: px(12),
-        ..default()
-    });
-    commands.entity(root).with_children(|parent| {
-        parent.spawn((
-            Text::new("Settings"),
-            menu_font(textures, 32.0),
-            TextColor(Color::WHITE),
-            TextShadow::default(),
-            Node {
-                flex_shrink: 0.0,
-                margin: UiRect::bottom(px(8)),
-                ..default()
-            },
-        ));
-        parent
-            .spawn(Node {
-                flex_shrink: 0.0,
-                column_gap: px(12),
-                ..default()
-            })
-            .with_children(|tabs| {
-                spawn_button(
-                    tabs,
-                    textures,
-                    "Video",
-                    MenuAction::Tab(SettingsTab::Video),
-                    160.0,
-                    None,
-                );
-                spawn_button(
-                    tabs,
-                    textures,
-                    "Controls",
-                    MenuAction::Tab(SettingsTab::Controls),
-                    160.0,
-                    None,
-                );
-                spawn_button(
-                    tabs,
-                    textures,
-                    "Gameplay",
-                    MenuAction::Tab(SettingsTab::Gameplay),
-                    160.0,
-                    None,
-                );
-            });
-        parent
-            .spawn((
-                SettingsContent,
-                ScrollPosition::default(),
+    commands.entity(root).with_children(|root| {
+        // Padding sits on an inner node: an image background only paints the
+        // content box, so padding on the root shows as a dark border.
+        root.spawn(Node {
+            width: percent(100),
+            height: percent(100),
+            padding: UiRect::all(px(16)),
+            flex_direction: FlexDirection::Column,
+            align_items: AlignItems::Center,
+            row_gap: px(12),
+            ..default()
+        })
+        .with_children(|parent| {
+            parent.spawn((
+                Text::new("Settings"),
+                menu_font(textures, 32.0),
+                TextColor(Color::WHITE),
+                TextShadow::default(),
                 Node {
-                    width: percent(100),
-                    max_width: px(1080),
-                    min_height: px(0),
-                    flex_grow: 1.0,
-                    overflow: Overflow::scroll_y(),
+                    flex_shrink: 0.0,
+                    margin: UiRect::bottom(px(8)),
                     ..default()
                 },
-            ))
-            .with_children(|content| {
-                content
-                    .spawn((
-                        SettingsTab::Video,
-                        Node {
-                            width: percent(100),
-                            flex_shrink: 0.0,
-                            align_self: AlignSelf::Start,
-                            display: Display::Grid,
-                            grid_template_columns: vec![RepeatedGridTrack::flex(1, 1.0)],
-                            row_gap: px(8),
-                            column_gap: px(16),
-                            align_items: AlignItems::Start,
-                            ..default()
-                        },
-                    ))
-                    .with_children(|parent| {
-                        spawn_setting_slider(
-                            parent,
-                            &textures,
-                            SettingLabel::RenderDistance,
-                            render_distance_text(&settings),
-                            settings,
-                        );
-                        spawn_setting_slider(
-                            parent,
-                            &textures,
-                            SettingLabel::Fov,
-                            fov_text(&settings),
-                            settings,
-                        );
-                        spawn_setting_slider(
-                            parent,
-                            &textures,
-                            SettingLabel::Brightness,
-                            brightness_text(&settings),
-                            settings,
-                        );
-                        spawn_setting_slider(
-                            parent,
-                            &textures,
-                            SettingLabel::CloudHeight,
-                            cloud_height_text(&settings),
-                            settings,
-                        );
-                        spawn_setting_button(
-                            parent,
-                            &textures,
-                            old_lighting_text(&settings),
-                            MenuAction::OldLighting,
-                            SettingLabel::OldLighting,
-                        );
-                        spawn_setting_button(
-                            parent,
-                            &textures,
-                            smooth_lighting_text(&settings),
-                            MenuAction::SmoothLighting,
-                            SettingLabel::SmoothLighting,
-                        );
-                        spawn_setting_button(
-                            parent,
-                            &textures,
-                            directional_lighting_text(&settings),
-                            MenuAction::DirectionalLighting,
-                            SettingLabel::DirectionalLighting,
-                        );
-                        spawn_setting_button(
-                            parent,
-                            &textures,
-                            wiggle_leaves_text(&settings),
-                            MenuAction::WiggleLeaves,
-                            SettingLabel::WiggleLeaves,
-                        );
-                        spawn_setting_slider(
-                            parent,
-                            textures,
-                            SettingLabel::MaxFps,
-                            max_fps_text(settings),
-                            settings,
-                        );
-                        spawn_setting_button(
-                            parent,
-                            &textures,
-                            graphics_text(&settings),
-                            MenuAction::Graphics,
-                            SettingLabel::Graphics,
-                        );
-                        spawn_setting_button(
-                            parent,
-                            textures,
-                            fullscreen_text(settings),
-                            MenuAction::Fullscreen,
-                            SettingLabel::Fullscreen,
-                        );
-                    });
-                content
-                    .spawn((
-                        SettingsTab::Gameplay,
-                        Node {
-                            width: percent(100),
-                            flex_shrink: 0.0,
-                            align_self: AlignSelf::Start,
-                            display: Display::None,
-                            ..default()
-                        },
-                    ))
-                    .with_children(|parent| {
-                        spawn_setting_button(
-                            parent,
-                            textures,
-                            difficulty_text(settings),
-                            MenuAction::Difficulty,
-                            SettingLabel::Difficulty,
-                        );
-                    });
-                content
-                    .spawn((
-                        SettingsTab::Controls,
-                        Node {
-                            width: percent(100),
-                            flex_shrink: 0.0,
-                            align_self: AlignSelf::Start,
-                            display: Display::None,
-                            grid_template_columns: vec![RepeatedGridTrack::flex(1, 1.0)],
-                            row_gap: px(8),
-                            column_gap: px(16),
-                            ..default()
-                        },
-                    ))
-                    .with_children(|parent| {
-                        spawn_setting_slider(
-                            parent,
-                            textures,
-                            SettingLabel::MouseSensitivity,
-                            sensitivity_text(settings),
-                            settings,
-                        );
-                        spawn_setting_button(
-                            parent,
-                            textures,
-                            view_bobbing_text(settings),
-                            MenuAction::ViewBobbing,
-                            SettingLabel::ViewBobbing,
-                        );
-                    });
-            });
-        spawn_button(parent, &textures, "Back", MenuAction::Back, 520.0, None);
+            ));
+            parent
+                .spawn(Node {
+                    flex_shrink: 0.0,
+                    column_gap: px(12),
+                    ..default()
+                })
+                .with_children(|tabs| {
+                    spawn_button(
+                        tabs,
+                        textures,
+                        "Video",
+                        MenuAction::Tab(SettingsTab::Video),
+                        160.0,
+                        None,
+                    );
+                    spawn_button(
+                        tabs,
+                        textures,
+                        "Controls",
+                        MenuAction::Tab(SettingsTab::Controls),
+                        160.0,
+                        None,
+                    );
+                    spawn_button(
+                        tabs,
+                        textures,
+                        "Gameplay",
+                        MenuAction::Tab(SettingsTab::Gameplay),
+                        160.0,
+                        None,
+                    );
+                });
+            parent
+                .spawn((
+                    SettingsContent,
+                    ScrollPosition::default(),
+                    Node {
+                        width: percent(100),
+                        max_width: px(1080),
+                        min_height: px(0),
+                        flex_grow: 1.0,
+                        overflow: Overflow::scroll_y(),
+                        ..default()
+                    },
+                ))
+                .with_children(|content| {
+                    content
+                        .spawn((
+                            SettingsTab::Video,
+                            Node {
+                                width: percent(100),
+                                flex_shrink: 0.0,
+                                align_self: AlignSelf::Start,
+                                display: Display::Grid,
+                                grid_template_columns: vec![RepeatedGridTrack::flex(1, 1.0)],
+                                row_gap: px(8),
+                                column_gap: px(16),
+                                align_items: AlignItems::Start,
+                                ..default()
+                            },
+                        ))
+                        .with_children(|parent| {
+                            spawn_setting_slider(
+                                parent,
+                                &textures,
+                                SettingLabel::RenderDistance,
+                                render_distance_text(&settings),
+                                settings,
+                            );
+                            spawn_setting_slider(
+                                parent,
+                                &textures,
+                                SettingLabel::Fov,
+                                fov_text(&settings),
+                                settings,
+                            );
+                            spawn_setting_slider(
+                                parent,
+                                &textures,
+                                SettingLabel::Brightness,
+                                brightness_text(&settings),
+                                settings,
+                            );
+                            spawn_setting_slider(
+                                parent,
+                                &textures,
+                                SettingLabel::CloudHeight,
+                                cloud_height_text(&settings),
+                                settings,
+                            );
+                            spawn_setting_button(
+                                parent,
+                                &textures,
+                                old_lighting_text(&settings),
+                                MenuAction::OldLighting,
+                                SettingLabel::OldLighting,
+                            );
+                            spawn_setting_button(
+                                parent,
+                                &textures,
+                                smooth_lighting_text(&settings),
+                                MenuAction::SmoothLighting,
+                                SettingLabel::SmoothLighting,
+                            );
+                            spawn_setting_button(
+                                parent,
+                                &textures,
+                                directional_lighting_text(&settings),
+                                MenuAction::DirectionalLighting,
+                                SettingLabel::DirectionalLighting,
+                            );
+                            spawn_setting_button(
+                                parent,
+                                &textures,
+                                wiggle_leaves_text(&settings),
+                                MenuAction::WiggleLeaves,
+                                SettingLabel::WiggleLeaves,
+                            );
+                            spawn_setting_slider(
+                                parent,
+                                textures,
+                                SettingLabel::MaxFps,
+                                max_fps_text(settings),
+                                settings,
+                            );
+                            spawn_setting_button(
+                                parent,
+                                &textures,
+                                graphics_text(&settings),
+                                MenuAction::Graphics,
+                                SettingLabel::Graphics,
+                            );
+                            spawn_setting_button(
+                                parent,
+                                textures,
+                                fullscreen_text(settings),
+                                MenuAction::Fullscreen,
+                                SettingLabel::Fullscreen,
+                            );
+                        });
+                    content
+                        .spawn((
+                            SettingsTab::Gameplay,
+                            Node {
+                                width: percent(100),
+                                flex_shrink: 0.0,
+                                align_self: AlignSelf::Start,
+                                display: Display::None,
+                                ..default()
+                            },
+                        ))
+                        .with_children(|parent| {
+                            spawn_setting_button(
+                                parent,
+                                textures,
+                                difficulty_text(settings),
+                                MenuAction::Difficulty,
+                                SettingLabel::Difficulty,
+                            );
+                        });
+                    content
+                        .spawn((
+                            SettingsTab::Controls,
+                            Node {
+                                width: percent(100),
+                                flex_shrink: 0.0,
+                                align_self: AlignSelf::Start,
+                                display: Display::None,
+                                grid_template_columns: vec![RepeatedGridTrack::flex(1, 1.0)],
+                                row_gap: px(8),
+                                column_gap: px(16),
+                                ..default()
+                            },
+                        ))
+                        .with_children(|parent| {
+                            spawn_setting_slider(
+                                parent,
+                                textures,
+                                SettingLabel::MouseSensitivity,
+                                sensitivity_text(settings),
+                                settings,
+                            );
+                            spawn_setting_button(
+                                parent,
+                                textures,
+                                view_bobbing_text(settings),
+                                MenuAction::ViewBobbing,
+                                SettingLabel::ViewBobbing,
+                            );
+                        });
+                });
+            spawn_button(parent, &textures, "Back", MenuAction::Back, 520.0, None);
+        });
     });
 }
 
@@ -679,11 +692,11 @@ fn spawn_setting_button(
     spawn_button(parent, textures, &value, action, 520.0, Some(label));
 }
 
-fn spawn_button(
+pub(super) fn spawn_button(
     parent: &mut ChildSpawnerCommands,
     textures: &MenuTextures,
     title: &str,
-    action: MenuAction,
+    action: impl Bundle,
     width: f32,
     label: Option<SettingLabel>,
 ) -> Entity {
@@ -775,7 +788,7 @@ fn handle_buttons(
         match action {
             MenuAction::Play => {
                 pause.open = false;
-                next_screen.set(AppScreen::Playing);
+                next_screen.set(AppScreen::WorldSelect);
             }
             MenuAction::Settings => {
                 settings_return.0 = AppScreen::Menu;

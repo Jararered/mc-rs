@@ -33,7 +33,13 @@ impl Plugin for WorldRenderingPlugin {
             .init_resource::<GameSettings>()
             .init_resource::<GlobalAmbientLight>()
             .init_resource::<StreamingDiagnostics>()
-            .add_systems(Startup, (setup_streaming, spawn_sun))
+            .add_systems(
+                Startup,
+                (
+                    setup_streaming.run_if(crate::world::persistence::starts_with_world),
+                    spawn_sun,
+                ),
+            )
             .add_systems(
                 PostUpdate,
                 apply_world_camera_activity.before(bevy::camera::CameraUpdateSystems),
@@ -47,7 +53,8 @@ impl Plugin for WorldRenderingPlugin {
                     stream_chunks
                         .chain()
                         .after(PhysicsSet::ApplyInput)
-                        .after(BlockTickSet),
+                        .after(BlockTickSet)
+                        .run_if(resource_exists::<crate::world::streaming::WorldStreaming>),
                 ),
             );
     }

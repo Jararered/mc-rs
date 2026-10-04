@@ -820,3 +820,45 @@ fn a_chunk_unloaded_while_its_write_is_in_flight_keeps_the_newer_edit() {
         .expect("the chunk should be on disk");
     assert_eq!(reloaded.chunk.get(4, 120, 4), Some(Block::GoldBlock));
 }
+
+#[test]
+fn list_worlds_returns_every_world_newest_played_first_with_its_difficulty() {
+    use game::app::settings::Difficulty;
+    use game::world::persistence::list_worlds;
+
+    let saves = temp_saves("list");
+    let first = WorldStorage::create_with(&saves, 1, "First", Some(Difficulty::Hard)).unwrap();
+    thread::sleep(Duration::from_millis(5));
+    let second = WorldStorage::create(&saves, 2, "Second").unwrap();
+    // A folder that is not a world must not appear in the list.
+    fs::create_dir_all(saves.join("not-a-world")).unwrap();
+
+    let worlds = list_worlds(&saves);
+    assert_eq!(worlds.len(), 2);
+    assert_eq!(worlds[0].root, second.root());
+    assert_eq!(worlds[0].manifest.name, "Second");
+    assert_eq!(worlds[0].manifest.difficulty, None);
+    assert_eq!(worlds[1].root, first.root());
+    assert_eq!(worlds[1].manifest.seed, 1);
+    assert_eq!(worlds[1].manifest.difficulty, Some(Difficulty::Hard));
+    assert!(list_worlds(&saves.join("missing")).is_empty());
+}
+
+#[test]
+fn a_deferred_persistence_plugin_loads_no_world_until_one_is_chosen() {
+    let saves = temp_saves("deferred");
+    let mut app = app_with(PersistencePlugin::new(saves.clone()).deferred());
+    app.update();
+
+    assert!(app.world().get_resource::<WorldPersistence>().is_none());
+    assert!(
+        app.world()
+            .get_resource::<game::world::streaming::WorldStreaming>()
+            .is_none()
+    );
+    assert!(!saves.join("level.json").exists());
+    assert!(
+        fs::read_dir(&saves).unwrap().next().is_none(),
+        "no world folder should be created at startup"
+    );
+}

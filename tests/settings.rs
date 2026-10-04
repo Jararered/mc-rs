@@ -1376,3 +1376,122 @@ fn quit_to_title_leaves_the_game_and_closes_the_pause_menu() {
     assert!(!pause_open(&app));
     button_named(&mut app, "Play");
 }
+
+fn world_screen_app() -> App {
+    let mut app = settings_menu_app();
+    click_menu_button(&mut app, "Back");
+    app
+}
+
+#[test]
+fn play_opens_the_world_list_and_back_returns_to_the_title() {
+    let mut app = world_screen_app();
+    assert_eq!(screen(&app), AppScreen::Menu);
+
+    click_menu_button(&mut app, "Play");
+    app.update();
+    assert_eq!(screen(&app), AppScreen::WorldSelect);
+    button_named(&mut app, "Create New World");
+
+    click_menu_button(&mut app, "Back");
+    app.update();
+    assert_eq!(screen(&app), AppScreen::Menu);
+    button_named(&mut app, "Play");
+}
+
+#[test]
+fn new_world_screen_goes_back_to_the_world_list() {
+    let mut app = world_screen_app();
+    click_menu_button(&mut app, "Play");
+    app.update();
+    click_menu_button(&mut app, "Create New World");
+    app.update();
+    assert_eq!(screen(&app), AppScreen::NewWorld);
+    for title in ["Difficulty: Normal", "Back"] {
+        button_named(&mut app, title);
+    }
+
+    click_menu_button(&mut app, "Back");
+    app.update();
+    assert_eq!(screen(&app), AppScreen::WorldSelect);
+}
+
+fn type_text(app: &mut App, key_code: KeyCode, text: Option<&str>) {
+    app.world_mut()
+        .write_message(bevy::input::keyboard::KeyboardInput {
+            key_code,
+            logical_key: bevy::input::keyboard::Key::Unidentified(
+                bevy::input::keyboard::NativeKey::Unidentified,
+            ),
+            state: bevy::input::ButtonState::Pressed,
+            text: text.map(Into::into),
+            repeat: false,
+            window: Entity::PLACEHOLDER,
+        });
+    app.update();
+}
+
+#[test]
+fn new_world_form_collects_name_seed_and_difficulty() {
+    use game::app::session::WorldChoice;
+    use game::app::session::WorldSession;
+    use game::app::settings::Difficulty;
+
+    let mut app = world_screen_app();
+    click_menu_button(&mut app, "Play");
+    app.update();
+    click_menu_button(&mut app, "Create New World");
+    app.update();
+
+    for _ in 0.."New World".len() {
+        type_text(&mut app, KeyCode::Backspace, None);
+    }
+    type_text(&mut app, KeyCode::KeyA, Some("A"));
+    type_text(&mut app, KeyCode::KeyB, Some("B"));
+    type_text(&mut app, KeyCode::Tab, None);
+    type_text(&mut app, KeyCode::Digit4, Some("4"));
+    type_text(&mut app, KeyCode::Digit2, Some("2"));
+    app.update();
+    button_named(&mut app, "World name: AB");
+    button_named(&mut app, "Seed: 42_");
+
+    click_menu_button(&mut app, "Difficulty: Normal");
+    button_named(&mut app, "Difficulty: Hard");
+    click_menu_button(&mut app, "Create New World");
+
+    let session = app.world().resource::<WorldSession>();
+    match session.pending_choice() {
+        Some(WorldChoice::New {
+            name,
+            seed,
+            difficulty,
+        }) => {
+            assert_eq!(name, "AB");
+            assert_eq!(*seed, 42);
+            assert_eq!(*difficulty, Difficulty::Hard);
+        }
+        other => panic!("expected a new world request, got {other:?}"),
+    }
+}
+
+#[test]
+fn an_empty_name_and_seed_fall_back_to_a_default_name_and_random_seed() {
+    use game::app::session::WorldChoice;
+    use game::app::session::WorldSession;
+
+    let mut app = world_screen_app();
+    click_menu_button(&mut app, "Play");
+    app.update();
+    click_menu_button(&mut app, "Create New World");
+    app.update();
+    for _ in 0.."New World".len() {
+        type_text(&mut app, KeyCode::Backspace, None);
+    }
+    click_menu_button(&mut app, "Create New World");
+
+    let session = app.world().resource::<WorldSession>();
+    let Some(WorldChoice::New { name, .. }) = session.pending_choice() else {
+        panic!("expected a new world request");
+    };
+    assert_eq!(name, "New World");
+}

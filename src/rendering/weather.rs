@@ -29,7 +29,7 @@ struct PrecipitationPatch {
 }
 
 #[derive(Component)]
-struct LightningFlash(u8);
+pub(crate) struct LightningFlash(u8);
 
 pub(super) fn plugin(app: &mut App) {
     app.add_systems(Startup, prepare).add_systems(

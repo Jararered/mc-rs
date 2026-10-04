@@ -3,6 +3,7 @@ pub mod frame_pacing;
 pub mod fullscreen;
 mod plugin;
 pub mod screenshot;
+pub mod session;
 pub mod settings;
 pub mod state;
 

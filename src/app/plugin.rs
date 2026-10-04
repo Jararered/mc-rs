@@ -7,7 +7,6 @@ use crate::entity::particles::registry::ParticleRegistryPlugin;
 use crate::entity::shadow::plugin as entity_shadow_plugin;
 use crate::physics::PhysicsPlugin;
 use crate::player::PlayerPlugin;
-use crate::random::parse_seed;
 use crate::ui::ChatUiPlugin;
 use crate::ui::HudPlugin;
 use crate::ui::InventoryGuiPlugin;
@@ -21,12 +20,9 @@ use super::diagnostics::DiagnosticsPlugin;
 use super::frame_pacing::FramePacingPlugin;
 use super::fullscreen::FullscreenPlugin;
 use super::screenshot::ScreenshotPlugin;
+use super::session::SessionPlugin;
 use super::settings::SettingsPlugin;
 use super::state::AppScreen;
-
-/// Seed for a newly created world. `parse_seed` accepts a signed decimal long
-/// or a text seed such as `glacier`.
-const NEW_WORLD_SEED: &str = "gargamel";
 
 pub struct GamePlugin;
 
@@ -43,7 +39,7 @@ impl Plugin for GamePlugin {
                 ),
                 // Only consulted when no world exists yet; resuming a save keeps
                 // the seed recorded in its own `level.json`.
-                PersistencePlugin::default().with_seed(parse_seed(NEW_WORLD_SEED)),
+                PersistencePlugin::default().deferred(),
                 PlayerPlugin,
                 BlockParticlePlugin,
                 DroppedItemPlugin,
@@ -51,7 +47,7 @@ impl Plugin for GamePlugin {
                 ParticleRegistryPlugin,
                 PhysicsPlugin,
                 UiCameraPlugin,
-                (MenuPlugin, PauseMenuPlugin),
+                (MenuPlugin, PauseMenuPlugin, SessionPlugin),
                 HudPlugin,
                 InventoryGuiPlugin,
                 (ScreenshotPlugin, FullscreenPlugin),

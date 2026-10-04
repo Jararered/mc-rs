@@ -147,6 +147,15 @@ pub struct WorldStreaming {
 }
 
 impl WorldStreaming {
+    /// Despawn every chunk mesh and free its mesh assets. Call before dropping
+    /// the resource when a world is unloaded, since the entities are only
+    /// tracked here.
+    pub(crate) fn despawn_rendered(&mut self, commands: &mut Commands, meshes: &mut Assets<Mesh>) {
+        for (_, rendered) in self.rendered.drain() {
+            render::despawn_rendered_chunk(commands, meshes, rendered);
+        }
+    }
+
     pub fn rendered_mesh_count(&self) -> usize {
         self.rendered.len()
     }

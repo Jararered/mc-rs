@@ -69,7 +69,7 @@ struct ShadowQuad(Entity);
 
 /// Back-reference so a quad can be despawned once its owner is gone.
 #[derive(Component)]
-struct ShadowOwner(Entity);
+pub(crate) struct ShadowOwner(Entity);
 
 #[derive(Resource)]
 struct ShadowAssets {

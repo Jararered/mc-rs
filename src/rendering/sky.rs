@@ -67,7 +67,7 @@ pub(crate) struct CelestialCamera;
 struct SkyAttached;
 
 #[derive(Component)]
-struct SkyAnchor;
+pub(crate) struct SkyAnchor;
 
 #[derive(Component)]
 struct CelestialRig;

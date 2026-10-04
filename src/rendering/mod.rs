@@ -10,6 +10,6 @@ mod mobs;
 mod plugin;
 pub mod sky;
 pub mod textures;
-mod weather;
+pub(crate) mod weather;
 
 pub use plugin::WorldRenderingPlugin;

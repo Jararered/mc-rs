@@ -8,9 +8,14 @@ use bevy::prelude::*;
 use bevy::ui::widget::NodeImageMode;
 use bevy::window::PrimaryWindow;
 
-use crate::app::settings::Difficulty;
-use crate::app::settings::GameSettings;
-use crate::app::settings::GraphicsQuality;
+use crate::app::settings::*;
+use crate::ui::slider::Slider;
+use crate::ui::slider::SliderDrag;
+use crate::ui::slider::SliderSkin;
+use crate::ui::slider::spawn_slider;
+use crate::ui::slider::update_sliders;
+use bevy::ui::FocusPolicy;
+
 use crate::app::state::AppScreen;
 
 use super::panorama;
@@ -21,6 +26,7 @@ pub struct MenuPlugin;
 impl Plugin for MenuPlugin {
     fn build(&self, app: &mut App) {
         panorama::plugin(app);
+        app.init_resource::<SliderDrag>();
         app.add_systems(PreStartup, load_menu_textures)
             .add_systems(OnExit(AppScreen::Menu), despawn_menu)
             .add_systems(OnExit(AppScreen::Settings), despawn_menu)
@@ -29,8 +35,9 @@ impl Plugin for MenuPlugin {
                 (
                     ensure_menu,
                     handle_buttons,
+                    update_sliders,
+                    apply_setting_sliders,
                     refresh_settings_labels,
-                    prepare_compact_buttons,
                     menu_asset_fallback,
                     highlight_tabs,
                     layout_settings,
@@ -50,7 +57,6 @@ impl Plugin for MenuPlugin {
 struct MenuTextures {
     background: Handle<Image>,
     buttons: Handle<Image>,
-    compact_buttons: Option<Handle<Image>>,
     logo: Handle<Image>,
     font: Handle<Font>,
 }
@@ -64,18 +70,12 @@ enum MenuAction {
     Settings,
     Quit,
     Back,
-    RenderDistance(i32),
-    Brightness(f32),
-    Fov(f32),
-    CloudHeight(f32),
     OldLighting,
     SmoothLighting,
     DirectionalLighting,
     WiggleLeaves,
     Graphics,
     Difficulty,
-    MaxFps,
-    MouseSensitivity(f32),
     ViewBobbing,
     Fullscreen,
     Tab(SettingsTab),
@@ -153,63 +153,9 @@ fn load_menu_textures(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.insert_resource(MenuTextures {
         background: load("gui/background.png"),
         buttons: load("gui/gui.png"),
-        compact_buttons: None,
         logo: load("title/mclogo.png"),
         font: asset_server.load("font/minecraft.otf"),
     });
-}
-
-// Bevy scales nine-slice corners by the source aspect ratio. A compact
-// strip made from the original button ends keeps square steppers at 2x scale.
-fn prepare_compact_buttons(
-    mut textures: ResMut<MenuTextures>,
-    mut images: ResMut<Assets<Image>>,
-    mut buttons: Query<(&Node, &Interaction, &mut ImageNode), With<Button>>,
-) {
-    if textures.compact_buttons.is_none() {
-        let Some(source) = images.get(&textures.buttons) else {
-            return;
-        };
-        let Some(data) = source.data.as_ref() else {
-            return;
-        };
-        let width = source.width() as usize;
-        if width < 200
-            || source.height() < 106
-            || data.len() != width * source.height() as usize * 4
-        {
-            return;
-        }
-        let mut compact = source.clone();
-        compact.resize(bevy::render::render_resource::Extent3d {
-            width: 24,
-            height: 40,
-            depth_or_array_layers: 1,
-        });
-        let target = compact.data.as_mut().expect("source has pixel data");
-        for y in 0..40 {
-            let source_y = if y < 20 { 66 + y } else { 86 + y - 20 };
-            for x in 0..24 {
-                let source_x = if x < 12 { x } else { 200 - 24 + x };
-                let from = (source_y * width + source_x) * 4;
-                let to = (y * 24 + x) * 4;
-                target[to..to + 4].copy_from_slice(&data[from..from + 4]);
-            }
-        }
-        textures.compact_buttons = Some(images.add(compact));
-    }
-    let handle = textures.compact_buttons.as_ref().unwrap();
-    for (node, interaction, mut image) in &mut buttons {
-        if node.width == px(48) && image.image == textures.buttons {
-            image.image = handle.clone();
-            image.rect = Some(compact_button_rect(*interaction != Interaction::None));
-        }
-    }
-}
-
-fn compact_button_rect(hovered: bool) -> Rect {
-    let top = if hovered { 20.0 } else { 0.0 };
-    Rect::new(0.0, top, 24.0, top + 20.0)
 }
 
 fn highlight_tabs(
@@ -448,37 +394,33 @@ fn spawn_settings_menu(commands: &mut Commands, textures: &MenuTextures, setting
                         },
                     ))
                     .with_children(|parent| {
-                        spawn_stepper(
+                        spawn_setting_slider(
                             parent,
                             &textures,
                             SettingLabel::RenderDistance,
                             render_distance_text(&settings),
-                            MenuAction::RenderDistance(-1),
-                            MenuAction::RenderDistance(1),
+                            settings,
                         );
-                        spawn_stepper(
+                        spawn_setting_slider(
                             parent,
                             &textures,
                             SettingLabel::Fov,
                             fov_text(&settings),
-                            MenuAction::Fov(-5.0),
-                            MenuAction::Fov(5.0),
+                            settings,
                         );
-                        spawn_stepper(
+                        spawn_setting_slider(
                             parent,
                             &textures,
                             SettingLabel::Brightness,
                             brightness_text(&settings),
-                            MenuAction::Brightness(-50.0),
-                            MenuAction::Brightness(50.0),
+                            settings,
                         );
-                        spawn_stepper(
+                        spawn_setting_slider(
                             parent,
                             &textures,
                             SettingLabel::CloudHeight,
                             cloud_height_text(&settings),
-                            MenuAction::CloudHeight(-8.0),
-                            MenuAction::CloudHeight(8.0),
+                            settings,
                         );
                         spawn_setting_button(
                             parent,
@@ -508,12 +450,12 @@ fn spawn_settings_menu(commands: &mut Commands, textures: &MenuTextures, setting
                             MenuAction::WiggleLeaves,
                             SettingLabel::WiggleLeaves,
                         );
-                        spawn_setting_button(
+                        spawn_setting_slider(
                             parent,
-                            &textures,
-                            max_fps_text(&settings),
-                            MenuAction::MaxFps,
+                            textures,
                             SettingLabel::MaxFps,
+                            max_fps_text(settings),
+                            settings,
                         );
                         spawn_setting_button(
                             parent,
@@ -565,13 +507,12 @@ fn spawn_settings_menu(commands: &mut Commands, textures: &MenuTextures, setting
                         },
                     ))
                     .with_children(|parent| {
-                        spawn_stepper(
+                        spawn_setting_slider(
                             parent,
                             textures,
                             SettingLabel::MouseSensitivity,
                             sensitivity_text(settings),
-                            MenuAction::MouseSensitivity(-0.1),
-                            MenuAction::MouseSensitivity(0.1),
+                            settings,
                         );
                         spawn_setting_button(
                             parent,
@@ -586,42 +527,142 @@ fn spawn_settings_menu(commands: &mut Commands, textures: &MenuTextures, setting
     });
 }
 
-fn spawn_stepper(
+/// Numeric settings bound to the reusable slider widget.
+#[derive(Component, Clone, Copy)]
+pub enum SettingsSlider {
+    RenderDistance,
+    Fov,
+    Brightness,
+    CloudHeight,
+    MouseSensitivity,
+    MaxFps,
+}
+
+impl SettingsSlider {
+    pub fn slider(self, settings: &GameSettings) -> Slider {
+        match self {
+            Self::RenderDistance => Slider::new(
+                MIN_RENDER_DISTANCE as f32,
+                MAX_RENDER_DISTANCE as f32,
+                1.0,
+                settings.render_distance as f32,
+            ),
+            Self::Fov => Slider::new(MIN_FOV, MAX_FOV, 1.0, settings.fov),
+            Self::Brightness => {
+                Slider::new(MIN_BRIGHTNESS, MAX_BRIGHTNESS, 1.0, settings.brightness)
+            }
+            Self::CloudHeight => Slider::new(
+                MIN_CLOUD_HEIGHT,
+                MAX_CLOUD_HEIGHT,
+                1.0,
+                settings.cloud_height,
+            ),
+            Self::MouseSensitivity => Slider::new(
+                MIN_MOUSE_SENSITIVITY * 100.0,
+                MAX_MOUSE_SENSITIVITY * 100.0,
+                1.0,
+                settings.mouse_sensitivity * 100.0,
+            ),
+            Self::MaxFps => Slider::new(
+                MIN_MAX_FPS as f32,
+                MAX_MAX_FPS as f32 + 1.0,
+                1.0,
+                if settings.max_fps == 0 {
+                    MAX_MAX_FPS as f32 + 1.0
+                } else {
+                    settings.max_fps as f32
+                },
+            ),
+        }
+    }
+}
+
+fn spawn_setting_slider(
     parent: &mut ChildSpawnerCommands,
     textures: &MenuTextures,
     label: SettingLabel,
     value: String,
-    decrease: MenuAction,
-    increase: MenuAction,
+    settings: &GameSettings,
 ) {
-    parent
-        .spawn(Node {
-            width: percent(100),
-            min_width: px(0),
-            flex_shrink: 0.0,
-            height: px(44),
-            align_items: AlignItems::Center,
-            justify_content: JustifyContent::SpaceBetween,
+    let binding = match label {
+        SettingLabel::RenderDistance => SettingsSlider::RenderDistance,
+        SettingLabel::Fov => SettingsSlider::Fov,
+        SettingLabel::Brightness => SettingsSlider::Brightness,
+        SettingLabel::CloudHeight => SettingsSlider::CloudHeight,
+        SettingLabel::MouseSensitivity => SettingsSlider::MouseSensitivity,
+        SettingLabel::MaxFps => SettingsSlider::MaxFps,
+        _ => unreachable!("not a numeric setting"),
+    };
+    let image = ImageNode::new(textures.buttons.clone())
+        .with_rect(button_rect(false))
+        .with_mode(NodeImageMode::Sliced(TextureSlicer {
+            border: BorderRect::all(2.0),
+            max_corner_scale: 2.0,
             ..default()
-        })
-        .with_children(|row| {
-            spawn_button(row, textures, "-", decrease, 48.0, None);
-            row.spawn((
-                label,
-                Text::new(value),
-                menu_font(textures, 16.0),
-                TextLayout::justify(Justify::Center),
-                Node {
-                    flex_grow: 1.0,
-                    min_width: px(0),
-                    margin: UiRect::horizontal(px(8)),
-                    ..default()
-                },
-                TextColor(Color::WHITE),
-                TextShadow::default(),
-            ));
-            spawn_button(row, textures, "+", increase, 48.0, None);
-        });
+        }));
+    let entity = spawn_slider(
+        parent,
+        binding.slider(settings),
+        Some(SliderSkin {
+            image: image.clone(),
+            hovered_rect: button_rect(true),
+        }),
+    );
+    parent
+        .commands()
+        .entity(entity)
+        .insert((
+            label,
+            binding,
+            image.with_rect(Rect::new(0.0, 46.0, 200.0, 66.0)),
+        ))
+        .with_child((
+            Text::new(value),
+            menu_font(textures, 16.0),
+            TextColor(Color::WHITE),
+            TextShadow::default(),
+            TextLayout::justify(Justify::Center),
+            FocusPolicy::Pass,
+        ));
+}
+
+impl SettingsSlider {
+    /// Apply a widget value without marking settings changed when it is identical.
+    pub fn apply(self, slider: &Slider, settings: &mut GameSettings) -> bool {
+        let value = slider.value();
+        let mut next = settings.clone();
+        match self {
+            Self::RenderDistance => next.render_distance = value as i32,
+            Self::Fov => next.fov = value,
+            Self::Brightness => next.brightness = value,
+            Self::CloudHeight => next.cloud_height = value,
+            Self::MouseSensitivity => next.mouse_sensitivity = value / 100.0,
+            Self::MaxFps => {
+                next.max_fps = if value > MAX_MAX_FPS as f32 {
+                    0
+                } else {
+                    value as u32
+                }
+            }
+        }
+        if next == *settings {
+            return false;
+        }
+        *settings = next;
+        true
+    }
+}
+
+fn apply_setting_sliders(
+    sliders: Query<(&SettingsSlider, &Slider), Changed<Slider>>,
+    mut settings: ResMut<GameSettings>,
+) {
+    for (binding, slider) in &sliders {
+        let mut next = settings.clone();
+        if binding.apply(slider, &mut next) {
+            *settings = next;
+        }
+    }
 }
 
 fn spawn_setting_button(
@@ -685,7 +726,12 @@ fn button_rect(hovered: bool) -> Rect {
     Rect::new(0.0, top, 200.0, top + 20.0)
 }
 
-fn despawn_menu(mut commands: Commands, roots: Query<Entity, With<MenuRoot>>) {
+fn despawn_menu(
+    mut commands: Commands,
+    mut drag: ResMut<SliderDrag>,
+    roots: Query<Entity, With<MenuRoot>>,
+) {
+    drag.0 = None;
     for root in &roots {
         commands.entity(root).despawn();
     }
@@ -701,20 +747,16 @@ fn handle_buttons(
         ),
         Changed<Interaction>,
     >,
-    textures: Res<MenuTextures>,
     mut panels: Query<(&SettingsTab, &mut Node)>,
     mut scroll: Query<&mut ScrollPosition, With<SettingsContent>>,
     mut settings: ResMut<GameSettings>,
     mut next_screen: ResMut<NextState<AppScreen>>,
     mut exit: MessageWriter<AppExit>,
+    mut drag: ResMut<SliderDrag>,
 ) {
     for (interaction, action, image, mut background) in &mut buttons {
         if let Some(mut image) = image {
-            image.rect = Some(if textures.compact_buttons.as_ref() == Some(&image.image) {
-                compact_button_rect(*interaction != Interaction::None)
-            } else {
-                button_rect(*interaction != Interaction::None)
-            });
+            image.rect = Some(button_rect(*interaction != Interaction::None));
         }
         background.0 = if *interaction == Interaction::None {
             Color::srgb(0.44, 0.44, 0.44)
@@ -731,10 +773,6 @@ fn handle_buttons(
                 exit.write(AppExit::Success);
             }
             MenuAction::Back => next_screen.set(AppScreen::Menu),
-            MenuAction::RenderDistance(change) => settings.change_render_distance(*change),
-            MenuAction::Brightness(change) => settings.change_brightness(*change),
-            MenuAction::Fov(change) => settings.change_fov(*change),
-            MenuAction::CloudHeight(change) => settings.change_cloud_height(*change),
             MenuAction::OldLighting => settings.old_lighting = !settings.old_lighting,
             MenuAction::SmoothLighting => settings.smooth_lighting = !settings.smooth_lighting,
             MenuAction::DirectionalLighting => {
@@ -743,11 +781,10 @@ fn handle_buttons(
             MenuAction::WiggleLeaves => settings.wiggle_leaves = !settings.wiggle_leaves,
             MenuAction::Graphics => settings.cycle_graphics(),
             MenuAction::Difficulty => settings.difficulty = settings.difficulty.cycle(),
-            MenuAction::MaxFps => settings.cycle_max_fps(),
-            MenuAction::MouseSensitivity(change) => settings.change_mouse_sensitivity(*change),
             MenuAction::ViewBobbing => settings.view_bobbing = !settings.view_bobbing,
             MenuAction::Fullscreen => settings.fullscreen = !settings.fullscreen,
             MenuAction::Tab(selected) => {
+                drag.0 = None;
                 for (tab, mut node) in &mut panels {
                     node.display = if tab == selected {
                         Display::Grid

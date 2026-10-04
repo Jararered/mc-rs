@@ -940,44 +940,26 @@ fn settings_tabs_buttons_and_live_labels() {
     click_menu_button(&mut app, "View bobbing: ON");
     assert!(!app.world().resource::<GameSettings>().view_bobbing);
     button_named(&mut app, "View bobbing: OFF");
-    let plus = {
-        let children = app.world().get::<Children>(sensitivity_row).unwrap();
-        children
-            .iter()
-            .find(|entity| {
-                app.world().get::<Button>(*entity).is_some_and(|_| {
-                    app.world()
-                        .get::<Children>(*entity)
-                        .unwrap()
-                        .iter()
-                        .any(|child| {
-                            app.world()
-                                .get::<Text>(child)
-                                .is_some_and(|text| text.0 == "+")
-                        })
-                })
-            })
-            .unwrap()
-    };
-    let node = app.world().get::<Node>(plus).unwrap();
-    assert_eq!(node.width, px(48));
-    assert_eq!(node.flex_shrink, 0.0);
-    assert!(matches!(
-        app.world().get::<ImageNode>(plus).unwrap().image_mode,
-        bevy::ui::widget::NodeImageMode::Sliced(_)
-    ));
+    use game::ui::slider::Slider;
+    use game::ui::slider::SliderDrag;
+    let node = app.world().get::<Node>(sensitivity_row).unwrap();
+    assert_eq!(node.width, percent(100));
+    assert_eq!(node.height, px(40));
+    assert_eq!(node.max_width, px(520));
+    assert!(app.world().get::<ImageNode>(sensitivity_row).is_some());
     app.world_mut()
-        .entity_mut(plus)
-        .insert(Interaction::Pressed);
+        .get_mut::<Slider>(sensitivity_row)
+        .unwrap()
+        .set_fraction(100.0 / 290.0);
     app.update();
     assert!((app.world().resource::<GameSettings>().mouse_sensitivity - 1.1).abs() < 0.0001);
-    assert!(
-        app.world_mut()
-            .query::<&Text>()
-            .iter(app.world())
-            .any(|text| text.0 == "Mouse sensitivity: 110%")
-    );
+    button_named(&mut app, "Mouse sensitivity: 110%");
+    app.world_mut()
+        .resource_mut::<ButtonInput<MouseButton>>()
+        .press(MouseButton::Left);
+    app.world_mut().resource_mut::<SliderDrag>().0 = Some(sensitivity_row);
     click_menu_button(&mut app, "Video");
+    assert!(app.world().resource::<SliderDrag>().0.is_none());
     click_menu_button(&mut app, "Fullscreen: OFF");
     assert!(app.world().resource::<GameSettings>().fullscreen);
     assert_eq!(
@@ -1060,59 +1042,57 @@ fn settings_resize_scroll_and_tab_reset() {
 }
 
 #[test]
-fn compact_stepper_skin_preserves_both_button_edges_and_hover_row() {
+fn slider_thumb_tracks_value_and_leaving_settings_cancels_drag() {
+    use game::ui::slider::Slider;
+    use game::ui::slider::SliderDrag;
+    use game::ui::slider::SliderThumb;
     let mut app = settings_menu_app();
-    let plus = button_named(&mut app, "+");
-    // Asset loading is asynchronous, including in a headless app.
-    let compact = (0..200)
-        .find_map(|_| {
-            std::thread::sleep(std::time::Duration::from_millis(1));
-            app.update();
-            let image = app.world().get::<ImageNode>(plus)?;
-            let handle = image.image.clone();
-            let loaded = app.world().resource::<Assets<Image>>().get(&handle)?;
-            if loaded.width() == 24 && loaded.height() == 40 {
-                Some(handle)
-            } else {
-                std::thread::sleep(std::time::Duration::from_millis(1));
-                None
-            }
-        })
-        .expect("compact button atlas should load");
-    let wide = button_named(&mut app, "Graphics: Fancy");
-    let source = &app.world().get::<ImageNode>(wide).unwrap().image;
-    let assets = app.world().resource::<Assets<Image>>();
-    let source = assets.get(source).unwrap();
-    let compact = assets.get(&compact).unwrap();
-    let stride = source.width() as usize * 4;
-    let pixels = source.data.as_ref().unwrap();
-    let small = compact.data.as_ref().unwrap();
-    for (small_y, source_y) in [(0, 66), (19, 85), (20, 86), (39, 105)] {
-        assert_eq!(
-            &small[small_y * 96..small_y * 96 + 48],
-            &pixels[source_y * stride..source_y * stride + 48]
-        );
-        assert_eq!(
-            &small[small_y * 96 + 48..small_y * 96 + 96],
-            &pixels[source_y * stride + 188 * 4..source_y * stride + 200 * 4]
-        );
-    }
+    let slider = button_named(&mut app, "Render distance: 4 chunks");
     app.world_mut()
-        .entity_mut(plus)
-        .insert(Interaction::Hovered);
+        .get_mut::<ComputedNode>(slider)
+        .unwrap()
+        .size = Vec2::new(400.0, 88.0);
+    app.world_mut()
+        .get_mut::<ComputedNode>(slider)
+        .unwrap()
+        .inverse_scale_factor = 0.5;
+    app.world_mut()
+        .get_mut::<Slider>(slider)
+        .unwrap()
+        .set_fraction(1.0);
+    app.update();
+    let thumb = app
+        .world_mut()
+        .query::<(Entity, &SliderThumb)>()
+        .iter(app.world())
+        .find(|(_, thumb)| thumb.0 == slider)
+        .unwrap()
+        .0;
+    assert_eq!(app.world().get::<Node>(thumb).unwrap().left, px(184.0));
+    let button = button_named(&mut app, "Graphics: Fancy");
+    let image = app.world().get::<ImageNode>(thumb).unwrap();
+    assert_eq!(
+        image.image,
+        app.world().get::<ImageNode>(button).unwrap().image
+    );
+    assert_eq!(image.rect, Some(Rect::new(0.0, 66.0, 200.0, 86.0)));
+    app.world_mut()
+        .get_mut::<Interaction>(slider)
+        .unwrap()
+        .clone_from(&Interaction::Hovered);
     app.update();
     assert_eq!(
-        app.world().get::<ImageNode>(plus).unwrap().rect,
-        Some(Rect::new(0.0, 20.0, 24.0, 40.0))
+        app.world().get::<ImageNode>(thumb).unwrap().rect,
+        Some(Rect::new(0.0, 86.0, 200.0, 106.0))
     );
+    button_named(&mut app, "Render distance: 32 chunks");
     app.world_mut()
-        .entity_mut(plus)
-        .insert(Interaction::Pressed);
-    app.update();
-    assert_eq!(
-        app.world().get::<ImageNode>(plus).unwrap().rect,
-        Some(Rect::new(0.0, 20.0, 24.0, 40.0))
-    );
+        .resource_mut::<ButtonInput<MouseButton>>()
+        .press(MouseButton::Left);
+    app.world_mut().resource_mut::<SliderDrag>().0 = Some(slider);
+    click_menu_button(&mut app, "Back");
+    assert!(app.world().resource::<SliderDrag>().0.is_none());
+    assert!(app.world().get_entity(slider).is_err());
 }
 
 #[test]
@@ -1137,4 +1117,138 @@ fn missing_reference_art_keeps_settings_labels_and_buttons_usable() {
     click_menu_button(&mut app, "Fullscreen: OFF");
     assert!(app.world().resource::<GameSettings>().fullscreen);
     button_named(&mut app, "Fullscreen: ON");
+}
+
+#[test]
+fn slider_snaps_clamps_and_suppresses_unchanged_values() {
+    use game::ui::slider::Slider;
+    let mut slider = Slider::new(10.0, 300.0, 1.0, 100.0);
+    assert!(!slider.set_fraction(slider.fraction()));
+    assert!(slider.set_fraction(-1.0));
+    assert_eq!(slider.value(), 10.0);
+    assert!(!slider.set_fraction(f32::NAN));
+    assert!(slider.set_fraction(2.0));
+    assert_eq!(slider.value(), 300.0);
+    slider.set_fraction(0.5);
+    assert_eq!(slider.value(), 155.0);
+    assert_eq!(slider.fraction(), 0.5);
+}
+
+#[test]
+fn setting_sliders_cover_ranges_and_fps_vsync_endpoint() {
+    use game::ui::screens::menu::SettingsSlider;
+    let mut settings = GameSettings::default();
+    for binding in [
+        SettingsSlider::RenderDistance,
+        SettingsSlider::Fov,
+        SettingsSlider::Brightness,
+        SettingsSlider::CloudHeight,
+        SettingsSlider::MouseSensitivity,
+        SettingsSlider::MaxFps,
+    ] {
+        let mut slider = binding.slider(&settings);
+        assert!(!binding.apply(&slider, &mut settings));
+        slider.set_fraction(0.0);
+        binding.apply(&slider, &mut settings);
+        assert_eq!(binding.slider(&settings).fraction(), 0.0);
+        slider.set_fraction(1.0);
+        binding.apply(&slider, &mut settings);
+        assert_eq!(binding.slider(&settings).fraction(), 1.0);
+    }
+    assert_eq!(settings.max_fps, 0);
+    let mut slider = SettingsSlider::MaxFps.slider(&settings);
+    slider.set_fraction(210.0 / 211.0);
+    SettingsSlider::MaxFps.apply(&slider, &mut settings);
+    assert_eq!(settings.max_fps, 240);
+    slider.set_fraction(0.0);
+    SettingsSlider::MaxFps.apply(&slider, &mut settings);
+    assert_eq!(settings.max_fps, 30);
+}
+
+#[test]
+fn slider_drag_respects_clipping_release_focus_and_cancellation() {
+    use bevy::ui::RelativeCursorPosition;
+    use bevy::window::PrimaryWindow;
+    use game::ui::slider::Slider;
+    use game::ui::slider::SliderDrag;
+    use game::ui::slider::update_sliders;
+    let mut app = App::new();
+    app.init_resource::<ButtonInput<MouseButton>>()
+        .init_resource::<SliderDrag>()
+        .add_systems(Update, update_sliders);
+    let window = app
+        .world_mut()
+        .spawn((Window::default(), PrimaryWindow))
+        .id();
+    let entity = app
+        .world_mut()
+        .spawn((
+            Slider::new(0.0, 100.0, 1.0, 0.0),
+            Interaction::Pressed,
+            RelativeCursorPosition {
+                cursor_over: false,
+                normalized: Some(Vec2::ZERO),
+            },
+            ComputedNode {
+                size: Vec2::new(200.0, 44.0),
+                inverse_scale_factor: 1.0,
+                ..default()
+            },
+            BackgroundColor::default(),
+        ))
+        .id();
+    app.world_mut()
+        .resource_mut::<ButtonInput<MouseButton>>()
+        .press(MouseButton::Left);
+    app.update();
+    assert!(app.world().resource::<SliderDrag>().0.is_none());
+    app.world_mut()
+        .get_mut::<RelativeCursorPosition>(entity)
+        .unwrap()
+        .cursor_over = true;
+    app.update();
+    assert_eq!(app.world().resource::<SliderDrag>().0, Some(entity));
+    assert_eq!(app.world().get::<Slider>(entity).unwrap().value(), 50.0);
+    app.world_mut()
+        .resource_mut::<ButtonInput<MouseButton>>()
+        .clear();
+    *app.world_mut()
+        .get_mut::<RelativeCursorPosition>(entity)
+        .unwrap() = RelativeCursorPosition {
+        cursor_over: false,
+        normalized: Some(Vec2::new(2.0, 0.0)),
+    };
+    app.update();
+    assert_eq!(app.world().get::<Slider>(entity).unwrap().value(), 100.0);
+    app.world_mut()
+        .resource_mut::<ButtonInput<MouseButton>>()
+        .release(MouseButton::Left);
+    app.update();
+    assert!(app.world().resource::<SliderDrag>().0.is_none());
+    app.world_mut().resource_mut::<SliderDrag>().0 = Some(entity);
+    app.world_mut()
+        .resource_mut::<ButtonInput<MouseButton>>()
+        .press(MouseButton::Left);
+    app.world_mut()
+        .get_mut::<RelativeCursorPosition>(entity)
+        .unwrap()
+        .cursor_over = true;
+    app.world_mut().get_mut::<Window>(window).unwrap().focused = false;
+    app.update();
+    assert!(app.world().resource::<SliderDrag>().0.is_none());
+    app.world_mut()
+        .get_mut::<RelativeCursorPosition>(entity)
+        .unwrap()
+        .cursor_over = false;
+    app.world_mut().get_mut::<Window>(window).unwrap().focused = true;
+    app.world_mut()
+        .resource_mut::<ButtonInput<MouseButton>>()
+        .clear();
+    app.world_mut().resource_mut::<SliderDrag>().0 = None;
+    app.update();
+    assert!(app.world().resource::<SliderDrag>().0.is_none());
+    app.world_mut().resource_mut::<SliderDrag>().0 = Some(entity);
+    app.world_mut().despawn(entity);
+    app.update();
+    assert!(app.world().resource::<SliderDrag>().0.is_none());
 }

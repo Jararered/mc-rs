@@ -25,11 +25,11 @@ impl BlockDefinition for Definition {
     }
 
     fn opaque_cube(&self, block: Block) -> bool {
-        !is_torch(block) && block != Block::Fire
+        !block.is_torch() && block != Block::Fire
     }
 
     fn light_opacity(&self, block: Block) -> u8 {
-        if is_torch(block) || block == Block::Fire {
+        if block.is_torch() || block == Block::Fire {
             0
         } else {
             15
@@ -37,7 +37,7 @@ impl BlockDefinition for Definition {
     }
 
     fn light_emission(&self, block: Block) -> u8 {
-        if matches!(block, Block::Glowstone | Block::JackOLantern | Block::Fire) || is_torch(block)
+        if matches!(block, Block::Glowstone | Block::JackOLantern | Block::Fire) || block.is_torch()
         {
             15
         } else {
@@ -48,10 +48,6 @@ impl BlockDefinition for Definition {
     fn crossed_plant(&self, block: Block) -> bool {
         block == Block::Fire
     }
-
-    fn torch(&self, block: Block) -> bool {
-        is_torch(block)
-    }
 }
 
 fn properties(block: Block) -> BlockProperties {
@@ -61,7 +57,6 @@ fn properties(block: Block) -> BlockProperties {
         | Block::TorchEast
         | Block::TorchNorth
         | Block::TorchSouth => BlockProperties {
-            torch: true,
             light_emission: 15,
             selection_bounds: crate::block::properties::torch_selection_bounds(block),
             ..BlockProperties::non_colliding(0.0)
@@ -87,11 +82,4 @@ fn properties(block: Block) -> BlockProperties {
         Block::Unknown(_) => BlockProperties::unknown(),
         _ => BlockProperties::unknown(),
     }
-}
-
-fn is_torch(block: Block) -> bool {
-    matches!(
-        block,
-        Block::Torch | Block::TorchWest | Block::TorchEast | Block::TorchNorth | Block::TorchSouth
-    )
 }

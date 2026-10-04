@@ -227,10 +227,6 @@ impl Block {
         definition::properties(self).crossed_plant
     }
 
-    pub fn is_torch(self) -> bool {
-        definition::properties(self).torch
-    }
-
     pub fn light_opacity(self) -> u8 {
         definition::properties(self).light_opacity
     }
@@ -325,5 +321,16 @@ impl Block {
             _ => None,
         };
         explicit.map_or_else(|| self.hardness().max(0.0), |resistance| resistance * 0.6)
+    }
+
+    pub fn is_torch(self) -> bool {
+        matches!(
+            self,
+            Block::Torch
+                | Block::TorchWest
+                | Block::TorchEast
+                | Block::TorchNorth
+                | Block::TorchSouth
+        )
     }
 }

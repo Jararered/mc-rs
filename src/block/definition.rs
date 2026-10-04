@@ -22,7 +22,6 @@ pub struct BlockProperties {
     pub collision_bounds: Option<BlockBounds>,
     pub selection_bounds: BlockBounds,
     pub crossed_plant: bool,
-    pub torch: bool,
     pub light_opacity: u8,
     pub light_emission: u8,
 }
@@ -44,7 +43,6 @@ impl BlockProperties {
             collision_bounds: Some(Self::FULL_BOUNDS),
             selection_bounds: Self::FULL_BOUNDS,
             crossed_plant: false,
-            torch: false,
             light_opacity: 15,
             light_emission: 0,
         }

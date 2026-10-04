@@ -4,7 +4,7 @@ use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
 use game::block::blocks::Block;
-use game::item::ItemId;
+use game::item::Item;
 use game::item::ItemStack;
 use game::world::chunk::ChunkPosition;
 use game::world::chunk::WorldChunks;
@@ -20,7 +20,7 @@ use game::world::persistence::region_dir_name;
 use game::world::persistence::region_of;
 use game::world::tick::WorldTick;
 
-fn stack(item: ItemId) -> ItemStack {
+fn stack(item: Item) -> ItemStack {
     ItemStack::new(item, 1).unwrap()
 }
 
@@ -41,21 +41,21 @@ fn temp_saves() -> std::path::PathBuf {
 #[test]
 fn beta_smelting_recipes_cover_the_reference_list() {
     let recipes = [
-        (block(Block::IronOre), stack(ItemId::IronIngot)),
-        (block(Block::GoldOre), stack(ItemId::GoldIngot)),
-        (block(Block::DiamondOre), stack(ItemId::Diamond)),
+        (block(Block::IronOre), stack(Item::IronIngot)),
+        (block(Block::GoldOre), stack(Item::GoldIngot)),
+        (block(Block::DiamondOre), stack(Item::Diamond)),
         (block(Block::Sand), block(Block::Glass)),
-        (stack(ItemId::RawPorkchop), stack(ItemId::CookedPorkchop)),
-        (stack(ItemId::RawFish), stack(ItemId::CookedFish)),
+        (stack(Item::RawPorkchop), stack(Item::CookedPorkchop)),
+        (stack(Item::RawFish), stack(Item::CookedFish)),
         (block(Block::Cobblestone), block(Block::Stone)),
-        (stack(ItemId::ClayBall), stack(ItemId::Brick)),
+        (stack(Item::ClayBall), stack(Item::Brick)),
         (
             block(Block::Cactus),
-            ItemStack::with_data(ItemId::Dye, 1, 2).unwrap(),
+            ItemStack::with_data(Item::Dye, 1, 2).unwrap(),
         ),
         (
-            ItemStack::with_data(ItemId::from_block(Block::Wood).unwrap(), 1, 2).unwrap(),
-            ItemStack::with_data(ItemId::Coal, 1, 1).unwrap(),
+            ItemStack::with_data(Item::from_block(Block::Wood).unwrap(), 1, 2).unwrap(),
+            ItemStack::with_data(Item::Coal, 1, 1).unwrap(),
         ),
     ];
 
@@ -71,13 +71,13 @@ fn beta_fuel_durations_cover_coal_charcoal_and_wood_materials() {
     assert_eq!(fuel_ticks(block(Block::WoodenPlanks)), Some(300));
     assert_eq!(fuel_ticks(block(Block::Fence)), Some(300));
     assert_eq!(fuel_ticks(block(Block::Sapling)), Some(100));
-    assert_eq!(fuel_ticks(stack(ItemId::Stick)), Some(100));
-    assert_eq!(fuel_ticks(stack(ItemId::Coal)), Some(1_600));
+    assert_eq!(fuel_ticks(stack(Item::Stick)), Some(100));
+    assert_eq!(fuel_ticks(stack(Item::Coal)), Some(1_600));
     assert_eq!(
-        fuel_ticks(ItemStack::with_data(ItemId::Coal, 1, 1).unwrap()),
+        fuel_ticks(ItemStack::with_data(Item::Coal, 1, 1).unwrap()),
         Some(1_600)
     );
-    assert_eq!(fuel_ticks(stack(ItemId::LavaBucket)), Some(20_000));
+    assert_eq!(fuel_ticks(stack(Item::LavaBucket)), Some(20_000));
     assert_eq!(fuel_ticks(block(Block::Leaves)), None);
 }
 
@@ -85,7 +85,7 @@ fn beta_fuel_durations_cover_coal_charcoal_and_wood_materials() {
 fn furnace_cooks_one_item_in_two_hundred_world_ticks() {
     let mut furnace = Furnace::default();
     furnace.slots[0] = Some(block(Block::IronOre));
-    furnace.slots[1] = Some(stack(ItemId::Coal));
+    furnace.slots[1] = Some(stack(Item::Coal));
 
     for tick in 0..SMELT_TICKS {
         let lit_changed = furnace.tick();
@@ -94,7 +94,7 @@ fn furnace_cooks_one_item_in_two_hundred_world_ticks() {
 
     assert_eq!(furnace.slots[0], None);
     assert_eq!(furnace.slots[1], None);
-    assert_eq!(furnace.slots[2], Some(stack(ItemId::IronIngot)));
+    assert_eq!(furnace.slots[2], Some(stack(Item::IronIngot)));
     assert_eq!(furnace.burn_ticks, 1_401);
 }
 
@@ -102,15 +102,15 @@ fn furnace_cooks_one_item_in_two_hundred_world_ticks() {
 fn smelted_items_merge_into_output_until_the_stack_limit() {
     let mut furnace = Furnace::default();
     furnace.slots[0] = Some(block(Block::IronOre));
-    furnace.slots[1] = Some(stack(ItemId::Coal));
-    furnace.slots[2] = Some(ItemStack::new(ItemId::IronIngot, 63).unwrap());
+    furnace.slots[1] = Some(stack(Item::Coal));
+    furnace.slots[2] = Some(ItemStack::new(Item::IronIngot, 63).unwrap());
     for _ in 0..SMELT_TICKS {
         furnace.tick();
     }
 
     assert_eq!(
         furnace.slots[2],
-        Some(ItemStack::new(ItemId::IronIngot, 64).unwrap())
+        Some(ItemStack::new(Item::IronIngot, 64).unwrap())
     );
     assert!(furnace.slots[0].is_none());
 }
@@ -131,7 +131,7 @@ fn furnace_world_system_uses_world_ticks_and_switches_the_block_light_state() {
         let mut chunks = app.world_mut().resource_mut::<WorldChunks>();
         let furnace = chunks.furnace_at_mut(2, 40, 3).unwrap();
         furnace.slots[0] = Some(block(Block::IronOre));
-        furnace.slots[1] = Some(stack(ItemId::Stick));
+        furnace.slots[1] = Some(stack(Item::Stick));
     }
 
     app.world_mut().resource_mut::<WorldTick>().advance(0.05);
@@ -168,17 +168,17 @@ fn removing_a_furnace_block_removes_its_block_local_inventory() {
 fn furnace_waits_when_output_is_full_and_keeps_progress_without_fuel() {
     let mut furnace = Furnace::default();
     furnace.slots[0] = Some(block(Block::IronOre));
-    furnace.slots[1] = Some(stack(ItemId::Stick));
-    furnace.slots[2] = Some(ItemStack::new(ItemId::IronIngot, 64).unwrap());
+    furnace.slots[1] = Some(stack(Item::Stick));
+    furnace.slots[2] = Some(ItemStack::new(Item::IronIngot, 64).unwrap());
     for _ in 0..10 {
         furnace.tick();
     }
     assert_eq!(furnace.cook_ticks, 0);
     assert_eq!(furnace.slots[0], Some(block(Block::IronOre)));
-    assert_eq!(furnace.slots[1], Some(stack(ItemId::Stick)));
+    assert_eq!(furnace.slots[1], Some(stack(Item::Stick)));
 
     furnace.slots[2] = None;
-    furnace.slots[1] = Some(stack(ItemId::Stick));
+    furnace.slots[1] = Some(stack(Item::Stick));
     for _ in 0..50 {
         furnace.tick();
     }
@@ -199,7 +199,7 @@ fn furnace_inventory_and_progress_round_trip_and_old_chunks_still_load() {
     let index = (32 * 16 + 7) * 16 + 3;
     let furnace = generated.chunk.furnace_mut(index).unwrap();
     furnace.slots[0] = Some(block(Block::IronOre));
-    furnace.slots[1] = Some(stack(ItemId::Coal));
+    furnace.slots[1] = Some(stack(Item::Coal));
     furnace.burn_ticks = 321;
     furnace.fuel_ticks = 1_600;
     furnace.cook_ticks = 87;

@@ -56,7 +56,7 @@ use serde::Serialize;
 use crate::block::blocks::Block;
 use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
-use crate::item::ItemId;
+use crate::item::Item;
 use crate::item::ItemStack;
 use crate::player::Player;
 use crate::world::biome::Biome;
@@ -147,7 +147,7 @@ impl StoredStack {
         }
     }
     fn into_stack(self) -> Option<ItemStack> {
-        let id = ItemId::from_u16(self.id)?;
+        let id = Item::from_u16(self.id)?;
         ItemStack::with_data(id, self.count, self.data).ok()
     }
 }

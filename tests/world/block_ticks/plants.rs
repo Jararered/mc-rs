@@ -1,7 +1,7 @@
 use game::block::blocks::Block;
 use game::entity::drops::blocks::DropRoll;
 use game::entity::drops::blocks::natural_drops_with_metadata;
-use game::item::ItemId;
+use game::item::Item;
 use game::physics::BlockFace;
 use game::physics::BlockHit;
 use game::player::plant_seeds;
@@ -134,12 +134,12 @@ fn crop_drops_follow_their_growth_stage() {
         stacks.iter().filter(|stack| stack.item() == item).count()
     };
     let ripe = natural_drops_with_metadata(Block::Crops, RIPE, &mut Rolls(7));
-    assert_eq!(item(ripe.clone(), ItemId::Wheat), 1);
-    assert_eq!(item(ripe, ItemId::Seeds), 3);
+    assert_eq!(item(ripe.clone(), Item::Wheat), 1);
+    assert_eq!(item(ripe, Item::Seeds), 3);
     let young = natural_drops_with_metadata(Block::Crops, 2, &mut Rolls(3));
-    assert_eq!(item(young.clone(), ItemId::Wheat), 0);
+    assert_eq!(item(young.clone(), Item::Wheat), 0);
     assert_eq!(
-        item(young, ItemId::Seeds),
+        item(young, Item::Seeds),
         0,
         "a roll above the stage drops nothing"
     );

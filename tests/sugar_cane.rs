@@ -4,7 +4,7 @@ use game::block::properties::blocks_movement;
 use game::block::properties::collision_bounds;
 use game::block::properties::is_opaque_cube;
 use game::block::properties::selection_bounds;
-use game::item::ItemId;
+use game::item::Item;
 use game::item::ItemStack;
 use game::physics::Aabb;
 use game::physics::BlockFace;
@@ -81,7 +81,7 @@ fn sugar_cane_is_a_centered_crossed_plant_with_beta_appearance() {
 
 #[test]
 fn sugar_cane_can_be_placed_on_watered_soil_or_sand_and_stacked() {
-    let cane = ItemStack::new(ItemId::SugarCane, 1).unwrap();
+    let cane = ItemStack::new(Item::SugarCane, 1).unwrap();
     assert_eq!(cane.runtime_block(), Some(Block::SugarCane));
     for soil in [Block::Grass, Block::Dirt, Block::Sand] {
         let mut chunk = Chunk::new();

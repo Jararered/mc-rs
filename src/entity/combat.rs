@@ -18,7 +18,7 @@ use crate::entity::drops::items::spawn_entity_drop;
 use crate::entity::mobs::Mob;
 use crate::entity::mobs::MobKind;
 use crate::entity::mobs::spawn;
-use crate::item::ItemId;
+use crate::item::Item;
 use crate::item::ItemStack;
 use crate::physics::Aabb;
 use crate::physics::segment_entry;
@@ -268,8 +268,8 @@ fn knock_from(
 }
 
 /// `ItemArmor.damageReduceAmount` by slot: helmet, chestplate, leggings, boots.
-fn armor_points(item: ItemId) -> Option<i32> {
-    use ItemId as I;
+fn armor_points(item: Item) -> Option<i32> {
+    use Item as I;
     Some(match item {
         I::LeatherHelmet
         | I::ChainmailHelmet
@@ -340,7 +340,7 @@ pub(crate) fn tick_player_combat(tick: Res<WorldTick>, mut players: Query<&mut P
 
 /// `dropFewItems`, run when a creature's health runs out.
 pub fn drop_loot(commands: &mut Commands, rng: &mut ItemRng, mob: &mut Mob, feet: Vec3) {
-    let mut drop = |commands: &mut Commands, item: ItemId, data: u16| {
+    let mut drop = |commands: &mut Commands, item: Item, data: u16| {
         if let Ok(stack) = ItemStack::with_data(item, 1, data) {
             spawn_entity_drop(commands, rng, feet, stack);
         }
@@ -350,7 +350,7 @@ pub fn drop_loot(commands: &mut Commands, rng: &mut ItemRng, mob: &mut Mob, feet
             if !mob.sheared {
                 drop(
                     commands,
-                    ItemId::from_u16(35).expect("wool"),
+                    Item::from_u16(35).expect("wool"),
                     u16::from(mob.variant),
                 );
             }
@@ -358,27 +358,27 @@ pub fn drop_loot(commands: &mut Commands, rng: &mut ItemRng, mob: &mut Mob, feet
         }
         MobKind::Squid => {
             for _ in 0..mob.rng.next_int(3) + 1 {
-                drop(commands, ItemId::Dye, 0);
+                drop(commands, Item::Dye, 0);
             }
             return;
         }
         MobKind::Skeleton => {
             for _ in 0..mob.rng.next_int(3) {
-                drop(commands, ItemId::Arrow, 0);
+                drop(commands, Item::Arrow, 0);
             }
             for _ in 0..mob.rng.next_int(3) {
-                drop(commands, ItemId::Bone, 0);
+                drop(commands, Item::Bone, 0);
             }
             return;
         }
-        MobKind::Pig if mob.fire_ticks > 0 => ItemId::CookedPorkchop,
-        MobKind::Pig => ItemId::RawPorkchop,
-        MobKind::Cow => ItemId::Leather,
-        MobKind::Chicken | MobKind::Zombie => ItemId::Feather,
-        MobKind::Spider => ItemId::String,
-        MobKind::Creeper | MobKind::Ghast => ItemId::Gunpowder,
-        MobKind::PigZombie => ItemId::CookedPorkchop,
-        MobKind::Slime if mob.variant <= 1 => ItemId::Slimeball,
+        MobKind::Pig if mob.fire_ticks > 0 => Item::CookedPorkchop,
+        MobKind::Pig => Item::RawPorkchop,
+        MobKind::Cow => Item::Leather,
+        MobKind::Chicken | MobKind::Zombie => Item::Feather,
+        MobKind::Spider => Item::String,
+        MobKind::Creeper | MobKind::Ghast => Item::Gunpowder,
+        MobKind::PigZombie => Item::CookedPorkchop,
+        MobKind::Slime if mob.variant <= 1 => Item::Slimeball,
         MobKind::Slime | MobKind::Wolf => return,
     };
     for _ in 0..mob.rng.next_int(3) {

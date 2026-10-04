@@ -23,7 +23,7 @@ use game::entity::mobs::MobKind;
 use game::entity::projectiles::Arrow;
 use game::entity::projectiles::Fireball;
 use game::entity::projectiles::spawn_arrow;
-use game::item::ItemId;
+use game::item::Item;
 use game::item::ItemStack;
 use game::item::tools::damage_vs_entity;
 use game::item::tools::hit_durability;
@@ -140,10 +140,10 @@ fn difficulty_and_armor_soften_monster_blows() {
 
     // Unworn iron armor is worth 20 of 25: a 5 point blow takes 1.
     armor = [
-        ItemId::IronHelmet,
-        ItemId::IronChestplate,
-        ItemId::IronLeggings,
-        ItemId::IronBoots,
+        Item::IronHelmet,
+        Item::IronChestplate,
+        Item::IronLeggings,
+        Item::IronBoots,
     ]
     .map(|item| Some(ItemStack::new(item, 1).unwrap()));
     assert_eq!(armor_value(&armor), 20);
@@ -161,19 +161,19 @@ fn difficulty_and_armor_soften_monster_blows() {
 fn weapons_deal_beta_damage_and_wear() {
     let stack = |item| Some(ItemStack::new(item, 1).unwrap());
     assert_eq!(damage_vs_entity(None), 1);
-    assert_eq!(damage_vs_entity(stack(ItemId::WoodenSword)), 4);
-    assert_eq!(damage_vs_entity(stack(ItemId::StoneSword)), 6);
-    assert_eq!(damage_vs_entity(stack(ItemId::IronSword)), 8);
-    assert_eq!(damage_vs_entity(stack(ItemId::DiamondSword)), 10);
-    assert_eq!(damage_vs_entity(stack(ItemId::GoldSword)), 4);
-    assert_eq!(damage_vs_entity(stack(ItemId::DiamondAxe)), 6);
-    assert_eq!(damage_vs_entity(stack(ItemId::IronPickaxe)), 4);
-    assert_eq!(damage_vs_entity(stack(ItemId::StoneShovel)), 2);
-    assert_eq!(damage_vs_entity(stack(ItemId::IronHoe)), 1);
-    assert_eq!(damage_vs_entity(stack(ItemId::Stick)), 1);
-    assert_eq!(hit_durability(stack(ItemId::IronSword).unwrap()), 1);
-    assert_eq!(hit_durability(stack(ItemId::IronPickaxe).unwrap()), 2);
-    assert_eq!(hit_durability(stack(ItemId::IronHoe).unwrap()), 0);
+    assert_eq!(damage_vs_entity(stack(Item::WoodenSword)), 4);
+    assert_eq!(damage_vs_entity(stack(Item::StoneSword)), 6);
+    assert_eq!(damage_vs_entity(stack(Item::IronSword)), 8);
+    assert_eq!(damage_vs_entity(stack(Item::DiamondSword)), 10);
+    assert_eq!(damage_vs_entity(stack(Item::GoldSword)), 4);
+    assert_eq!(damage_vs_entity(stack(Item::DiamondAxe)), 6);
+    assert_eq!(damage_vs_entity(stack(Item::IronPickaxe)), 4);
+    assert_eq!(damage_vs_entity(stack(Item::StoneShovel)), 2);
+    assert_eq!(damage_vs_entity(stack(Item::IronHoe)), 1);
+    assert_eq!(damage_vs_entity(stack(Item::Stick)), 1);
+    assert_eq!(hit_durability(stack(Item::IronSword).unwrap()), 1);
+    assert_eq!(hit_durability(stack(Item::IronPickaxe).unwrap()), 2);
+    assert_eq!(hit_durability(stack(Item::IronHoe).unwrap()), 0);
 }
 
 #[test]

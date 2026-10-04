@@ -30,7 +30,7 @@ pub use crate::entity::explosion::Explosion;
 use crate::entity::explosion::ExplosionRandom;
 use crate::entity::explosion::apply_explosions;
 use crate::entity::projectiles::tick_projectiles;
-use crate::item::ItemId;
+use crate::item::Item;
 use crate::item::ItemStack;
 use crate::physics::PhysicsSet;
 use crate::player::Player;
@@ -898,7 +898,7 @@ fn tick_tnt(
 }
 
 /// `EntityLiving.entityDropItem`: one item at a mob's feet.
-pub fn drop_item(commands: &mut Commands, rng: &mut ItemRng, item: ItemId, data: u16, feet: Vec3) {
+pub fn drop_item(commands: &mut Commands, rng: &mut ItemRng, item: Item, data: u16, feet: Vec3) {
     if let Ok(stack) = ItemStack::with_data(item, 1, data) {
         spawn_entity_drop(commands, rng, feet, stack);
     }

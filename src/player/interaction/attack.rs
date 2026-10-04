@@ -23,7 +23,7 @@ use crate::entity::mobs::MobKind;
 use crate::entity::mobs::drop_item;
 use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
-use crate::item::ItemId;
+use crate::item::Item;
 use crate::item::ItemStack;
 use crate::item::tools::damage_vs_entity;
 use crate::item::tools::hit_durability;
@@ -147,21 +147,21 @@ pub(crate) fn interact<F: bevy::ecs::query::QueryFilter>(
     let held = hotbar.selected_stack().map(ItemStack::item);
     let mob = &mut *struck.mob;
     match mob.kind {
-        MobKind::Sheep if held == Some(ItemId::Shears) && !mob.sheared => {
+        MobKind::Sheep if held == Some(Item::Shears) && !mob.sheared => {
             // `EntitySheep.interact`: two to four wool, popped a block up.
             mob.sheared = true;
             for _ in 0..2 + mob.rng.next_int(3) {
-                let wool = ItemId::from_u16(35).expect("wool");
+                let wool = Item::from_u16(35).expect("wool");
                 drop_item(commands, loot, wool, u16::from(mob.variant), feet + Vec3::Y);
             }
             hotbar.damage_selected(1);
         }
-        MobKind::Pig if held == Some(ItemId::Saddle) && !mob.saddled => {
+        MobKind::Pig if held == Some(Item::Saddle) && !mob.saddled => {
             mob.saddled = true;
             hotbar.take_selected(1);
         }
-        MobKind::Cow if held == Some(ItemId::Bucket) => {
-            let milk = ItemStack::new(ItemId::MilkBucket, 1).expect("registered bucket");
+        MobKind::Cow if held == Some(Item::Bucket) => {
+            let milk = ItemStack::new(Item::MilkBucket, 1).expect("registered bucket");
             if hotbar
                 .selected_stack()
                 .is_some_and(|stack| stack.count() == 1)
@@ -176,7 +176,7 @@ pub(crate) fn interact<F: bevy::ecs::query::QueryFilter>(
             }
         }
         MobKind::Wolf if mob.tamed => {
-            if matches!(held, Some(ItemId::RawPorkchop | ItemId::CookedPorkchop)) && mob.health < 20
+            if matches!(held, Some(Item::RawPorkchop | Item::CookedPorkchop)) && mob.health < 20
             {
                 hotbar.take_selected(1);
                 mob.health = (mob.health + 3).min(20);
@@ -184,7 +184,7 @@ pub(crate) fn interact<F: bevy::ecs::query::QueryFilter>(
                 mob.sitting = !mob.sitting;
             }
         }
-        MobKind::Wolf if held == Some(ItemId::Bone) && !mob.angry => {
+        MobKind::Wolf if held == Some(Item::Bone) && !mob.angry => {
             hotbar.take_selected(1);
             if mob.rng.next_int(3) == 0 {
                 mob.tamed = true;

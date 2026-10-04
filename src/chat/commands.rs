@@ -6,7 +6,7 @@ use crate::block::blocks::Block;
 use crate::entity::mobs::MobKind;
 use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
-use crate::item::ItemId;
+use crate::item::Item;
 use crate::item::ItemStack;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::WorldChunks;
@@ -25,7 +25,7 @@ pub enum ChatCommand {
     TimeAdd(u64),
     TimeQuery(TimeQuery),
     Give {
-        item: ItemId,
+        item: Item,
         amount: u32,
     },
     Teleport(Vec3),
@@ -167,7 +167,7 @@ fn parse_give(_: &CommandRegistry, args: &[&str]) -> Result<ChatCommand, Command
         return Err(CommandParseError::Usage);
     };
     let raw = raw.parse::<u16>().map_err(|_| "Invalid item ID")?;
-    let item = ItemId::from_u16(raw)
+    let item = Item::from_u16(raw)
         .filter(|id| id.properties().is_some())
         .ok_or_else(|| format!("Unknown item ID: {raw}"))?;
     let amount = amount.parse::<u32>().map_err(|_| "Invalid amount")?;
@@ -284,7 +284,7 @@ fn parse_block_id(raw_text: &str) -> Result<Block, String> {
 /// Insert valid stacks into the player inventory; return stacks that must be
 /// dropped near the player instead of silently deleting overflow.
 pub fn give_to_inventory(
-    item: ItemId,
+    item: Item,
     amount: u32,
     hotbar: &mut Hotbar,
     inventory: &mut Inventory,

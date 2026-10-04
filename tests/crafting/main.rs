@@ -4,13 +4,13 @@ mod recipe_matching;
 mod transfer;
 
 use game::block::blocks::Block;
-use game::item::ItemId;
+use game::item::Item;
 use game::item::ItemStack;
 
-pub(crate) fn stack(item: ItemId, count: u8) -> ItemStack {
+pub(crate) fn stack(item: Item, count: u8) -> ItemStack {
     ItemStack::new(item, count).unwrap()
 }
 
-pub(crate) fn block(block: Block) -> ItemId {
-    ItemId::from_block(block).unwrap()
+pub(crate) fn block(block: Block) -> Item {
+    Item::from_block(block).unwrap()
 }

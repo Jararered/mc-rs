@@ -379,7 +379,7 @@ fn add_creature_models(
                     assets.skins.get("gui/items.png"),
                 )
             {
-                let full_3d = item == crate::item::ItemId::GoldSword;
+                let full_3d = item == crate::item::Item::GoldSword;
                 commands.spawn((
                     Mesh3d(mesh.clone()),
                     MeshMaterial3d(items.clone()),

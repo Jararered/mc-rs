@@ -1,6 +1,6 @@
 //! Ingredient matching rules for crafting recipes.
 
-use crate::item::ItemId;
+use crate::item::Item;
 use crate::item::ItemStack;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -11,18 +11,18 @@ pub enum IngredientData {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Ingredient {
-    pub item: ItemId,
+    pub item: Item,
     pub data: IngredientData,
 }
 
 impl Ingredient {
-    pub const fn any(item: ItemId) -> Self {
+    pub const fn any(item: Item) -> Self {
         Self {
             item,
             data: IngredientData::Any,
         }
     }
-    pub const fn exact(item: ItemId, data: u16) -> Self {
+    pub const fn exact(item: Item, data: u16) -> Self {
         Self {
             item,
             data: IngredientData::Exact(data),

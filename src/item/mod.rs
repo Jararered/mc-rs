@@ -3,13 +3,13 @@ pub mod registry;
 pub mod tools;
 use crate::block::blocks::Block;
 pub use registry::ItemData;
-pub use registry::ItemId;
+pub use registry::Item;
 pub use registry::ItemProperties;
 pub use registry::ItemRegistry;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StackError {
-    UnknownItem(ItemId),
+    UnknownItem(Item),
     InvalidCount { count: u8, max: u8 },
     InvalidData(u16),
 }
@@ -31,16 +31,16 @@ impl std::error::Error for StackError {}
 /// Data stores subtype, tool damage, or map identity according to the definition.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ItemStack {
-    item: ItemId,
+    item: Item,
     count: u8,
     data: u16,
 }
 
 impl ItemStack {
-    pub fn new(item: ItemId, count: u8) -> Result<Self, StackError> {
+    pub fn new(item: Item, count: u8) -> Result<Self, StackError> {
         Self::with_data(item, count, 0)
     }
-    pub fn with_data(item: ItemId, count: u8, data: u16) -> Result<Self, StackError> {
+    pub fn with_data(item: Item, count: u8, data: u16) -> Result<Self, StackError> {
         let definition = item.properties().ok_or(StackError::UnknownItem(item))?;
         if count == 0 || count > definition.max_stack_size {
             return Err(StackError::InvalidCount {
@@ -58,14 +58,14 @@ impl ItemStack {
     /// Torch attachment is discarded; species metadata is retained.
     pub fn from_block(block: Block, count: u8) -> Result<Self, StackError> {
         let (item_block, data) = block.item_form();
-        let Some(item) = ItemId::from_block(item_block) else {
-            return Err(StackError::UnknownItem(ItemId::BlockOrUnknown(u16::from(
+        let Some(item) = Item::from_block(item_block) else {
+            return Err(StackError::UnknownItem(Item::BlockOrUnknown(u16::from(
                 item_block.as_u8(),
             ))));
         };
         Self::with_data(item, count, u16::from(data))
     }
-    pub const fn item(self) -> ItemId {
+    pub const fn item(self) -> Item {
         self.item
     }
     pub const fn count(self) -> u8 {
@@ -77,7 +77,7 @@ impl ItemStack {
     pub fn with_count(self, count: u8) -> Result<Self, StackError> {
         Self::with_data(self.item, count, self.data)
     }
-    pub fn container_item(self) -> Option<ItemId> {
+    pub fn container_item(self) -> Option<Item> {
         self.definition().container_item()
     }
     pub fn definition(self) -> ItemProperties {

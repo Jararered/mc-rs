@@ -1,6 +1,6 @@
 //! Original dungeon chest loot from Beta 1.7.3 `WorldGenDungeons`.
 
-use crate::item::ItemId;
+use crate::item::Item;
 use crate::item::ItemStack;
 use crate::random::JavaRandom;
 use crate::world::chest::CHEST_SLOTS;
@@ -33,37 +33,37 @@ pub fn generate_dungeon_chest(random: &mut JavaRandom) -> Chest {
 
 fn pick_loot_item(random: &mut JavaRandom) -> Option<ItemStack> {
     match random.next_int(11) {
-        0 => Some(single(ItemId::Saddle)),
+        0 => Some(single(Item::Saddle)),
         1 => Some(
-            ItemStack::new(ItemId::IronIngot, random_count(random))
+            ItemStack::new(Item::IronIngot, random_count(random))
                 .expect("Beta dungeon loot quantities are valid iron-ingot stacks"),
         ),
-        2 => Some(single(ItemId::Bread)),
+        2 => Some(single(Item::Bread)),
         3 => Some(
-            ItemStack::new(ItemId::Wheat, random_count(random))
+            ItemStack::new(Item::Wheat, random_count(random))
                 .expect("Beta dungeon loot quantities are valid wheat stacks"),
         ),
         4 => Some(
-            ItemStack::new(ItemId::Gunpowder, random_count(random))
+            ItemStack::new(Item::Gunpowder, random_count(random))
                 .expect("Beta dungeon loot quantities are valid gunpowder stacks"),
         ),
         5 => Some(
-            ItemStack::new(ItemId::String, random_count(random))
+            ItemStack::new(Item::String, random_count(random))
                 .expect("Beta dungeon loot quantities are valid string stacks"),
         ),
-        6 => Some(single(ItemId::Bucket)),
-        7 if random.next_int(100) == 0 => Some(single(ItemId::GoldenApple)),
+        6 => Some(single(Item::Bucket)),
+        7 if random.next_int(100) == 0 => Some(single(Item::GoldenApple)),
         8 if random.next_int(2) == 0 => Some(
-            ItemStack::new(ItemId::Redstone, random_count(random))
+            ItemStack::new(Item::Redstone, random_count(random))
                 .expect("Beta dungeon loot quantities are valid redstone stacks"),
         ),
         9 if random.next_int(10) == 0 => Some(single(if random.next_int(2) == 0 {
-            ItemId::Record13
+            Item::Record13
         } else {
-            ItemId::RecordCat
+            Item::RecordCat
         })),
         10 => Some(
-            ItemStack::with_data(ItemId::Dye, 1, 3)
+            ItemStack::with_data(Item::Dye, 1, 3)
                 .expect("brown dye is a valid Beta dungeon loot stack"),
         ),
         _ => None,
@@ -74,6 +74,6 @@ fn random_count(random: &mut JavaRandom) -> u8 {
     u8::try_from(random.next_int(4)).expect("a four-sided roll fits in u8") + 1
 }
 
-fn single(item: ItemId) -> ItemStack {
+fn single(item: Item) -> ItemStack {
     ItemStack::new(item, 1).expect("Beta dungeon loot item must be registered")
 }

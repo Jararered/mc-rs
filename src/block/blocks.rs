@@ -173,4 +173,8 @@ impl Block {
     pub fn in_world(self) -> bool {
         super::definition::definition(self).in_world(self)
     }
+
+    pub fn is_leaves(self) -> bool {
+        matches!(self, Block::SpruceLeaves | Block::BirchLeaves)
+    }
 }

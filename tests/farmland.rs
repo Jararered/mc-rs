@@ -12,7 +12,7 @@ use game::block::properties::selection_bounds;
 use game::entity::drops::blocks::DropRoll;
 use game::entity::drops::blocks::player_break_drops;
 use game::inventory::Hotbar;
-use game::item::ItemId;
+use game::item::Item;
 use game::item::ItemStack;
 use game::item::tools::is_hoe;
 use game::item::tools::str_vs_block;
@@ -101,15 +101,15 @@ fn farmland_top_uses_tile(mesh: &BlockGeometry, tile: (u8, u8)) -> bool {
 #[test]
 fn hoe_tills_dirt_from_any_face_and_grass_from_all_but_bottom() {
     for hoe in [
-        ItemId::WoodenHoe,
-        ItemId::StoneHoe,
-        ItemId::IronHoe,
-        ItemId::DiamondHoe,
-        ItemId::GoldHoe,
+        Item::WoodenHoe,
+        Item::StoneHoe,
+        Item::IronHoe,
+        Item::DiamondHoe,
+        Item::GoldHoe,
     ] {
         assert!(is_hoe(hoe));
     }
-    assert!(!is_hoe(ItemId::WoodenShovel));
+    assert!(!is_hoe(Item::WoodenShovel));
 
     let faces = [
         BlockFace::Down,
@@ -199,7 +199,7 @@ fn successful_hoe_use_spends_durability_without_charging_failed_attempts() {
     chunk.set(9, 64, 8, Block::Stone);
     let mut chunks = world_with(chunk);
     let mut hotbar = Hotbar::default();
-    hotbar.slots[0] = Some(ItemStack::new(ItemId::WoodenHoe, 1).unwrap());
+    hotbar.slots[0] = Some(ItemStack::new(Item::WoodenHoe, 1).unwrap());
 
     assert!(till_with_selected_hoe(
         &mut chunks,
@@ -218,7 +218,7 @@ fn successful_hoe_use_spends_durability_without_charging_failed_attempts() {
         hit(9, Block::Stone, BlockFace::Up)
     ));
     assert_eq!(hotbar.selected_stack().unwrap().data(), 1);
-    hotbar.slots[0] = Some(ItemStack::new(ItemId::WoodenShovel, 1).unwrap());
+    hotbar.slots[0] = Some(ItemStack::new(Item::WoodenShovel, 1).unwrap());
     let mut chunk = Chunk::new();
     chunk.set(10, 64, 8, Block::Dirt);
     let mut chunks = world_with(chunk);
@@ -251,7 +251,7 @@ fn farmland_has_beta_properties_tiles_and_dirt_drop() {
     for face in [1, 2, 3, 4, 5] {
         assert_eq!(block_tile(Block::Farmland, face, false), (2, 0));
     }
-    let shovel = ItemStack::new(ItemId::WoodenShovel, 1).unwrap();
+    let shovel = ItemStack::new(Item::WoodenShovel, 1).unwrap();
     assert_eq!(str_vs_block(Some(shovel), Block::Farmland), 2.0);
     assert_eq!(
         player_break_drops(Block::Farmland, None, &mut Rolls),

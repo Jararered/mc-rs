@@ -1,7 +1,7 @@
 use game::block::blocks::Block;
 use game::inventory::Hotbar;
 use game::item::ItemData;
-use game::item::ItemId;
+use game::item::Item;
 use game::item::ItemRegistry;
 use game::item::ItemStack;
 use game::item::StackError;
@@ -32,14 +32,14 @@ fn numeric_enum_conversions_preserve_valid_and_unknown_values() {
     }
 
     for raw in 0..=u16::MAX {
-        let item = ItemId::from(raw);
+        let item = Item::from(raw);
         let round_trip: u16 = item.into();
         assert_eq!(round_trip, raw);
         assert_eq!(
-            ItemId::from_u16(raw).is_some(),
+            Item::from_u16(raw).is_some(),
             matches!(raw, 1..=96 | 256..=359 | 2256..=2257)
         );
-        if let ItemId::BlockOrUnknown(value) = item {
+        if let Item::BlockOrUnknown(value) = item {
             assert_eq!(value, raw);
             assert_eq!(item.block().is_some(), (1..=96).contains(&raw));
         }
@@ -84,15 +84,15 @@ fn known_beta_identities_do_not_use_the_native_variant_ids() {
     assert_eq!(Block::LockedChest.as_u8(), 95);
     assert_eq!(Block::Trapdoor.as_u8(), 96);
     assert_eq!(Block::SpruceLeaves.as_u8(), 200);
-    assert_eq!(ItemId::IronShovel.as_u16(), 256);
-    assert_eq!(ItemId::Diamond.as_u16(), 264);
-    assert_eq!(ItemId::WoodenDoor.as_u16(), 324);
-    assert_eq!(ItemId::Cake.as_u16(), 354);
-    assert_eq!(ItemId::Shears.as_u16(), 359);
-    assert_eq!(ItemId::Record13.as_u16(), 2256);
-    assert_eq!(ItemId::RecordCat.as_u16(), 2257);
-    assert_eq!(ItemId::from_block(Block::Stone).unwrap().as_u16(), 1);
-    assert!(ItemId::from_block(Block::SpruceWood).is_none());
+    assert_eq!(Item::IronShovel.as_u16(), 256);
+    assert_eq!(Item::Diamond.as_u16(), 264);
+    assert_eq!(Item::WoodenDoor.as_u16(), 324);
+    assert_eq!(Item::Cake.as_u16(), 354);
+    assert_eq!(Item::Shears.as_u16(), 359);
+    assert_eq!(Item::Record13.as_u16(), 2256);
+    assert_eq!(Item::RecordCat.as_u16(), 2257);
+    assert_eq!(Item::from_block(Block::Stone).unwrap().as_u16(), 1);
+    assert!(Item::from_block(Block::SpruceWood).is_none());
     assert_eq!(
         ItemRegistry::get(257).unwrap().id.to_string(),
         "IronPickaxe"
@@ -102,12 +102,12 @@ fn known_beta_identities_do_not_use_the_native_variant_ids() {
 #[test]
 fn item_ids_format_as_their_rust_variants() {
     assert_eq!(
-        ItemId::from_block(Block::Stone).unwrap().to_string(),
+        Item::from_block(Block::Stone).unwrap().to_string(),
         "Stone"
     );
-    assert_eq!(ItemId::IronPickaxe.to_string(), "IronPickaxe");
+    assert_eq!(Item::IronPickaxe.to_string(), "IronPickaxe");
     assert_eq!(
-        ItemId::BlockOrUnknown(999).to_string(),
+        Item::BlockOrUnknown(999).to_string(),
         "BlockOrUnknown(999)"
     );
 }
@@ -146,7 +146,7 @@ fn native_save_values_and_supported_states_round_trip() {
         assert_eq!(id.placed(0), None);
         assert!(!id.in_world());
         assert_eq!(
-            ItemStack::new(ItemId::from_block(id).unwrap(), 1)
+            ItemStack::new(Item::from_block(id).unwrap(), 1)
                 .unwrap()
                 .runtime_block(),
             None
@@ -157,78 +157,78 @@ fn native_save_values_and_supported_states_round_trip() {
 
 #[test]
 fn stacks_reject_unknown_ids_zero_overflow_and_invalid_data() {
-    assert!(ItemId::from_u16(0).is_none());
+    assert!(Item::from_u16(0).is_none());
     assert_eq!(
-        ItemStack::new(ItemId::BlockOrUnknown(0), 1),
-        Err(StackError::UnknownItem(ItemId::BlockOrUnknown(0)))
+        ItemStack::new(Item::BlockOrUnknown(0), 1),
+        Err(StackError::UnknownItem(Item::BlockOrUnknown(0)))
     );
-    assert!(ItemStack::new(ItemId::Coal, 0).is_err());
-    assert!(ItemStack::new(ItemId::Coal, 65).is_err());
-    assert!(ItemStack::new(ItemId::IronPickaxe, 2).is_err());
-    assert!(ItemStack::with_data(ItemId::Coal, 1, 2).is_err());
-    assert!(ItemStack::with_data(ItemId::Diamond, 1, 1).is_err());
-    assert!(ItemStack::with_data(ItemId::IronPickaxe, 1, 250).is_ok());
-    assert!(ItemStack::with_data(ItemId::IronPickaxe, 1, 251).is_err());
-    assert!(ItemStack::with_data(ItemId::Map, 1, 1234).is_ok());
+    assert!(ItemStack::new(Item::Coal, 0).is_err());
+    assert!(ItemStack::new(Item::Coal, 65).is_err());
+    assert!(ItemStack::new(Item::IronPickaxe, 2).is_err());
+    assert!(ItemStack::with_data(Item::Coal, 1, 2).is_err());
+    assert!(ItemStack::with_data(Item::Diamond, 1, 1).is_err());
+    assert!(ItemStack::with_data(Item::IronPickaxe, 1, 250).is_ok());
+    assert!(ItemStack::with_data(Item::IronPickaxe, 1, 251).is_err());
+    assert!(ItemStack::with_data(Item::Map, 1, 1234).is_ok());
 }
 
 #[test]
 fn beta_stack_and_durability_rules_include_pre_release_differences() {
     for (id, limit) in [
-        (ItemId::Apple, 1),
-        (ItemId::Cookie, 8),
-        (ItemId::Egg, 16),
-        (ItemId::Snowball, 16),
-        (ItemId::Bucket, 1),
-        (ItemId::Sign, 1),
-        (ItemId::Arrow, 64),
-        (ItemId::Bow, 1),
-        (ItemId::Record13, 1),
+        (Item::Apple, 1),
+        (Item::Cookie, 8),
+        (Item::Egg, 16),
+        (Item::Snowball, 16),
+        (Item::Bucket, 1),
+        (Item::Sign, 1),
+        (Item::Arrow, 64),
+        (Item::Bow, 1),
+        (Item::Record13, 1),
     ] {
         assert_eq!(id.properties().unwrap().max_stack_size, limit);
     }
     for (id, damage) in [
-        (ItemId::WoodenPickaxe, 59),
-        (ItemId::StonePickaxe, 131),
-        (ItemId::IronPickaxe, 250),
-        (ItemId::DiamondPickaxe, 1561),
-        (ItemId::GoldPickaxe, 32),
-        (ItemId::Shears, 238),
-        (ItemId::LeatherHelmet, 33),
-        (ItemId::DiamondChestplate, 384),
+        (Item::WoodenPickaxe, 59),
+        (Item::StonePickaxe, 131),
+        (Item::IronPickaxe, 250),
+        (Item::DiamondPickaxe, 1561),
+        (Item::GoldPickaxe, 32),
+        (Item::Shears, 238),
+        (Item::LeatherHelmet, 33),
+        (Item::DiamondChestplate, 384),
     ] {
         assert_eq!(id.properties().unwrap().data, ItemData::Durability(damage));
     }
     // Beta bows have no durability.
-    assert_eq!(ItemId::Bow.properties().unwrap().data, ItemData::None);
+    assert_eq!(Item::Bow.properties().unwrap().data, ItemData::None);
 }
 
 #[test]
 fn species_survive_stacks_but_torch_attachments_do_not() {
     let spruce = ItemStack::from_block(Block::SpruceWood, 4).unwrap();
-    assert_eq!(spruce.item(), ItemId::from_block(Block::Wood).unwrap());
+    assert_eq!(spruce.item(), Item::from_block(Block::Wood).unwrap());
     assert_eq!(spruce.data(), 1);
     assert_eq!(spruce.runtime_block(), Some(Block::SpruceWood));
     let birch = ItemStack::from_block(Block::BirchLeaves, 4).unwrap();
-    assert_eq!(birch.item(), ItemId::from_block(Block::Leaves).unwrap());
+    assert_eq!(birch.item(), Item::from_block(Block::Leaves).unwrap());
     assert_eq!(birch.data(), 2);
     assert_eq!(birch.runtime_block(), Some(Block::BirchLeaves));
     let spruce_planks = ItemStack::from_block(Block::SprucePlanks, 4).unwrap();
     assert_eq!(
         spruce_planks.item(),
-        ItemId::from_block(Block::WoodenPlanks).unwrap()
+        Item::from_block(Block::WoodenPlanks).unwrap()
     );
     assert_eq!(spruce_planks.data(), 1);
     assert_eq!(spruce_planks.runtime_block(), Some(Block::SprucePlanks));
     let birch_planks = ItemStack::from_block(Block::BirchPlanks, 4).unwrap();
     assert_eq!(
         birch_planks.item(),
-        ItemId::from_block(Block::WoodenPlanks).unwrap()
+        Item::from_block(Block::WoodenPlanks).unwrap()
     );
     assert_eq!(birch_planks.data(), 2);
     assert_eq!(birch_planks.runtime_block(), Some(Block::BirchPlanks));
     let torch = ItemStack::from_block(Block::TorchEast, 4).unwrap();
-    assert_eq!(torch.item(), ItemId::from_block(Block::Torch).unwrap());
+    assert_eq!(torch.item(), Item::from_block(Block::Torch).unwrap());
     assert_eq!(torch.data(), 0);
     assert_eq!(torch.runtime_block(), Some(Block::Torch));
     assert!(ItemStack::from_block(Block::Air, 1).is_err());
@@ -237,14 +237,14 @@ fn species_survive_stacks_but_torch_attachments_do_not() {
 #[test]
 fn insertion_merges_before_empty_slots_and_preserves_subtypes() {
     let mut hotbar = Hotbar::default();
-    hotbar.slots[4] = Some(ItemStack::new(ItemId::Coal, 60).unwrap());
+    hotbar.slots[4] = Some(ItemStack::new(Item::Coal, 60).unwrap());
     assert_eq!(
-        hotbar.insert(ItemStack::new(ItemId::Coal, 10).unwrap()),
+        hotbar.insert(ItemStack::new(Item::Coal, 10).unwrap()),
         None
     );
     assert_eq!(hotbar.slots[4].unwrap().count(), 64);
     assert_eq!(hotbar.slots[0].unwrap().count(), 6);
-    let charcoal = ItemStack::with_data(ItemId::Coal, 10, 1).unwrap();
+    let charcoal = ItemStack::with_data(Item::Coal, 10, 1).unwrap();
     assert_eq!(hotbar.insert(charcoal), None);
     assert_eq!(hotbar.slots[1], Some(charcoal));
     assert_eq!(hotbar.slots[0].unwrap().count(), 6);
@@ -252,28 +252,28 @@ fn insertion_merges_before_empty_slots_and_preserves_subtypes() {
 
 #[test]
 fn full_hotbar_returns_exact_remainder_and_does_not_stack_tools() {
-    let coal = ItemStack::new(ItemId::Coal, 64).unwrap();
+    let coal = ItemStack::new(Item::Coal, 64).unwrap();
     let mut hotbar = Hotbar {
         slots: [Some(coal); 9],
         selected: 0,
         pop: [0; 9],
     };
-    hotbar.slots[8] = Some(ItemStack::new(ItemId::Coal, 63).unwrap());
+    hotbar.slots[8] = Some(ItemStack::new(Item::Coal, 63).unwrap());
     let remainder = hotbar
-        .insert(ItemStack::new(ItemId::Coal, 10).unwrap())
+        .insert(ItemStack::new(Item::Coal, 10).unwrap())
         .unwrap();
     assert_eq!(remainder.count(), 9);
     assert_eq!(hotbar.slots[8], Some(coal));
-    let tool = ItemStack::new(ItemId::IronPickaxe, 1).unwrap();
+    let tool = ItemStack::new(Item::IronPickaxe, 1).unwrap();
     hotbar.slots = [Some(tool); 9];
     assert_eq!(hotbar.insert(tool), Some(tool));
 }
 
-fn held(id: ItemId) -> Option<ItemStack> {
+fn held(id: Item) -> Option<ItemStack> {
     Some(ItemStack::new(id, 1).unwrap())
 }
 
-fn break_ticks(tool: Option<ItemId>, block: Block, on_ground: bool, in_water: bool) -> Option<u32> {
+fn break_ticks(tool: Option<Item>, block: Block, on_ground: bool, in_water: bool) -> Option<u32> {
     ticks_to_break(
         block,
         tool.map(|id| ItemStack::new(id, 1).unwrap()),
@@ -290,95 +290,95 @@ fn tool_break_times_match_beta_173() {
     assert_eq!(t(None, Block::Obsidian), Some(1000));
     assert_eq!(t(None, Block::Leaves), Some(6));
 
-    assert_eq!(t(Some(ItemId::WoodenPickaxe), Block::Stone), Some(23));
-    assert_eq!(t(Some(ItemId::StonePickaxe), Block::Stone), Some(12));
-    assert_eq!(t(Some(ItemId::IronPickaxe), Block::Stone), Some(8));
-    assert_eq!(t(Some(ItemId::DiamondPickaxe), Block::Stone), Some(6));
-    assert_eq!(t(Some(ItemId::GoldPickaxe), Block::Stone), Some(4));
+    assert_eq!(t(Some(Item::WoodenPickaxe), Block::Stone), Some(23));
+    assert_eq!(t(Some(Item::StonePickaxe), Block::Stone), Some(12));
+    assert_eq!(t(Some(Item::IronPickaxe), Block::Stone), Some(8));
+    assert_eq!(t(Some(Item::DiamondPickaxe), Block::Stone), Some(6));
+    assert_eq!(t(Some(Item::GoldPickaxe), Block::Stone), Some(4));
 
     // Obsidian is harvestable by diamond but is not in the speed list.
-    assert_eq!(t(Some(ItemId::DiamondPickaxe), Block::Obsidian), Some(300));
-    assert_eq!(t(Some(ItemId::IronPickaxe), Block::GoldOre), Some(15));
-    assert_eq!(t(Some(ItemId::WoodenPickaxe), Block::GoldOre), Some(300));
-    assert_eq!(t(Some(ItemId::GoldPickaxe), Block::GoldOre), Some(300));
-    assert_eq!(t(Some(ItemId::WoodenPickaxe), Block::CoalOre), Some(45));
-    assert_eq!(t(Some(ItemId::DiamondPickaxe), Block::CoalOre), Some(12));
-    assert_eq!(t(Some(ItemId::IronPickaxe), Block::RedstoneOre), Some(90));
+    assert_eq!(t(Some(Item::DiamondPickaxe), Block::Obsidian), Some(300));
+    assert_eq!(t(Some(Item::IronPickaxe), Block::GoldOre), Some(15));
+    assert_eq!(t(Some(Item::WoodenPickaxe), Block::GoldOre), Some(300));
+    assert_eq!(t(Some(Item::GoldPickaxe), Block::GoldOre), Some(300));
+    assert_eq!(t(Some(Item::WoodenPickaxe), Block::CoalOre), Some(45));
+    assert_eq!(t(Some(Item::DiamondPickaxe), Block::CoalOre), Some(12));
+    assert_eq!(t(Some(Item::IronPickaxe), Block::RedstoneOre), Some(90));
     assert_eq!(
-        t(Some(ItemId::IronPickaxe), Block::LitRedstoneOre),
+        t(Some(Item::IronPickaxe), Block::LitRedstoneOre),
         Some(90)
     );
-    assert_eq!(t(Some(ItemId::WoodenPickaxe), Block::Furnace), Some(105));
-    assert_eq!(t(Some(ItemId::GoldPickaxe), Block::Dispenser), Some(105));
-    assert_eq!(t(Some(ItemId::StonePickaxe), Block::LitFurnace), Some(105));
-    assert_eq!(t(Some(ItemId::IronPickaxe), Block::Glowstone), Some(9));
+    assert_eq!(t(Some(Item::WoodenPickaxe), Block::Furnace), Some(105));
+    assert_eq!(t(Some(Item::GoldPickaxe), Block::Dispenser), Some(105));
+    assert_eq!(t(Some(Item::StonePickaxe), Block::LitFurnace), Some(105));
+    assert_eq!(t(Some(Item::IronPickaxe), Block::Glowstone), Some(9));
 
-    assert_eq!(t(Some(ItemId::DiamondShovel), Block::Dirt), Some(2));
-    assert_eq!(t(Some(ItemId::GoldShovel), Block::Dirt), Some(2));
-    assert_eq!(t(Some(ItemId::WoodenShovel), Block::Grass), Some(9));
-    assert_eq!(t(Some(ItemId::WoodenShovel), Block::Snow), Some(3));
-    assert_eq!(t(Some(ItemId::StoneShovel), Block::Snow), Some(2));
-    assert_eq!(t(Some(ItemId::IronShovel), Block::Snow), Some(1));
-    assert_eq!(t(Some(ItemId::DiamondShovel), Block::Snow), Some(1));
-    assert_eq!(t(Some(ItemId::GoldShovel), Block::Snow), Some(1));
+    assert_eq!(t(Some(Item::DiamondShovel), Block::Dirt), Some(2));
+    assert_eq!(t(Some(Item::GoldShovel), Block::Dirt), Some(2));
+    assert_eq!(t(Some(Item::WoodenShovel), Block::Grass), Some(9));
+    assert_eq!(t(Some(Item::WoodenShovel), Block::Snow), Some(3));
+    assert_eq!(t(Some(Item::StoneShovel), Block::Snow), Some(2));
+    assert_eq!(t(Some(Item::IronShovel), Block::Snow), Some(1));
+    assert_eq!(t(Some(Item::DiamondShovel), Block::Snow), Some(1));
+    assert_eq!(t(Some(Item::GoldShovel), Block::Snow), Some(1));
 
-    assert_eq!(t(Some(ItemId::Shears), Block::Leaves), Some(1));
-    assert_eq!(t(Some(ItemId::Shears), Block::SpruceLeaves), Some(1));
-    assert_eq!(t(Some(ItemId::Shears), Block::BirchLeaves), Some(1));
-    assert_eq!(t(Some(ItemId::Shears), Block::Wool), Some(5));
-    assert_eq!(str_vs_block(held(ItemId::Shears), Block::Cobweb), 15.0);
-    assert_eq!(str_vs_block(held(ItemId::IronSword), Block::Cobweb), 15.0);
-    assert_eq!(str_vs_block(held(ItemId::IronSword), Block::Dirt), 1.5);
+    assert_eq!(t(Some(Item::Shears), Block::Leaves), Some(1));
+    assert_eq!(t(Some(Item::Shears), Block::SpruceLeaves), Some(1));
+    assert_eq!(t(Some(Item::Shears), Block::BirchLeaves), Some(1));
+    assert_eq!(t(Some(Item::Shears), Block::Wool), Some(5));
+    assert_eq!(str_vs_block(held(Item::Shears), Block::Cobweb), 15.0);
+    assert_eq!(str_vs_block(held(Item::IronSword), Block::Cobweb), 15.0);
+    assert_eq!(str_vs_block(held(Item::IronSword), Block::Dirt), 1.5);
 
-    assert_eq!(t(Some(ItemId::IronSword), Block::Dirt), Some(10));
-    assert_eq!(t(Some(ItemId::IronSword), Block::Stone), Some(150));
-    assert_eq!(t(Some(ItemId::WoodenAxe), Block::Wood), Some(30));
-    assert_eq!(t(Some(ItemId::DiamondAxe), Block::Wood), Some(8));
-    assert_eq!(t(Some(ItemId::DiamondAxe), Block::SpruceWood), Some(8));
-    assert_eq!(t(Some(ItemId::WoodenAxe), Block::BirchWood), Some(30));
-    assert_eq!(t(Some(ItemId::WoodenAxe), Block::Bookshelf), Some(23));
-    assert_eq!(t(Some(ItemId::DiamondAxe), Block::CraftingTable), Some(75));
+    assert_eq!(t(Some(Item::IronSword), Block::Dirt), Some(10));
+    assert_eq!(t(Some(Item::IronSword), Block::Stone), Some(150));
+    assert_eq!(t(Some(Item::WoodenAxe), Block::Wood), Some(30));
+    assert_eq!(t(Some(Item::DiamondAxe), Block::Wood), Some(8));
+    assert_eq!(t(Some(Item::DiamondAxe), Block::SpruceWood), Some(8));
+    assert_eq!(t(Some(Item::WoodenAxe), Block::BirchWood), Some(30));
+    assert_eq!(t(Some(Item::WoodenAxe), Block::Bookshelf), Some(23));
+    assert_eq!(t(Some(Item::DiamondAxe), Block::CraftingTable), Some(75));
     assert_eq!(t(None, Block::CraftingTable), Some(75));
-    assert_eq!(t(Some(ItemId::IronSword), Block::CraftingTable), Some(50));
-    assert_eq!(t(Some(ItemId::DiamondAxe), Block::NoteBlock), Some(24));
+    assert_eq!(t(Some(Item::IronSword), Block::CraftingTable), Some(50));
+    assert_eq!(t(Some(Item::DiamondAxe), Block::NoteBlock), Some(24));
     assert_eq!(t(None, Block::NoteBlock), Some(24));
-    assert_eq!(t(Some(ItemId::DiamondAxe), Block::Jukebox), Some(60));
+    assert_eq!(t(Some(Item::DiamondAxe), Block::Jukebox), Some(60));
     assert_eq!(t(None, Block::Jukebox), Some(60));
-    assert_eq!(t(Some(ItemId::DiamondAxe), Block::Pumpkin), Some(30));
+    assert_eq!(t(Some(Item::DiamondAxe), Block::Pumpkin), Some(30));
     assert_eq!(t(None, Block::Pumpkin), Some(30));
 
     assert_eq!(
-        break_ticks(Some(ItemId::DiamondPickaxe), Block::Stone, false, false),
+        break_ticks(Some(Item::DiamondPickaxe), Block::Stone, false, false),
         Some(29)
     );
     assert_eq!(
-        break_ticks(Some(ItemId::DiamondPickaxe), Block::Stone, false, true),
+        break_ticks(Some(Item::DiamondPickaxe), Block::Stone, false, true),
         Some(141)
     );
     assert_eq!(break_ticks(None, Block::Stone, false, true), Some(150));
     assert_eq!(
-        break_ticks(Some(ItemId::WoodenPickaxe), Block::Obsidian, false, true),
+        break_ticks(Some(Item::WoodenPickaxe), Block::Obsidian, false, true),
         Some(1000)
     );
     assert_eq!(
-        break_ticks(Some(ItemId::WoodenPickaxe), Block::Stone, false, false),
+        break_ticks(Some(Item::WoodenPickaxe), Block::Stone, false, false),
         Some(113)
     );
 
-    let worn = ItemStack::with_data(ItemId::DiamondPickaxe, 1, 1000).unwrap();
+    let worn = ItemStack::with_data(Item::DiamondPickaxe, 1, 1000).unwrap();
     assert_eq!(
         ticks_to_break(Block::Stone, Some(worn), true, false),
-        t(Some(ItemId::DiamondPickaxe), Block::Stone)
+        t(Some(Item::DiamondPickaxe), Block::Stone)
     );
 }
 
 #[test]
 fn pickaxe_harvest_levels_match_beta() {
-    let wood = held(ItemId::WoodenPickaxe);
-    let gold = held(ItemId::GoldPickaxe);
-    let stone = held(ItemId::StonePickaxe);
-    let iron = held(ItemId::IronPickaxe);
-    let diamond = held(ItemId::DiamondPickaxe);
+    let wood = held(Item::WoodenPickaxe);
+    let gold = held(Item::GoldPickaxe);
+    let stone = held(Item::StonePickaxe);
+    let iron = held(Item::IronPickaxe);
+    let diamond = held(Item::DiamondPickaxe);
 
     for pick in [wood, gold, stone, iron, diamond] {
         assert!(can_harvest(pick, Block::Stone));
@@ -425,19 +425,19 @@ fn pickaxe_harvest_levels_match_beta() {
 
     assert!(!can_harvest(None, Block::Stone));
     assert!(can_harvest(None, Block::Dirt));
-    assert!(can_harvest(held(ItemId::WoodenShovel), Block::Snow));
+    assert!(can_harvest(held(Item::WoodenShovel), Block::Snow));
     assert!(!can_harvest(wood, Block::Snow));
     assert!(!can_harvest(None, Block::Snow));
-    assert!(!can_harvest(held(ItemId::DiamondSword), Block::Stone));
+    assert!(!can_harvest(held(Item::DiamondSword), Block::Stone));
     assert!(can_harvest(None, Block::Leaves));
-    assert!(can_harvest(held(ItemId::Shears), Block::Leaves));
+    assert!(can_harvest(held(Item::Shears), Block::Leaves));
 
     assert!(!can_harvest(None, Block::Cobweb));
-    assert!(can_harvest(held(ItemId::WoodenSword), Block::Cobweb));
-    assert!(can_harvest(held(ItemId::Shears), Block::Cobweb));
+    assert!(can_harvest(held(Item::WoodenSword), Block::Cobweb));
+    assert!(can_harvest(held(Item::Shears), Block::Cobweb));
     assert!(!can_harvest(wood, Block::Cobweb));
     assert!(!can_harvest(None, Block::SnowLayer));
-    assert!(can_harvest(held(ItemId::WoodenShovel), Block::SnowLayer));
+    assert!(can_harvest(held(Item::WoodenShovel), Block::SnowLayer));
     assert!(!can_harvest(None, Block::IronDoor));
     assert!(can_harvest(wood, Block::IronDoor));
     assert!(can_harvest(wood, Block::StoneSlab));
@@ -448,42 +448,42 @@ fn pickaxe_harvest_levels_match_beta() {
 
 #[test]
 fn block_breaks_spend_beta_durability() {
-    let pick = ItemStack::new(ItemId::WoodenPickaxe, 1).unwrap();
+    let pick = ItemStack::new(Item::WoodenPickaxe, 1).unwrap();
     assert_eq!(break_durability(pick, Block::Stone), 1);
     assert_eq!(break_durability(pick, Block::Dirt), 1);
     assert_eq!(pick.apply_damage(1).unwrap().data(), 1);
 
-    let sword = ItemStack::new(ItemId::WoodenSword, 1).unwrap();
+    let sword = ItemStack::new(Item::WoodenSword, 1).unwrap();
     assert_eq!(break_durability(sword, Block::Dirt), 2);
     assert_eq!(break_durability(sword, Block::Stone), 2);
 
-    let shears = ItemStack::new(ItemId::Shears, 1).unwrap();
+    let shears = ItemStack::new(Item::Shears, 1).unwrap();
     assert_eq!(break_durability(shears, Block::Leaves), 1);
     assert_eq!(break_durability(shears, Block::BirchLeaves), 1);
     assert_eq!(break_durability(shears, Block::Wool), 0);
     assert_eq!(break_durability(shears, Block::Cobweb), 1);
     assert_eq!(break_durability(shears, Block::Stone), 0);
 
-    let hoe = ItemStack::new(ItemId::WoodenHoe, 1).unwrap();
+    let hoe = ItemStack::new(Item::WoodenHoe, 1).unwrap();
     assert_eq!(break_durability(hoe, Block::Dirt), 0);
     let dirt = ItemStack::from_block(Block::Dirt, 1).unwrap();
     assert_eq!(break_durability(dirt, Block::Dirt), 0);
     assert_eq!(dirt.apply_damage(1), Some(dirt));
 
-    let mut pick = ItemStack::new(ItemId::WoodenPickaxe, 1).unwrap();
+    let mut pick = ItemStack::new(Item::WoodenPickaxe, 1).unwrap();
     for use_index in 1..=59 {
         pick = pick.apply_damage(1).expect("wooden pick survives 59 uses");
         assert_eq!(pick.data(), use_index);
     }
     assert!(pick.apply_damage(1).is_none());
 
-    let sword = ItemStack::with_data(ItemId::WoodenSword, 1, 57).unwrap();
+    let sword = ItemStack::with_data(Item::WoodenSword, 1, 57).unwrap();
     assert_eq!(sword.apply_damage(2).unwrap().data(), 59);
-    let sword = ItemStack::with_data(ItemId::WoodenSword, 1, 58).unwrap();
+    let sword = ItemStack::with_data(Item::WoodenSword, 1, 58).unwrap();
     assert!(sword.apply_damage(2).is_none());
 
     let mut hotbar = Hotbar::default();
-    hotbar.slots[0] = Some(ItemStack::with_data(ItemId::WoodenPickaxe, 1, 58).unwrap());
+    hotbar.slots[0] = Some(ItemStack::with_data(Item::WoodenPickaxe, 1, 58).unwrap());
     hotbar.damage_selected(1);
     assert_eq!(hotbar.selected_stack().unwrap().data(), 59);
     hotbar.damage_selected(1);

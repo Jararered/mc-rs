@@ -119,6 +119,6 @@ fn a_torch_that_loses_its_floor_drops_an_item_entity() {
     assert_eq!(items.len(), 1);
     assert_eq!(
         items[0],
-        game::item::ItemId::from_block(Block::Torch).unwrap()
+        game::item::Item::from_block(Block::Torch).unwrap()
     );
 }

@@ -1,6 +1,6 @@
 use game::crafting::CraftingGrid;
 use game::crafting::WorkbenchSession;
-use game::item::ItemId;
+use game::item::Item;
 
 use super::stack;
 
@@ -14,8 +14,8 @@ fn workbench_session_matches_beta_reach_limit() {
 #[test]
 fn draining_a_crafting_grid_removes_all_inputs() {
     let mut grid = CraftingGrid::workbench();
-    grid.set(0, 0, Some(stack(ItemId::WoodenPickaxe, 1)));
-    grid.set(2, 2, Some(stack(ItemId::Stick, 3)));
+    grid.set(0, 0, Some(stack(Item::WoodenPickaxe, 1)));
+    grid.set(2, 2, Some(stack(Item::Stick, 3)));
 
     let drained = grid.drain();
 

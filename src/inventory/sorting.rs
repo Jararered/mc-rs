@@ -3,7 +3,7 @@
 use crate::block::blocks::Block;
 use crate::inventory::Inventory;
 use crate::item::ItemData;
-use crate::item::ItemId;
+use crate::item::Item;
 use crate::item::ItemStack;
 
 /// Sort stacks by category, merge compatible stacks, and keep empty slots at
@@ -46,94 +46,94 @@ fn sort_key(stack: ItemStack) -> (u8, u8, u8, u16, u16) {
 
     let (category, subcategory, leaf) = match item {
         // food / edibleFood, then food / ingredients
-        ItemId::Apple
-        | ItemId::MushroomStew
-        | ItemId::Bread
-        | ItemId::RawPorkchop
-        | ItemId::CookedPorkchop
-        | ItemId::GoldenApple
-        | ItemId::RawFish
-        | ItemId::CookedFish
-        | ItemId::Cake
-        | ItemId::Cookie => (1, 0, 0),
-        ItemId::Bowl | ItemId::Seeds | ItemId::Wheat | ItemId::Egg | ItemId::Sugar => (1, 1, 0),
+        Item::Apple
+        | Item::MushroomStew
+        | Item::Bread
+        | Item::RawPorkchop
+        | Item::CookedPorkchop
+        | Item::GoldenApple
+        | Item::RawFish
+        | Item::CookedFish
+        | Item::Cake
+        | Item::Cookie => (1, 0, 0),
+        Item::Bowl | Item::Seeds | Item::Wheat | Item::Egg | Item::Sugar => (1, 1, 0),
         // material: ingots, gems, coal, dyes, mob drops, other materials
-        ItemId::IronIngot | ItemId::GoldIngot => (2, 0, 0),
-        ItemId::Diamond => (2, 1, 0),
-        ItemId::Coal => (2, 2, 0),
-        ItemId::Dye => (2, 3, 0),
-        ItemId::String
-        | ItemId::Feather
-        | ItemId::Gunpowder
-        | ItemId::Leather
-        | ItemId::Slimeball
-        | ItemId::Bone => (2, 4, 0),
-        ItemId::Flint
-        | ItemId::Stick
-        | ItemId::Brick
-        | ItemId::ClayBall
-        | ItemId::Redstone
-        | ItemId::GlowstoneDust
-        | ItemId::Paper
-        | ItemId::Book => (2, 5, 0),
+        Item::IronIngot | Item::GoldIngot => (2, 0, 0),
+        Item::Diamond => (2, 1, 0),
+        Item::Coal => (2, 2, 0),
+        Item::Dye => (2, 3, 0),
+        Item::String
+        | Item::Feather
+        | Item::Gunpowder
+        | Item::Leather
+        | Item::Slimeball
+        | Item::Bone => (2, 4, 0),
+        Item::Flint
+        | Item::Stick
+        | Item::Brick
+        | Item::ClayBall
+        | Item::Redstone
+        | Item::GlowstoneDust
+        | Item::Paper
+        | Item::Book => (2, 5, 0),
         // transport / minecart, then transport / boat
-        ItemId::Minecart | ItemId::ChestMinecart | ItemId::FurnaceMinecart => (3, 0, 0),
-        ItemId::Boat => (3, 1, 0),
+        Item::Minecart | Item::ChestMinecart | Item::FurnaceMinecart => (3, 0, 0),
+        Item::Boat => (3, 1, 0),
         // equipment / weapon: sword, bow, arrow
-        ItemId::WoodenSword
-        | ItemId::StoneSword
-        | ItemId::IronSword
-        | ItemId::DiamondSword
-        | ItemId::GoldSword => (5, 0, 0),
-        ItemId::Bow => (5, 0, 1),
-        ItemId::Arrow => (5, 0, 2),
+        Item::WoodenSword
+        | Item::StoneSword
+        | Item::IronSword
+        | Item::DiamondSword
+        | Item::GoldSword => (5, 0, 0),
+        Item::Bow => (5, 0, 1),
+        Item::Arrow => (5, 0, 2),
         // equipment / tool: pickaxe, shovel, axe, hoe, shears, fishing rod,
         // flint and steel, bucket.
-        ItemId::WoodenPickaxe
-        | ItemId::StonePickaxe
-        | ItemId::IronPickaxe
-        | ItemId::DiamondPickaxe
-        | ItemId::GoldPickaxe => (5, 1, 0),
-        ItemId::WoodenShovel
-        | ItemId::StoneShovel
-        | ItemId::IronShovel
-        | ItemId::DiamondShovel
-        | ItemId::GoldShovel => (5, 1, 1),
-        ItemId::WoodenAxe
-        | ItemId::StoneAxe
-        | ItemId::IronAxe
-        | ItemId::DiamondAxe
-        | ItemId::GoldAxe => (5, 1, 2),
-        ItemId::WoodenHoe
-        | ItemId::StoneHoe
-        | ItemId::IronHoe
-        | ItemId::DiamondHoe
-        | ItemId::GoldHoe => (5, 1, 3),
-        ItemId::Shears => (5, 1, 4),
-        ItemId::FishingRod => (5, 1, 5),
-        ItemId::FlintAndSteel => (5, 1, 6),
-        ItemId::Bucket | ItemId::WaterBucket | ItemId::LavaBucket | ItemId::MilkBucket => (5, 1, 7),
+        Item::WoodenPickaxe
+        | Item::StonePickaxe
+        | Item::IronPickaxe
+        | Item::DiamondPickaxe
+        | Item::GoldPickaxe => (5, 1, 0),
+        Item::WoodenShovel
+        | Item::StoneShovel
+        | Item::IronShovel
+        | Item::DiamondShovel
+        | Item::GoldShovel => (5, 1, 1),
+        Item::WoodenAxe
+        | Item::StoneAxe
+        | Item::IronAxe
+        | Item::DiamondAxe
+        | Item::GoldAxe => (5, 1, 2),
+        Item::WoodenHoe
+        | Item::StoneHoe
+        | Item::IronHoe
+        | Item::DiamondHoe
+        | Item::GoldHoe => (5, 1, 3),
+        Item::Shears => (5, 1, 4),
+        Item::FishingRod => (5, 1, 5),
+        Item::FlintAndSteel => (5, 1, 6),
+        Item::Bucket | Item::WaterBucket | Item::LavaBucket | Item::MilkBucket => (5, 1, 7),
         // equipment / armor: helmet, chestplate, leggings, boots
-        ItemId::LeatherHelmet
-        | ItemId::ChainmailHelmet
-        | ItemId::IronHelmet
-        | ItemId::DiamondHelmet
-        | ItemId::GoldHelmet => (5, 2, 0),
-        ItemId::LeatherChestplate
-        | ItemId::ChainmailChestplate
-        | ItemId::IronChestplate
-        | ItemId::DiamondChestplate
-        | ItemId::GoldChestplate => (5, 2, 1),
-        ItemId::LeatherLeggings
-        | ItemId::ChainmailLeggings
-        | ItemId::IronLeggings
-        | ItemId::DiamondLeggings
-        | ItemId::GoldLeggings => (5, 2, 2),
-        ItemId::LeatherBoots
-        | ItemId::ChainmailBoots
-        | ItemId::IronBoots
-        | ItemId::DiamondBoots
-        | ItemId::GoldBoots => (5, 2, 3),
+        Item::LeatherHelmet
+        | Item::ChainmailHelmet
+        | Item::IronHelmet
+        | Item::DiamondHelmet
+        | Item::GoldHelmet => (5, 2, 0),
+        Item::LeatherChestplate
+        | Item::ChainmailChestplate
+        | Item::IronChestplate
+        | Item::DiamondChestplate
+        | Item::GoldChestplate => (5, 2, 1),
+        Item::LeatherLeggings
+        | Item::ChainmailLeggings
+        | Item::IronLeggings
+        | Item::DiamondLeggings
+        | Item::GoldLeggings => (5, 2, 2),
+        Item::LeatherBoots
+        | Item::ChainmailBoots
+        | Item::IronBoots
+        | Item::DiamondBoots
+        | Item::GoldBoots => (5, 2, 3),
         _ if matches!(definition.data, ItemData::Durability(_)) => (5, 1, 8),
         _ => (4, 0, 0), // miscellaneous
     };
@@ -226,11 +226,11 @@ fn block_sort_path(block: Block) -> (u8, u8) {
 
 /// Some special standalone Beta item IDs are block-placement items and should
 /// sort beside their direct block-item counterparts.
-fn standalone_block_sort_path(item: ItemId) -> Option<(u8, u8)> {
+fn standalone_block_sort_path(item: Item) -> Option<(u8, u8)> {
     match item {
-        ItemId::Bed => Some((2, 3)),
-        ItemId::Sign | ItemId::WoodenDoor | ItemId::IronDoor => Some((2, 4)),
-        ItemId::Repeater => Some((3, 2)),
+        Item::Bed => Some((2, 3)),
+        Item::Sign | Item::WoodenDoor | Item::IronDoor => Some((2, 4)),
+        Item::Repeater => Some((3, 2)),
         _ => None,
     }
 }

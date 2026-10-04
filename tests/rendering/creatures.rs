@@ -393,11 +393,11 @@ fn dying_mobs_tip_over_onto_their_side() {
 fn held_items_sit_in_the_right_hand() {
     assert_eq!(
         models::held_item(MobKind::Skeleton),
-        Some(game::item::ItemId::Bow)
+        Some(game::item::Item::Bow)
     );
     assert_eq!(
         models::held_item(MobKind::PigZombie),
-        Some(game::item::ItemId::GoldSword)
+        Some(game::item::Item::GoldSword)
     );
     assert_eq!(models::held_item(MobKind::Zombie), None);
     // The sprite's center ends up near the end of the arm, which hangs to

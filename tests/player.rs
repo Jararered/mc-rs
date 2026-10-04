@@ -8,7 +8,7 @@ use game::block::properties::hand_mine_progress_per_tick;
 use game::block::properties::hardness;
 use game::block::properties::harvestable_by_hand;
 use game::entity::EntitySize;
-use game::item::ItemId;
+use game::item::Item;
 use game::item::ItemStack;
 use game::physics::Aabb;
 use game::physics::BlockFace;
@@ -519,7 +519,7 @@ fn mining_reset_clears_the_destroy_overlay_stage() {
 #[test]
 fn diamond_pick_breaks_stone_in_six_damaging_ticks() {
     let stone = hit(8, 64, 8, BlockFace::Up, Block::Stone);
-    let pick = Some(ItemStack::new(ItemId::DiamondPickaxe, 1).unwrap());
+    let pick = Some(ItemStack::new(Item::DiamondPickaxe, 1).unwrap());
     let mut mining = MiningState::default();
     assert!(mining.tick(Some(stone), pick, true, false).is_none());
     let mut ticks = 0;
@@ -537,7 +537,7 @@ fn diamond_pick_breaks_stone_in_six_damaging_ticks() {
 #[test]
 fn shears_break_leaves_on_the_click() {
     let leaves = hit(3, 70, 3, BlockFace::Up, Block::Leaves);
-    let shears = Some(ItemStack::new(ItemId::Shears, 1).unwrap());
+    let shears = Some(ItemStack::new(Item::Shears, 1).unwrap());
     let mut mining = MiningState::default();
     assert!(mining.try_instant(leaves, shears, true, false).is_some());
     assert!(mining.tick(Some(leaves), shears, true, false).is_none());
@@ -547,8 +547,8 @@ fn shears_break_leaves_on_the_click() {
 #[test]
 fn switching_tools_keeps_mining_progress() {
     let stone = hit(8, 64, 8, BlockFace::Up, Block::Stone);
-    let wood = Some(ItemStack::new(ItemId::WoodenPickaxe, 1).unwrap());
-    let diamond = Some(ItemStack::new(ItemId::DiamondPickaxe, 1).unwrap());
+    let wood = Some(ItemStack::new(Item::WoodenPickaxe, 1).unwrap());
+    let diamond = Some(ItemStack::new(Item::DiamondPickaxe, 1).unwrap());
     let mut mining = MiningState::default();
     mining.tick(Some(stone), wood, true, false);
     mining.tick(Some(stone), wood, true, false);

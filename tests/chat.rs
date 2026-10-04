@@ -7,7 +7,7 @@ use game::chat::registry::CommandRegistry;
 use game::entity::mobs::MobKind;
 use game::inventory::Hotbar;
 use game::inventory::Inventory;
-use game::item::ItemId;
+use game::item::Item;
 use game::item::ItemStack;
 use game::world::biome::Biome;
 use game::world::biome::BiomeMap;
@@ -36,7 +36,7 @@ fn parses_numeric_beta_ids_and_three_commands() {
     assert_eq!(
         parse_command("/give 264 70").unwrap(),
         ChatCommand::Give {
-            item: ItemId::Diamond,
+            item: Item::Diamond,
             amount: 70
         }
     );
@@ -121,19 +121,19 @@ fn bad_arguments_are_rejected_without_running_a_command() {
 fn giving_items_stacks_and_returns_only_overflow() {
     let mut hotbar = Hotbar::default();
     let mut inventory = Inventory::default();
-    hotbar.slots[0] = Some(ItemStack::new(ItemId::Diamond, 60).unwrap());
-    assert!(give_to_inventory(ItemId::Diamond, 70, &mut hotbar, &mut inventory).is_empty());
+    hotbar.slots[0] = Some(ItemStack::new(Item::Diamond, 60).unwrap());
+    assert!(give_to_inventory(Item::Diamond, 70, &mut hotbar, &mut inventory).is_empty());
     assert_eq!(hotbar.slots[0].unwrap().count(), 64);
     assert_eq!(hotbar.slots[1].unwrap().count(), 64);
     assert_eq!(hotbar.slots[2].unwrap().count(), 2);
     // Full inventory returns all requested items, including unstackable tools.
     hotbar
         .slots
-        .fill(Some(ItemStack::new(ItemId::IronPickaxe, 1).unwrap()));
+        .fill(Some(ItemStack::new(Item::IronPickaxe, 1).unwrap()));
     inventory
         .main
-        .fill(Some(ItemStack::new(ItemId::IronPickaxe, 1).unwrap()));
-    let overflow = give_to_inventory(ItemId::IronPickaxe, 3, &mut hotbar, &mut inventory);
+        .fill(Some(ItemStack::new(Item::IronPickaxe, 1).unwrap()));
+    let overflow = give_to_inventory(Item::IronPickaxe, 3, &mut hotbar, &mut inventory);
     assert_eq!(overflow.len(), 3);
     assert!(overflow.iter().all(|stack| stack.count() == 1));
 }

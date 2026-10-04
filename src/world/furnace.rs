@@ -5,7 +5,7 @@ use bevy::prelude::Res;
 use bevy::prelude::ResMut;
 
 use crate::block::blocks::Block;
-use crate::item::ItemId;
+use crate::item::Item;
 use crate::item::ItemStack;
 use crate::world::block_ticks::BlockTicks;
 use crate::world::chunk::ChunkPosition;
@@ -103,16 +103,16 @@ impl Furnace {
 pub fn smelting_result(input: ItemStack) -> Option<ItemStack> {
     let (item, data) = (input.item().block(), input.data());
     let result = match (item, input.item()) {
-        (Some(Block::IronOre), _) => ItemStack::new(ItemId::IronIngot, 1).ok(),
-        (Some(Block::GoldOre), _) => ItemStack::new(ItemId::GoldIngot, 1).ok(),
-        (Some(Block::DiamondOre), _) => ItemStack::new(ItemId::Diamond, 1).ok(),
+        (Some(Block::IronOre), _) => ItemStack::new(Item::IronIngot, 1).ok(),
+        (Some(Block::GoldOre), _) => ItemStack::new(Item::GoldIngot, 1).ok(),
+        (Some(Block::DiamondOre), _) => ItemStack::new(Item::Diamond, 1).ok(),
         (Some(Block::Sand), _) => ItemStack::from_block(Block::Glass, 1).ok(),
         (Some(Block::Cobblestone), _) => ItemStack::from_block(Block::Stone, 1).ok(),
-        (Some(Block::Cactus), _) => ItemStack::with_data(ItemId::Dye, 1, 2).ok(),
-        (Some(Block::Wood), _) if data <= 2 => ItemStack::with_data(ItemId::Coal, 1, 1).ok(),
-        (_, ItemId::RawPorkchop) => ItemStack::new(ItemId::CookedPorkchop, 1).ok(),
-        (_, ItemId::RawFish) => ItemStack::new(ItemId::CookedFish, 1).ok(),
-        (_, ItemId::ClayBall) => ItemStack::new(ItemId::Brick, 1).ok(),
+        (Some(Block::Cactus), _) => ItemStack::with_data(Item::Dye, 1, 2).ok(),
+        (Some(Block::Wood), _) if data <= 2 => ItemStack::with_data(Item::Coal, 1, 1).ok(),
+        (_, Item::RawPorkchop) => ItemStack::new(Item::CookedPorkchop, 1).ok(),
+        (_, Item::RawFish) => ItemStack::new(Item::CookedFish, 1).ok(),
+        (_, Item::ClayBall) => ItemStack::new(Item::Brick, 1).ok(),
         _ => None,
     }?;
     Some(result)
@@ -121,9 +121,9 @@ pub fn smelting_result(input: ItemStack) -> Option<ItemStack> {
 /// Beta `TileEntityFurnace.getItemBurnTime` durations, in world ticks.
 pub fn fuel_ticks(fuel: ItemStack) -> Option<u16> {
     match fuel.item() {
-        ItemId::Coal => Some(1_600),
-        ItemId::Stick => Some(100),
-        ItemId::LavaBucket => Some(20_000),
+        Item::Coal => Some(1_600),
+        Item::Stick => Some(100),
+        Item::LavaBucket => Some(20_000),
         item if item.block() == Some(Block::Sapling) => Some(100),
         item if item.block().is_some_and(is_wood_material) => Some(300),
         _ => None,

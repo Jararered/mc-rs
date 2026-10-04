@@ -17,7 +17,7 @@ use crate::entity::combat::Source;
 use crate::entity::combat::hurt_player;
 use crate::entity::drops::items::spawn_entity_drop;
 use crate::entity::pathfinding::Pathfinder;
-use crate::item::ItemId;
+use crate::item::Item;
 use crate::item::ItemStack;
 use crate::physics::WATER_CURRENT_PER_TICK;
 use crate::physics::water_movement;
@@ -121,7 +121,7 @@ impl Body<'_> {
         wings.rotation += wings.rotation_delta * 2.0;
         self.mob.egg_timer = self.mob.egg_timer.saturating_sub(1);
         if self.mob.egg_timer == 0 {
-            if let Ok(egg) = ItemStack::new(ItemId::Egg, 1) {
+            if let Ok(egg) = ItemStack::new(Item::Egg, 1) {
                 spawn_entity_drop(fx.commands, fx.loot, self.feet, egg);
             }
             self.mob.egg_timer = self.mob.rng.next_int(6000) as u16 + 6000;

@@ -4,7 +4,7 @@
 //! Speed lists are block identity checks. Harvest level is separate, and a
 //! tool that cannot harvest a block mines at the slow fist rate.
 
-use super::ItemId;
+use super::Item;
 use super::ItemStack;
 use crate::block::blocks::Block;
 use crate::block::properties::harvestable_by_hand;
@@ -52,34 +52,34 @@ enum Kind {
     Shears,
 }
 
-fn kind(id: ItemId) -> Option<Kind> {
+fn kind(id: Item) -> Option<Kind> {
     Some(match id {
-        ItemId::WoodenPickaxe => Kind::Pick(Tier::Wood),
-        ItemId::StonePickaxe => Kind::Pick(Tier::Stone),
-        ItemId::IronPickaxe => Kind::Pick(Tier::Iron),
-        ItemId::DiamondPickaxe => Kind::Pick(Tier::Diamond),
-        ItemId::GoldPickaxe => Kind::Pick(Tier::Gold),
-        ItemId::WoodenAxe => Kind::Axe(Tier::Wood),
-        ItemId::StoneAxe => Kind::Axe(Tier::Stone),
-        ItemId::IronAxe => Kind::Axe(Tier::Iron),
-        ItemId::DiamondAxe => Kind::Axe(Tier::Diamond),
-        ItemId::GoldAxe => Kind::Axe(Tier::Gold),
-        ItemId::WoodenShovel => Kind::Shovel(Tier::Wood),
-        ItemId::StoneShovel => Kind::Shovel(Tier::Stone),
-        ItemId::IronShovel => Kind::Shovel(Tier::Iron),
-        ItemId::DiamondShovel => Kind::Shovel(Tier::Diamond),
-        ItemId::GoldShovel => Kind::Shovel(Tier::Gold),
-        ItemId::WoodenSword => Kind::Sword(Tier::Wood),
-        ItemId::StoneSword => Kind::Sword(Tier::Stone),
-        ItemId::IronSword => Kind::Sword(Tier::Iron),
-        ItemId::DiamondSword => Kind::Sword(Tier::Diamond),
-        ItemId::GoldSword => Kind::Sword(Tier::Gold),
-        ItemId::WoodenHoe => Kind::Hoe(Tier::Wood),
-        ItemId::StoneHoe => Kind::Hoe(Tier::Stone),
-        ItemId::IronHoe => Kind::Hoe(Tier::Iron),
-        ItemId::DiamondHoe => Kind::Hoe(Tier::Diamond),
-        ItemId::GoldHoe => Kind::Hoe(Tier::Gold),
-        ItemId::Shears => Kind::Shears,
+        Item::WoodenPickaxe => Kind::Pick(Tier::Wood),
+        Item::StonePickaxe => Kind::Pick(Tier::Stone),
+        Item::IronPickaxe => Kind::Pick(Tier::Iron),
+        Item::DiamondPickaxe => Kind::Pick(Tier::Diamond),
+        Item::GoldPickaxe => Kind::Pick(Tier::Gold),
+        Item::WoodenAxe => Kind::Axe(Tier::Wood),
+        Item::StoneAxe => Kind::Axe(Tier::Stone),
+        Item::IronAxe => Kind::Axe(Tier::Iron),
+        Item::DiamondAxe => Kind::Axe(Tier::Diamond),
+        Item::GoldAxe => Kind::Axe(Tier::Gold),
+        Item::WoodenShovel => Kind::Shovel(Tier::Wood),
+        Item::StoneShovel => Kind::Shovel(Tier::Stone),
+        Item::IronShovel => Kind::Shovel(Tier::Iron),
+        Item::DiamondShovel => Kind::Shovel(Tier::Diamond),
+        Item::GoldShovel => Kind::Shovel(Tier::Gold),
+        Item::WoodenSword => Kind::Sword(Tier::Wood),
+        Item::StoneSword => Kind::Sword(Tier::Stone),
+        Item::IronSword => Kind::Sword(Tier::Iron),
+        Item::DiamondSword => Kind::Sword(Tier::Diamond),
+        Item::GoldSword => Kind::Sword(Tier::Gold),
+        Item::WoodenHoe => Kind::Hoe(Tier::Wood),
+        Item::StoneHoe => Kind::Hoe(Tier::Stone),
+        Item::IronHoe => Kind::Hoe(Tier::Iron),
+        Item::DiamondHoe => Kind::Hoe(Tier::Diamond),
+        Item::GoldHoe => Kind::Hoe(Tier::Gold),
+        Item::Shears => Kind::Shears,
         _ => return None,
     })
 }
@@ -117,7 +117,7 @@ pub fn hit_durability(held: ItemStack) -> u16 {
 }
 
 /// Whether an item is one of Beta's hoes.
-pub fn is_hoe(id: ItemId) -> bool {
+pub fn is_hoe(id: Item) -> bool {
     matches!(kind(id), Some(Kind::Hoe(_)))
 }
 
@@ -210,7 +210,7 @@ pub fn can_harvest(tool: Option<ItemStack>, block: Block) -> bool {
     tool.is_some_and(|tool| tool_can_harvest(tool.item(), block))
 }
 
-fn tool_can_harvest(id: ItemId, block: Block) -> bool {
+fn tool_can_harvest(id: Item, block: Block) -> bool {
     match kind(id) {
         Some(Kind::Pick(tier)) => pick_can_harvest(tier, block),
         // `ItemSpade.canHarvestBlock`: the snow layer and the snow block.

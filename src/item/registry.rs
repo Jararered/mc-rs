@@ -27,7 +27,7 @@ impl ItemData {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ItemProperties {
-    pub id: ItemId,
+    pub id: Item,
     pub max_stack_size: u8,
     pub data: ItemData,
     /// Present for direct block items, not special items such as doors/buckets.
@@ -36,9 +36,9 @@ pub struct ItemProperties {
 
 impl ItemProperties {
     /// Beta crafting remainder, for example an empty bucket left by milk.
-    pub const fn container_item(self) -> Option<ItemId> {
+    pub const fn container_item(self) -> Option<Item> {
         match self.id {
-            ItemId::MilkBucket => Some(ItemId::Bucket),
+            Item::MilkBucket => Some(Item::Bucket),
             _ => None,
         }
     }
@@ -50,7 +50,7 @@ impl ItemProperties {
 /// are represented by `BlockOrUnknown` and resolved through [`Self::block`].
 #[repr(u16)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, FromPrimitive, IntoPrimitive)]
-pub enum ItemId {
+pub enum Item {
     IronShovel = 256,
     IronPickaxe = 257,
     IronAxe = 258,
@@ -160,7 +160,7 @@ pub enum ItemId {
     #[num_enum(catch_all)]
     BlockOrUnknown(u16),
 }
-const fn standalone(id: ItemId, max_stack_size: u8, data: ItemData) -> ItemProperties {
+const fn standalone(id: Item, max_stack_size: u8, data: ItemData) -> ItemProperties {
     ItemProperties {
         id,
         max_stack_size,
@@ -169,7 +169,7 @@ const fn standalone(id: ItemId, max_stack_size: u8, data: ItemData) -> ItemPrope
     }
 }
 
-impl ItemId {
+impl Item {
     pub fn from_block(block: Block) -> Option<Self> {
         block
             .has_item_id()
@@ -321,7 +321,7 @@ impl ItemId {
 }
 
 /// Formats block item IDs as their block variant and other IDs as item variants.
-impl std::fmt::Display for ItemId {
+impl std::fmt::Display for Item {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.block() {
             Some(block) => std::fmt::Debug::fmt(&block, formatter),
@@ -338,7 +338,7 @@ pub struct ItemRegistry;
 
 impl ItemRegistry {
     pub fn get(raw: u16) -> Option<ItemProperties> {
-        ItemId::from_u16(raw).and_then(ItemId::properties)
+        Item::from_u16(raw).and_then(Item::properties)
     }
 
     pub fn iter() -> impl Iterator<Item = ItemProperties> {

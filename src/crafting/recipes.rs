@@ -3,7 +3,7 @@
 use std::sync::OnceLock;
 
 use crate::block::blocks::Block;
-use crate::item::ItemId;
+use crate::item::Item;
 use crate::item::ItemStack;
 
 use super::grid::CraftingGrid;
@@ -150,16 +150,16 @@ impl RecipeBook {
     }
 }
 
-fn b(block: Block) -> ItemId {
-    ItemId::from_block(block).expect("air is not an item")
+fn b(block: Block) -> Item {
+    Item::from_block(block).expect("air is not an item")
 }
-fn i(id: ItemId) -> Ingredient {
+fn i(id: Item) -> Ingredient {
     Ingredient::any(id)
 }
-fn d(id: ItemId, data: u16) -> Ingredient {
+fn d(id: Item, data: u16) -> Ingredient {
     Ingredient::exact(id, data)
 }
-fn out(id: ItemId, count: u8, data: u16) -> ItemStack {
+fn out(id: Item, count: u8, data: u16) -> ItemStack {
     ItemStack::with_data(id, count, data).expect("registered Beta recipe output")
 }
 
@@ -200,7 +200,7 @@ pub fn beta_recipe_book() -> &'static RecipeBook {
     static BOOK: OnceLock<RecipeBook> = OnceLock::new();
     BOOK.get_or_init(|| {
         use Block as B;
-        use ItemId as I;
+        use Item as I;
         let mut r = RecipeBook::default();
         let materials = [
             (

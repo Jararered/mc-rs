@@ -16,7 +16,7 @@ use bevy::prelude::*;
 use bevy::render::render_resource::PrimitiveTopology;
 
 use crate::entity::mobs::MobKind;
-use crate::item::ItemId;
+use crate::item::Item;
 
 /// Every Beta mob skin is 64×32 texels.
 const TEXTURE_SIZE: Vec2 = Vec2::new(64.0, 32.0);
@@ -493,10 +493,10 @@ fn ghast() -> Vec<Part> {
 }
 
 /// `getHeldItem`: skeletons carry a bow and zombie pigmen a gold sword.
-pub fn held_item(kind: MobKind) -> Option<ItemId> {
+pub fn held_item(kind: MobKind) -> Option<Item> {
     match kind {
-        MobKind::Skeleton => Some(ItemId::Bow),
-        MobKind::PigZombie => Some(ItemId::GoldSword),
+        MobKind::Skeleton => Some(Item::Bow),
+        MobKind::PigZombie => Some(Item::GoldSword),
         _ => None,
     }
 }

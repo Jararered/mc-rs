@@ -19,7 +19,7 @@ use crate::app::settings::GameSettings;
 use crate::entity::PreviousTick;
 use crate::entity::projectiles::Arrow;
 use crate::entity::projectiles::Fireball;
-use crate::item::ItemId;
+use crate::item::Item;
 use crate::player::PlayerCamera;
 use crate::rendering::appearance::item_tile;
 use crate::world::chunk::WorldChunks;
@@ -156,7 +156,7 @@ pub(super) fn add_projectile_models(
     let cached = cached.get_or_insert_with(|| ProjectileMeshes {
         arrow: meshes.add(arrow_mesh()),
         fireball: meshes.add(fireball_mesh(
-            item_tile(ItemId::Snowball.as_u16(), 0).unwrap_or(0),
+            item_tile(Item::Snowball.as_u16(), 0).unwrap_or(0),
         )),
     });
     let mut attach = |entity: Entity, mesh: &Handle<Mesh>, skin: &str| {

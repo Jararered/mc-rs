@@ -6,7 +6,7 @@
 //! Each stack has count 1, matching one `EntityItem` per rolled drop.
 
 use crate::block::blocks::Block;
-use crate::item::ItemId;
+use crate::item::Item;
 use crate::item::ItemStack;
 use crate::item::tools::can_harvest;
 
@@ -68,14 +68,14 @@ fn push_harvest(
     rolls: &mut impl DropRoll,
 ) {
     // `BlockLeaves.harvestBlock`: shears drop the leaf, metadata kept in the low 2 bits.
-    if is_leaves(block) && tool.is_some_and(|tool| tool.item() == ItemId::Shears) {
+    if block.is_leaves() && tool.is_some_and(|tool| tool.item() == Item::Shears) {
         push_block(drops, block, 1);
         return;
     }
     // `BlockSnow.harvestBlock` drops one snowball. `quantityDropped` is 0, so a
     // natural break (melt) drops nothing.
     if block == Block::SnowLayer {
-        push_item(drops, ItemId::Snowball, 0, 1);
+        push_item(drops, Item::Snowball, 0, 1);
         return;
     }
     push_natural(drops, block, metadata, rolls);
@@ -85,30 +85,30 @@ fn push_natural(drops: &mut Vec<ItemStack>, block: Block, metadata: u8, rolls: &
     match block {
         Block::Stone => push_block(drops, Block::Cobblestone, 1),
         Block::Grass | Block::Farmland => push_block(drops, Block::Dirt, 1),
-        Block::CoalOre => push_item(drops, ItemId::Coal, 0, 1),
-        Block::DiamondOre => push_item(drops, ItemId::Diamond, 0, 1),
+        Block::CoalOre => push_item(drops, Item::Coal, 0, 1),
+        Block::DiamondOre => push_item(drops, Item::Diamond, 0, 1),
         Block::LapisOre => {
             let count = 4 + rolls.next_int(5);
-            push_item(drops, ItemId::Dye, 4, count);
+            push_item(drops, Item::Dye, 4, count);
         }
         Block::RedstoneOre | Block::LitRedstoneOre => {
             let count = 4 + rolls.next_int(2);
-            push_item(drops, ItemId::Redstone, 0, count);
+            push_item(drops, Item::Redstone, 0, count);
         }
         Block::Glowstone => {
             let count = 2 + rolls.next_int(3);
-            push_item(drops, ItemId::GlowstoneDust, 0, count);
+            push_item(drops, Item::GlowstoneDust, 0, count);
         }
-        Block::Clay => push_item(drops, ItemId::ClayBall, 0, 4),
+        Block::Clay => push_item(drops, Item::ClayBall, 0, 4),
         Block::Gravel => {
             if rolls.next_int(10) == 0 {
-                push_item(drops, ItemId::Flint, 0, 1);
+                push_item(drops, Item::Flint, 0, 1);
             } else {
                 push_block(drops, Block::Gravel, 1);
             }
         }
-        Block::Snow => push_item(drops, ItemId::Snowball, 0, 4),
-        Block::Cobweb => push_item(drops, ItemId::String, 0, 1),
+        Block::Snow => push_item(drops, Item::Snowball, 0, 4),
+        Block::Cobweb => push_item(drops, Item::String, 0, 1),
         Block::Glass
         | Block::Ice
         | Block::Bookshelf
@@ -130,16 +130,16 @@ fn push_natural(drops: &mut Vec<ItemStack>, block: Block, metadata: u8, rolls: &
         Block::CobblestoneStairs => push_block(drops, Block::Cobblestone, 1),
         Block::LitFurnace => push_block(drops, Block::Furnace, 1),
         Block::UnlitRedstoneTorch => push_block(drops, Block::RedstoneTorch, 1),
-        Block::RedstoneWire => push_item(drops, ItemId::Redstone, 0, 1),
-        Block::StandingSign | Block::WallSign => push_item(drops, ItemId::Sign, 0, 1),
-        Block::WoodenDoor => push_item(drops, ItemId::WoodenDoor, 0, 1),
-        Block::IronDoor => push_item(drops, ItemId::IronDoor, 0, 1),
-        Block::SugarCane => push_item(drops, ItemId::SugarCane, 0, 1),
-        Block::Bed => push_item(drops, ItemId::Bed, 0, 1),
-        Block::Repeater | Block::PoweredRepeater => push_item(drops, ItemId::Repeater, 0, 1),
+        Block::RedstoneWire => push_item(drops, Item::Redstone, 0, 1),
+        Block::StandingSign | Block::WallSign => push_item(drops, Item::Sign, 0, 1),
+        Block::WoodenDoor => push_item(drops, Item::WoodenDoor, 0, 1),
+        Block::IronDoor => push_item(drops, Item::IronDoor, 0, 1),
+        Block::SugarCane => push_item(drops, Item::SugarCane, 0, 1),
+        Block::Bed => push_item(drops, Item::Bed, 0, 1),
+        Block::Repeater | Block::PoweredRepeater => push_item(drops, Item::Repeater, 0, 1),
         Block::TallGrass | Block::Fern => {
             if rolls.next_int(8) == 0 {
-                push_item(drops, ItemId::Seeds, 0, 1);
+                push_item(drops, Item::Seeds, 0, 1);
             }
         }
         // `BlockCrops`: wheat only at age 7 (`idDropped`), then three seed
@@ -148,11 +148,11 @@ fn push_natural(drops: &mut Vec<ItemStack>, block: Block, metadata: u8, rolls: &
         Block::Crops => {
             let age = u32::from(metadata.min(7));
             if age == 7 {
-                push_item(drops, ItemId::Wheat, 0, 1);
+                push_item(drops, Item::Wheat, 0, 1);
             }
             for _ in 0..3 {
                 if rolls.next_int(15) <= age {
-                    push_item(drops, ItemId::Seeds, 0, 1);
+                    push_item(drops, Item::Seeds, 0, 1);
                 }
             }
         }
@@ -162,7 +162,7 @@ fn push_natural(drops: &mut Vec<ItemStack>, block: Block, metadata: u8, rolls: &
                 let species = block.item_form().1 as u16;
                 push_item(
                     drops,
-                    ItemId::from_block(Block::Sapling).expect("sapling has an item form"),
+                    Item::from_block(Block::Sapling).expect("sapling has an item form"),
                     species,
                     1,
                 );
@@ -170,13 +170,6 @@ fn push_natural(drops: &mut Vec<ItemStack>, block: Block, metadata: u8, rolls: &
         }
         other => push_block(drops, other, 1),
     }
-}
-
-fn is_leaves(block: Block) -> bool {
-    matches!(
-        block,
-        Block::Leaves | Block::SpruceLeaves | Block::BirchLeaves
-    )
 }
 
 fn push_block(drops: &mut Vec<ItemStack>, block: Block, count: u32) {
@@ -188,7 +181,7 @@ fn push_block(drops: &mut Vec<ItemStack>, block: Block, count: u32) {
     }
 }
 
-fn push_item(drops: &mut Vec<ItemStack>, item: ItemId, data: u16, count: u32) {
+fn push_item(drops: &mut Vec<ItemStack>, item: Item, data: u16, count: u32) {
     let Ok(stack) = ItemStack::with_data(item, 1, data) else {
         return;
     };

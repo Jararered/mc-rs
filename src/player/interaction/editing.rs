@@ -39,7 +39,7 @@ use crate::inventory::Inventory;
 use crate::inventory::session::ActiveWorkbench;
 use crate::inventory::session::InventorySession;
 use crate::inventory::session::close_crafting_session;
-use crate::item::ItemId;
+use crate::item::Item;
 use crate::item::ItemStack;
 use crate::item::tools::break_durability;
 use crate::item::tools::can_harvest;
@@ -413,13 +413,13 @@ pub(crate) fn interact_blocks(
         }
         if hotbar
             .selected_stack()
-            .is_some_and(|stack| stack.item() == ItemId::Bucket)
+            .is_some_and(|stack| stack.item() == Item::Bucket)
             && let Some((x, y, z, previous, fluid)) =
                 pick_up_fluid(&mut chunks, view_origin, view_rotation * Vec3::NEG_Z)
         {
             let filled = match fluid {
-                Fluid::Water => ItemId::WaterBucket,
-                Fluid::Lava => ItemId::LavaBucket,
+                Fluid::Water => Item::WaterBucket,
+                Fluid::Lava => Item::LavaBucket,
             };
             let selected = hotbar.selected;
             hotbar.slots[selected] = ItemStack::new(filled, 1).ok();
@@ -468,7 +468,7 @@ pub(crate) fn interact_blocks(
                     );
                 }
                 notify_edit(&mut streaming, &mut persistence, x, y, z, true);
-            } else if stack.item() == ItemId::Seeds && plant_seeds(&mut chunks, hit) {
+            } else if stack.item() == Item::Seeds && plant_seeds(&mut chunks, hit) {
                 let selected = hotbar.selected;
                 hotbar.slots[selected] =
                     ItemStack::with_data(stack.item(), stack.count() - 1, stack.data()).ok();
@@ -499,14 +499,14 @@ pub(crate) fn interact_blocks(
                 );
                 notify_edit(&mut streaming, &mut persistence, hit.x, hit.y, hit.z, false);
             } else if let Some(fluid) = match stack.item() {
-                ItemId::WaterBucket => Some(Fluid::Water),
-                ItemId::LavaBucket => Some(Fluid::Lava),
+                Item::WaterBucket => Some(Fluid::Water),
+                Item::LavaBucket => Some(Fluid::Lava),
                 _ => None,
             } && let Some((x, y, z, previous, previous_metadata)) =
                 place_fluid(&mut chunks, hit, fluid)
             {
                 let selected = hotbar.selected;
-                hotbar.slots[selected] = ItemStack::new(ItemId::Bucket, 1).ok();
+                hotbar.slots[selected] = ItemStack::new(Item::Bucket, 1).ok();
                 push_event(
                     &mut block_ticks,
                     BlockEvent::Changed {

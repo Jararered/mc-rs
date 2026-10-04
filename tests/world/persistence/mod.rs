@@ -281,6 +281,7 @@ fn chunks_saved_with_block_ids_for_species_and_facing_are_rejected() {
 
     let path = storage
         .root()
+        .join(game::world::persistence::REGIONS_DIRECTORY)
         .join(region_dir_name(region_of(position)))
         .join(chunk_file_name(position));
     let mut value: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
@@ -331,6 +332,7 @@ fn dropped_items_round_trip_inside_their_chunk() {
 
     let path = storage
         .root()
+        .join(game::world::persistence::REGIONS_DIRECTORY)
         .join(region_dir_name(region_of(position)))
         .join(chunk_file_name(position));
     let mut value: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
@@ -370,6 +372,7 @@ fn region_folders_group_sixteen_by_sixteen_chunks() {
     for position in positions {
         let path = storage
             .root()
+            .join(game::world::persistence::REGIONS_DIRECTORY)
             .join(region_dir_name(region_of(position)))
             .join(chunk_file_name(position));
         assert!(path.is_file(), "missing {}", path.display());
@@ -519,6 +522,7 @@ fn the_world_is_saved_and_resumed_across_runs() {
     first.world_mut().write_message(AppExit::Success);
     first.update();
     let chunk = root
+        .join(game::world::persistence::REGIONS_DIRECTORY)
         .join(region_dir_name((0, 0)))
         .join(chunk_file_name(ChunkPosition::ZERO));
     assert!(chunk.is_file(), "missing {}", chunk.display());
@@ -940,4 +944,28 @@ fn a_save_while_paused_snapshots_far_more_chunks_per_frame() {
         first_batch_size(false) < 20,
         "a live game keeps the small per-frame batch"
     );
+}
+
+#[test]
+fn old_region_folders_move_into_the_regions_folder_when_a_world_opens() {
+    use game::world::persistence::REGIONS_DIRECTORY;
+
+    let saves = temp_saves("migrate");
+    let storage = WorldStorage::create(&saves, 5, "Old").unwrap();
+    let position = ChunkPosition { x: 3, z: -2 };
+    let chunk = OverworldGenerator::new(5).generate(position);
+    storage.save_chunk(position, &chunk).unwrap();
+    let root = storage.root().to_path_buf();
+    let (rx, rz) = region_of(position);
+
+    // Recreate the old layout: the region folder directly in the world folder.
+    let new_dir = root.join(REGIONS_DIRECTORY).join(region_dir_name((rx, rz)));
+    let old_dir = root.join(format!("regions{rx},{rz}"));
+    fs::rename(&new_dir, &old_dir).unwrap();
+    fs::remove_dir(root.join(REGIONS_DIRECTORY)).unwrap();
+
+    let reopened = WorldStorage::open(root.clone()).unwrap();
+    assert!(!old_dir.exists());
+    assert!(new_dir.join(chunk_file_name(position)).exists());
+    assert!(reopened.load_chunk(position).is_some());
 }

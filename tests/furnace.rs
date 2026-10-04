@@ -212,6 +212,7 @@ fn furnace_inventory_and_progress_round_trip_and_old_chunks_still_load() {
 
     let path = storage
         .root()
+        .join(game::world::persistence::REGIONS_DIRECTORY)
         .join(region_dir_name(region_of(position)))
         .join(chunk_file_name(position));
     let mut json: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();

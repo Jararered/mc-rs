@@ -8,11 +8,12 @@
 //!   world-20260920-153012-1a2b3c4d/
 //!     level.json          world manifest: name, seed, creation time
 //!     player.json         camera pose and inventory
-//!     regions0,0/         chunks 0..15 x 0..15
-//!       chunk0,0.bin
-//!       chunk1,0.bin
-//!     regions0,-1/        chunks 0..15 x -16..-1
-//!       chunk0,-1.bin
+//!     regions/
+//!       region0,0/        chunks 0..15 x 0..15
+//!         chunk0,0.bin
+//!         chunk1,0.bin
+//!       region0,-1/       chunks 0..15 x -16..-1
+//!         chunk0,-1.bin
 //! ```
 //!
 //! Chunks are grouped into 16×16 region folders. Each chunk is its own serde
@@ -80,7 +81,7 @@ use crate::world::streaming::setup_streaming;
 
 /// Default directory, relative to the working directory, that holds world folders.
 pub const SAVES_DIRECTORY: &str = "saves";
-/// Chunks per region along each axis. `regions0,0` covers chunks 0..15.
+/// Chunks per region along each axis. `region0,0` covers chunks 0..15.
 pub const REGION_SIZE: i32 = 16;
 /// On-disk format version, written into the manifest and the player file.
 pub const FORMAT_VERSION: u32 = 1;
@@ -305,9 +306,43 @@ pub fn region_of(position: ChunkPosition) -> (i32, i32) {
     )
 }
 
-/// Folder name for a region, for example `regions0,0`.
+/// Folder inside a world folder that holds every region folder.
+pub const REGIONS_DIRECTORY: &str = "regions";
+
+/// Folder name for a region inside [`REGIONS_DIRECTORY`], for example `region0,0`.
 pub fn region_dir_name(region: (i32, i32)) -> String {
-    format!("regions{},{}", region.0, region.1)
+    format!("region{},{}", region.0, region.1)
+}
+
+/// Move region folders from the old layout, `regionsX,Z` directly in the world
+/// folder, into `regions/regionX,Z`. A folder whose new name already exists is
+/// left where it is.
+fn migrate_region_folders(root: &Path) -> io::Result<()> {
+    let Ok(entries) = fs::read_dir(root) else {
+        return Ok(());
+    };
+    for entry in entries.filter_map(Result::ok) {
+        let name = entry.file_name();
+        let Some(coordinates) = name
+            .to_str()
+            .and_then(|name| name.strip_prefix("regions"))
+            .filter(|rest| !rest.is_empty() && rest.contains(','))
+        else {
+            continue;
+        };
+        if !entry.path().is_dir() {
+            continue;
+        }
+        let target = root
+            .join(REGIONS_DIRECTORY)
+            .join(format!("region{coordinates}"));
+        if target.exists() {
+            continue;
+        }
+        fs::create_dir_all(root.join(REGIONS_DIRECTORY))?;
+        fs::rename(entry.path(), target)?;
+    }
+    Ok(())
 }
 
 /// File name for a chunk, for example `chunk0,0.bin`.
@@ -366,6 +401,12 @@ impl WorldStorage {
     /// Open an existing world folder.
     pub fn open(root: PathBuf) -> io::Result<Self> {
         let manifest = read_manifest(&root)?;
+        if let Err(error) = migrate_region_folders(&root) {
+            warn!(
+                "Could not move region folders of {}: {error}",
+                root.display()
+            );
+        }
         Ok(Self {
             root,
             manifest: Mutex::new(manifest),
@@ -507,7 +548,9 @@ impl WorldStorage {
     }
 
     fn region_path(&self, region: (i32, i32)) -> PathBuf {
-        self.root.join(region_dir_name(region))
+        self.root
+            .join(REGIONS_DIRECTORY)
+            .join(region_dir_name(region))
     }
 
     fn chunk_path(&self, position: ChunkPosition) -> PathBuf {

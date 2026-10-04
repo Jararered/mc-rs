@@ -447,8 +447,9 @@ impl BlockGeometry {
         }
     }
 
-    /// Two 1×1 squares rotated 45° around Y. One winding each; the plant
-    /// material draws both sides.
+    /// `RenderBlocks.renderCrossedSquares`: two diagonal planes with endpoints
+    /// 0.45 block either side of the cell center, each drawn once per side
+    /// because the plant material culls back faces.
     fn push_crossed_plant(
         &mut self,
         origin: [f32; 3],
@@ -460,22 +461,14 @@ impl BlockGeometry {
     ) {
         // Beta jitters only Block.tallGrass in renderBlockReed. Fern is its
         // metadata-2 equivalent here; flowers and mushrooms stay centered.
-        let [dx, mut dy, dz] = if matches!(block, Block::TallGrass) {
+        let [dx, dy, dz] = if matches!(block, Block::TallGrass) {
             crossed_plant_offset(world[0], world[1], world[2])
         } else {
             [0.0; 3]
         };
-        if matches!(block, Block::BrownMushroom | Block::RedMushroom) {
-            dy = 2.0 / 16.0;
-        }
         let center_x = 0.5 + dx;
         let center_z = 0.5 + dz;
-        // RenderBlocks.renderCrossedSquares uses endpoints at +/-0.45 block.
-        let half = if block == Block::SugarCane {
-            0.45
-        } else {
-            0.5 / std::f32::consts::SQRT_2
-        };
+        let half = 0.45;
         let tint = if matches!(block, Block::TallGrass) {
             grass_tint
         } else {
@@ -483,26 +476,12 @@ impl BlockGeometry {
         };
         let (tile_x, tile_y) = block_tile(block, metadata, 0, false);
         let texels = tile_texels(tile_x, tile_y, [[0, 0], [0, 16], [16, 16], [16, 0]]);
-        let inv_sqrt2 = std::f32::consts::FRAC_1_SQRT_2;
+        let (x0, x1) = (center_x - half, center_x + half);
+        let (z0, z1) = (center_z - half, center_z + half);
+        let (bottom, top) = (dy, 1.0 + dy);
         let quads = [
-            (
-                [-inv_sqrt2, 0.0, inv_sqrt2],
-                [
-                    [center_x - half, 1.0 + dy, center_z - half],
-                    [center_x - half, dy, center_z - half],
-                    [center_x + half, dy, center_z + half],
-                    [center_x + half, 1.0 + dy, center_z + half],
-                ],
-            ),
-            (
-                [inv_sqrt2, 0.0, inv_sqrt2],
-                [
-                    [center_x - half, 1.0 + dy, center_z + half],
-                    [center_x - half, dy, center_z + half],
-                    [center_x + half, dy, center_z - half],
-                    [center_x + half, 1.0 + dy, center_z - half],
-                ],
-            ),
+            [[x0, z0], [x0, z0], [x1, z1], [x1, z1]],
+            [[x0, z1], [x0, z1], [x1, z0], [x1, z0]],
         ];
         // Crossed squares take the plant cell's own light, with no face
         // shade or corner occlusion.
@@ -511,8 +490,10 @@ impl BlockGeometry {
             ao: [0; 4],
             shade: false,
         };
-        for (normal, corners) in quads {
-            self.push_block_quad(origin, normal, corners, texels, tint, shading);
+        for xz in quads {
+            let heights = [top, bottom, bottom, top];
+            let corners = std::array::from_fn(|i| [xz[i][0], heights[i], xz[i][1]]);
+            self.push_two_sided_quad(origin, corners, texels, tint, shading);
         }
     }
 
@@ -529,9 +510,8 @@ impl BlockGeometry {
             shade: false,
         };
         for offset in [0.25, 0.75] {
-            self.push_block_quad(
+            self.push_two_sided_quad(
                 origin,
-                [1.0, 0.0, 0.0],
                 [
                     [offset, top, 0.0],
                     [offset, bottom, 0.0],
@@ -542,9 +522,8 @@ impl BlockGeometry {
                 [1.0; 3],
                 shading,
             );
-            self.push_block_quad(
+            self.push_two_sided_quad(
                 origin,
-                [0.0, 0.0, 1.0],
                 [
                     [0.0, top, offset],
                     [0.0, bottom, offset],
@@ -604,6 +583,32 @@ impl BlockGeometry {
             tint,
             shading,
         );
+    }
+
+    /// A quad plus its reverse, as Beta's crossed squares and crops emit them:
+    /// the back quad starts at the far corner with the same texels, so the
+    /// sprite reads the same from both sides under back-face culling.
+    fn push_two_sided_quad(
+        &mut self,
+        origin: [f32; 3],
+        corners: [[f32; 3]; 4],
+        texels: [AtlasTexel; 4],
+        tint: [f32; 3],
+        shading: CornerShading,
+    ) {
+        let edge =
+            |from: [f32; 3], to: [f32; 3]| std::array::from_fn::<f32, 3, _>(|i| to[i] - from[i]);
+        let (a, b) = (edge(corners[0], corners[1]), edge(corners[1], corners[2]));
+        let cross = [
+            a[1] * b[2] - a[2] * b[1],
+            a[2] * b[0] - a[0] * b[2],
+            a[0] * b[1] - a[1] * b[0],
+        ];
+        let length = cross.iter().map(|v| v * v).sum::<f32>().sqrt();
+        let normal = cross.map(|v| v / length);
+        self.push_block_quad(origin, normal, corners, texels, tint, shading);
+        let reversed = [corners[3], corners[2], corners[1], corners[0]];
+        self.push_block_quad(origin, normal.map(|v| -v), reversed, texels, tint, shading);
     }
 
     fn push_block_quad(
@@ -1402,7 +1407,10 @@ pub fn same_appearance(block: Block, metadata: u8, other: Block, other_metadata:
 pub fn crossed_plant_offset(x: i32, y: i32, z: i32) -> [f32; 3] {
     let mut hash =
         (x.wrapping_mul(3_129_871) as i64) ^ (z as i64).wrapping_mul(116_129_781) ^ y as i64;
-    hash = hash.wrapping_mul(hash).wrapping_mul(42_317_861) + hash.wrapping_mul(11);
+    hash = hash
+        .wrapping_mul(hash)
+        .wrapping_mul(42_317_861)
+        .wrapping_add(hash.wrapping_mul(11));
     let nibble = |shift| ((hash >> shift) & 15_i64) as f32 / 15.0;
     [
         (nibble(16) - 0.5) * 0.5,

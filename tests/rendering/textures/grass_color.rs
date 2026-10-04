@@ -88,14 +88,14 @@ fn crossed_grass_mesh_uses_each_column_biome_grass_color() {
         ChunkPosition::ZERO,
     );
     let colors = meshes.masked.colors(BlockLighting::default());
-    assert_eq!(colors.len(), 16);
+    assert_eq!(colors.len(), 32);
     assert!(
-        colors[..8]
+        colors[..16]
             .iter()
             .all(|color| *color == [1.0, 0.0, 0.0, 1.0])
     );
     assert!(
-        colors[8..]
+        colors[16..]
             .iter()
             .all(|color| *color == [0.0, 0.0, 1.0, 1.0])
     );
@@ -349,5 +349,81 @@ fn fancy_grass_overlays_share_the_base_faces_packed_triangles() {
                 }
             }
         }
+    }
+}
+
+#[test]
+fn crossed_plants_fill_the_cell_and_mushrooms_sit_on_the_ground() {
+    let mut chunk = Chunk::new();
+    chunk.set(2, 64, 3, Block::Dandelion);
+    chunk.set(8, 64, 9, Block::BrownMushroom);
+    let meshes = mesh_chunk_with_biomes(
+        &chunk,
+        &ChunkNeighbors::default(),
+        &Skylight::from_chunk(&chunk),
+        &BiomeMap::from_cells(std::array::from_fn(|_| Climate {
+            temperature: 0.5,
+            humidity: 0.5,
+            biome: Biome::Forest,
+        })),
+        &GrassColors::default(),
+        &FoliageColors::default(),
+        false,
+        ChunkPosition::ZERO,
+    );
+    let positions = meshes.masked.positions();
+    assert_eq!(positions.len(), 32);
+    for (plant, [x, z]) in positions.chunks(16).zip([[2.0, 3.0], [8.0, 9.0]]) {
+        let min = |axis: usize| plant.iter().map(|p| p[axis]).fold(f32::MAX, f32::min);
+        let max = |axis: usize| plant.iter().map(|p| p[axis]).fold(f32::MIN, f32::max);
+        assert!((min(0) - (x + 0.05)).abs() < 1e-4 && (max(0) - (x + 0.95)).abs() < 1e-4);
+        assert!((min(2) - (z + 0.05)).abs() < 1e-4 && (max(2) - (z + 0.95)).abs() < 1e-4);
+        assert!((min(1) - 64.0).abs() < 1e-4 && (max(1) - 65.0).abs() < 1e-4);
+    }
+}
+
+#[test]
+fn every_plant_plane_is_wound_to_face_both_ways_for_back_face_culling() {
+    let mut chunk = Chunk::new();
+    chunk.set(2, 64, 3, Block::Dandelion);
+    let meshes = mesh_chunk_with_biomes(
+        &chunk,
+        &ChunkNeighbors::default(),
+        &Skylight::from_chunk(&chunk),
+        &BiomeMap::from_cells(std::array::from_fn(|_| Climate {
+            temperature: 0.5,
+            humidity: 0.5,
+            biome: Biome::Forest,
+        })),
+        &GrassColors::default(),
+        &FoliageColors::default(),
+        false,
+        ChunkPosition::ZERO,
+    );
+    let vertices = meshes.masked.vertices();
+    assert_eq!(vertices.len(), 16);
+    // Counter-clockwise from the front: (p1 - p0) x (p2 - p1) is the front normal.
+    let facing = |quad: &[game::rendering::meshing::BlockVertex]| {
+        let sub = |a: [f32; 3], b: [f32; 3]| [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+        let (a, b) = (
+            sub(quad[0].position, quad[1].position),
+            sub(quad[1].position, quad[2].position),
+        );
+        [
+            a[1] * b[2] - a[2] * b[1],
+            a[2] * b[0] - a[0] * b[2],
+            a[0] * b[1] - a[1] * b[0],
+        ]
+    };
+    let mut fronts = Vec::new();
+    for quad in vertices.chunks(4) {
+        let front = facing(quad);
+        let dot: f32 = front.iter().zip(quad[0].normal).map(|(f, n)| f * n).sum();
+        assert!(dot > 0.0, "normal disagrees with winding");
+        fronts.push(front);
+    }
+    for pair in fronts.chunks(2) {
+        let dot: f32 = pair[0].iter().zip(pair[1]).map(|(a, b)| a * b).sum();
+        assert!(dot < 0.0, "a plane's two quads must face opposite ways");
     }
 }

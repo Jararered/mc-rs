@@ -187,8 +187,6 @@ fn load_terrain_atlas(
         StandardMaterial {
             perceptual_roughness: 1.0,
             alpha_mode: AlphaMode::Mask(0.5),
-            cull_mode: None,
-            double_sided: true,
             unlit: settings.old_lighting,
             ..default()
         },

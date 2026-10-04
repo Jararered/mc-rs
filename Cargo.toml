@@ -25,6 +25,7 @@ debug = "line-tables-only"
 
 [dependencies]
 bevy = "0.19.1"
+flate2 = "1.1"
 num_enum = "0.7.6"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"

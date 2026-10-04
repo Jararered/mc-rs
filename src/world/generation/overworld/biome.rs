@@ -5,7 +5,8 @@ use crate::world::biome::Climate;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::ChunkPosition;
 
-pub(super) struct BiomeGenerator {
+/// Samples a world's climate from its seed, without generating any terrain.
+pub struct BiomeGenerator {
     temperature: SimplexOctaves,
     humidity: SimplexOctaves,
     precipitation: SimplexOctaves,

@@ -2655,6 +2655,7 @@ name = "game"
 version = "0.1.0"
 dependencies = [
  "bevy",
+ "flate2",
  "num_enum",
  "serde",
  "serde_json",

@@ -1,4 +1,4 @@
-mod beta_reference;
+pub(crate) mod beta_reference;
 mod dungeon_loot;
 mod snow;
 mod springs;

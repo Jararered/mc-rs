@@ -1,1 +1,1 @@
-mod overworld;
+pub(crate) mod overworld;

@@ -14,11 +14,11 @@ use game::world::chunk::Chunk;
 use game::world::chunk::ChunkPosition;
 use game::world::generation::overworld::OverworldGenerator;
 
-const SEED: i64 = -5_779_659_068_535_663_308;
+pub(crate) const SEED: i64 = -5_779_659_068_535_663_308;
 
 /// `(x, z, hash)`: two forests, oak and birch, a dungeon with two chests,
 /// reeds, clay, and every ore between them.
-const CHUNKS: [(i32, i32, u64); 7] = [
+pub(crate) const CHUNKS: [(i32, i32, u64); 7] = [
     (-12, -8, 0xba11_92c0_a2ab_994d),
     (-6, -2, 0xcea6_153a_ba18_27dc),
     (-4, -8, 0xd9d2_cebc_7ee3_f065),
@@ -50,7 +50,7 @@ fn beta_value(block: Block, metadata: u8) -> u16 {
 }
 
 /// FNV-1a over [`beta_value`] in [`Chunk::index`] order.
-fn hash(chunk: &Chunk) -> u64 {
+pub(crate) fn hash(chunk: &Chunk) -> u64 {
     chunk
         .raw_blocks()
         .iter()

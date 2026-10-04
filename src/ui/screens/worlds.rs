@@ -23,6 +23,7 @@ use crate::app::state::AppScreen;
 use crate::random::parse_seed;
 use crate::world::persistence::PersistenceConfig;
 use crate::world::persistence::SAVES_DIRECTORY;
+use crate::world::persistence::SaveFormat;
 use crate::world::persistence::WorldSummary;
 use crate::world::persistence::delete_world;
 use crate::world::persistence::list_worlds;
@@ -88,6 +89,7 @@ pub(super) struct NewWorldForm {
     name: String,
     seed: String,
     difficulty: Difficulty,
+    format: SaveFormat,
     focus: Field,
 }
 
@@ -97,6 +99,7 @@ impl Default for NewWorldForm {
             name: DEFAULT_NAME.to_owned(),
             seed: String::new(),
             difficulty: Difficulty::default(),
+            format: SaveFormat::default(),
             focus: Field::Name,
         }
     }
@@ -111,6 +114,7 @@ enum WorldsAction {
     Create,
     Focus(Field),
     Difficulty,
+    Format,
     Delete,
     ConfirmDelete,
     CancelDelete,
@@ -319,9 +323,13 @@ fn spawn_world_row(
                 TextColor(Color::WHITE),
                 TextShadow::default(),
             ));
+            let tag = match manifest.format {
+                SaveFormat::Binary => "",
+                SaveFormat::Original => "  -  Beta 1.7.3",
+            };
             row.spawn((
                 Text::new(format!(
-                    "Seed {}  -  Day {day}",
+                    "Seed {}  -  Day {day}{tag}",
                     manifest.seed.cast_signed()
                 )),
                 menu_font(textures, 12.0),
@@ -368,6 +376,14 @@ pub(super) fn spawn_new_world(
             textures,
             &difficulty_text(form.difficulty),
             WorldsAction::Difficulty,
+            FIELD_WIDTH,
+            None,
+        );
+        spawn_button(
+            parent,
+            textures,
+            &format_text(form.format),
+            WorldsAction::Format,
             FIELD_WIDTH,
             None,
         );
@@ -418,6 +434,10 @@ fn difficulty_text(difficulty: Difficulty) -> String {
     )
 }
 
+fn format_text(format: SaveFormat) -> String {
+    format!("Save format: {}", format.label())
+}
+
 fn handle_buttons(
     mut buttons: Query<
         (
@@ -459,6 +479,7 @@ fn handle_buttons(
             WorldsAction::Create => create_world(&form, &mut session),
             WorldsAction::Focus(field) => form.focus = field,
             WorldsAction::Difficulty => form.difficulty = form.difficulty.cycle(),
+            WorldsAction::Format => form.format = form.format.cycle(),
             WorldsAction::Delete => delete.confirming = true,
             WorldsAction::CancelDelete => *delete = DeleteWorld::default(),
             WorldsAction::ConfirmDelete => {
@@ -500,6 +521,7 @@ fn create_world(form: &NewWorldForm, session: &mut WorldSession) {
         },
         seed,
         difficulty: form.difficulty,
+        format: form.format,
     });
 }
 
@@ -588,6 +610,7 @@ fn refresh_form_labels(
         let (value, focused) = match action {
             WorldsAction::Focus(field) => (field_text(&form, *field), form.focus == *field),
             WorldsAction::Difficulty => (difficulty_text(form.difficulty), false),
+            WorldsAction::Format => (format_text(form.format), false),
             _ => continue,
         };
         for child in children {

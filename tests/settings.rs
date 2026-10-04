@@ -1457,6 +1457,9 @@ fn new_world_form_collects_name_seed_and_difficulty() {
 
     click_menu_button(&mut app, "Difficulty: Normal");
     button_named(&mut app, "Difficulty: Hard");
+    button_named(&mut app, "Save format: Native");
+    click_menu_button(&mut app, "Save format: Native");
+    button_named(&mut app, "Save format: Beta 1.7.3");
     click_menu_button(&mut app, "Create New World");
 
     let session = app.world().resource::<WorldSession>();
@@ -1465,10 +1468,12 @@ fn new_world_form_collects_name_seed_and_difficulty() {
             name,
             seed,
             difficulty,
+            format,
         }) => {
             assert_eq!(name, "AB");
             assert_eq!(*seed, 42);
             assert_eq!(*difficulty, Difficulty::Hard);
+            assert_eq!(*format, game::world::persistence::SaveFormat::Original);
         }
         other => panic!("expected a new world request, got {other:?}"),
     }

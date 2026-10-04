@@ -37,6 +37,7 @@ use crate::world::generation::WorldGeneration;
 use crate::world::lighting::LightCache;
 use crate::world::persistence::PendingWorld;
 use crate::world::persistence::PersistenceConfig;
+use crate::world::persistence::SaveFormat;
 use crate::world::persistence::WorldPersistence;
 use crate::world::persistence::WorldStorage;
 use crate::world::persistence::activate_pending_world;
@@ -53,6 +54,7 @@ pub enum WorldChoice {
         name: String,
         seed: u64,
         difficulty: Difficulty,
+        format: SaveFormat,
     },
 }
 
@@ -232,7 +234,14 @@ fn drive_session(
             name,
             seed,
             difficulty,
-        } => WorldStorage::create_with(&config.saves_directory, seed, &name, Some(difficulty)),
+            format,
+        } => WorldStorage::create_in_format(
+            &config.saves_directory,
+            seed,
+            &name,
+            Some(difficulty),
+            format,
+        ),
     };
     match storage {
         Ok(storage) => {

@@ -9,6 +9,7 @@ use bevy::input::keyboard::KeyboardInput;
 use bevy::prelude::*;
 use bevy::ui::widget::NodeImageMode;
 
+use super::menu::MenuRoot;
 use super::menu::MenuTextures;
 use super::menu::SettingsContent;
 use super::menu::button_rect;
@@ -23,6 +24,7 @@ use crate::random::parse_seed;
 use crate::world::persistence::PersistenceConfig;
 use crate::world::persistence::SAVES_DIRECTORY;
 use crate::world::persistence::WorldSummary;
+use crate::world::persistence::delete_world;
 use crate::world::persistence::list_worlds;
 use crate::world::tick::DAY_LENGTH;
 
@@ -39,6 +41,7 @@ impl Plugin for WorldsPlugin {
         app.init_resource::<WorldSession>()
             .init_resource::<WorldList>()
             .init_resource::<NewWorldForm>()
+            .init_resource::<DeleteWorld>()
             .add_systems(OnEnter(AppScreen::WorldSelect), refresh_world_list)
             .add_systems(OnEnter(AppScreen::NewWorld), reset_form)
             .add_systems(
@@ -47,7 +50,13 @@ impl Plugin for WorldsPlugin {
                     .chain()
                     .run_if(on_world_screen),
             )
-            .add_systems(Update, worlds_escape.run_if(on_world_screen));
+            .add_systems(Update, worlds_escape.run_if(on_world_screen))
+            .add_systems(
+                Update,
+                (right_click_world, rebuild_on_delete_change)
+                    .chain()
+                    .run_if(in_state(AppScreen::WorldSelect)),
+            );
     }
 }
 
@@ -58,6 +67,14 @@ fn on_world_screen(screen: Res<State<AppScreen>>) -> bool {
 /// The saved worlds shown on the selection screen, newest first.
 #[derive(Resource, Default)]
 pub(super) struct WorldList(Vec<WorldSummary>);
+
+/// The world a right click picked for deletion, and whether the player has
+/// already pressed Delete and is being asked to confirm.
+#[derive(Resource, Default)]
+pub(super) struct DeleteWorld {
+    target: Option<usize>,
+    confirming: bool,
+}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Field {
@@ -94,9 +111,19 @@ enum WorldsAction {
     Create,
     Focus(Field),
     Difficulty,
+    Delete,
+    ConfirmDelete,
+    CancelDelete,
 }
 
-fn refresh_world_list(config: Option<Res<PersistenceConfig>>, mut list: ResMut<WorldList>) {
+fn refresh_world_list(
+    config: Option<Res<PersistenceConfig>>,
+    mut list: ResMut<WorldList>,
+    mut delete: ResMut<DeleteWorld>,
+) {
+    if delete.target.is_some() {
+        *delete = DeleteWorld::default();
+    }
     let directory = config
         .as_ref()
         .map_or(Path::new(SAVES_DIRECTORY), |config| {
@@ -113,6 +140,7 @@ pub(super) fn spawn_world_select(
     commands: &mut Commands,
     textures: &MenuTextures,
     list: &WorldList,
+    delete: &DeleteWorld,
 ) {
     let root = spawn_root(commands, textures, 12.0);
     commands.entity(root).with_children(|root| {
@@ -169,6 +197,9 @@ pub(super) fn spawn_world_select(
                     }
                     for (index, world) in list.0.iter().enumerate() {
                         spawn_world_row(content, textures, index, world);
+                        if delete.target == Some(index) {
+                            spawn_delete_controls(content, textures, world, delete.confirming);
+                        }
                     }
                 });
             spawn_button(
@@ -189,6 +220,65 @@ pub(super) fn spawn_world_select(
             );
         });
     });
+}
+
+/// Shown under the right-clicked world: a Delete button, then, once pressed,
+/// the confirmation.
+fn spawn_delete_controls(
+    parent: &mut bevy::ecs::hierarchy::ChildSpawnerCommands,
+    textures: &MenuTextures,
+    world: &WorldSummary,
+    confirming: bool,
+) {
+    if !confirming {
+        spawn_button(
+            parent,
+            textures,
+            "Delete World",
+            WorldsAction::Delete,
+            520.0,
+            None,
+        );
+        return;
+    }
+    parent.spawn((
+        Text::new(format!(
+            "Delete '{}'? This cannot be undone.",
+            world.manifest.name
+        )),
+        menu_font(textures, 14.0),
+        TextColor(Color::srgb(1.0, 0.45, 0.45)),
+        Node {
+            align_self: AlignSelf::Center,
+            flex_shrink: 0.0,
+            ..default()
+        },
+    ));
+    parent
+        .spawn(Node {
+            flex_shrink: 0.0,
+            column_gap: px(8),
+            justify_content: JustifyContent::Center,
+            ..default()
+        })
+        .with_children(|row| {
+            spawn_button(
+                row,
+                textures,
+                "Confirm",
+                WorldsAction::ConfirmDelete,
+                200.0,
+                None,
+            );
+            spawn_button(
+                row,
+                textures,
+                "Return",
+                WorldsAction::CancelDelete,
+                200.0,
+                None,
+            );
+        });
 }
 
 fn spawn_world_row(
@@ -338,7 +428,9 @@ fn handle_buttons(
         ),
         Changed<Interaction>,
     >,
-    list: Res<WorldList>,
+    mut list: ResMut<WorldList>,
+    mut delete: ResMut<DeleteWorld>,
+    config: Option<Res<PersistenceConfig>>,
     mut form: ResMut<NewWorldForm>,
     mut session: ResMut<WorldSession>,
     mut next_screen: ResMut<NextState<AppScreen>>,
@@ -367,6 +459,23 @@ fn handle_buttons(
             WorldsAction::Create => create_world(&form, &mut session),
             WorldsAction::Focus(field) => form.focus = field,
             WorldsAction::Difficulty => form.difficulty = form.difficulty.cycle(),
+            WorldsAction::Delete => delete.confirming = true,
+            WorldsAction::CancelDelete => *delete = DeleteWorld::default(),
+            WorldsAction::ConfirmDelete => {
+                let directory = config
+                    .as_ref()
+                    .map_or(Path::new(SAVES_DIRECTORY), |config| {
+                        config.saves_directory.as_path()
+                    });
+                if let Some(world) = delete.target.and_then(|index| list.0.get(index))
+                    && !session.is_busy()
+                    && let Err(error) = delete_world(directory, &world.root)
+                {
+                    warn!("Could not delete world: {error}");
+                }
+                list.0 = list_worlds(directory);
+                *delete = DeleteWorld::default();
+            }
         }
         // One click acts once, even if several buttons somehow changed.
         break;
@@ -498,14 +607,54 @@ fn refresh_form_labels(
 fn worlds_escape(
     keys: Res<ButtonInput<KeyCode>>,
     screen: Res<State<AppScreen>>,
+    mut delete: ResMut<DeleteWorld>,
     mut next_screen: ResMut<NextState<AppScreen>>,
 ) {
     if !keys.just_pressed(KeyCode::Escape) {
+        return;
+    }
+    if delete.target.is_some() {
+        *delete = DeleteWorld::default();
         return;
     }
     match screen.get() {
         AppScreen::WorldSelect => next_screen.set(AppScreen::Menu),
         AppScreen::NewWorld => next_screen.set(AppScreen::WorldSelect),
         _ => {}
+    }
+}
+
+/// Right-clicking a world offers to delete it.
+fn right_click_world(
+    mouse: Res<ButtonInput<MouseButton>>,
+    rows: Query<(&Interaction, &WorldsAction)>,
+    mut delete: ResMut<DeleteWorld>,
+) {
+    if !mouse.just_pressed(MouseButton::Right) {
+        return;
+    }
+    for (interaction, action) in &rows {
+        if *interaction != Interaction::None
+            && let WorldsAction::Select(index) = action
+        {
+            *delete = DeleteWorld {
+                target: Some(*index),
+                confirming: false,
+            };
+            return;
+        }
+    }
+}
+
+/// The screen is built from the delete state, so a change rebuilds it.
+fn rebuild_on_delete_change(
+    mut commands: Commands,
+    delete: Res<DeleteWorld>,
+    roots: Query<Entity, With<MenuRoot>>,
+) {
+    if delete.is_changed() {
+        for root in &roots {
+            commands.entity(root).despawn();
+        }
     }
 }

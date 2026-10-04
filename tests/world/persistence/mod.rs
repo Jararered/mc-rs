@@ -862,3 +862,82 @@ fn a_deferred_persistence_plugin_loads_no_world_until_one_is_chosen() {
         "no world folder should be created at startup"
     );
 }
+
+#[test]
+fn delete_world_only_removes_world_folders_inside_the_saves_directory() {
+    use game::world::persistence::delete_world;
+
+    let saves = temp_saves("delete");
+    let world = WorldStorage::create(&saves, 3, "Doomed").unwrap();
+    let elsewhere = temp_saves("delete-elsewhere");
+    fs::write(elsewhere.join("keep.txt"), "x").unwrap();
+    let plain = saves.join("plain-folder");
+    fs::create_dir_all(&plain).unwrap();
+
+    assert!(delete_world(&saves, &elsewhere).is_err());
+    assert!(delete_world(&saves, &plain).is_err());
+    assert!(elsewhere.join("keep.txt").exists());
+    assert!(plain.exists());
+
+    delete_world(&saves, world.root()).unwrap();
+    assert!(!world.root().exists());
+}
+
+/// How many of 20 far-away dirty chunks the first completed write holds.
+fn first_batch_size(paused: bool) -> usize {
+    let saves = temp_saves(if paused { "batch-paused" } else { "batch-live" });
+    let mut app = app_with(PersistencePlugin::new(saves).with_autosave(60.0));
+    app.insert_resource(game::app::state::PauseMenu { open: paused });
+    run_until_spawn_chunk(&mut app);
+
+    let positions: Vec<ChunkPosition> = (0..20)
+        .map(|index| ChunkPosition {
+            x: 500 + index,
+            z: -500,
+        })
+        .collect();
+    let generator = OverworldGenerator::new(0);
+    {
+        let mut chunks = app.world_mut().resource_mut::<WorldChunks>();
+        for position in &positions {
+            chunks.insert(*position, generator.generate(*position));
+        }
+        let mut persistence = app.world_mut().resource_mut::<WorldPersistence>();
+        for position in &positions {
+            persistence.mark_dirty(*position);
+        }
+        persistence.request_save();
+    }
+    let storage = app
+        .world()
+        .resource::<WorldPersistence>()
+        .storage()
+        .expect("persistence should be enabled")
+        .clone();
+    let saved = |storage: &WorldStorage| {
+        positions
+            .iter()
+            .filter(|position| storage.load_chunk(**position).is_some())
+            .count()
+    };
+    assert!(
+        run_until(&mut app, Duration::from_secs(30), |_| saved(&storage) > 0),
+        "no batch ever started writing"
+    );
+    // Stop updating so no second batch can start, and let the first finish.
+    thread::sleep(Duration::from_millis(500));
+    saved(&storage)
+}
+
+#[test]
+fn a_save_while_paused_snapshots_far_more_chunks_per_frame() {
+    assert_eq!(
+        first_batch_size(true),
+        20,
+        "paused saves take the big batch"
+    );
+    assert!(
+        first_batch_size(false) < 20,
+        "a live game keeps the small per-frame batch"
+    );
+}

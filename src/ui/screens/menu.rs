@@ -69,7 +69,7 @@ pub(super) struct MenuTextures {
 }
 
 #[derive(Component)]
-struct MenuRoot;
+pub(super) struct MenuRoot;
 
 #[derive(Component, Clone, Copy)]
 enum MenuAction {
@@ -261,6 +261,7 @@ fn ensure_menu(
     textures: Res<MenuTextures>,
     settings: Res<GameSettings>,
     worlds: Res<super::worlds::WorldList>,
+    delete: Res<super::worlds::DeleteWorld>,
     form: Res<super::worlds::NewWorldForm>,
     roots: Query<Entity, With<MenuRoot>>,
 ) {
@@ -271,7 +272,7 @@ fn ensure_menu(
         AppScreen::Menu => spawn_main_menu(&mut commands, &textures),
         AppScreen::Settings => spawn_settings_menu(&mut commands, &textures, &settings),
         AppScreen::WorldSelect => {
-            super::worlds::spawn_world_select(&mut commands, &textures, &worlds)
+            super::worlds::spawn_world_select(&mut commands, &textures, &worlds, &delete)
         }
         AppScreen::NewWorld => super::worlds::spawn_new_world(&mut commands, &textures, &form),
         AppScreen::Playing => {}

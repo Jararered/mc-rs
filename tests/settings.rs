@@ -1495,3 +1495,85 @@ fn an_empty_name_and_seed_fall_back_to_a_default_name_and_random_seed() {
     };
     assert_eq!(name, "New World");
 }
+
+fn right_click(app: &mut App, row: Entity) {
+    app.world_mut().entity_mut(row).insert(Interaction::Hovered);
+    app.world_mut()
+        .write_message(bevy::input::mouse::MouseButtonInput {
+            button: MouseButton::Right,
+            state: bevy::input::ButtonState::Pressed,
+            window: Entity::PLACEHOLDER,
+        });
+    app.world_mut()
+        .write_message(bevy::input::mouse::MouseButtonInput {
+            button: MouseButton::Right,
+            state: bevy::input::ButtonState::Released,
+            window: Entity::PLACEHOLDER,
+        });
+    // The screen rebuilds around the delete controls, replacing this row.
+    app.update();
+    app.update();
+}
+
+#[test]
+fn right_clicking_a_world_offers_delete_with_a_confirmation() {
+    use game::world::persistence::PersistencePlugin;
+    use game::world::persistence::WorldStorage;
+
+    let saves = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(format!(
+        "delete-worlds-{}",
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let keep = WorldStorage::create(&saves, 1, "Keep Me").unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(5));
+    let doomed = WorldStorage::create(&saves, 2, "Doomed").unwrap();
+
+    let mut app = world_screen_app();
+    app.add_plugins(PersistencePlugin::new(saves.clone()).deferred());
+    click_menu_button(&mut app, "Play");
+    app.update();
+    let row = button_named(&mut app, "Doomed");
+
+    // Without a right click there is nothing to delete.
+    assert!(
+        app.world_mut()
+            .query::<&Text>()
+            .iter(app.world())
+            .all(|text| text.0 != "Delete World")
+    );
+
+    right_click(&mut app, row);
+    button_named(&mut app, "Delete World");
+
+    // Return backs out without deleting anything.
+    click_menu_button(&mut app, "Delete World");
+    app.update();
+    button_named(&mut app, "Confirm");
+    click_menu_button(&mut app, "Return");
+    app.update();
+    assert!(doomed.root().exists());
+    assert!(
+        app.world_mut()
+            .query::<&Text>()
+            .iter(app.world())
+            .all(|text| text.0 != "Confirm" && text.0 != "Delete World")
+    );
+
+    let row = button_named(&mut app, "Doomed");
+    right_click(&mut app, row);
+    click_menu_button(&mut app, "Delete World");
+    app.update();
+    click_menu_button(&mut app, "Confirm");
+    app.update();
+    app.update();
+
+    assert!(!doomed.root().exists(), "the confirmed world is removed");
+    assert!(keep.root().exists(), "other worlds are untouched");
+    let mut texts = app.world_mut().query::<&Text>();
+    assert!(texts.iter(app.world()).all(|text| text.0 != "Doomed"));
+    assert!(texts.iter(app.world()).any(|text| text.0 == "Keep Me"));
+    let _ = std::fs::remove_dir_all(&saves);
+}

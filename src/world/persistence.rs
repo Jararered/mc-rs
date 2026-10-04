@@ -98,6 +98,10 @@ const MAX_SNAPSHOTS_PER_FRAME: usize = 8;
 /// Stop snapshotting once a frame has spent this long on it, whichever limit
 /// bites first. A slow frame must not turn into a bigger one.
 const SNAPSHOT_BUDGET: Duration = Duration::from_millis(2);
+/// The same limits while the game is paused or on a menu, where nothing is
+/// simulated and a longer frame is not noticed, so a save finishes sooner.
+const PAUSED_MAX_SNAPSHOTS_PER_FRAME: usize = 128;
+const PAUSED_SNAPSHOT_BUDGET: Duration = Duration::from_millis(50);
 const BLOCKS_PER_CHUNK: usize = CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE;
 const COLUMNS_PER_CHUNK: usize = CHUNK_SIZE * CHUNK_SIZE;
 
@@ -877,6 +881,18 @@ fn write_chunk_file(path: &Path, chunk: &StoredChunk) -> io::Result<()> {
     fs::rename(&temporary, path)
 }
 
+/// Permanently remove a world folder. Only a direct child of `saves_directory`
+/// that holds a manifest is removed, so a stray path cannot delete anything else.
+pub fn delete_world(saves_directory: &Path, root: &Path) -> io::Result<()> {
+    if root.parent() != Some(saves_directory) || !root.join(MANIFEST_FILE).is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "not a world folder in the saves directory",
+        ));
+    }
+    fs::remove_dir_all(root)
+}
+
 fn read_manifest(root: &Path) -> io::Result<WorldManifest> {
     let bytes = fs::read(root.join(MANIFEST_FILE))?;
     serde_json::from_slice(&bytes).map_err(io::Error::other)
@@ -1236,7 +1252,8 @@ impl WorldPersistence {
     }
 
     /// Snapshot up to [`MAX_SNAPSHOTS_PER_FRAME`] chunks under
-    /// [`SNAPSHOT_BUDGET`] and hand them to the background writer.
+    /// [`SNAPSHOT_BUDGET`] (the `PAUSED_` limits when `paused`) and hand them to
+    /// the background writer.
     ///
     /// Runs once per frame while a save is due, so writing hundreds of chunks
     /// costs a little every frame instead of one long stall. Returns the number
@@ -1247,10 +1264,16 @@ impl WorldPersistence {
         items: &HashMap<ChunkPosition, Vec<ChunkDroppedItem>>,
         ticks: &HashMap<ChunkPosition, Vec<PendingTick>>,
         player: Option<&StoredPlayer>,
+        paused: bool,
     ) -> usize {
         if !self.draining || self.write_in_flight() || self.storage.is_none() {
             return 0;
         }
+        let (max_snapshots, budget) = if paused {
+            (PAUSED_MAX_SNAPSHOTS_PER_FRAME, PAUSED_SNAPSHOT_BUDGET)
+        } else {
+            (MAX_SNAPSHOTS_PER_FRAME, SNAPSHOT_BUDGET)
+        };
 
         let start = Instant::now();
         let mut batch: Vec<(ChunkPosition, StoredChunk)> = Vec::new();
@@ -1261,7 +1284,7 @@ impl WorldPersistence {
         let mut pending = std::mem::take(&mut self.pending);
         let mut taken = 0;
         while taken < pending.len() {
-            if positions.len() >= MAX_SNAPSHOTS_PER_FRAME || start.elapsed() >= SNAPSHOT_BUDGET {
+            if positions.len() >= max_snapshots || start.elapsed() >= budget {
                 break;
             }
             let (position, chunk) = &pending[taken];
@@ -1289,7 +1312,7 @@ impl WorldPersistence {
             .filter(|position| !self.saving.contains(position) && !self.drained.contains(position))
             .collect();
         for position in candidates {
-            if positions.len() >= MAX_SNAPSHOTS_PER_FRAME || start.elapsed() >= SNAPSHOT_BUDGET {
+            if positions.len() >= max_snapshots || start.elapsed() >= budget {
                 break;
             }
             let Some(chunk) = chunks.get(position) else {
@@ -1566,6 +1589,8 @@ fn flush_persistence(
     block_ticks: Option<Res<BlockTicks>>,
     weather: Option<Res<crate::world::weather::WorldWeather>>,
     mut exit: MessageReader<AppExit>,
+    pause: Option<Res<crate::app::state::PauseMenu>>,
+    screen: Option<Res<State<crate::app::state::AppScreen>>>,
 ) {
     let exiting = exit.read().next().is_some();
     persistence.timer.tick(time.delta());
@@ -1677,7 +1702,9 @@ fn flush_persistence(
         // Nothing to record until a player exists; let the drain finish.
         persistence.player_pending = false;
     }
-    persistence.pump(&chunks, &items, &ticks, record.as_ref());
+    let paused = pause.is_some_and(|pause| pause.open)
+        || screen.is_some_and(|screen| *screen.get() != crate::app::state::AppScreen::Playing);
+    persistence.pump(&chunks, &items, &ticks, record.as_ref(), paused);
     if !persistence.has_work() && !persistence.player_pending && !persistence.write_in_flight() {
         persistence.finish_drain();
     }

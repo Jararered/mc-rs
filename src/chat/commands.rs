@@ -23,7 +23,7 @@ pub enum ChatCommand {
     HelpCommand(Option<String>),
     TimeSetCommand(u64),
     TimeAddCommand(u64),
-    TimeQueryCommand(TimeQuery),
+    TimeQueryCommand(TimeQueryType),
     GiveCommand {
         item: Item,
         amount: u32,
@@ -46,7 +46,7 @@ pub enum ChatCommand {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TimeQuery {
+pub enum TimeQueryType {
     Daytime,
     Gametime,
     Day,
@@ -224,9 +224,11 @@ fn parse_setblock(_: &CommandRegistry, args: &[&str]) -> Result<ChatCommand, Com
 
 fn parse_time(_: &CommandRegistry, args: &[&str]) -> Result<ChatCommand, CommandParseError> {
     match args {
-        ["query"] | ["query", "daytime"] => Ok(ChatCommand::TimeQueryCommand(TimeQuery::Daytime)),
-        ["query", "gametime"] => Ok(ChatCommand::TimeQueryCommand(TimeQuery::Gametime)),
-        ["query", "day"] => Ok(ChatCommand::TimeQueryCommand(TimeQuery::Day)),
+        ["query"] | ["query", "daytime"] => {
+            Ok(ChatCommand::TimeQueryCommand(TimeQueryType::Daytime))
+        }
+        ["query", "gametime"] => Ok(ChatCommand::TimeQueryCommand(TimeQueryType::Gametime)),
+        ["query", "day"] => Ok(ChatCommand::TimeQueryCommand(TimeQueryType::Day)),
         ["add", ticks] => ticks
             .parse::<u64>()
             .map(ChatCommand::TimeAddCommand)

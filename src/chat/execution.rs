@@ -141,9 +141,9 @@ impl CommandContext<'_, '_> {
             ChatCommand::TimeQueryCommand(query) => {
                 let time = clock.world_time();
                 let (name, value) = match query {
-                    TimeQuery::Daytime => ("Daytime", time % DAY_LENGTH),
-                    TimeQuery::Gametime => ("World time", time),
-                    TimeQuery::Day => ("Day", time / DAY_LENGTH),
+                    TimeQueryType::Daytime => ("Daytime", time % DAY_LENGTH),
+                    TimeQueryType::Gametime => ("World time", time),
+                    TimeQueryType::Day => ("Day", time / DAY_LENGTH),
                 };
                 chat.push(format!("{name}: {value}"));
                 return;

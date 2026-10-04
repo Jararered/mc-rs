@@ -431,7 +431,7 @@ fn submitted_commands_change_player_inventory_and_world() {
 
 #[test]
 fn parses_help_and_time_commands() {
-    use game::chat::commands::TimeQuery;
+    use game::chat::commands::TimeQueryType;
 
     assert_eq!(parse_command("/help"), Ok(ChatCommand::HelpCommand(None)));
     assert_eq!(
@@ -469,12 +469,12 @@ fn parses_help_and_time_commands() {
     );
     assert_eq!(
         parse_command("/time query"),
-        Ok(ChatCommand::TimeQueryCommand(TimeQuery::Daytime))
+        Ok(ChatCommand::TimeQueryCommand(TimeQueryType::Daytime))
     );
     for (name, query) in [
-        ("daytime", TimeQuery::Daytime),
-        ("gametime", TimeQuery::Gametime),
-        ("day", TimeQuery::Day),
+        ("daytime", TimeQueryType::Daytime),
+        ("gametime", TimeQueryType::Gametime),
+        ("day", TimeQueryType::Day),
     ] {
         assert_eq!(
             parse_command(&format!("/time query {name}")),
@@ -666,12 +666,12 @@ fn parse_clock(
     _: &CommandRegistry,
     args: &[&str],
 ) -> Result<ChatCommand, game::chat::registry::CommandParseError> {
-    use game::chat::commands::TimeQuery;
+    use game::chat::commands::TimeQueryType;
     use game::chat::registry::CommandParseError;
     if !args.is_empty() {
         return Err(CommandParseError::Usage);
     }
-    Ok(ChatCommand::TimeQueryCommand(TimeQuery::Daytime))
+    Ok(ChatCommand::TimeQueryCommand(TimeQueryType::Daytime))
 }
 
 #[test]

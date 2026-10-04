@@ -173,6 +173,7 @@ pub(crate) fn spawn(parent: &mut ChildSpawnerCommands, assets: &ArmAssets, fov: 
             Name::new("First-person arm camera"),
             ArmCamera,
             Camera3d::default(),
+            bevy::core_pipeline::tonemapping::Tonemapping::None,
             Camera {
                 order: 1,
                 is_active: false,

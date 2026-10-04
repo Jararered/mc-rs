@@ -162,12 +162,13 @@ impl BlockVertex {
         } else {
             1.0
         };
-        let occlusion = if lighting.smooth_lighting {
-            1.0 - f32::from(self.ao) * 0.2
+        // Beta has no occlusion term beyond the averaged samples. Its factor is
+        // gamma-encoded, so linearize it as `block_vertex.wgsl` does.
+        let factor = if light <= 0.04045 {
+            light / 12.92
         } else {
-            1.0
+            ((light + 0.055) / 1.055).powf(2.4)
         };
-        let factor = light * occlusion;
         [
             self.tint[0] * factor,
             self.tint[1] * factor,

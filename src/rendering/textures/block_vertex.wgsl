@@ -172,11 +172,12 @@ fn decode_block_vertex(packed: vec4<u32>, settings: BlockShadingSettings) -> Dec
             light *= face_shade(out.normal);
         }
     }
-    var occlusion = 1.0;
-    if smooth_lighting {
-        occlusion = 1.0 - f32(packed.y >> 30u) * 0.2;
-    }
-    out.color = vec4(tint * (light * occlusion), alpha);
+    // Beta's smooth lighting is only the average of the four neighbor
+    // brightnesses; it has no separate occlusion term. The packed AO bits are
+    // left unused. Beta multiplies brightness into gamma-encoded texels, and
+    // the atlas is sampled as linear, so encode the factor the same way.
+    let factor = srgb_to_linear(vec3(light)).x;
+    out.color = vec4(tint * factor, alpha);
     return out;
 }
 

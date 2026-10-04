@@ -34,6 +34,11 @@ fn item_lighting(normal: vec3<f32>) -> f32 {
     return 0.4 + 0.6 * (max(dot(normal, first), 0.0) + max(dot(normal, second), 0.0));
 }
 
+/// sRGB-to-linear for a scalar shading factor.
+fn gamma_factor(value: f32) -> f32 {
+    return select(pow((value + 0.055) / 1.055, 2.4), value / 12.92, value <= 0.04045);
+}
+
 @fragment
 fn fragment(vertex: VertexOutput, @builtin(front_facing) is_front: bool) -> FragmentOutput {
     var in = vertex;
@@ -74,10 +79,12 @@ fn fragment(vertex: VertexOutput, @builtin(front_facing) is_front: bool) -> Frag
     } else {
         // Fixed-function lighting clamps the lit vertex color before it
         // modulates the texture. Both overlays are lit the same way.
-        let light = min(tag.brightness * shade, 1.0);
+        // The factor is gamma-encoded in Beta, so convert it before it
+        // multiplies the linear texture.
+        let light = gamma_factor(min(tag.brightness * shade, 1.0));
         color = base.rgb * light;
         hurt_tone = vec3(light, 0.0, 0.0);
-        flash_tone = vec3(min(shade, 1.0));
+        flash_tone = vec3(gamma_factor(min(shade, 1.0)));
     }
     // `RenderLiving`'s red pass while hurt or dying, then a creeper's flash.
     color = mix(color, hurt_tone, tag.hurt * 0.4);

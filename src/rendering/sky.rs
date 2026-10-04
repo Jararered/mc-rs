@@ -437,6 +437,7 @@ fn ensure_sky(
             Name::new("Sky camera"),
             SkyCamera,
             Camera3d::default(),
+            bevy::core_pipeline::tonemapping::Tonemapping::None,
             Camera {
                 order: -2,
                 clear_color: ClearColorConfig::Custom(initial.color),
@@ -454,6 +455,7 @@ fn ensure_sky(
             Name::new("Celestial camera"),
             CelestialCamera,
             Camera3d::default(),
+            bevy::core_pipeline::tonemapping::Tonemapping::None,
             Camera {
                 order: -1,
                 clear_color: ClearColorConfig::None,

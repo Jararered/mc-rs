@@ -399,6 +399,8 @@ pub(crate) fn spawn_player(
             .spawn((
                 PlayerCamera,
                 Camera3d::default(),
+                // Beta has no tonemap; the default one desaturates textures.
+                bevy::core_pipeline::tonemapping::Tonemapping::None,
                 Projection::from(PerspectiveProjection {
                     fov: settings.fov_radians(),
                     ..default()

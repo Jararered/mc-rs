@@ -33,6 +33,9 @@ const ARM_LAYER: usize = 1;
 const SWING_TICKS: i32 = 8;
 /// `ItemRenderer.updateEquippedItem` moves at most this much per tick.
 const EQUIP_STEP: f32 = 0.4;
+/// `Minecraft.runTick` repeats a held button every `ticksPerSecond / 4` ticks,
+/// restarting the swing before the previous one finishes.
+const REPEAT_TICKS: u32 = 5;
 
 #[derive(Resource)]
 pub(crate) struct ArmAssets {
@@ -51,6 +54,8 @@ struct FirstPersonArm {
     swinging: bool,
     /// Beta `swingProgressInt`. `-1` is the tick a swing is armed.
     swing_tick: i32,
+    /// Beta `ticksRan - mouseTicksRan`: ticks since the last attack click.
+    since_click: u32,
     prev_swing: f32,
     swing: f32,
     prev_equip: f32,
@@ -85,6 +90,7 @@ impl Default for FirstPersonArm {
         Self {
             swinging: false,
             swing_tick: 0,
+            since_click: 0,
             prev_swing: 0.0,
             swing: 0.0,
             prev_equip: 1.0,
@@ -282,9 +288,7 @@ fn animate_arm(
     };
     for (mut arm, mut transform, mut arm_visibility) in &mut arms {
         let start_swing = locked
-            && ((!carried
-                && (mouse.just_pressed(MouseButton::Left)
-                    || (mouse.pressed(MouseButton::Left) && !arm.swinging)))
+            && ((!carried && mouse.just_pressed(MouseButton::Left))
                 || mouse.just_pressed(MouseButton::Right));
         if !locked {
             arm.swinging = false;
@@ -293,9 +297,20 @@ fn animate_arm(
             // `swingItem` arms the counter at -1 so the next tick lands on 0.
             arm.swinging = true;
             arm.swing_tick = -1;
+            arm.since_click = 0;
         }
 
         for _ in 0..tick.ticks_this_frame() {
+            arm.since_click = arm.since_click.saturating_add(1);
+            if locked
+                && !carried
+                && mouse.pressed(MouseButton::Left)
+                && arm.since_click >= REPEAT_TICKS
+            {
+                arm.swinging = true;
+                arm.swing_tick = -1;
+                arm.since_click = 0;
+            }
             arm.prev_swing = arm.swing;
             if arm.swinging {
                 arm.swing_tick += 1;

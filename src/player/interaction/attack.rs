@@ -19,7 +19,7 @@ use crate::entity::combat::hurt_creature;
 use crate::entity::creature::Living;
 use crate::entity::drops::items::spawn_block_drop;
 use crate::entity::mobs::Mob;
-use crate::entity::mobs::MobKind;
+use crate::entity::mobs::MobType;
 use crate::entity::mobs::drop_item;
 use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
@@ -67,13 +67,13 @@ pub(crate) fn attack<F: bevy::ecs::query::QueryFilter>(
     };
     let kind = struck.mob.kind;
     let reach = struck.size.aabb(struck.transform.translation);
-    let was_wild_and_calm = kind == MobKind::Wolf && !struck.mob.tamed && !struck.mob.angry;
-    if kind == MobKind::PigZombie {
+    let was_wild_and_calm = kind == MobType::Wolf && !struck.mob.tamed && !struck.mob.angry;
+    if kind == MobType::PigZombie {
         // `EntityPigZombie.attackEntityFrom`: every zombie pigman within 32
         // blocks turns on the player, whether or not the blow lands.
         let near = bordered(reach, 32.0);
         for mut other in mobs.iter_mut() {
-            if other.mob.kind == MobKind::PigZombie
+            if other.mob.kind == MobType::PigZombie
                 && near.intersects(other.size.aabb(other.transform.translation))
             {
                 other.mob.angry = true;
@@ -100,7 +100,7 @@ pub(crate) fn attack<F: bevy::ecs::query::QueryFilter>(
     if wound.died {
         drop_loot(commands, loot, &mut struck.mob, feet);
     }
-    if wound.landed && kind == MobKind::Wolf {
+    if wound.landed && kind == MobType::Wolf {
         // `EntityWolf.attackEntityFrom`: a wild wolf turns on the player and
         // calls the pack within 16 blocks. A tamed wolf forgives its owner.
         if was_wild_and_calm {
@@ -110,7 +110,7 @@ pub(crate) fn attack<F: bevy::ecs::query::QueryFilter>(
             );
             for mut other in mobs.iter_mut() {
                 let joins = other.entity == target
-                    || other.mob.kind == MobKind::Wolf
+                    || other.mob.kind == MobType::Wolf
                         && !other.mob.tamed
                         && !other.living.chasing
                         && pack.intersects(other.size.aabb(other.transform.translation));
@@ -147,7 +147,7 @@ pub(crate) fn interact<F: bevy::ecs::query::QueryFilter>(
     let held = hotbar.selected_stack().map(ItemStack::item);
     let mob = &mut *struck.mob;
     match mob.kind {
-        MobKind::Sheep if held == Some(Item::Shears) && !mob.sheared => {
+        MobType::Sheep if held == Some(Item::Shears) && !mob.sheared => {
             // `EntitySheep.interact`: two to four wool, popped a block up.
             mob.sheared = true;
             for _ in 0..2 + mob.rng.next_int(3) {
@@ -156,11 +156,11 @@ pub(crate) fn interact<F: bevy::ecs::query::QueryFilter>(
             }
             hotbar.damage_selected(1);
         }
-        MobKind::Pig if held == Some(Item::Saddle) && !mob.saddled => {
+        MobType::Pig if held == Some(Item::Saddle) && !mob.saddled => {
             mob.saddled = true;
             hotbar.take_selected(1);
         }
-        MobKind::Cow if held == Some(Item::Bucket) => {
+        MobType::Cow if held == Some(Item::Bucket) => {
             let milk = ItemStack::new(Item::MilkBucket, 1).expect("registered bucket");
             if hotbar
                 .selected_stack()
@@ -175,16 +175,15 @@ pub(crate) fn interact<F: bevy::ecs::query::QueryFilter>(
                 }
             }
         }
-        MobKind::Wolf if mob.tamed => {
-            if matches!(held, Some(Item::RawPorkchop | Item::CookedPorkchop)) && mob.health < 20
-            {
+        MobType::Wolf if mob.tamed => {
+            if matches!(held, Some(Item::RawPorkchop | Item::CookedPorkchop)) && mob.health < 20 {
                 hotbar.take_selected(1);
                 mob.health = (mob.health + 3).min(20);
             } else {
                 mob.sitting = !mob.sitting;
             }
         }
-        MobKind::Wolf if held == Some(Item::Bone) && !mob.angry => {
+        MobType::Wolf if held == Some(Item::Bone) && !mob.angry => {
             hotbar.take_selected(1);
             if mob.rng.next_int(3) == 0 {
                 mob.tamed = true;

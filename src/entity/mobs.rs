@@ -48,7 +48,7 @@ use crate::world::persistence::WorldPersistence;
 use crate::world::tick::WorldTick;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum MobKind {
+pub enum MobType {
     Spider,
     Zombie,
     Skeleton,
@@ -64,7 +64,7 @@ pub enum MobKind {
     PigZombie,
 }
 
-impl MobKind {
+impl MobType {
     pub const ALL: [Self; 13] = [
         Self::Spider,
         Self::Zombie,
@@ -184,7 +184,7 @@ impl MobKind {
 
 #[derive(Component, Clone, Debug, Serialize, Deserialize)]
 pub struct Mob {
-    pub kind: MobKind,
+    pub kind: MobType,
     pub health: i16,
     pub age: u32,
     pub variant: u8, // slime size, or sheep's wool color
@@ -226,7 +226,7 @@ impl MobRecord {
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct MobSpawner {
-    pub kind: MobKind,
+    pub kind: MobType,
     pub delay: u16,
     pub rng_state: u64,
 }
@@ -234,7 +234,7 @@ pub struct MobSpawner {
 impl Default for MobSpawner {
     fn default() -> Self {
         Self {
-            kind: MobKind::Pig,
+            kind: MobType::Pig,
             delay: 20,
             rng_state: JavaRandom::new(0x5350_4157).state(),
         }
@@ -254,11 +254,11 @@ pub fn spawn_saved(commands: &mut Commands, record: MobRecord) {
 }
 
 impl Mob {
-    pub fn new(kind: MobKind, seed: u64) -> Self {
+    pub fn new(kind: MobType, seed: u64) -> Self {
         let mut rng = JavaRandom::new(seed);
         let variant = match kind {
-            MobKind::Slime => 1 << rng.next_int(3),
-            MobKind::Sheep => {
+            MobType::Slime => 1 << rng.next_int(3),
+            MobType::Sheep => {
                 let roll = rng.next_int(100);
                 match roll {
                     0..=4 => 15,
@@ -276,7 +276,7 @@ impl Mob {
             }
             _ => 0,
         } as u8;
-        let egg_timer = if kind == MobKind::Chicken {
+        let egg_timer = if kind == MobType::Chicken {
             6000 + rng.next_int(6000) as u16
         } else {
             0
@@ -303,7 +303,7 @@ impl Mob {
 
 #[derive(Message, Clone, Copy, Debug)]
 pub struct SpawnMob {
-    pub kind: MobKind,
+    pub kind: MobType,
     /// World coordinates of the mob's feet.
     pub feet: Vec3,
     /// Explicit summons bypass natural biome/light tests, not unloaded chunks.
@@ -513,8 +513,8 @@ pub fn spawn(commands: &mut Commands, mut mob: Mob, feet: Vec3) -> Entity {
 fn spawn_facing(commands: &mut Commands, mut mob: Mob, feet: Vec3, yaw: f32) -> Entity {
     let size = mob.kind.size(mob.variant);
     let kind = mob.kind;
-    let swim = (kind == MobKind::Squid).then(|| Swim::new(&mut mob.rng));
-    let bounce = (kind == MobKind::Slime).then(|| Bounce::new(&mut mob.rng));
+    let swim = (kind == MobType::Squid).then(|| Swim::new(&mut mob.rng));
+    let bounce = (kind == MobType::Slime).then(|| Bounce::new(&mut mob.rng));
     let entity = commands
         .spawn((
             Name::new(format!("Mob: {}", kind.name())),
@@ -531,17 +531,17 @@ fn spawn_facing(commands: &mut Commands, mut mob: Mob, feet: Vec3, yaw: f32) -> 
         .id();
     let mut entity_commands = commands.entity(entity);
     // `canTriggerWalking` is false for wolves and spiders: they never trample.
-    if !matches!(kind, MobKind::Wolf | MobKind::Spider) {
+    if !matches!(kind, MobType::Wolf | MobType::Spider) {
         entity_commands.insert(StepDistance::default());
     }
     match kind {
-        MobKind::Chicken => {
+        MobType::Chicken => {
             entity_commands.insert(Wings::default());
         }
-        MobKind::Creeper => {
+        MobType::Creeper => {
             entity_commands.insert(Fuse::default());
         }
-        MobKind::Ghast => {
+        MobType::Ghast => {
             entity_commands.insert(Hover::default());
         }
         _ => {}
@@ -575,7 +575,7 @@ fn materialize_spawns(
             continue;
         }
         let mut mob = Mob::new(request.kind, rng.0.next_long() as u64);
-        if request.kind == MobKind::Slime && request.variant != 0 {
+        if request.kind == MobType::Slime && request.variant != 0 {
             mob.variant = request.variant;
             mob.health = request.kind.health(mob.variant);
         }
@@ -590,8 +590,8 @@ pub enum SpawnCategory {
     Water,
 }
 
-pub fn spawn_category(kind: MobKind) -> SpawnCategory {
-    if kind == MobKind::Squid {
+pub fn spawn_category(kind: MobType) -> SpawnCategory {
+    if kind == MobType::Squid {
         SpawnCategory::Water
     } else if kind.hostile() {
         SpawnCategory::Monster
@@ -601,8 +601,8 @@ pub fn spawn_category(kind: MobKind) -> SpawnCategory {
 }
 
 /// Beta's weighted biome lists, including wolves only in forests and taiga.
-pub fn spawn_table(biome: Biome, category: SpawnCategory) -> &'static [(MobKind, u32)] {
-    use MobKind as M;
+pub fn spawn_table(biome: Biome, category: SpawnCategory) -> &'static [(MobType, u32)] {
+    use MobType as M;
     const MONSTERS: &[(M, u32)] = &[
         (M::Spider, 10),
         (M::Zombie, 10),
@@ -627,7 +627,7 @@ pub fn spawn_table(biome: Biome, category: SpawnCategory) -> &'static [(MobKind,
 }
 
 pub fn can_spawn_at(
-    kind: MobKind,
+    kind: MobType,
     variant: u8,
     feet: Vec3,
     chunks: &WorldChunks,
@@ -653,7 +653,7 @@ pub fn can_spawn_at(
                 let Some(block) = chunks.block_at(bx, by, bz) else {
                     return false;
                 };
-                if kind == MobKind::Squid {
+                if kind == MobType::Squid {
                     if by == y && !matches!(block, Block::Water | Block::FlowingWater) {
                         return false;
                     }
@@ -668,13 +668,13 @@ pub fn can_spawn_at(
             }
         }
     }
-    if kind == MobKind::Squid {
+    if kind == MobType::Squid {
         return true;
     }
     if !(chunks.block_at(x, y - 1, z).unwrap_or(Block::Air)).is_opaque_cube() {
         return false;
     }
-    if kind == MobKind::Slime {
+    if kind == MobType::Slime {
         // Chunk.getRandomWithSeed(987234911L), independent of the spawn RNG.
         let pos = ChunkPosition::from_block(x, z);
         let coord = (i64::from(pos.x.wrapping_mul(pos.x).wrapping_mul(4_987_142))
@@ -835,7 +835,7 @@ fn spawn_naturally(
                 let px = x + random.0.next_int(6) as i32 - random.0.next_int(6) as i32;
                 let pz = z + random.0.next_int(6) as i32 - random.0.next_int(6) as i32;
                 let feet = Vec3::new(px as f32 + 0.5, y as f32, pz as f32 + 0.5);
-                let variant = if kind == MobKind::Slime {
+                let variant = if kind == MobType::Slime {
                     1 << random.0.next_int(3)
                 } else {
                     0

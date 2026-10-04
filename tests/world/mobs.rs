@@ -9,7 +9,7 @@ use game::entity::creature::Living;
 use game::entity::creature::Swim;
 use game::entity::creature::Wings;
 use game::entity::mobs::Mob;
-use game::entity::mobs::MobKind;
+use game::entity::mobs::MobType;
 use game::entity::mobs::PrimedTnt;
 use game::entity::mobs::SpawnCategory;
 use game::entity::mobs::prime_tnt;
@@ -38,19 +38,19 @@ fn only_overworld_creatures_appear_in_natural_tables() {
             assert!(
                 !list
                     .iter()
-                    .any(|(kind, _)| matches!(kind, MobKind::Ghast | MobKind::PigZombie))
+                    .any(|(kind, _)| matches!(kind, MobType::Ghast | MobType::PigZombie))
             );
         }
     }
     assert!(
         spawn_table(Biome::Forest, SpawnCategory::Creature)
             .iter()
-            .any(|(mob, _)| *mob == MobKind::Wolf)
+            .any(|(mob, _)| *mob == MobType::Wolf)
     );
     assert!(
         !spawn_table(Biome::Desert, SpawnCategory::Creature)
             .iter()
-            .any(|(mob, _)| *mob == MobKind::Wolf)
+            .any(|(mob, _)| *mob == MobType::Wolf)
     );
 }
 
@@ -64,12 +64,12 @@ fn difficulty_scales_hostile_damage() {
 
 #[test]
 fn beta_health_values_distinguish_passive_and_hostile_mobs() {
-    assert_eq!(MobKind::Sheep.health(0), 10);
-    assert_eq!(MobKind::Ghast.health(0), 10);
-    assert_eq!(MobKind::Chicken.health(0), 4);
-    assert_eq!(MobKind::Wolf.health(0), 8);
-    assert_eq!(MobKind::Zombie.health(0), 20);
-    assert_eq!(MobKind::Slime.health(4), 16);
+    assert_eq!(MobType::Sheep.health(0), 10);
+    assert_eq!(MobType::Ghast.health(0), 10);
+    assert_eq!(MobType::Chicken.health(0), 4);
+    assert_eq!(MobType::Wolf.health(0), 8);
+    assert_eq!(MobType::Zombie.health(0), 20);
+    assert_eq!(MobType::Slime.health(4), 16);
 }
 
 #[test]
@@ -139,7 +139,7 @@ fn mob_app() -> App {
 #[test]
 fn mob_roots_support_inherited_visibility_for_rendered_children() {
     let mut app = mob_app();
-    for kind in MobKind::ALL {
+    for kind in MobType::ALL {
         let entity = spawn(
             &mut app.world_mut().commands(),
             Mob::new(kind, 42),
@@ -157,7 +157,7 @@ fn mob_roots_support_inherited_visibility_for_rendered_children() {
 #[test]
 fn large_slimes_split_into_four_smaller_slimes_on_death() {
     let mut app = mob_app();
-    let mut slime = Mob::new(MobKind::Slime, 99);
+    let mut slime = Mob::new(MobType::Slime, 99);
     slime.variant = 4;
     slime.health = 0;
     spawn(
@@ -174,7 +174,7 @@ fn large_slimes_split_into_four_smaller_slimes_on_death() {
         .world_mut()
         .query::<&Mob>()
         .iter(app.world())
-        .filter(|mob| mob.kind == MobKind::Slime)
+        .filter(|mob| mob.kind == MobType::Slime)
         .map(|mob| mob.variant)
         .collect();
     assert_eq!(sizes, vec![2; 4]);
@@ -234,7 +234,7 @@ fn fire_contact_hurts_once_per_invulnerability_window() {
     }
     spawn(
         &mut app.world_mut().commands(),
-        Mob::new(MobKind::Pig, 42),
+        Mob::new(MobType::Pig, 42),
         Vec3::new(7.5, 10., 7.5),
     );
     for _ in 0..20 {
@@ -286,28 +286,28 @@ pub fn feet_of(app: &App, entity: Entity) -> Vec3 {
 #[test]
 fn every_mob_runs_beta_living_with_its_own_parts() {
     let mut app = creature_app(super::pathfinding::field(4), Vec3::new(0.5, 5.0, 8.5));
-    for kind in MobKind::ALL {
+    for kind in MobType::ALL {
         let entity = summon(&mut app, Mob::new(kind, 7), Vec3::new(0.5, 5.0, 0.5));
         let world = app.world();
         assert!(world.get::<Living>(entity).is_some(), "{kind:?}");
         assert_eq!(
             world.get::<Wings>(entity).is_some(),
-            kind == MobKind::Chicken
+            kind == MobType::Chicken
         );
-        assert_eq!(world.get::<Swim>(entity).is_some(), kind == MobKind::Squid);
+        assert_eq!(world.get::<Swim>(entity).is_some(), kind == MobType::Squid);
         assert_eq!(
             world.get::<Fuse>(entity).is_some(),
-            kind == MobKind::Creeper
+            kind == MobType::Creeper
         );
         assert_eq!(
             world.get::<Bounce>(entity).is_some(),
-            kind == MobKind::Slime
+            kind == MobType::Slime
         );
-        assert_eq!(world.get::<Hover>(entity).is_some(), kind == MobKind::Ghast);
+        assert_eq!(world.get::<Hover>(entity).is_some(), kind == MobType::Ghast);
         // `canTriggerWalking` keeps wolves and spiders off farmland.
         assert_eq!(
             world.get::<StepDistance>(entity).is_some(),
-            !matches!(kind, MobKind::Wolf | MobKind::Spider)
+            !matches!(kind, MobType::Wolf | MobType::Spider)
         );
     }
 }
@@ -316,7 +316,7 @@ fn every_mob_runs_beta_living_with_its_own_parts() {
 fn pigs_wander_along_paths_over_grass() {
     let mut app = creature_app(super::pathfinding::field(4), Vec3::new(0.5, 5.0, 12.5));
     let start = Vec3::new(0.5, 5.0, 0.5);
-    let pig = summon(&mut app, Mob::new(MobKind::Pig, 42), start);
+    let pig = summon(&mut app, Mob::new(MobType::Pig, 42), start);
     let mut walked_a_path = false;
     let mut swung_legs = false;
     for _ in 0..600 {
@@ -338,12 +338,12 @@ fn chickens_flap_and_fall_slowly() {
     let mut app = creature_app(super::pathfinding::field(4), Vec3::new(0.5, 5.0, 12.5));
     let chicken = summon(
         &mut app,
-        Mob::new(MobKind::Chicken, 3),
+        Mob::new(MobType::Chicken, 3),
         Vec3::new(0.5, 30.0, 0.5),
     );
     let pig = summon(
         &mut app,
-        Mob::new(MobKind::Pig, 3),
+        Mob::new(MobType::Pig, 3),
         Vec3::new(4.5, 30.0, 0.5),
     );
     run_ticks(&mut app, 20);
@@ -374,7 +374,7 @@ fn squid_swim_in_pulses_and_stay_in_the_water() {
     }
     let mut app = creature_app(chunks, Vec3::new(0.5, 15.0, 15.5));
     let start = Vec3::new(0.5, 9.0, 0.5);
-    let squid = summon(&mut app, Mob::new(MobKind::Squid, 11), start);
+    let squid = summon(&mut app, Mob::new(MobType::Squid, 11), start);
     let mut tentacles = Vec::new();
     for _ in 0..300 {
         run_ticks(&mut app, 1);
@@ -395,7 +395,7 @@ fn squid_swim_in_pulses_and_stay_in_the_water() {
 fn tamed_wolves_follow_their_owner_until_told_to_sit() {
     let owner = Vec3::new(10.5, 5.0, 0.5);
     let mut app = creature_app(super::pathfinding::field(4), owner);
-    let mut tamed = Mob::new(MobKind::Wolf, 5);
+    let mut tamed = Mob::new(MobType::Wolf, 5);
     tamed.tamed = true;
     let follower = summon(&mut app, tamed.clone(), Vec3::new(0.5, 5.0, 0.5));
     tamed.sitting = true;
@@ -424,10 +424,10 @@ fn creatures_far_from_the_player_despawn_but_tamed_wolves_stay() {
     let mut app = creature_app(super::pathfinding::field(4), Vec3::new(140.5, 5.0, 0.5));
     let pig = summon(
         &mut app,
-        Mob::new(MobKind::Pig, 1),
+        Mob::new(MobType::Pig, 1),
         Vec3::new(0.5, 5.0, 0.5),
     );
-    let mut wolf = Mob::new(MobKind::Wolf, 1);
+    let mut wolf = Mob::new(MobType::Wolf, 1);
     wolf.tamed = true;
     wolf.sitting = true;
     let wolf = summon(&mut app, wolf, Vec3::new(4.5, 5.0, 0.5));
@@ -439,7 +439,7 @@ fn creatures_far_from_the_player_despawn_but_tamed_wolves_stay() {
 #[test]
 fn the_player_shoves_creatures_aside() {
     let mut app = creature_app(super::pathfinding::field(4), Vec3::new(0.8, 5.0, 0.5));
-    let mut sitter = Mob::new(MobKind::Wolf, 2);
+    let mut sitter = Mob::new(MobType::Wolf, 2);
     sitter.tamed = true;
     sitter.sitting = true;
     let wolf = summon(&mut app, sitter, Vec3::new(0.5, 5.0, 0.5));

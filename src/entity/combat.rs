@@ -16,7 +16,7 @@ use crate::entity::Velocity;
 use crate::entity::creature::Living;
 use crate::entity::drops::items::spawn_entity_drop;
 use crate::entity::mobs::Mob;
-use crate::entity::mobs::MobKind;
+use crate::entity::mobs::MobType;
 use crate::entity::mobs::spawn;
 use crate::item::Item;
 use crate::item::ItemStack;
@@ -155,7 +155,7 @@ pub fn hurt_creature(
     feet: Vec3,
     mut hit: Hit,
 ) -> Wound {
-    if mob.kind == MobKind::Wolf {
+    if mob.kind == MobType::Wolf {
         // `EntityWolf.attackEntityFrom` stands the wolf up and halves blows
         // from any attacker but a player. An arrow names its shooter as the
         // attacker, so it is halved too.
@@ -185,7 +185,7 @@ pub fn hurt_creature(
         velocity.0 = motion / TICK_SECONDS;
     }
     // `EntityMob.attackEntityFrom` targets whoever hit it.
-    if hit.source == Source::Player && mob.kind.hostile() && mob.kind != MobKind::Slime {
+    if hit.source == Source::Player && mob.kind.hostile() && mob.kind != MobType::Slime {
         living.chasing = true;
     }
     Wound {
@@ -346,7 +346,7 @@ pub fn drop_loot(commands: &mut Commands, rng: &mut ItemRng, mob: &mut Mob, feet
         }
     };
     let common = match mob.kind {
-        MobKind::Sheep => {
+        MobType::Sheep => {
             if !mob.sheared {
                 drop(
                     commands,
@@ -356,13 +356,13 @@ pub fn drop_loot(commands: &mut Commands, rng: &mut ItemRng, mob: &mut Mob, feet
             }
             return;
         }
-        MobKind::Squid => {
+        MobType::Squid => {
             for _ in 0..mob.rng.next_int(3) + 1 {
                 drop(commands, Item::Dye, 0);
             }
             return;
         }
-        MobKind::Skeleton => {
+        MobType::Skeleton => {
             for _ in 0..mob.rng.next_int(3) {
                 drop(commands, Item::Arrow, 0);
             }
@@ -371,15 +371,15 @@ pub fn drop_loot(commands: &mut Commands, rng: &mut ItemRng, mob: &mut Mob, feet
             }
             return;
         }
-        MobKind::Pig if mob.fire_ticks > 0 => Item::CookedPorkchop,
-        MobKind::Pig => Item::RawPorkchop,
-        MobKind::Cow => Item::Leather,
-        MobKind::Chicken | MobKind::Zombie => Item::Feather,
-        MobKind::Spider => Item::String,
-        MobKind::Creeper | MobKind::Ghast => Item::Gunpowder,
-        MobKind::PigZombie => Item::CookedPorkchop,
-        MobKind::Slime if mob.variant <= 1 => Item::Slimeball,
-        MobKind::Slime | MobKind::Wolf => return,
+        MobType::Pig if mob.fire_ticks > 0 => Item::CookedPorkchop,
+        MobType::Pig => Item::RawPorkchop,
+        MobType::Cow => Item::Leather,
+        MobType::Chicken | MobType::Zombie => Item::Feather,
+        MobType::Spider => Item::String,
+        MobType::Creeper | MobType::Ghast => Item::Gunpowder,
+        MobType::PigZombie => Item::CookedPorkchop,
+        MobType::Slime if mob.variant <= 1 => Item::Slimeball,
+        MobType::Slime | MobType::Wolf => return,
     };
     for _ in 0..mob.rng.next_int(3) {
         drop(commands, common, 0);
@@ -391,16 +391,16 @@ pub fn drop_loot(commands: &mut Commands, rng: &mut ItemRng, mob: &mut Mob, feet
 /// none, as in Beta.
 pub fn remove_dead(commands: &mut Commands, entity: Entity, mob: &mut Mob, feet: Vec3) {
     let size = mob.variant.max(1);
-    if mob.kind == MobKind::Slime && size > 1 && mob.health == 0 {
+    if mob.kind == MobType::Slime && size > 1 && mob.health == 0 {
         for i in 0..4 {
             let offset = Vec3::new(
                 ((i % 2) as f32 - 0.5) * f32::from(size) / 4.0,
                 0.5,
                 ((i / 2) as f32 - 0.5) * f32::from(size) / 4.0,
             );
-            let mut child = Mob::new(MobKind::Slime, mob.rng.next_long() as u64);
+            let mut child = Mob::new(MobType::Slime, mob.rng.next_long() as u64);
             child.variant = size / 2;
-            child.health = MobKind::Slime.health(child.variant);
+            child.health = MobType::Slime.health(child.variant);
             spawn(commands, child, feet + offset);
         }
     }

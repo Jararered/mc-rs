@@ -14,7 +14,7 @@ use game::block::blocks::Block;
 use game::entity::EntityDiagnostics;
 use game::entity::EntitySize;
 use game::entity::mobs::Mob;
-use game::entity::mobs::MobKind;
+use game::entity::mobs::MobType;
 use game::entity::mobs::spawn;
 use game::entity::pathfinding::Pathfinder;
 use game::player::Player;
@@ -140,14 +140,14 @@ fn summon(app: &mut App, mob: Mob, x: f32, z: f32) {
 
 /// `count` mobs of the given kinds, round-robin, scattered in a ring around
 /// the origin.
-fn scatter(app: &mut App, kinds: &[MobKind], count: usize, ring: (f32, f32), seed: u64) {
+fn scatter(app: &mut App, kinds: &[MobType], count: usize, ring: (f32, f32), seed: u64) {
     let mut rng = JavaRandom::new(seed);
     for i in 0..count {
         let kind = kinds[i % kinds.len()];
         let angle = rng.next_float() * std::f32::consts::TAU;
         let distance = ring.0 + rng.next_float() * (ring.1 - ring.0);
         let mut mob = Mob::new(kind, seed + i as u64);
-        if kind == MobKind::Wolf {
+        if kind == MobType::Wolf {
             mob.tamed = true;
             mob.owner = Some("Player".into());
         }
@@ -205,7 +205,7 @@ fn run(name: &str, mut app: App) {
 /// place of the 16 animals and 5 squid. The player is too far away to chase.
 fn wandering() -> App {
     let mut app = app(hills(RADIUS), Vec3::new(0.5, 80.0, 70.5));
-    use MobKind as M;
+    use MobType as M;
     let monsters = [M::Spider, M::Zombie, M::Skeleton, M::Creeper];
     let animals = [M::Sheep, M::Pig, M::Chicken, M::Cow];
     scatter(&mut app, &monsters, 79, (2.0, 50.0), 1);
@@ -218,8 +218,8 @@ fn besieged() -> App {
     let mut chunks = hills(RADIUS);
     let feet = pillar(&mut chunks);
     let mut app = app(chunks, feet);
-    scatter(&mut app, &[MobKind::Zombie], 20, (3.0, 12.0), 3);
-    scatter(&mut app, &[MobKind::Spider], 10, (3.0, 12.0), 4);
+    scatter(&mut app, &[MobType::Zombie], 20, (3.0, 12.0), 3);
+    scatter(&mut app, &[MobType::Spider], 10, (3.0, 12.0), 4);
     app
 }
 
@@ -228,7 +228,7 @@ fn stranded_wolves() -> App {
     let mut chunks = hills(RADIUS);
     let feet = pillar(&mut chunks);
     let mut app = app(chunks, feet);
-    scatter(&mut app, &[MobKind::Wolf], 5, (6.0, 11.0), 5);
+    scatter(&mut app, &[MobType::Wolf], 5, (6.0, 11.0), 5);
     app
 }
 
@@ -252,7 +252,7 @@ fn spawning(loaded: i32) -> App {
 fn exhaustive_search() {
     let mut chunks = hills(RADIUS);
     let feet = pillar(&mut chunks);
-    let size = MobKind::Zombie.size(0);
+    let size = MobType::Zombie.size(0);
     let start = Vec3::new(8.5, (surface(8, 0) + 1) as f32, 0.5);
     let mut pathfinder = Pathfinder::default();
     const RUNS: u32 = 200;

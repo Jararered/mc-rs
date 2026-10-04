@@ -36,7 +36,7 @@ use crate::entity::creature::Living;
 use crate::entity::creature::Swim;
 use crate::entity::creature::Wings;
 use crate::entity::mobs::Mob;
-use crate::entity::mobs::MobKind;
+use crate::entity::mobs::MobType;
 use crate::player::model::mesh::sprite_mesh;
 use crate::rendering::appearance::item_tile;
 use crate::world::chunk::WorldChunks;
@@ -106,13 +106,13 @@ const FLEECE: [[f32; 3]; 16] = [
 /// Bevy's foldhash.
 #[derive(Resource)]
 struct CreatureAssets {
-    models: HashMap<MobKind, Vec<(Part, Handle<Mesh>)>>,
+    models: HashMap<MobType, Vec<(Part, Handle<Mesh>)>>,
     skins: HashMap<&'static str, Handle<CreatureMaterial>>,
     fleece: Vec<Handle<CreatureMaterial>>,
     eyes: Handle<CreatureMaterial>,
     charge: Handle<CreatureMaterial>,
     slime_outer: Handle<CreatureMaterial>,
-    held: HashMap<MobKind, Handle<Mesh>>,
+    held: HashMap<MobType, Handle<Mesh>>,
 }
 
 impl CreatureAssets {
@@ -214,7 +214,7 @@ fn prepare_creature_assets(
         built.push((cuboid, mesh.clone()));
         mesh
     };
-    let models = MobKind::ALL
+    let models = MobType::ALL
         .into_iter()
         .map(|kind| {
             let parts = models::model(kind)
@@ -224,7 +224,7 @@ fn prepare_creature_assets(
             (kind, parts)
         })
         .collect();
-    let held = MobKind::ALL
+    let held = MobType::ALL
         .into_iter()
         .filter_map(|kind| {
             let item = models::held_item(kind)?;
@@ -459,7 +459,7 @@ fn pose_creatures(
         // `preRenderCallback`.
         let mut flash = 0.0;
         let scale = match mob.kind {
-            MobKind::Creeper => fuse.map_or(Vec3::ONE, |fuse| {
+            MobType::Creeper => fuse.map_or(Vec3::ONE, |fuse| {
                 let near = fuse.flash(mob.fuse, partial);
                 // `updateCreeperColorMultiplier`: white on every other tenth.
                 if (near * 10.0) as i32 % 2 != 0 {
@@ -470,14 +470,14 @@ fn pose_creatures(
                 let wide = (1.0 + swell * 0.4) * jitter;
                 Vec3::new(wide, (1.0 + swell * 0.1) / jitter, wide)
             }),
-            MobKind::Slime => {
+            MobType::Slime => {
                 let size = f32::from(mob.variant.max(1));
                 let squish = bounce.map_or(0.0, |bounce| lerp(bounce.prev_squish, bounce.squish))
                     / (size * 0.5 + 1.0);
                 let across = 1.0 / (squish + 1.0);
                 Vec3::new(across * size, size / across, across * size)
             }
-            MobKind::Ghast => {
+            MobType::Ghast => {
                 let charge = hover.map_or(0.0, |hover| {
                     lerp(
                         f32::from(hover.prev_attack_counter),
@@ -492,7 +492,7 @@ fn pose_creatures(
             _ => Vec3::ONE,
         };
         let death = f32::from(living.death_time) + partial;
-        let tilt_max = if mob.kind == MobKind::Spider {
+        let tilt_max = if mob.kind == MobType::Spider {
             180.0
         } else {
             90.0
@@ -518,7 +518,7 @@ fn pose_creatures(
         let special = match (wings, swim) {
             (Some(wings), _) => wings.angle(partial),
             (_, Some(swim)) => lerp(swim.prev_tentacle, swim.tentacle),
-            _ if mob.kind == MobKind::Wolf => models::wolf_tail(mob.angry, mob.tamed, mob.health),
+            _ if mob.kind == MobType::Wolf => models::wolf_tail(mob.angry, mob.tamed, mob.health),
             _ => age,
         };
         let input = PoseInput {

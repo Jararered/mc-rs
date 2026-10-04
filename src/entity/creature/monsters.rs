@@ -13,7 +13,7 @@ use super::grow;
 use crate::entity::combat::Hit;
 use crate::entity::combat::Source;
 use crate::entity::mobs::Explosion;
-use crate::entity::mobs::MobKind;
+use crate::entity::mobs::MobType;
 use crate::entity::projectiles::spawn_arrow;
 use crate::entity::projectiles::spawn_fireball;
 use crate::physics::colliding_aabbs;
@@ -82,7 +82,7 @@ impl Body<'_> {
         let brightness = self.brightness(world);
         if matches!(
             self.mob.kind,
-            MobKind::Zombie | MobKind::Skeleton | MobKind::PigZombie
+            MobType::Zombie | MobType::Skeleton | MobType::PigZombie
         ) && world.daytime()
             && brightness > 0.5
         {
@@ -106,13 +106,13 @@ impl Body<'_> {
         let within = |range: f32| player.eye.distance_squared(self.feet) < range * range;
         match self.mob.kind {
             // `EntityMob`: the nearest player within 16 it can see.
-            MobKind::Zombie | MobKind::Skeleton | MobKind::Creeper => {
+            MobType::Zombie | MobType::Skeleton | MobType::Creeper => {
                 within(16.0) && self.can_see(world, &player)
             }
-            MobKind::PigZombie => self.mob.angry && within(16.0) && self.can_see(world, &player),
+            MobType::PigZombie => self.mob.angry && within(16.0) && self.can_see(world, &player),
             // Spiders hunt only in the dark, but need no line of sight.
-            MobKind::Spider => self.brightness(world) < 0.5 && within(16.0),
-            MobKind::Wolf => self.wolf_wants(world),
+            MobType::Spider => self.brightness(world) < 0.5 && within(16.0),
+            MobType::Wolf => self.wolf_wants(world),
             _ => false,
         }
     }
@@ -127,8 +127,8 @@ impl Body<'_> {
         fx: &mut Effects,
     ) {
         match self.mob.kind {
-            MobKind::Zombie | MobKind::PigZombie => self.melee(world, player, distance, 5, fx),
-            MobKind::Spider => {
+            MobType::Zombie | MobType::PigZombie => self.melee(world, player, distance, 5, fx),
+            MobType::Spider => {
                 if self.brightness(world) > 0.5 && self.mob.rng.next_int(100) == 0 {
                     self.living.chasing = false;
                 } else if distance > 2.0 && distance < 6.0 && self.mob.rng.next_int(10) == 0 {
@@ -137,13 +137,13 @@ impl Body<'_> {
                     self.melee(world, player, distance, 2, fx);
                 }
             }
-            MobKind::Skeleton => self.shoot(player, distance, fx),
-            MobKind::Creeper => {
+            MobType::Skeleton => self.shoot(player, distance, fx),
+            MobType::Creeper => {
                 if let Some(fuse) = traits.fuse.as_deref_mut() {
                     self.hiss(fuse, distance, fx);
                 }
             }
-            MobKind::Wolf => self.wolf_bite(world, player, distance, fx),
+            MobType::Wolf => self.wolf_bite(world, player, distance, fx),
             _ => {}
         }
     }
@@ -415,17 +415,17 @@ impl Body<'_> {
         fx: &mut Effects,
     ) {
         match self.mob.kind {
-            MobKind::Chicken => {
+            MobType::Chicken => {
                 if let Some(wings) = traits.wings.as_deref_mut() {
                     self.flap(wings, fx);
                 }
             }
-            MobKind::Squid => {
+            MobType::Squid => {
                 if let Some(swim) = traits.swim.as_deref_mut() {
                     self.swim(world, swim);
                 }
             }
-            MobKind::Slime => self.slime_touch(world, fx),
+            MobType::Slime => self.slime_touch(world, fx),
             _ => {}
         }
     }

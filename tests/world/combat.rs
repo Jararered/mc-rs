@@ -19,7 +19,7 @@ use game::entity::creature::Living;
 use game::entity::explosion::blast_cells;
 use game::entity::explosion::exposure;
 use game::entity::mobs::Mob;
-use game::entity::mobs::MobKind;
+use game::entity::mobs::MobType;
 use game::entity::projectiles::Arrow;
 use game::entity::projectiles::Fireball;
 use game::entity::projectiles::spawn_arrow;
@@ -52,7 +52,7 @@ fn count<T: Component>(app: &mut App) -> usize {
 
 #[test]
 fn a_second_hit_lands_only_for_what_exceeds_the_first() {
-    let mut mob = Mob::new(MobKind::Zombie, 1);
+    let mut mob = Mob::new(MobType::Zombie, 1);
     let mut living = Living::facing(0.0);
     let mut velocity = Velocity::default();
     let hit = |amount| Hit {
@@ -81,7 +81,7 @@ fn a_second_hit_lands_only_for_what_exceeds_the_first() {
 
 #[test]
 fn wolves_halve_blows_from_anything_but_the_player() {
-    let mut wolf = Mob::new(MobKind::Wolf, 2);
+    let mut wolf = Mob::new(MobType::Wolf, 2);
     wolf.sitting = true;
     let mut living = Living::facing(0.0);
     let mut velocity = Velocity::default();
@@ -257,7 +257,7 @@ fn zombies_chase_and_strike_the_player() {
     let mut app = creature_app(field(4), Vec3::new(0.5, 5.0, 8.5));
     let zombie = summon(
         &mut app,
-        Mob::new(MobKind::Zombie, 3),
+        Mob::new(MobType::Zombie, 3),
         Vec3::new(0.5, 5.0, 1.5),
     );
     run_ticks(&mut app, 200);
@@ -270,7 +270,7 @@ fn creepers_hiss_and_blow_a_crater_beside_the_player() {
     let mut app = creature_app(field(4), Vec3::new(0.5, 5.0, 8.5));
     summon(
         &mut app,
-        Mob::new(MobKind::Creeper, 4),
+        Mob::new(MobType::Creeper, 4),
         Vec3::new(0.5, 5.0, 6.5),
     );
     run_ticks(&mut app, 80);
@@ -278,7 +278,7 @@ fn creepers_hiss_and_blow_a_crater_beside_the_player() {
         .world_mut()
         .query::<&Mob>()
         .iter(app.world())
-        .filter(|mob| mob.kind == MobKind::Creeper)
+        .filter(|mob| mob.kind == MobType::Creeper)
         .count();
     assert_eq!(creepers, 0, "the creeper should have exploded");
     assert!(player_health(&mut app) < 20);
@@ -292,7 +292,7 @@ fn skeletons_shoot_arrows_at_the_player() {
     let mut app = creature_app(field(4), Vec3::new(0.5, 5.0, 8.5));
     summon(
         &mut app,
-        Mob::new(MobKind::Skeleton, 6),
+        Mob::new(MobType::Skeleton, 6),
         Vec3::new(0.5, 5.0, 2.5),
     );
     let mut shot = false;
@@ -307,9 +307,9 @@ fn skeletons_shoot_arrows_at_the_player() {
 #[test]
 fn big_slimes_hurt_on_contact() {
     let mut app = creature_app(field(4), Vec3::new(0.5, 5.0, 8.5));
-    let mut slime = Mob::new(MobKind::Slime, 9);
+    let mut slime = Mob::new(MobType::Slime, 9);
     slime.variant = 4;
-    slime.health = MobKind::Slime.health(4);
+    slime.health = MobType::Slime.health(4);
     summon(&mut app, slime, Vec3::new(0.5, 5.0, 7.0));
     run_ticks(&mut app, 3);
     assert_eq!(player_health(&mut app), 16);
@@ -320,7 +320,7 @@ fn a_fatal_fall_drops_loot_then_the_body_vanishes() {
     let mut app = creature_app(field(4), Vec3::new(0.5, 5.0, 8.5));
     let sheep = summon(
         &mut app,
-        Mob::new(MobKind::Sheep, 11),
+        Mob::new(MobType::Sheep, 11),
         Vec3::new(0.5, 40.0, 0.5),
     );
     let mut dying = 0;
@@ -405,9 +405,9 @@ fn fireballs_explode_on_impact() {
 #[test]
 fn slimes_hop_toward_a_nearby_player() {
     let mut app = creature_app(field(4), Vec3::new(0.5, 5.0, 12.5));
-    let mut slime = Mob::new(MobKind::Slime, 21);
+    let mut slime = Mob::new(MobType::Slime, 21);
     slime.variant = 2;
-    slime.health = MobKind::Slime.health(2);
+    slime.health = MobType::Slime.health(2);
     let start = Vec3::new(0.5, 5.0, 0.5);
     let entity = summon(&mut app, slime, start);
     let mut airborne = false;

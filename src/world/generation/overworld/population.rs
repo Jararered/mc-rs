@@ -459,9 +459,9 @@ fn dungeon(world: &mut PopulationWorld, rand: &mut JavaRandom, x: i32, y: i32, z
         }
     }
     let kind = match rand.next_int(4) {
-        0 => crate::entity::mobs::MobKind::Skeleton,
-        1 | 2 => crate::entity::mobs::MobKind::Zombie,
-        _ => crate::entity::mobs::MobKind::Spider,
+        0 => crate::entity::mobs::MobType::Skeleton,
+        1 | 2 => crate::entity::mobs::MobType::Zombie,
+        _ => crate::entity::mobs::MobType::Spider,
     };
     world.set_spawner(x, y, z, kind);
 }

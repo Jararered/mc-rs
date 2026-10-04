@@ -56,7 +56,7 @@ use crate::entity::combat::hurt_creature;
 use crate::entity::combat::remove_dead;
 use crate::entity::mobs::Explosion;
 use crate::entity::mobs::Mob;
-use crate::entity::mobs::MobKind;
+use crate::entity::mobs::MobType;
 use crate::entity::pathfinding::LastSearch;
 use crate::entity::pathfinding::Path;
 use crate::entity::pathfinding::Pathfinder;
@@ -531,7 +531,7 @@ impl Body<'_> {
         self.size.aabb(self.feet)
     }
 
-    fn is(&self, kind: MobKind) -> bool {
+    fn is(&self, kind: MobType) -> bool {
         self.mob.kind == kind
     }
 
@@ -541,7 +541,7 @@ impl Body<'_> {
 
     /// `getEyeHeight`, which `EntityWolf` lowers.
     fn eye_height(&self) -> f32 {
-        self.size.height * if self.is(MobKind::Wolf) { 0.8 } else { 0.85 }
+        self.size.height * if self.is(MobType::Wolf) { 0.8 } else { 0.85 }
     }
 
     fn eye(&self) -> Vec3 {
@@ -564,7 +564,7 @@ impl Body<'_> {
 
     /// `Entity.isImmuneToFire`.
     fn fire_immune(&self) -> bool {
-        matches!(self.mob.kind, MobKind::Ghast | MobKind::PigZombie)
+        matches!(self.mob.kind, MobType::Ghast | MobType::PigZombie)
     }
 
     /// `attackEntityFrom` against this creature, dropping its loot if the
@@ -631,7 +631,7 @@ impl Body<'_> {
         if self.alive() && self.inside_opaque_block(world) {
             self.hurt(Hit::environment(1), fx);
         }
-        if self.alive() && !self.is(MobKind::Squid) && self.head_in_water(world) {
+        if self.alive() && !self.is(MobType::Squid) && self.head_in_water(world) {
             self.living.air -= 1;
             if self.living.air == -20 {
                 self.living.air = 0;
@@ -664,19 +664,19 @@ impl Body<'_> {
             living.random_yaw_velocity = 0.0;
         } else {
             match self.mob.kind {
-                MobKind::Squid => self.squid_action(world, traits.swim.as_deref_mut()),
-                MobKind::Slime => self.slime_action(world, traits.bounce.as_deref_mut()),
-                MobKind::Ghast => self.ghast_action(world, traits.hover.as_deref_mut(), fx),
+                MobType::Squid => self.squid_action(world, traits.swim.as_deref_mut()),
+                MobType::Slime => self.slime_action(world, traits.bounce.as_deref_mut()),
+                MobType::Ghast => self.ghast_action(world, traits.hover.as_deref_mut(), fx),
                 _ => {
                     let has_attacked = self.creature_action(world, pathfinder, traits, fx);
-                    if self.is(MobKind::Wolf) {
+                    if self.is(MobType::Wolf) {
                         self.wolf_action(world, pathfinder, has_attacked);
                     }
                 }
             }
         }
         let in_lava = lava_contains(self.aabb(), world.chunks);
-        let in_water = if self.is(MobKind::Squid) {
+        let in_water = if self.is(MobType::Squid) {
             self.squid_in_water(world)
         } else {
             self.living.in_water
@@ -693,8 +693,8 @@ impl Body<'_> {
         self.living.random_yaw_velocity *= 0.9;
         match self.mob.kind {
             // `EntitySquid.moveEntityWithHeading` only applies its motion.
-            MobKind::Squid => self.move_entity(world, traits.steps.as_deref_mut(), fx),
-            MobKind::Ghast => self.fly_with_heading(world, in_lava, fx),
+            MobType::Squid => self.move_entity(world, traits.steps.as_deref_mut(), fx),
+            MobType::Ghast => self.fly_with_heading(world, in_lava, fx),
             _ => self.move_with_heading(world, in_lava, traits.steps.as_deref_mut(), fx),
         }
         self.push_apart(world);
@@ -752,7 +752,7 @@ impl Body<'_> {
         traits: &mut Traits,
         fx: &mut Effects,
     ) -> bool {
-        self.living.has_attacked = self.is(MobKind::Wolf) && self.mob.sitting;
+        self.living.has_attacked = self.is(MobType::Wolf) && self.mob.sitting;
         if self.mob.sitting {
             // `EntityWolf.interact` drops the path when told to sit.
             self.living.path = None;
@@ -935,7 +935,7 @@ impl Body<'_> {
         let Some(player) = world.player else {
             return;
         };
-        if self.is(MobKind::Wolf) && self.mob.tamed {
+        if self.is(MobType::Wolf) && self.mob.tamed {
             return;
         }
         let distance = player.eye.distance_squared(self.feet);
@@ -973,19 +973,19 @@ impl Body<'_> {
     /// `EntityLiving.moveSpeed` and its overrides.
     fn move_speed(&self) -> f32 {
         match self.mob.kind {
-            MobKind::Wolf => 1.1,
-            MobKind::Zombie => 0.5,
+            MobType::Wolf => 1.1,
+            MobType::Zombie => 0.5,
             // `EntityPigZombie.onUpdate` quickens once it has a target.
-            MobKind::PigZombie if self.living.chasing => 0.95,
-            MobKind::PigZombie => 0.5,
-            MobKind::Spider => 0.8,
+            MobType::PigZombie if self.living.chasing => 0.95,
+            MobType::PigZombie => 0.5,
+            MobType::Spider => 0.8,
             _ => 0.7,
         }
     }
 
     /// `getVerticalFaceSpeed`, which a sitting wolf halves.
     fn vertical_face_speed(&self) -> f32 {
-        if self.is(MobKind::Wolf) && self.mob.sitting {
+        if self.is(MobType::Wolf) && self.mob.sitting {
             20.0
         } else {
             40.0
@@ -1114,8 +1114,8 @@ impl Body<'_> {
     /// and a ghast never climbs.
     fn on_ladder(&self, chunks: &WorldChunks) -> bool {
         match self.mob.kind {
-            MobKind::Spider => self.collision.collided_x || self.collision.collided_z,
-            MobKind::Ghast => false,
+            MobType::Spider => self.collision.collided_x || self.collision.collided_z,
+            MobType::Ghast => false,
             _ => chunks
                 .block_at(
                     self.feet.x.floor() as i32,
@@ -1214,7 +1214,7 @@ impl Body<'_> {
     /// Chickens and ghasts never take it.
     fn fall(&mut self, fx: &mut Effects) {
         let distance = std::mem::take(&mut self.living.fall_distance);
-        if matches!(self.mob.kind, MobKind::Chicken | MobKind::Ghast) {
+        if matches!(self.mob.kind, MobType::Chicken | MobType::Ghast) {
             return;
         }
         let damage = (distance - 3.0).ceil() as i16;

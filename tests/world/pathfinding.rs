@@ -2,7 +2,7 @@
 
 use bevy::prelude::*;
 use game::block::blocks::Block;
-use game::entity::mobs::MobKind;
+use game::entity::mobs::MobType;
 use game::entity::pathfinding::LastSearch;
 use game::entity::pathfinding::Path;
 use game::entity::pathfinding::Pathfinder;
@@ -48,7 +48,7 @@ fn pig_path(chunks: &WorldChunks, target: IVec3) -> Option<Vec<IVec3>> {
         .path_to_block(
             chunks,
             Vec3::new(0.5, 5.0, 0.5),
-            MobKind::Pig.size(0),
+            MobType::Pig.size(0),
             target,
             10.0,
         )
@@ -151,11 +151,11 @@ fn tall_bodies_need_headroom() {
     let target = IVec3::new(6, 5, 0);
     let mut finder = Pathfinder::default();
     let pig = finder
-        .path_to_block(&chunks, feet, MobKind::Pig.size(0), target, 10.0)
+        .path_to_block(&chunks, feet, MobType::Pig.size(0), target, 10.0)
         .unwrap();
     assert_eq!(pig.points().last(), Some(&target));
     let cow = finder
-        .path_to_block(&chunks, feet, MobKind::Cow.size(0), target, 10.0)
+        .path_to_block(&chunks, feet, MobType::Cow.size(0), target, 10.0)
         .unwrap();
     assert_eq!(cow.points().last(), Some(&IVec3::new(1, 5, 0)));
 }
@@ -166,7 +166,7 @@ fn path_positions_center_the_body_on_each_cell() {
         .path_to_block(
             &field(4),
             Vec3::new(0.5, 5.0, 0.5),
-            MobKind::Pig.size(0),
+            MobType::Pig.size(0),
             IVec3::new(2, 5, 0),
             10.0,
         )
@@ -197,11 +197,11 @@ fn chase(
     player: Vec3,
     last: &mut LastSearch,
 ) -> Option<Path> {
-    finder.path_to_feet_reusing(chunks, feet, MobKind::Zombie.size(0), player, 16.0, last)
+    finder.path_to_feet_reusing(chunks, feet, MobType::Zombie.size(0), player, 16.0, last)
 }
 
 fn fresh(chunks: &WorldChunks, feet: Vec3, player: Vec3) -> Option<Path> {
-    Pathfinder::default().path_to_feet(chunks, feet, MobKind::Zombie.size(0), player, 16.0)
+    Pathfinder::default().path_to_feet(chunks, feet, MobType::Zombie.size(0), player, 16.0)
 }
 
 #[test]

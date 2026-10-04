@@ -4,7 +4,7 @@ use game::chat::commands::ChatCommand;
 use game::chat::commands::give_to_inventory;
 use game::chat::commands::set_loaded_block;
 use game::chat::registry::CommandRegistry;
-use game::entity::mobs::MobKind;
+use game::entity::mobs::MobType;
 use game::inventory::Hotbar;
 use game::inventory::Inventory;
 use game::item::Item;
@@ -24,7 +24,7 @@ use game::world::chunk::WorldChunks;
 fn parses_numeric_beta_ids_and_three_commands() {
     assert_eq!(
         parse_command("/summon skeleton").unwrap(),
-        ChatCommand::Summon(MobKind::Skeleton)
+        ChatCommand::Summon(MobType::Skeleton)
     );
     assert_eq!(
         parse_command("/weather thunder").unwrap(),
@@ -423,7 +423,7 @@ fn submitted_commands_change_player_inventory_and_world() {
         app.world_mut()
             .query::<&game::entity::mobs::Mob>()
             .iter(app.world())
-            .filter(|mob| mob.kind == MobKind::Sheep)
+            .filter(|mob| mob.kind == MobType::Sheep)
             .count(),
         1
     );

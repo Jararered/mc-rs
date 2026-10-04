@@ -14,7 +14,7 @@ use crate::entity::combat::hurt_creature;
 use crate::entity::combat::hurt_player;
 use crate::entity::creature::Living;
 use crate::entity::mobs::Mob;
-use crate::entity::mobs::MobKind;
+use crate::entity::mobs::MobType;
 use crate::entity::mobs::SpawnMob;
 use crate::entity::projectiles::victim;
 use crate::inventory::Inventory;
@@ -230,22 +230,22 @@ fn apply_lightning(
             if feet.distance_squared(center) > 9.0 {
                 continue;
             }
-            if mob.kind == MobKind::Pig {
+            if mob.kind == MobType::Pig {
                 commands.entity(entity).despawn();
                 spawn.write(SpawnMob {
-                    kind: MobKind::PigZombie,
+                    kind: MobType::PigZombie,
                     feet,
                     explicit: true,
                     variant: 0,
                 });
                 continue;
             }
-            if mob.kind == MobKind::Creeper {
+            if mob.kind == MobType::Creeper {
                 mob.charged = true;
             }
             // `Entity.onStruckByLightning`: five points of fire damage, and
             // the body catches fire.
-            if !matches!(mob.kind, MobKind::Ghast | MobKind::PigZombie) {
+            if !matches!(mob.kind, MobType::Ghast | MobType::PigZombie) {
                 let wound = hurt_creature(
                     &mut mob,
                     &mut living,

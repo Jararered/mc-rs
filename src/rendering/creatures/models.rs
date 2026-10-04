@@ -15,7 +15,7 @@ use bevy::mesh::Indices;
 use bevy::prelude::*;
 use bevy::render::render_resource::PrimitiveTopology;
 
-use crate::entity::mobs::MobKind;
+use crate::entity::mobs::MobType;
 use crate::item::Item;
 
 /// Every Beta mob skin is 64×32 texels.
@@ -210,28 +210,28 @@ fn quadruped(leg: u8, inflate: f32, layer: Layer) -> Vec<Part> {
 }
 
 /// The parts of a creature's model, or none for mobs without one.
-pub fn model(kind: MobKind) -> Vec<Part> {
+pub fn model(kind: MobType) -> Vec<Part> {
     match kind {
-        MobKind::Pig => {
+        MobType::Pig => {
             let mut parts = quadruped(6, 0.0, Layer::Base);
             parts.extend(quadruped(6, 0.5, Layer::Saddle));
             parts
         }
-        MobKind::Cow => cow(),
-        MobKind::Sheep => sheep(),
-        MobKind::Chicken => chicken(),
-        MobKind::Squid => squid(),
-        MobKind::Wolf => wolf(),
-        MobKind::Zombie | MobKind::PigZombie => biped(false),
-        MobKind::Skeleton => biped(true),
-        MobKind::Creeper => {
+        MobType::Cow => cow(),
+        MobType::Sheep => sheep(),
+        MobType::Chicken => chicken(),
+        MobType::Squid => squid(),
+        MobType::Wolf => wolf(),
+        MobType::Zombie | MobType::PigZombie => biped(false),
+        MobType::Skeleton => biped(true),
+        MobType::Creeper => {
             let mut parts = creeper(0.0, Layer::Base);
             parts.extend(creeper(2.0, Layer::Charge));
             parts
         }
-        MobKind::Spider => spider(),
-        MobKind::Slime => slime(),
-        MobKind::Ghast => ghast(),
+        MobType::Spider => spider(),
+        MobType::Slime => slime(),
+        MobType::Ghast => ghast(),
     }
 }
 
@@ -493,10 +493,10 @@ fn ghast() -> Vec<Part> {
 }
 
 /// `getHeldItem`: skeletons carry a bow and zombie pigmen a gold sword.
-pub fn held_item(kind: MobKind) -> Option<Item> {
+pub fn held_item(kind: MobType) -> Option<Item> {
     match kind {
-        MobKind::Skeleton => Some(Item::Bow),
-        MobKind::PigZombie => Some(Item::GoldSword),
+        MobType::Skeleton => Some(Item::Bow),
+        MobType::PigZombie => Some(Item::GoldSword),
         _ => None,
     }
 }

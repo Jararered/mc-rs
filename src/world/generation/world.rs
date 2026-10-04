@@ -257,7 +257,7 @@ impl PopulationWorld {
         }
     }
 
-    pub fn set_spawner(&mut self, x: i32, y: i32, z: i32, kind: crate::entity::mobs::MobKind) {
+    pub fn set_spawner(&mut self, x: i32, y: i32, z: i32, kind: crate::entity::mobs::MobType) {
         self.set(x, y, z, Block::MobSpawner);
         if let Some((index, lx, lz)) = self.locate(x, z)
             && (0..HEIGHT).contains(&y)

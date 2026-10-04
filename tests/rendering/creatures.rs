@@ -4,7 +4,7 @@ use bevy::mesh::Mesh;
 use bevy::mesh::MeshTag;
 use bevy::mesh::VertexAttributeValues;
 use bevy::prelude::*;
-use game::entity::mobs::MobKind;
+use game::entity::mobs::MobType;
 use game::rendering::creatures::creature_tag;
 use game::rendering::creatures::models;
 use game::rendering::creatures::models::Frame;
@@ -37,7 +37,7 @@ fn posed_corners(part: &Part, input: &PoseInput, body_yaw: f32) -> Vec<Vec3> {
         .collect()
 }
 
-fn bounds(kind: MobKind, layer: Layer, input: &PoseInput) -> (Vec3, Vec3) {
+fn bounds(kind: MobType, layer: Layer, input: &PoseInput) -> (Vec3, Vec3) {
     models::model(kind)
         .iter()
         .filter(|part| part.layer == layer)
@@ -59,11 +59,11 @@ fn land_animals_stand_on_their_feet_at_beta_heights() {
     // the pig's and sheep's heads, the cow's horns, the chicken's comb, and
     // the wolf's ears. `RenderLiving` lifts every model 1/128 off the ground.
     for (kind, top) in [
-        (MobKind::Pig, 1.007_812_5),
-        (MobKind::Cow, 1.632_812_5),
-        (MobKind::Sheep, 1.382_812_5),
-        (MobKind::Chicken, 0.945_312_5),
-        (MobKind::Wolf, 0.976_562_5),
+        (MobType::Pig, 1.007_812_5),
+        (MobType::Cow, 1.632_812_5),
+        (MobType::Sheep, 1.382_812_5),
+        (MobType::Chicken, 0.945_312_5),
+        (MobType::Wolf, 0.976_562_5),
     ] {
         let (min, max) = bounds(kind, Layer::Base, &PoseInput::default());
         assert!(
@@ -78,12 +78,12 @@ fn land_animals_stand_on_their_feet_at_beta_heights() {
 #[test]
 fn overlay_layers_wrap_the_base_model() {
     let rest = PoseInput::default();
-    let (pig_min, pig_max) = bounds(MobKind::Pig, Layer::Base, &rest);
-    let (saddle_min, saddle_max) = bounds(MobKind::Pig, Layer::Saddle, &rest);
+    let (pig_min, pig_max) = bounds(MobType::Pig, Layer::Base, &rest);
+    let (saddle_min, saddle_max) = bounds(MobType::Pig, Layer::Saddle, &rest);
     assert!(saddle_min.cmplt(pig_min).all() && saddle_max.cmpgt(pig_max).all());
     // The fleece hugs the body and upper legs, leaving the hooves bare.
-    let (_, body_max) = bounds(MobKind::Sheep, Layer::Base, &rest);
-    let (fleece_min, fleece_max) = bounds(MobKind::Sheep, Layer::Fleece, &rest);
+    let (_, body_max) = bounds(MobType::Sheep, Layer::Base, &rest);
+    let (fleece_min, fleece_max) = bounds(MobType::Sheep, Layer::Fleece, &rest);
     assert!(fleece_max.y > body_max.y);
     assert!(fleece_min.y > 0.3);
 }
@@ -92,14 +92,14 @@ fn overlay_layers_wrap_the_base_model() {
 fn heads_lead_in_the_direction_beta_yaw_faces() {
     let rest = PoseInput::default();
     for kind in [
-        MobKind::Pig,
-        MobKind::Cow,
-        MobKind::Sheep,
-        MobKind::Chicken,
-        MobKind::Wolf,
+        MobType::Pig,
+        MobType::Cow,
+        MobType::Sheep,
+        MobType::Chicken,
+        MobType::Wolf,
     ] {
         let parts = models::model(kind);
-        let body = if kind == MobKind::Chicken { 3 } else { 1 };
+        let body = if kind == MobType::Chicken { 3 } else { 1 };
         let (head, body) = (&parts[0], &parts[body]);
         // Yaw 0 faces +Z.
         let ahead = center(head, &rest, 0.0) - center(body, &rest, 0.0);
@@ -112,7 +112,7 @@ fn heads_lead_in_the_direction_beta_yaw_faces() {
 
 #[test]
 fn head_yaw_turns_the_head_but_not_the_body() {
-    let parts = models::model(MobKind::Pig);
+    let parts = models::model(MobType::Pig);
     let rest = PoseInput::default();
     let turned = PoseInput {
         head_yaw: 45.0,
@@ -129,7 +129,7 @@ fn head_yaw_turns_the_head_but_not_the_body() {
 
 #[test]
 fn diagonal_legs_swing_together() {
-    let parts = models::model(MobKind::Cow);
+    let parts = models::model(MobType::Cow);
     let stride = PoseInput {
         limb_amount: 1.0,
         ..default()
@@ -146,7 +146,7 @@ fn diagonal_legs_swing_together() {
 
 #[test]
 fn sitting_wolves_lower_their_bodies() {
-    let parts = models::model(MobKind::Wolf);
+    let parts = models::model(MobType::Wolf);
     let standing = PoseInput::default();
     let sitting = PoseInput {
         sitting: true,
@@ -162,7 +162,7 @@ fn sitting_wolves_lower_their_bodies() {
 #[test]
 fn boxes_sample_beta_skin_rectangles() {
     // The pig's 8×8×8 head starts at texel (0, 0).
-    let head = models::model(MobKind::Pig)[0];
+    let head = models::model(MobType::Pig)[0];
     let mesh = models::cuboid_mesh(&head.cuboid);
     let normals = floats3(&mesh, Mesh::ATTRIBUTE_NORMAL);
     let positions = floats3(&mesh, Mesh::ATTRIBUTE_POSITION);
@@ -212,7 +212,7 @@ fn boxes_sample_beta_skin_rectangles() {
 
 #[test]
 fn squid_tentacles_ring_the_body() {
-    let parts = models::model(MobKind::Squid);
+    let parts = models::model(MobType::Squid);
     assert_eq!(parts.len(), 9);
     for tentacle in &parts[1..] {
         let ring = Vec2::new(tentacle.pivot.x, tentacle.pivot.z);
@@ -251,11 +251,11 @@ fn hostile_mobs_stand_at_beta_heights() {
     // `ModelCreeper` sets its legs two pixels short, so it hovers. A
     // spider rests on the tips of its splayed legs.
     for (kind, bottom, top) in [
-        (MobKind::Zombie, 0.007_812_5, 2.039_062_5),
-        (MobKind::Skeleton, 0.007_812_5, 2.039_062_5),
-        (MobKind::PigZombie, 0.007_812_5, 2.039_062_5),
-        (MobKind::Creeper, 0.132_812_5, 1.757_812_5),
-        (MobKind::Spider, 0.026_1, 0.820_312_5),
+        (MobType::Zombie, 0.007_812_5, 2.039_062_5),
+        (MobType::Skeleton, 0.007_812_5, 2.039_062_5),
+        (MobType::PigZombie, 0.007_812_5, 2.039_062_5),
+        (MobType::Creeper, 0.132_812_5, 1.757_812_5),
+        (MobType::Spider, 0.026_1, 0.820_312_5),
     ] {
         let (min, max) = bounds(kind, Layer::Base, &PoseInput::default());
         assert!(
@@ -269,7 +269,7 @@ fn hostile_mobs_stand_at_beta_heights() {
 
 #[test]
 fn zombies_hold_their_arms_out_in_front() {
-    let parts = models::model(MobKind::Zombie);
+    let parts = models::model(MobType::Zombie);
     let rest = PoseInput::default();
     let arm = center(&parts[2], &rest, 0.0);
     let body = center(&parts[1], &rest, 0.0);
@@ -280,7 +280,7 @@ fn zombies_hold_their_arms_out_in_front() {
 
 #[test]
 fn mirrored_limbs_read_the_skin_reversed() {
-    let parts = models::model(MobKind::Zombie);
+    let parts = models::model(MobType::Zombie);
     let (right, left) = (parts[4], parts[5]);
     assert!(!right.cuboid.mirror && left.cuboid.mirror);
     let front_u = |part: Part| {
@@ -305,7 +305,7 @@ fn mirrored_limbs_read_the_skin_reversed() {
 
 #[test]
 fn spiders_splay_eight_legs_and_glow_at_the_head() {
-    let parts = models::model(MobKind::Spider);
+    let parts = models::model(MobType::Spider);
     let legs = parts
         .iter()
         .filter(|part| matches!(part.role, models::Role::SpiderLeg(_)))
@@ -337,14 +337,14 @@ fn spiders_splay_eight_legs_and_glow_at_the_head() {
 
 #[test]
 fn ghasts_trail_nine_tentacles_of_seeded_lengths() {
-    let parts = models::model(MobKind::Ghast);
+    let parts = models::model(MobType::Ghast);
     let lengths: Vec<u8> = parts[1..].iter().map(|part| part.cuboid.size[1]).collect();
     assert_eq!(lengths.len(), 9);
     assert!(lengths.iter().all(|length| (8..=14).contains(length)));
     // `new Random(1660)` decides them, so every ghast looks the same.
     assert_eq!(
         lengths,
-        models::model(MobKind::Ghast)[1..]
+        models::model(MobType::Ghast)[1..]
             .iter()
             .map(|p| p.cuboid.size[1])
             .collect::<Vec<_>>()
@@ -353,7 +353,7 @@ fn ghasts_trail_nine_tentacles_of_seeded_lengths() {
 
 #[test]
 fn slimes_and_creepers_carry_their_second_pass() {
-    let slime = models::model(MobKind::Slime);
+    let slime = models::model(MobType::Slime);
     assert_eq!(
         slime
             .iter()
@@ -361,7 +361,7 @@ fn slimes_and_creepers_carry_their_second_pass() {
             .count(),
         1
     );
-    let creeper = models::model(MobKind::Creeper);
+    let creeper = models::model(MobType::Creeper);
     let charge: Vec<_> = creeper
         .iter()
         .filter(|part| part.layer == Layer::Charge)
@@ -375,7 +375,7 @@ fn dying_mobs_tip_over_onto_their_side() {
     assert_eq!(models::death_tilt(0.0, 90.0), 0.0);
     assert!(models::death_tilt(5.0, 90.0) > 30.0);
     assert_eq!(models::death_tilt(20.0, 90.0), 90.0);
-    let parts = models::model(MobKind::Pig);
+    let parts = models::model(MobType::Pig);
     let input = PoseInput::default();
     let upright = models::model_transform(Frame::facing(0.0));
     let fallen = models::model_transform(Frame {
@@ -392,14 +392,14 @@ fn dying_mobs_tip_over_onto_their_side() {
 #[test]
 fn held_items_sit_in_the_right_hand() {
     assert_eq!(
-        models::held_item(MobKind::Skeleton),
+        models::held_item(MobType::Skeleton),
         Some(game::item::Item::Bow)
     );
     assert_eq!(
-        models::held_item(MobKind::PigZombie),
+        models::held_item(MobType::PigZombie),
         Some(game::item::Item::GoldSword)
     );
-    assert_eq!(models::held_item(MobKind::Zombie), None);
+    assert_eq!(models::held_item(MobType::Zombie), None);
     // The sprite's center ends up near the end of the arm, which hangs to
     // +12 pixels from the shoulder.
     for full_3d in [false, true] {

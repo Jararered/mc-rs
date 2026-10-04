@@ -12,7 +12,7 @@ use bevy::mesh::MeshPlugin;
 use bevy::prelude::*;
 use game::block::blocks::Block;
 use game::entity::mobs::Mob;
-use game::entity::mobs::MobKind;
+use game::entity::mobs::MobType;
 use game::entity::mobs::MobRecord;
 use game::entity::mobs::MobSpawner;
 use game::item::ItemStack;
@@ -153,12 +153,12 @@ fn weather_and_spawner_mobs_round_trip_without_changing_older_saves() {
     generated.chunk.set(2, 40, 3, Block::MobSpawner);
     let index = Chunk::index(2, 40, 3);
     let spawner = MobSpawner {
-        kind: MobKind::Skeleton,
+        kind: MobType::Skeleton,
         delay: 407,
         rng_state: 42,
     };
     generated.chunk.insert_spawner(index, spawner);
-    let mut sheep = Mob::new(MobKind::Sheep, 123);
+    let mut sheep = Mob::new(MobType::Sheep, 123);
     sheep.sheared = true;
     sheep.health = 7;
     generated.chunk.set_mob_records(vec![MobRecord {
@@ -171,7 +171,7 @@ fn weather_and_spawner_mobs_round_trip_without_changing_older_saves() {
     let loaded = reopened.load_chunk(pos).unwrap();
     assert_eq!(*loaded.chunk.spawners().next().unwrap().1, spawner);
     let loaded_mob = &loaded.chunk.mob_records()[0];
-    assert_eq!(loaded_mob.mob.kind, MobKind::Sheep);
+    assert_eq!(loaded_mob.mob.kind, MobType::Sheep);
     assert!(loaded_mob.mob.sheared);
     assert_eq!(loaded_mob.mob.health, 7);
     assert_eq!(loaded_mob.feet, [2.5, 42.0, 3.5]);
@@ -684,7 +684,7 @@ fn a_chunk_unloads_without_the_mobs_that_left_it_since_the_autosave() {
         .unwrap();
     super::mobs::summon(
         &mut app,
-        Mob::new(MobKind::Pig, 1),
+        Mob::new(MobType::Pig, 1),
         Vec3::new(8.5, (ground + 1) as f32, 8.5),
     );
     let storage = app

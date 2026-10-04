@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 
 use crate::block::blocks::Block;
-use crate::entity::mobs::MobKind;
+use crate::entity::mobs::MobType;
 use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
 use crate::item::Item;
@@ -29,7 +29,7 @@ pub enum ChatCommand {
         amount: u32,
     },
     Teleport(Vec3),
-    Summon(MobKind),
+    Summon(MobType),
     Weather {
         raining: bool,
         thundering: bool,
@@ -128,7 +128,7 @@ fn parse_summon(_: &CommandRegistry, args: &[&str]) -> Result<ChatCommand, Comma
     let [name] = args else {
         return Err(CommandParseError::Usage);
     };
-    MobKind::parse(name)
+    MobType::parse(name)
         .map(ChatCommand::Summon)
         .ok_or_else(|| format!("Unknown mob: {name}").into())
 }

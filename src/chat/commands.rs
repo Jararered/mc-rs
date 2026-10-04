@@ -20,26 +20,26 @@ const MAX_GIVE: u32 = 4096;
 /// Parsed commands stay independent of UI and ECS.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ChatCommand {
-    Help(Option<String>),
-    TimeSet(u64),
-    TimeAdd(u64),
-    TimeQuery(TimeQuery),
-    Give {
+    HelpCommand(Option<String>),
+    TimeSetCommand(u64),
+    TimeAddCommand(u64),
+    TimeQueryCommand(TimeQuery),
+    GiveCommand {
         item: Item,
         amount: u32,
     },
-    Teleport(Vec3),
-    Summon(MobType),
-    Weather {
+    TeleportCommand(Vec3),
+    SummonCommand(MobType),
+    WeatherCommand {
         raining: bool,
         thundering: bool,
     },
-    SetBlock {
+    SetBlockCommand {
         position: IVec3,
         block: Block,
     },
     /// `block` is set only by `/wireframe set`. `on` and `off` clear it.
-    Wireframe {
+    WireframeCommand {
         enabled: bool,
         block: Option<Block>,
     },
@@ -129,21 +129,21 @@ fn parse_summon(_: &CommandRegistry, args: &[&str]) -> Result<ChatCommand, Comma
         return Err(CommandParseError::Usage);
     };
     MobType::parse(name)
-        .map(ChatCommand::Summon)
+        .map(ChatCommand::SummonCommand)
         .ok_or_else(|| format!("Unknown mob: {name}").into())
 }
 
 fn parse_weather(_: &CommandRegistry, args: &[&str]) -> Result<ChatCommand, CommandParseError> {
     match args {
-        ["clear"] => Ok(ChatCommand::Weather {
+        ["clear"] => Ok(ChatCommand::WeatherCommand {
             raining: false,
             thundering: false,
         }),
-        ["rain"] => Ok(ChatCommand::Weather {
+        ["rain"] => Ok(ChatCommand::WeatherCommand {
             raining: true,
             thundering: false,
         }),
-        ["thunder"] => Ok(ChatCommand::Weather {
+        ["thunder"] => Ok(ChatCommand::WeatherCommand {
             raining: true,
             thundering: true,
         }),
@@ -153,10 +153,10 @@ fn parse_weather(_: &CommandRegistry, args: &[&str]) -> Result<ChatCommand, Comm
 
 fn parse_help(registry: &CommandRegistry, args: &[&str]) -> Result<ChatCommand, CommandParseError> {
     match args {
-        [] => Ok(ChatCommand::Help(None)),
+        [] => Ok(ChatCommand::HelpCommand(None)),
         [command] => registry
             .get(command.trim_start_matches('/'))
-            .map(|entry| ChatCommand::Help(Some(entry.name().to_owned())))
+            .map(|entry| ChatCommand::HelpCommand(Some(entry.name().to_owned())))
             .ok_or_else(|| format!("Unknown command: {command}. Try /help").into()),
         _ => Err(CommandParseError::Usage),
     }
@@ -174,7 +174,7 @@ fn parse_give(_: &CommandRegistry, args: &[&str]) -> Result<ChatCommand, Command
     if !(1..=MAX_GIVE).contains(&amount) {
         return Err(format!("Amount must be between 1 and {MAX_GIVE}").into());
     }
-    Ok(ChatCommand::Give { item, amount })
+    Ok(ChatCommand::GiveCommand { item, amount })
 }
 
 fn parse_teleport(_: &CommandRegistry, args: &[&str]) -> Result<ChatCommand, CommandParseError> {
@@ -192,7 +192,7 @@ fn parse_teleport(_: &CommandRegistry, args: &[&str]) -> Result<ChatCommand, Com
     {
         return Err("Coordinates must be finite and within 30 million blocks".into());
     }
-    Ok(ChatCommand::Teleport(Vec3::new(
+    Ok(ChatCommand::TeleportCommand(Vec3::new(
         coords[0], coords[1], coords[2],
     )))
 }
@@ -219,17 +219,17 @@ fn parse_setblock(_: &CommandRegistry, args: &[&str]) -> Result<ChatCommand, Com
         .into());
     }
     let block = parse_block_id(args[3])?;
-    Ok(ChatCommand::SetBlock { position, block })
+    Ok(ChatCommand::SetBlockCommand { position, block })
 }
 
 fn parse_time(_: &CommandRegistry, args: &[&str]) -> Result<ChatCommand, CommandParseError> {
     match args {
-        ["query"] | ["query", "daytime"] => Ok(ChatCommand::TimeQuery(TimeQuery::Daytime)),
-        ["query", "gametime"] => Ok(ChatCommand::TimeQuery(TimeQuery::Gametime)),
-        ["query", "day"] => Ok(ChatCommand::TimeQuery(TimeQuery::Day)),
+        ["query"] | ["query", "daytime"] => Ok(ChatCommand::TimeQueryCommand(TimeQuery::Daytime)),
+        ["query", "gametime"] => Ok(ChatCommand::TimeQueryCommand(TimeQuery::Gametime)),
+        ["query", "day"] => Ok(ChatCommand::TimeQueryCommand(TimeQuery::Day)),
         ["add", ticks] => ticks
             .parse::<u64>()
-            .map(ChatCommand::TimeAdd)
+            .map(ChatCommand::TimeAddCommand)
             .map_err(|_| "Ticks must be a nonnegative integer within the u64 range".into()),
         ["set", time] | [time] if !matches!(*time, "set" | "add") => {
             let ticks = match *time {
@@ -241,7 +241,7 @@ fn parse_time(_: &CommandRegistry, args: &[&str]) -> Result<ChatCommand, Command
                     |_| "Time must be day, night, noon, midnight, or a nonnegative integer",
                 )?,
             };
-            Ok(ChatCommand::TimeSet(ticks))
+            Ok(ChatCommand::TimeSetCommand(ticks))
         }
         _ => Err(CommandParseError::Usage),
     }
@@ -249,11 +249,11 @@ fn parse_time(_: &CommandRegistry, args: &[&str]) -> Result<ChatCommand, Command
 
 fn parse_wireframe(_: &CommandRegistry, args: &[&str]) -> Result<ChatCommand, CommandParseError> {
     match args {
-        ["on"] => Ok(ChatCommand::Wireframe {
+        ["on"] => Ok(ChatCommand::WireframeCommand {
             enabled: true,
             block: None,
         }),
-        ["off"] => Ok(ChatCommand::Wireframe {
+        ["off"] => Ok(ChatCommand::WireframeCommand {
             enabled: false,
             block: None,
         }),
@@ -262,7 +262,7 @@ fn parse_wireframe(_: &CommandRegistry, args: &[&str]) -> Result<ChatCommand, Co
             if block == Block::Air {
                 return Err("Cannot show a wireframe of air".into());
             }
-            Ok(ChatCommand::Wireframe {
+            Ok(ChatCommand::WireframeCommand {
                 enabled: true,
                 block: Some(block),
             })

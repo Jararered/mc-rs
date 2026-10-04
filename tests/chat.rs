@@ -24,64 +24,64 @@ use game::world::chunk::WorldChunks;
 fn parses_numeric_beta_ids_and_three_commands() {
     assert_eq!(
         parse_command("/summon skeleton").unwrap(),
-        ChatCommand::Summon(MobType::Skeleton)
+        ChatCommand::SummonCommand(MobType::Skeleton)
     );
     assert_eq!(
         parse_command("/weather thunder").unwrap(),
-        ChatCommand::Weather {
+        ChatCommand::WeatherCommand {
             raining: true,
             thundering: true
         }
     );
     assert_eq!(
         parse_command("/give 264 70").unwrap(),
-        ChatCommand::Give {
+        ChatCommand::GiveCommand {
             item: Item::Diamond,
             amount: 70
         }
     );
     assert_eq!(
         parse_command("/tp -12.5 75 3").unwrap(),
-        ChatCommand::Teleport(Vec3::new(-12.5, 75.0, 3.0))
+        ChatCommand::TeleportCommand(Vec3::new(-12.5, 75.0, 3.0))
     );
     assert_eq!(
         parse_command("/setblock -1 70 2 0").unwrap(),
-        ChatCommand::SetBlock {
+        ChatCommand::SetBlockCommand {
             position: IVec3::new(-1, 70, 2),
             block: Block::Air
         }
     );
     assert_eq!(
         parse_command("/setblock 1 4 3 1").unwrap(),
-        ChatCommand::SetBlock {
+        ChatCommand::SetBlockCommand {
             position: IVec3::new(1, 4, 3),
             block: Block::Stone
         }
     );
     assert_eq!(
         parse_command("/wireframe on").unwrap(),
-        ChatCommand::Wireframe {
+        ChatCommand::WireframeCommand {
             enabled: true,
             block: None
         }
     );
     assert_eq!(
         parse_command("/wireframe off").unwrap(),
-        ChatCommand::Wireframe {
+        ChatCommand::WireframeCommand {
             enabled: false,
             block: None
         }
     );
     assert_eq!(
         parse_command("/wireframe set 9").unwrap(),
-        ChatCommand::Wireframe {
+        ChatCommand::WireframeCommand {
             enabled: true,
             block: Some(Block::Water)
         }
     );
     assert_eq!(
         parse_command("/wireframe set 2").unwrap(),
-        ChatCommand::Wireframe {
+        ChatCommand::WireframeCommand {
             enabled: true,
             block: Some(Block::Grass)
         }
@@ -433,10 +433,10 @@ fn submitted_commands_change_player_inventory_and_world() {
 fn parses_help_and_time_commands() {
     use game::chat::commands::TimeQuery;
 
-    assert_eq!(parse_command("/help"), Ok(ChatCommand::Help(None)));
+    assert_eq!(parse_command("/help"), Ok(ChatCommand::HelpCommand(None)));
     assert_eq!(
         parse_command("/help /time"),
-        Ok(ChatCommand::Help(Some("time".into())))
+        Ok(ChatCommand::HelpCommand(Some("time".into())))
     );
     for (name, time) in [
         ("day", 1000),
@@ -446,30 +446,30 @@ fn parses_help_and_time_commands() {
     ] {
         assert_eq!(
             parse_command(&format!("/time {name}")),
-            Ok(ChatCommand::TimeSet(time))
+            Ok(ChatCommand::TimeSetCommand(time))
         );
         assert_eq!(
             parse_command(&format!("/time set {name}")),
-            Ok(ChatCommand::TimeSet(time))
+            Ok(ChatCommand::TimeSetCommand(time))
         );
     }
     for time in [0, 24000, u64::MAX] {
         assert_eq!(
             parse_command(&format!("/time set {time}")),
-            Ok(ChatCommand::TimeSet(time))
+            Ok(ChatCommand::TimeSetCommand(time))
         );
         assert_eq!(
             parse_command(&format!("/time {time}")),
-            Ok(ChatCommand::TimeSet(time))
+            Ok(ChatCommand::TimeSetCommand(time))
         );
     }
     assert_eq!(
         parse_command(" /time   add  50 "),
-        Ok(ChatCommand::TimeAdd(50))
+        Ok(ChatCommand::TimeAddCommand(50))
     );
     assert_eq!(
         parse_command("/time query"),
-        Ok(ChatCommand::TimeQuery(TimeQuery::Daytime))
+        Ok(ChatCommand::TimeQueryCommand(TimeQuery::Daytime))
     );
     for (name, query) in [
         ("daytime", TimeQuery::Daytime),
@@ -478,7 +478,7 @@ fn parses_help_and_time_commands() {
     ] {
         assert_eq!(
             parse_command(&format!("/time query {name}")),
-            Ok(ChatCommand::TimeQuery(query))
+            Ok(ChatCommand::TimeQueryCommand(query))
         );
     }
     for line in [
@@ -671,7 +671,7 @@ fn parse_clock(
     if !args.is_empty() {
         return Err(CommandParseError::Usage);
     }
-    Ok(ChatCommand::TimeQuery(TimeQuery::Daytime))
+    Ok(ChatCommand::TimeQueryCommand(TimeQuery::Daytime))
 }
 
 #[test]
@@ -689,7 +689,7 @@ fn registry_owns_registration_and_uses_it_for_dispatch_usage_and_help() {
     drop(name);
     assert_eq!(
         registry.parse("/help /clock"),
-        Ok(ChatCommand::Help(Some("clock".into())))
+        Ok(ChatCommand::HelpCommand(Some("clock".into())))
     );
     assert_eq!(
         registry.parse("/clock"),

@@ -103,17 +103,17 @@ impl CommandContext<'_, '_> {
             }
         };
         match command {
-            ChatCommand::Help(filter) => {
+            ChatCommand::HelpCommand(filter) => {
                 for line in registry.help(filter.as_deref()) {
                     chat.push(line);
                 }
                 return;
             }
-            ChatCommand::TimeSet(_) | ChatCommand::TimeAdd(_) => {
+            ChatCommand::TimeSetCommand(_) | ChatCommand::TimeAddCommand(_) => {
                 let previous = clock.world_time();
                 let time = match command {
-                    ChatCommand::TimeSet(time) => time,
-                    ChatCommand::TimeAdd(delta) => {
+                    ChatCommand::TimeSetCommand(time) => time,
+                    ChatCommand::TimeAddCommand(delta) => {
                         let Some(time) = previous.checked_add(delta) else {
                             chat.push("Time would exceed the u64 range");
                             return;
@@ -138,7 +138,7 @@ impl CommandContext<'_, '_> {
                 ));
                 return;
             }
-            ChatCommand::TimeQuery(query) => {
+            ChatCommand::TimeQueryCommand(query) => {
                 let time = clock.world_time();
                 let (name, value) = match query {
                     TimeQuery::Daytime => ("Daytime", time % DAY_LENGTH),
@@ -150,7 +150,7 @@ impl CommandContext<'_, '_> {
             }
             _ => {}
         }
-        if let ChatCommand::Wireframe { enabled, block } = command {
+        if let ChatCommand::WireframeCommand { enabled, block } = command {
             let (Some(mode), Some(materials), Some(raster)) = (
                 wireframe.as_deref_mut(),
                 block_materials.as_deref_mut(),
@@ -179,12 +179,14 @@ impl CommandContext<'_, '_> {
             return;
         };
         let feedback = match command {
-            ChatCommand::Help(_)
-            | ChatCommand::TimeSet(_)
-            | ChatCommand::TimeAdd(_)
-            | ChatCommand::TimeQuery(_)
-            | ChatCommand::Wireframe { .. } => unreachable!("handled before the player lookup"),
-            ChatCommand::Give { item, amount } => {
+            ChatCommand::HelpCommand(_)
+            | ChatCommand::TimeSetCommand(_)
+            | ChatCommand::TimeAddCommand(_)
+            | ChatCommand::TimeQueryCommand(_)
+            | ChatCommand::WireframeCommand { .. } => {
+                unreachable!("handled before the player lookup")
+            }
+            ChatCommand::GiveCommand { item, amount } => {
                 let overflow = give_to_inventory(item, amount, &mut hotbar, &mut inventory);
                 let dropped: u32 = overflow.iter().map(|stack| u32::from(stack.count())).sum();
                 let cell = (transform.translation - Vec3::Y * size.y_offset)
@@ -206,7 +208,7 @@ impl CommandContext<'_, '_> {
                     format!("Gave {amount} of item {}", item.as_u16())
                 }
             }
-            ChatCommand::Teleport(destination) => {
+            ChatCommand::TeleportCommand(destination) => {
                 transform.translation = destination;
                 interpolation.previous_position = destination;
                 velocity.0 = Vec3::ZERO;
@@ -216,7 +218,7 @@ impl CommandContext<'_, '_> {
                     destination.x, destination.y, destination.z
                 )
             }
-            ChatCommand::Summon(kind) => {
+            ChatCommand::SummonCommand(kind) => {
                 let feet =
                     transform.translation - Vec3::Y * size.y_offset + *transform.forward() * 2.0;
                 if !chunks.contains(ChunkPosition::from_world(feet.x, feet.z)) {
@@ -226,7 +228,7 @@ impl CommandContext<'_, '_> {
                     format!("Summoned {}", kind.name())
                 }
             }
-            ChatCommand::Weather {
+            ChatCommand::WeatherCommand {
                 raining,
                 thundering,
             } => {
@@ -256,7 +258,7 @@ impl CommandContext<'_, '_> {
                     "Weather is unavailable".to_owned()
                 }
             }
-            ChatCommand::SetBlock { position, block } => {
+            ChatCommand::SetBlockCommand { position, block } => {
                 // Chunk replacement clears container storage. Spill it first,
                 // just as player block removal does, rather than deleting items.
                 let furnace_drops = if block.is_furnace() {

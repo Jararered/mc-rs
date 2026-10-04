@@ -2,11 +2,12 @@
     pbr_functions::alpha_discard,
     pbr_fragment::pbr_input_from_standard_material,
     forward_io::{VertexOutput, FragmentOutput},
-    pbr_functions::{apply_pbr_lighting, main_pass_post_lighting_processing},
+    pbr_functions::apply_pbr_lighting,
     pbr_types::STANDARD_MATERIAL_FLAGS_UNLIT_BIT,
     mesh_functions,
     mesh_view_bindings::globals,
 }
+#import game::gamma_fog::gamma_fog_post_lighting
 
 /// `x` is the layer: 0 a lit skin, 1 a glow (spider eyes), 2 an additive
 /// charge. `y` scrolls the texture, in UV units per second.
@@ -55,14 +56,14 @@ fn fragment(vertex: VertexOutput, @builtin(front_facing) is_front: bool) -> Frag
         // `RenderCreeper`'s charge: half-bright, unlit, added on top.
         let base = pbr_input.material.base_color;
         out.color = vec4(base.rgb * 0.5, 1.0);
-        out.color = main_pass_post_lighting_processing(pbr_input, out.color);
+        out.color = gamma_fog_post_lighting(pbr_input, out.color);
         return out;
     }
     if mode == 1u {
         // `RenderSpider`'s eyes: lit but not darkened, fading in at night.
         let base = pbr_input.material.base_color;
         out.color = vec4(base.rgb * min(shade, 1.0), base.a * tag.alpha);
-        out.color = main_pass_post_lighting_processing(pbr_input, out.color);
+        out.color = gamma_fog_post_lighting(pbr_input, out.color);
         return out;
     }
 
@@ -90,6 +91,6 @@ fn fragment(vertex: VertexOutput, @builtin(front_facing) is_front: bool) -> Frag
     color = mix(color, hurt_tone, tag.hurt * 0.4);
     color = mix(color, flash_tone, tag.flash);
     out.color = vec4(color, base.a * tag.alpha);
-    out.color = main_pass_post_lighting_processing(pbr_input, out.color);
+    out.color = gamma_fog_post_lighting(pbr_input, out.color);
     return out;
 }

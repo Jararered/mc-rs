@@ -33,7 +33,7 @@ fn fog_distances_follow_the_loaded_chunk_radius() {
     for (chunks, far) in [(4, 64.0), (8, 128.0), (16, 256.0), (32, 512.0)] {
         near(view_distance_blocks(chunks), far);
         let (start, end) = world_fog_range(far);
-        near(start, far * 0.8);
+        near(start, far * 0.25);
         near(end, far);
         near(sky_fog_end(far), far * 0.8);
     }

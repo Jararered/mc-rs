@@ -3,6 +3,7 @@
 pub mod appearance;
 pub mod clouds;
 pub mod creatures;
+mod gamma_fog;
 pub mod icons;
 mod item_tiles;
 pub mod meshing;

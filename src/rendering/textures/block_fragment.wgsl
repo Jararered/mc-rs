@@ -10,6 +10,7 @@
     decal::clustered::apply_decals,
 }
 #import game::block_vertex::fix_repeat_uv
+#import game::gamma_fog::gamma_fog_post_lighting
 
 #ifdef PREPASS_PIPELINE
 #import bevy_pbr::{
@@ -19,7 +20,7 @@
 #else
 #import bevy_pbr::{
     forward_io::{VertexOutput, FragmentOutput},
-    pbr_functions::{apply_pbr_lighting, main_pass_post_lighting_processing},
+    pbr_functions::apply_pbr_lighting,
     pbr_types::STANDARD_MATERIAL_FLAGS_UNLIT_BIT,
 }
 #endif
@@ -100,7 +101,7 @@ fn fragment(
 
     // apply in-shader post processing (fog, alpha-premultiply, and also tonemapping, debanding if the camera is non-hdr)
     // note this does not include fullscreen postprocessing effects like bloom.
-    out.color = main_pass_post_lighting_processing(pbr_input, out.color);
+    out.color = gamma_fog_post_lighting(pbr_input, out.color);
 #endif
 
 #ifdef OIT_ENABLED

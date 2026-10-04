@@ -76,6 +76,7 @@ pub(super) fn plugin(app: &mut App) {
     if !app.world().contains_resource::<Assets<Shader>>() {
         app.init_asset::<Shader>();
     }
+    crate::rendering::gamma_fog::register(app);
     app.add_plugins(MaterialPlugin::<CreatureMaterial>::default());
     load_internal_asset!(
         app,

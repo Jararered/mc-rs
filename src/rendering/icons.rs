@@ -170,7 +170,7 @@ pub fn build(mut icons: ResMut<BlockIcons>, mut images: ResMut<Assets<Image>>) {
             _ => 0,
         };
         for data in 0..=max_data {
-            let id = definition.id.as_u16();
+            let id = definition.item.as_u16();
             let icon = if id < 256 {
                 render_block_icon(&terrain, id as u8, data)
             } else if let Some(tile) = item_tile(id, data) {

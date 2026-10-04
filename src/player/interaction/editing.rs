@@ -13,10 +13,8 @@ use crate::block::blocks::FurnaceFacing;
 use crate::block::fluids::Fluid;
 use crate::block::fluids::is_water;
 use crate::block::properties::cactus_can_stay;
-use crate::block::properties::is_breakable;
 use crate::block::properties::is_crossed_plant;
 use crate::block::properties::is_opaque_cube;
-use crate::block::properties::is_replaceable;
 use crate::block::properties::is_solid_material;
 use crate::block::properties::is_torch;
 use crate::block::properties::plant_grows_on;
@@ -736,7 +734,7 @@ fn apply_break(
 
 /// Remove a targeted block. Bedrock and missing chunks are left unchanged.
 pub fn break_block(chunks: &mut WorldChunks, hit: BlockHit) -> bool {
-    if !is_breakable(hit.block) {
+    if !hit.block.is_breakable() {
         return false;
     }
     let broken = chunks
@@ -797,7 +795,7 @@ pub fn place_selected_block_facing(
     let Some(current) = chunks.block_at(x, y, z) else {
         return false;
     };
-    if !is_replaceable(current) {
+    if !current.is_replaceable() {
         return false;
     }
     if selected == Block::Chest && !chest_can_place_at(chunks, x, y, z) {

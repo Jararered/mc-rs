@@ -5,9 +5,7 @@ use bevy::prelude::Vec3;
 
 use crate::block::blocks::Block;
 use crate::block::fluids::is_liquid;
-use crate::block::properties::is_targetable;
 use crate::block::properties::is_torch;
-use crate::block::properties::selection_bounds;
 use crate::world::chunk::WorldChunks;
 
 /// Survival-style block reach. Creative in Beta used 5; this matches the default
@@ -115,7 +113,7 @@ pub fn block_hit_distance(
     origin: Vec3,
     direction: Vec3,
 ) -> f32 {
-    let (min, mut max) = selection_bounds(hit.block);
+    let (min, mut max) = hit.block.selection_bounds();
     if hit.block == Block::SnowLayer {
         max[1] = (f32::from(chunks.metadata_at(hit.x, hit.y, hit.z).min(7)) + 1.0) / 8.0;
     }
@@ -269,11 +267,11 @@ fn hit_at(
     include_liquid: bool,
 ) -> Option<BlockHit> {
     let block = chunks.block_at(x, y, z)?;
-    if !is_targetable(block) && !(include_liquid && is_liquid(block)) {
+    if !block.is_targetable() && !(include_liquid && is_liquid(block)) {
         return None;
     }
     if is_torch(block) || matches!(block, Block::SnowLayer | Block::Farmland | Block::Crops) {
-        let (min, mut max) = selection_bounds(block);
+        let (min, mut max) = block.selection_bounds();
         if block == Block::SnowLayer {
             max[1] = (f32::from(chunks.metadata_at(x, y, z).min(7)) + 1.0) / 8.0;
         }

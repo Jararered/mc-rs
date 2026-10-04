@@ -4,7 +4,6 @@
 //! does not reset progress. Looking at a different block does.
 
 use crate::block::blocks::Block;
-use crate::block::properties::is_breakable;
 use crate::item::ItemStack;
 use crate::item::tools::mine_step;
 use crate::item::tools::ticks_to_break;
@@ -49,7 +48,7 @@ impl MiningState {
         on_ground: bool,
         in_water: bool,
     ) -> Option<BlockHit> {
-        if !is_breakable(hit.block) {
+        if !hit.block.is_breakable() {
             return None;
         }
         if mine_step(hit.block, tool, on_ground, in_water) < 1.0 {
@@ -77,7 +76,7 @@ impl MiningState {
             self.damage = 0.0;
             return None;
         };
-        if !is_breakable(hit.block) {
+        if !hit.block.is_breakable() {
             self.target = None;
             self.damage = 0.0;
             return None;

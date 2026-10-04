@@ -27,7 +27,7 @@ impl ItemData {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ItemProperties {
-    pub id: Item,
+    pub item: Item,
     pub max_stack_size: u8,
     pub data: ItemData,
     /// Present for direct block items, not special items such as doors/buckets.
@@ -37,7 +37,7 @@ pub struct ItemProperties {
 impl ItemProperties {
     /// Beta crafting remainder, for example an empty bucket left by milk.
     pub const fn container_item(self) -> Option<Item> {
-        match self.id {
+        match self.item {
             Item::MilkBucket => Some(Item::Bucket),
             _ => None,
         }
@@ -160,9 +160,9 @@ pub enum Item {
     #[num_enum(catch_all)]
     BlockOrUnknown(u16),
 }
-const fn standalone(id: Item, max_stack_size: u8, data: ItemData) -> ItemProperties {
+const fn standalone(item: Item, max_stack_size: u8, data: ItemData) -> ItemProperties {
     ItemProperties {
-        id,
+        item,
         max_stack_size,
         data,
         block: None,
@@ -199,7 +199,7 @@ impl Item {
     pub fn properties(self) -> Option<ItemProperties> {
         if let Some(block) = self.block() {
             return Some(ItemProperties {
-                id: self,
+                item: self,
                 max_stack_size: 64,
                 data: block.item_data(),
                 block: Some(block),

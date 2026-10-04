@@ -1,7 +1,7 @@
 use game::block::blocks::Block;
 use game::inventory::Hotbar;
-use game::item::ItemData;
 use game::item::Item;
+use game::item::ItemData;
 use game::item::ItemRegistry;
 use game::item::ItemStack;
 use game::item::StackError;
@@ -62,7 +62,7 @@ fn registries_cover_beta_ranges_without_registering_holes_or_air_items() {
             matches!(raw, 1..=96 | 256..=359 | 2256..=2257)
         );
         if let Some(item) = item {
-            assert_eq!(item.id.as_u16(), raw);
+            assert_eq!(item.item.as_u16(), raw);
             assert!((1..=64).contains(&item.max_stack_size));
         }
     }
@@ -94,22 +94,16 @@ fn known_beta_identities_do_not_use_the_native_variant_ids() {
     assert_eq!(Item::from_block(Block::Stone).unwrap().as_u16(), 1);
     assert!(Item::from_block(Block::SpruceWood).is_none());
     assert_eq!(
-        ItemRegistry::get(257).unwrap().id.to_string(),
+        ItemRegistry::get(257).unwrap().item.to_string(),
         "IronPickaxe"
     );
 }
 
 #[test]
 fn item_ids_format_as_their_rust_variants() {
-    assert_eq!(
-        Item::from_block(Block::Stone).unwrap().to_string(),
-        "Stone"
-    );
+    assert_eq!(Item::from_block(Block::Stone).unwrap().to_string(), "Stone");
     assert_eq!(Item::IronPickaxe.to_string(), "IronPickaxe");
-    assert_eq!(
-        Item::BlockOrUnknown(999).to_string(),
-        "BlockOrUnknown(999)"
-    );
+    assert_eq!(Item::BlockOrUnknown(999).to_string(), "BlockOrUnknown(999)");
 }
 
 #[test]
@@ -238,10 +232,7 @@ fn species_survive_stacks_but_torch_attachments_do_not() {
 fn insertion_merges_before_empty_slots_and_preserves_subtypes() {
     let mut hotbar = Hotbar::default();
     hotbar.slots[4] = Some(ItemStack::new(Item::Coal, 60).unwrap());
-    assert_eq!(
-        hotbar.insert(ItemStack::new(Item::Coal, 10).unwrap()),
-        None
-    );
+    assert_eq!(hotbar.insert(ItemStack::new(Item::Coal, 10).unwrap()), None);
     assert_eq!(hotbar.slots[4].unwrap().count(), 64);
     assert_eq!(hotbar.slots[0].unwrap().count(), 6);
     let charcoal = ItemStack::with_data(Item::Coal, 10, 1).unwrap();
@@ -269,8 +260,8 @@ fn full_hotbar_returns_exact_remainder_and_does_not_stack_tools() {
     assert_eq!(hotbar.insert(tool), Some(tool));
 }
 
-fn held(id: Item) -> Option<ItemStack> {
-    Some(ItemStack::new(id, 1).unwrap())
+fn held(item: Item) -> Option<ItemStack> {
+    Some(ItemStack::new(item, 1).unwrap())
 }
 
 fn break_ticks(tool: Option<Item>, block: Block, on_ground: bool, in_water: bool) -> Option<u32> {
@@ -304,10 +295,7 @@ fn tool_break_times_match_beta_173() {
     assert_eq!(t(Some(Item::WoodenPickaxe), Block::CoalOre), Some(45));
     assert_eq!(t(Some(Item::DiamondPickaxe), Block::CoalOre), Some(12));
     assert_eq!(t(Some(Item::IronPickaxe), Block::RedstoneOre), Some(90));
-    assert_eq!(
-        t(Some(Item::IronPickaxe), Block::LitRedstoneOre),
-        Some(90)
-    );
+    assert_eq!(t(Some(Item::IronPickaxe), Block::LitRedstoneOre), Some(90));
     assert_eq!(t(Some(Item::WoodenPickaxe), Block::Furnace), Some(105));
     assert_eq!(t(Some(Item::GoldPickaxe), Block::Dispenser), Some(105));
     assert_eq!(t(Some(Item::StonePickaxe), Block::LitFurnace), Some(105));

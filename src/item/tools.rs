@@ -8,12 +8,11 @@ use super::Item;
 use super::ItemStack;
 use crate::block::blocks::Block;
 use crate::block::properties::harvestable_by_hand;
-use crate::block::properties::is_breakable;
 use crate::block::properties::mine_progress_per_tick;
 
 /// `EnumToolMaterial` harvest level and `efficiencyOnProperMaterial`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Tier {
+enum ToolTier {
     Wood,
     Stone,
     Iron,
@@ -21,7 +20,7 @@ enum Tier {
     Gold,
 }
 
-impl Tier {
+impl ToolTier {
     const fn level(self) -> u8 {
         match self {
             Self::Wood | Self::Gold => 0,
@@ -43,43 +42,43 @@ impl Tier {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Kind {
-    Pick(Tier),
-    Axe(Tier),
-    Shovel(Tier),
-    Sword(Tier),
-    Hoe(Tier),
+enum ToolType {
+    Pick(ToolTier),
+    Axe(ToolTier),
+    Shovel(ToolTier),
+    Sword(ToolTier),
+    Hoe(ToolTier),
     Shears,
 }
 
-fn kind(id: Item) -> Option<Kind> {
-    Some(match id {
-        Item::WoodenPickaxe => Kind::Pick(Tier::Wood),
-        Item::StonePickaxe => Kind::Pick(Tier::Stone),
-        Item::IronPickaxe => Kind::Pick(Tier::Iron),
-        Item::DiamondPickaxe => Kind::Pick(Tier::Diamond),
-        Item::GoldPickaxe => Kind::Pick(Tier::Gold),
-        Item::WoodenAxe => Kind::Axe(Tier::Wood),
-        Item::StoneAxe => Kind::Axe(Tier::Stone),
-        Item::IronAxe => Kind::Axe(Tier::Iron),
-        Item::DiamondAxe => Kind::Axe(Tier::Diamond),
-        Item::GoldAxe => Kind::Axe(Tier::Gold),
-        Item::WoodenShovel => Kind::Shovel(Tier::Wood),
-        Item::StoneShovel => Kind::Shovel(Tier::Stone),
-        Item::IronShovel => Kind::Shovel(Tier::Iron),
-        Item::DiamondShovel => Kind::Shovel(Tier::Diamond),
-        Item::GoldShovel => Kind::Shovel(Tier::Gold),
-        Item::WoodenSword => Kind::Sword(Tier::Wood),
-        Item::StoneSword => Kind::Sword(Tier::Stone),
-        Item::IronSword => Kind::Sword(Tier::Iron),
-        Item::DiamondSword => Kind::Sword(Tier::Diamond),
-        Item::GoldSword => Kind::Sword(Tier::Gold),
-        Item::WoodenHoe => Kind::Hoe(Tier::Wood),
-        Item::StoneHoe => Kind::Hoe(Tier::Stone),
-        Item::IronHoe => Kind::Hoe(Tier::Iron),
-        Item::DiamondHoe => Kind::Hoe(Tier::Diamond),
-        Item::GoldHoe => Kind::Hoe(Tier::Gold),
-        Item::Shears => Kind::Shears,
+fn tool_type(item: Item) -> Option<ToolType> {
+    Some(match item {
+        Item::WoodenPickaxe => ToolType::Pick(ToolTier::Wood),
+        Item::StonePickaxe => ToolType::Pick(ToolTier::Stone),
+        Item::IronPickaxe => ToolType::Pick(ToolTier::Iron),
+        Item::DiamondPickaxe => ToolType::Pick(ToolTier::Diamond),
+        Item::GoldPickaxe => ToolType::Pick(ToolTier::Gold),
+        Item::WoodenAxe => ToolType::Axe(ToolTier::Wood),
+        Item::StoneAxe => ToolType::Axe(ToolTier::Stone),
+        Item::IronAxe => ToolType::Axe(ToolTier::Iron),
+        Item::DiamondAxe => ToolType::Axe(ToolTier::Diamond),
+        Item::GoldAxe => ToolType::Axe(ToolTier::Gold),
+        Item::WoodenShovel => ToolType::Shovel(ToolTier::Wood),
+        Item::StoneShovel => ToolType::Shovel(ToolTier::Stone),
+        Item::IronShovel => ToolType::Shovel(ToolTier::Iron),
+        Item::DiamondShovel => ToolType::Shovel(ToolTier::Diamond),
+        Item::GoldShovel => ToolType::Shovel(ToolTier::Gold),
+        Item::WoodenSword => ToolType::Sword(ToolTier::Wood),
+        Item::StoneSword => ToolType::Sword(ToolTier::Stone),
+        Item::IronSword => ToolType::Sword(ToolTier::Iron),
+        Item::DiamondSword => ToolType::Sword(ToolTier::Diamond),
+        Item::GoldSword => ToolType::Sword(ToolTier::Gold),
+        Item::WoodenHoe => ToolType::Hoe(ToolTier::Wood),
+        Item::StoneHoe => ToolType::Hoe(ToolTier::Stone),
+        Item::IronHoe => ToolType::Hoe(ToolTier::Iron),
+        Item::DiamondHoe => ToolType::Hoe(ToolTier::Diamond),
+        Item::GoldHoe => ToolType::Hoe(ToolTier::Gold),
+        Item::Shears => ToolType::Shears,
         _ => return None,
     })
 }
@@ -88,37 +87,37 @@ fn kind(id: Item) -> Option<Kind> {
 /// material's damage, `ItemTool` its base (shovel 1, pickaxe 2, axe 3) plus
 /// the material's damage, and anything else, or an empty hand, deals 1.
 pub fn damage_vs_entity(held: Option<ItemStack>) -> i16 {
-    let Some(kind) = held.and_then(|stack| kind(stack.item())) else {
+    let Some(kind) = held.and_then(|stack| tool_type(stack.item())) else {
         return 1;
     };
-    let material = |tier: Tier| match tier {
-        Tier::Wood | Tier::Gold => 0,
-        Tier::Stone => 1,
-        Tier::Iron => 2,
-        Tier::Diamond => 3,
+    let material = |tier: ToolTier| match tier {
+        ToolTier::Wood | ToolTier::Gold => 0,
+        ToolTier::Stone => 1,
+        ToolTier::Iron => 2,
+        ToolTier::Diamond => 3,
     };
     match kind {
-        Kind::Sword(tier) => 4 + material(tier) * 2,
-        Kind::Shovel(tier) => 1 + material(tier),
-        Kind::Pick(tier) => 2 + material(tier),
-        Kind::Axe(tier) => 3 + material(tier),
-        Kind::Hoe(_) | Kind::Shears => 1,
+        ToolType::Sword(tier) => 4 + material(tier) * 2,
+        ToolType::Shovel(tier) => 1 + material(tier),
+        ToolType::Pick(tier) => 2 + material(tier),
+        ToolType::Axe(tier) => 3 + material(tier),
+        ToolType::Hoe(_) | ToolType::Shears => 1,
     }
 }
 
 /// `Item.hitEntity` wear: a sword loses 1 durability per hit and a tool 2.
 /// Hoes and shears are plain items in Beta and do not wear.
 pub fn hit_durability(held: ItemStack) -> u16 {
-    match kind(held.item()) {
-        Some(Kind::Sword(_)) => 1,
-        Some(Kind::Pick(_) | Kind::Axe(_) | Kind::Shovel(_)) => 2,
+    match tool_type(held.item()) {
+        Some(ToolType::Sword(_)) => 1,
+        Some(ToolType::Pick(_) | ToolType::Axe(_) | ToolType::Shovel(_)) => 2,
         _ => 0,
     }
 }
 
 /// Whether an item is one of Beta's hoes.
-pub fn is_hoe(id: Item) -> bool {
-    matches!(kind(id), Some(Kind::Hoe(_)))
+pub fn is_hoe(item: Item) -> bool {
+    matches!(tool_type(item), Some(ToolType::Hoe(_)))
 }
 
 fn is_log(block: Block) -> bool {
@@ -187,15 +186,15 @@ pub fn str_vs_block(tool: Option<ItemStack>, block: Block) -> f32 {
     let Some(tool) = tool else {
         return 1.0;
     };
-    match kind(tool.item()) {
-        Some(Kind::Pick(tier)) if pick_effective(block) => tier.efficiency(),
-        Some(Kind::Axe(tier)) if axe_effective(block) => tier.efficiency(),
-        Some(Kind::Shovel(tier)) if shovel_effective(block) => tier.efficiency(),
+    match tool_type(tool.item()) {
+        Some(ToolType::Pick(tier)) if pick_effective(block) => tier.efficiency(),
+        Some(ToolType::Axe(tier)) if axe_effective(block) => tier.efficiency(),
+        Some(ToolType::Shovel(tier)) if shovel_effective(block) => tier.efficiency(),
         // `ItemSword.getStrVsBlock` is 15 on web and 1.5 on everything else.
-        Some(Kind::Sword(_)) if block == Block::Cobweb => 15.0,
-        Some(Kind::Sword(_)) => 1.5,
-        Some(Kind::Shears) if is_leaves(block) || block == Block::Cobweb => 15.0,
-        Some(Kind::Shears) if block == Block::Wool => 5.0,
+        Some(ToolType::Sword(_)) if block == Block::Cobweb => 15.0,
+        Some(ToolType::Sword(_)) => 1.5,
+        Some(ToolType::Shears) if is_leaves(block) || block == Block::Cobweb => 15.0,
+        Some(ToolType::Shears) if block == Block::Wool => 5.0,
         _ => 1.0,
     }
 }
@@ -210,21 +209,21 @@ pub fn can_harvest(tool: Option<ItemStack>, block: Block) -> bool {
     tool.is_some_and(|tool| tool_can_harvest(tool.item(), block))
 }
 
-fn tool_can_harvest(id: Item, block: Block) -> bool {
-    match kind(id) {
-        Some(Kind::Pick(tier)) => pick_can_harvest(tier, block),
+fn tool_can_harvest(item: Item, block: Block) -> bool {
+    match tool_type(item) {
+        Some(ToolType::Pick(tier)) => pick_can_harvest(tier, block),
         // `ItemSpade.canHarvestBlock`: the snow layer and the snow block.
-        Some(Kind::Shovel(_)) => matches!(block, Block::Snow | Block::SnowLayer),
+        Some(ToolType::Shovel(_)) => matches!(block, Block::Snow | Block::SnowLayer),
         // `ItemSword` and `ItemShears` harvest web only. Leaves are already
         // hand-harvestable; shears change the drop, not this gate.
-        Some(Kind::Sword(_) | Kind::Shears) => block == Block::Cobweb,
+        Some(ToolType::Sword(_) | ToolType::Shears) => block == Block::Cobweb,
         _ => false,
     }
 }
 
 /// `ItemPickaxe.canHarvestBlock`. Rock and iron fall through to any pick.
 /// Iron blocks and the tiered ores are handled before that fallthrough.
-fn pick_can_harvest(tier: Tier, block: Block) -> bool {
+fn pick_can_harvest(tier: ToolTier, block: Block) -> bool {
     let level = tier.level();
     if block == Block::Obsidian {
         return level == 3;
@@ -269,10 +268,10 @@ fn pick_can_harvest(tier: Tier, block: Block) -> bool {
 /// Damage from `onBlockDestroyed`. Picks, axes, and shovels always lose one
 /// use. Swords lose two. Shears lose one on leaves and web. Hoes lose none.
 pub fn break_durability(tool: ItemStack, block: Block) -> u16 {
-    match kind(tool.item()) {
-        Some(Kind::Pick(_) | Kind::Axe(_) | Kind::Shovel(_)) => 1,
-        Some(Kind::Sword(_)) => 2,
-        Some(Kind::Shears) if is_leaves(block) || block == Block::Cobweb => 1,
+    match tool_type(tool.item()) {
+        Some(ToolType::Pick(_) | ToolType::Axe(_) | ToolType::Shovel(_)) => 1,
+        Some(ToolType::Sword(_)) => 2,
+        Some(ToolType::Shears) if is_leaves(block) || block == Block::Cobweb => 1,
         _ => 0,
     }
 }
@@ -296,7 +295,7 @@ pub fn ticks_to_break(
     on_ground: bool,
     in_water: bool,
 ) -> Option<u32> {
-    if !is_breakable(block) {
+    if !block.is_breakable() {
         return None;
     }
     let step = mine_step(block, tool, on_ground, in_water);

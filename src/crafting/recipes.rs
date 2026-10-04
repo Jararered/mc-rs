@@ -153,14 +153,14 @@ impl RecipeBook {
 fn b(block: Block) -> Item {
     Item::from_block(block).expect("air is not an item")
 }
-fn i(id: Item) -> Ingredient {
-    Ingredient::any(id)
+fn i(item: Item) -> Ingredient {
+    Ingredient::any(item)
 }
-fn d(id: Item, data: u16) -> Ingredient {
-    Ingredient::exact(id, data)
+fn d(item: Item, data: u16) -> Ingredient {
+    Ingredient::exact(item, data)
 }
-fn out(id: Item, count: u8, data: u16) -> ItemStack {
-    ItemStack::with_data(id, count, data).expect("registered Beta recipe output")
+fn out(item: Item, count: u8, data: u16) -> ItemStack {
+    ItemStack::with_data(item, count, data).expect("registered Beta recipe output")
 }
 
 impl RecipeBook {

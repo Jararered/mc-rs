@@ -172,32 +172,6 @@ pub(crate) fn torch_selection_bounds(block: Block) -> ([f32; 3], [f32; 3]) {
     (min, max)
 }
 
-/// Local bounds used for picking and the hover outline.
-pub fn selection_bounds(block: Block) -> ([f32; 3], [f32; 3]) {
-    definition::properties(block).selection_bounds
-}
-
-/// Whether the player's block selection ray should stop on this block.
-pub fn is_targetable(block: Block) -> bool {
-    definition::properties(block).targetable
-}
-
-/// Whether a placed block may replace this cell.
-pub fn is_replaceable(block: Block) -> bool {
-    definition::properties(block).replaceable
-}
-
-/// Whether the player may mine this block. Bedrock is unbreakable.
-pub fn is_breakable(block: Block) -> bool {
-    let properties = definition::properties(block);
-    properties.targetable && properties.hardness >= 0.0
-}
-
-/// Beta `Block.blockHardness`. Negative means unbreakable (`setBlockUnbreakable`).
-pub fn hardness(block: Block) -> f32 {
-    definition::properties(block).hardness
-}
-
 /// `Block.getExplosionResistance`: `blockResistance / 5`. `setHardness` raises
 /// the resistance to five times the hardness, and an explicit `setResistance`
 /// afterwards replaces it with three times its argument. Stairs copy their
@@ -231,7 +205,7 @@ pub fn explosion_resistance(block: Block) -> f32 {
         Block::Lava => return 100.0,
         _ => None,
     };
-    explicit.map_or_else(|| hardness(block).max(0.0), |resistance| resistance * 0.6)
+    explicit.map_or_else(|| block.hardness().max(0.0), |resistance| resistance * 0.6)
 }
 
 /// Empty-hand `InventoryPlayer.canHarvestBlock`.
@@ -252,7 +226,7 @@ pub fn mine_progress_per_tick(
     on_ground: bool,
     in_water: bool,
 ) -> f32 {
-    let hardness = hardness(block);
+    let hardness = block.hardness();
     if hardness < 0.0 {
         return 0.0;
     }

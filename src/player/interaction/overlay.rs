@@ -6,7 +6,6 @@ use bevy::prelude::*;
 use bevy::render::render_resource::PrimitiveTopology;
 
 use crate::app::state::AppScreen;
-use crate::block::properties::selection_bounds;
 use crate::physics::BlockHit;
 use crate::physics::PhysicsSet;
 use crate::rendering::textures::BlockMaterial;
@@ -175,7 +174,7 @@ fn update_block_overlays(
     };
 
     let block_transform = focus.hit.map(|hit| {
-        let (min, max) = selection_bounds(hit.block);
+        let (min, max) = hit.block.selection_bounds();
         let min = Vec3::from_array(min);
         let max = Vec3::from_array(max);
         Transform::from_translation(
@@ -228,7 +227,7 @@ fn draw_selection_outline(focus: Res<BlockFocus>, gizmos: Option<Gizmos>) {
     let Some(hit) = focus.hit else {
         return;
     };
-    let (min, max) = selection_bounds(hit.block);
+    let (min, max) = hit.block.selection_bounds();
     let min = Vec3::from_array(min);
     let max = Vec3::from_array(max);
     let center = Vec3::new(hit.x as f32, hit.y as f32, hit.z as f32) + (min + max) * 0.5;

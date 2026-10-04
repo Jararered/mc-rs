@@ -1,6 +1,8 @@
 //! Compact chunk block identity. Discriminants `0..=96` retain Beta block ids;
 //! private values encode species and oriented states in the current save format.
 
+use crate::block::definition;
+
 pub use super::state::FurnaceFacing;
 use num_enum::FromPrimitive;
 use num_enum::IntoPrimitive;
@@ -176,5 +178,31 @@ impl Block {
 
     pub fn is_leaves(self) -> bool {
         matches!(self, Block::SpruceLeaves | Block::BirchLeaves)
+    }
+
+    /// Local bounds used for picking and the hover outline.
+    pub fn selection_bounds(self) -> ([f32; 3], [f32; 3]) {
+        definition::properties(self).selection_bounds
+    }
+
+    /// Whether the player's block selection ray should stop on this block.
+    pub fn is_targetable(self) -> bool {
+        definition::properties(self).targetable
+    }
+
+    /// Whether a placed block may replace this cell.
+    pub fn is_replaceable(self) -> bool {
+        definition::properties(self).replaceable
+    }
+
+    /// Whether the player may mine this block. Bedrock is unbreakable.
+    pub fn is_breakable(self) -> bool {
+        let properties = definition::properties(self);
+        properties.targetable && properties.hardness >= 0.0
+    }
+
+    /// Beta `Block.blockHardness`. Negative means unbreakable (`setBlockUnbreakable`).
+    pub fn hardness(self) -> f32 {
+        definition::properties(self).hardness
     }
 }

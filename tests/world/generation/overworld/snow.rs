@@ -1,5 +1,4 @@
 use game::block::blocks::Block;
-use game::block::properties::blocks_movement;
 use game::world::chunk::CHUNK_HEIGHT;
 use game::world::chunk::CHUNK_SIZE;
 use game::world::chunk::ChunkPosition;
@@ -33,7 +32,7 @@ fn snow_layers_are_generated_only_on_cold_exposed_surfaces() {
                             );
                             let support = generated.chunk.get(local_x, y - 1, local_z).unwrap();
                             assert_ne!(support, Block::Ice);
-                            assert!(blocks_movement(support));
+                            assert!(support.blocks_movement());
                             let adjusted_temperature =
                                 climate.temperature - (y as f64 - 64.0) / 64.0 * 0.3;
                             assert!(adjusted_temperature < 0.5);

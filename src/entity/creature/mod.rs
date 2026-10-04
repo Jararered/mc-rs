@@ -40,8 +40,6 @@ use crate::app::settings::GameSettings;
 use crate::block::blocks::Block;
 use crate::block::fluids::is_water;
 use crate::block::fluids::percent_air;
-use crate::block::properties::is_opaque_cube;
-use crate::block::properties::slipperiness;
 use crate::entity::CollisionState;
 use crate::entity::EntityDiagnostics;
 use crate::entity::EntitySize;
@@ -726,7 +724,7 @@ impl Body<'_> {
                     at.y.floor() as i32,
                     at.z.floor() as i32,
                 )
-                .is_some_and(is_opaque_cube)
+                .is_some_and(Block::is_opaque_cube)
         })
     }
 
@@ -1107,7 +1105,7 @@ impl Body<'_> {
             self.aabb().min.y.floor() as i32 - 1,
             self.feet.z.floor() as i32,
         ) {
-            Some(block) if block != Block::Air => slipperiness(block) * 0.91,
+            Some(block) if block != Block::Air => block.slipperiness() * 0.91,
             _ => 0.546,
         }
     }

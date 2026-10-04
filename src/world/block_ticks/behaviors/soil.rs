@@ -3,7 +3,6 @@
 use bevy::math::IVec3;
 
 use crate::block::blocks::Block;
-use crate::block::definition::light_opacity;
 use crate::world::block_ticks::BlockBehavior;
 use crate::world::block_ticks::TickWorld;
 
@@ -23,7 +22,7 @@ impl BlockBehavior for Grass {
     fn update_tick(&self, world: &mut TickWorld, position: IVec3) {
         let above = position + IVec3::Y;
         let light = world.light(above);
-        if light < 4 && light_opacity(world.block(above)) > 2 {
+        if light < 4 && world.block(above).light_opacity() > 2 {
             if world.random().next_int(4) != 0 {
                 return;
             }
@@ -37,7 +36,7 @@ impl BlockBehavior for Grass {
             let over = target + IVec3::Y;
             if world.block(target) == Block::Dirt
                 && world.light(over) >= 4
-                && light_opacity(world.block(over)) <= 2
+                && world.block(over).light_opacity() <= 2
             {
                 world.set_block_notify(target, Block::Grass);
             }

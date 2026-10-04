@@ -3,12 +3,6 @@ use std::time::Duration;
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
 use game::block::blocks::Block;
-use game::block::properties::blocks_movement;
-use game::block::properties::collision_bounds;
-use game::block::properties::is_breakable;
-use game::block::properties::is_replaceable;
-use game::block::properties::is_targetable;
-use game::block::properties::selection_bounds;
 use game::entity::CollisionState;
 use game::entity::EntitySize;
 use game::entity::Gravity;
@@ -106,21 +100,21 @@ fn player_fluid_tick(fluid: Block, velocity: Vec3, jumping: bool) -> (Vec3, Vec3
 
 #[test]
 fn air_and_water_do_not_block_movement() {
-    assert!(!blocks_movement(Block::Air));
-    assert!(!blocks_movement(Block::Water));
-    assert!(blocks_movement(Block::Stone));
-    assert!(blocks_movement(Block::Leaves));
-    assert!(blocks_movement(Block::Ice));
+    assert!(!Block::Air.blocks_movement());
+    assert!(!Block::Water.blocks_movement());
+    assert!(Block::Stone.blocks_movement());
+    assert!(Block::Leaves.blocks_movement());
+    assert!(Block::Ice.blocks_movement());
 }
 
 #[test]
 fn ladder_collision_is_a_thin_plate_on_the_supporting_wall() {
     assert_eq!(
-        collision_bounds(Block::LadderWest),
+        Block::LadderWest.collision_bounds(),
         Some(([0.0, 0.0, 0.0], [0.125, 1.0, 1.0]))
     );
     assert_eq!(
-        collision_bounds(Block::LadderSouth),
+        Block::LadderSouth.collision_bounds(),
         Some(([0.0, 0.0, 0.875], [1.0, 1.0, 1.0]))
     );
 }
@@ -159,17 +153,17 @@ fn horizontal_collision_with_a_ladder_starts_a_climb() {
 
 #[test]
 fn fluids_are_replaceable_and_bedrock_is_unbreakable() {
-    assert!(!is_targetable(Block::Air));
-    assert!(!is_targetable(Block::Water));
-    assert!(is_targetable(Block::Stone));
-    assert!(is_targetable(Block::Bedrock));
-    assert!(is_replaceable(Block::Air));
-    assert!(is_replaceable(Block::Water));
-    assert!(!is_replaceable(Block::Stone));
-    assert!(is_breakable(Block::Stone));
-    assert!(is_breakable(Block::Leaves));
-    assert!(!is_breakable(Block::Bedrock));
-    assert!(!is_breakable(Block::Water));
+    assert!(!Block::Air.is_targetable());
+    assert!(!Block::Water.is_targetable());
+    assert!(Block::Stone.is_targetable());
+    assert!(Block::Bedrock.is_targetable());
+    assert!(Block::Air.is_replaceable());
+    assert!(Block::Water.is_replaceable());
+    assert!(!Block::Stone.is_replaceable());
+    assert!(Block::Stone.is_breakable());
+    assert!(Block::Leaves.is_breakable());
+    assert!(!Block::Bedrock.is_breakable());
+    assert!(!Block::Water.is_breakable());
 }
 
 #[test]
@@ -180,7 +174,7 @@ fn raycast_only_hits_the_torch_near_its_visible_shaft() {
     chunks.insert(ChunkPosition::ZERO, generated(chunk));
 
     assert_eq!(
-        selection_bounds(Block::Torch),
+        Block::Torch.selection_bounds(),
         ([0.4, 0.0, 0.4], [0.6, 0.625, 0.6])
     );
     assert!(

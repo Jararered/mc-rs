@@ -6,8 +6,6 @@ use bevy::math::IVec3;
 
 use crate::block::blocks::Block;
 use crate::block::properties::cactus_can_stay;
-use crate::block::properties::is_opaque_cube;
-use crate::block::properties::plant_grows_on;
 use crate::block::properties::sugar_cane_can_stay;
 use crate::world::block_ticks::BlockBehavior;
 use crate::world::block_ticks::TickWorld;
@@ -19,8 +17,8 @@ fn grows_on(plant: Block, ground: Block) -> bool {
     match plant {
         Block::DeadBush => ground == Block::Sand,
         Block::Crops => ground == Block::Farmland,
-        Block::BrownMushroom | Block::RedMushroom => is_opaque_cube(ground),
-        _ => plant_grows_on(ground),
+        Block::BrownMushroom | Block::RedMushroom => ground.is_opaque_cube(),
+        _ => ground.supports_plants(),
     }
 }
 

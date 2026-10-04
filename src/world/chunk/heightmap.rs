@@ -1,6 +1,4 @@
 use crate::block::blocks::Block;
-use crate::block::properties::is_crossed_plant;
-use crate::block::properties::is_torch;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::Chunk;
@@ -69,6 +67,6 @@ fn occupies_column(block: Block) -> bool {
             | Block::BirchLeaves
             | Block::SpruceLeaves
     ) && !block.is_ladder()
-        && !is_torch(block)
-        && !is_crossed_plant(block)
+        && !block.is_torch()
+        && !block.is_crossed_plant()
 }

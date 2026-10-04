@@ -23,8 +23,6 @@ use crate::block::fluids::flow_vector;
 use crate::block::fluids::is_lava;
 use crate::block::fluids::is_water;
 use crate::block::fluids::percent_air;
-use crate::block::properties::collision_bounds;
-use crate::block::properties::slipperiness;
 use crate::entity::CollisionState;
 use crate::entity::DroppedItem;
 use crate::entity::EntitySize;
@@ -414,7 +412,7 @@ pub(crate) fn block_collision_box(chunks: &WorldChunks, x: i32, y: i32, z: i32) 
         if block == crate::block::blocks::Block::SnowLayer && chunks.metadata_at(x, y, z) >= 3 {
             ([0.0; 3], [1.0, 0.5, 1.0])
         } else {
-            collision_bounds(block)?
+            block.collision_bounds()?
         };
     let origin = Vec3::new(x as f32, y as f32, z as f32);
     Some(Aabb::new(
@@ -562,7 +560,7 @@ fn integrate_player(
             let support = block_under_player(&chunks, aabb);
             let mut drag = DEFAULT_AIR_DRAG;
             if collision.on_ground {
-                drag = support.map_or(0.6, slipperiness) * DEFAULT_AIR_DRAG;
+                drag = support.map_or(0.6, |block| block.slipperiness()) * DEFAULT_AIR_DRAG;
             }
 
             let acceleration = if collision.on_ground {
@@ -629,7 +627,7 @@ fn integrate_player(
                 .max(-TERMINAL_VELOCITY * TICK_SECONDS);
             let post_move_drag = if collision.on_ground {
                 block_under_player(&chunks, size.aabb(transform.translation))
-                    .map_or(0.6, slipperiness)
+                    .map_or(0.6, |block| block.slipperiness())
                     * DEFAULT_AIR_DRAG
             } else {
                 DEFAULT_AIR_DRAG

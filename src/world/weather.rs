@@ -6,7 +6,6 @@ use serde::Serialize;
 use crate::app::settings::Difficulty;
 use crate::app::state::AppScreen;
 use crate::block::blocks::Block;
-use crate::block::properties::is_opaque_cube;
 use crate::entity::Velocity;
 use crate::entity::combat::Hit;
 use crate::entity::combat::PlayerCombat;
@@ -178,7 +177,11 @@ pub fn can_strike(chunks: &WorldChunks, x: i32, y: i32, z: i32) -> bool {
     }) {
         return false;
     }
-    (y..CHUNK_HEIGHT as i32).all(|above| !chunks.block_at(x, above, z).is_some_and(is_opaque_cube))
+    (y..CHUNK_HEIGHT as i32).all(|above| {
+        !chunks
+            .block_at(x, above, z)
+            .is_some_and(Block::is_opaque_cube)
+    })
 }
 
 fn apply_lightning(
@@ -209,7 +212,7 @@ fn apply_lightning(
         if chunks.block_at(at.x, at.y, at.z) == Some(Block::Air)
             && chunks
                 .block_at(at.x, at.y - 1, at.z)
-                .is_some_and(is_opaque_cube)
+                .is_some_and(Block::is_opaque_cube)
         {
             let old_meta = chunks.metadata_at(at.x, at.y, at.z);
             if let Some(old) = chunks.set_block(at.x, at.y, at.z, Block::Fire) {

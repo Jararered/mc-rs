@@ -796,11 +796,11 @@ fn propagate(
 /// Beta `Block.lightOpacity`, expressed in light levels rather than its old
 /// internal 0..255 table.
 pub fn light_opacity(block: Block) -> u8 {
-    crate::block::definition::light_opacity(block)
+    block.light_opacity()
 }
 
 pub fn light_emission(block: Block) -> u8 {
-    crate::block::definition::light_emission(block)
+    block.light_emission()
 }
 
 #[inline]

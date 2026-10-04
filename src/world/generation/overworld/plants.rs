@@ -2,8 +2,6 @@
 //! the `canBlockStay` rules of the plants they place.
 
 use crate::block::blocks::Block;
-use crate::block::properties::is_opaque_cube;
-use crate::block::properties::plant_grows_on;
 use crate::random::JavaRandom;
 use crate::world::chunk::CHUNK_HEIGHT;
 
@@ -27,10 +25,10 @@ fn can_stay(world: &PopulationWorld, x: i32, y: i32, z: i32, block: Block) -> bo
         Block::BrownMushroom | Block::RedMushroom => {
             (0..CHUNK_HEIGHT as i32).contains(&y)
                 && world.light(x, y, z) < 13
-                && is_opaque_cube(below)
+                && below.is_opaque_cube()
         }
         Block::DeadBush => lit_or_open(world, x, y, z) && below == Block::Sand,
-        _ => lit_or_open(world, x, y, z) && plant_grows_on(below),
+        _ => lit_or_open(world, x, y, z) && below.supports_plants(),
     }
 }
 

@@ -12,7 +12,6 @@ use bevy::render::render_resource::PrimitiveTopology;
 
 use crate::app::state::AppScreen;
 use crate::block::blocks::Block;
-use crate::block::properties::blocks_movement;
 use crate::physics::BlockFace;
 use crate::physics::BlockHit;
 use crate::physics::PhysicsSet;
@@ -286,7 +285,7 @@ fn collides(chunks: &WorldChunks, point: Vec3) -> bool {
             point.y.floor() as i32,
             point.z.floor() as i32,
         )
-        .is_some_and(blocks_movement)
+        .is_some_and(Block::blocks_movement)
 }
 
 #[derive(Resource)]

@@ -7,7 +7,6 @@
 use super::Item;
 use super::ItemStack;
 use crate::block::blocks::Block;
-use crate::block::properties::harvestable_by_hand;
 use crate::block::properties::mine_progress_per_tick;
 
 /// `EnumToolMaterial` harvest level and `efficiencyOnProperMaterial`.
@@ -203,7 +202,7 @@ pub fn str_vs_block(tool: Option<ItemStack>, block: Block) -> f32 {
 /// the tool is consulted. A false result still breaks the block, slowly, and
 /// suppresses its drop.
 pub fn can_harvest(tool: Option<ItemStack>, block: Block) -> bool {
-    if harvestable_by_hand(block) {
+    if block.harvestable_by_hand() {
         return true;
     }
     tool.is_some_and(|tool| tool_can_harvest(tool.item(), block))

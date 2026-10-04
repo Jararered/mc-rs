@@ -133,13 +133,3 @@ pub fn properties(block: Block) -> BlockProperties {
         _ => properties_table()[block.as_u8() as usize],
     }
 }
-
-#[inline]
-pub fn light_opacity(block: Block) -> u8 {
-    properties(block).light_opacity
-}
-
-#[inline]
-pub fn light_emission(block: Block) -> u8 {
-    properties(block).light_emission
-}

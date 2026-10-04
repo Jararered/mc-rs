@@ -13,9 +13,6 @@ use bevy::render::render_resource::PrimitiveTopology;
 use crate::app::settings::GameSettings;
 use crate::app::state::AppScreen;
 use crate::block::blocks::Block;
-use crate::block::properties::is_crossed_plant;
-use crate::block::properties::is_opaque_cube;
-use crate::block::properties::is_torch;
 use crate::entity::CollisionState;
 use crate::entity::DroppedItem;
 use crate::entity::EntitySize;
@@ -500,7 +497,7 @@ pub fn item_piece_transform(
 /// flat item sprite path rather than their in-world block render types.
 pub fn dropped_block_model(stack: ItemStack) -> Option<Block> {
     let block = stack.runtime_block()?;
-    if block.is_ladder() || is_torch(block) || is_crossed_plant(block) {
+    if block.is_ladder() || block.is_torch() || block.is_crossed_plant() {
         None
     } else {
         Some(block)
@@ -648,13 +645,17 @@ fn push_out_of_blocks(
     let x = position.x.floor() as i32;
     let y = position.y.floor() as i32;
     let z = position.z.floor() as i32;
-    if !chunks.block_at(x, y, z).is_some_and(is_opaque_cube) {
+    if !chunks.block_at(x, y, z).is_some_and(Block::is_opaque_cube) {
         return;
     }
     let local_x = position.x - x as f32;
     let local_y = position.y - y as f32;
     let local_z = position.z - z as f32;
-    let open = |bx: i32, by: i32, bz: i32| !chunks.block_at(bx, by, bz).is_some_and(is_opaque_cube);
+    let open = |bx: i32, by: i32, bz: i32| {
+        !chunks
+            .block_at(bx, by, bz)
+            .is_some_and(Block::is_opaque_cube)
+    };
     let mut best = -1i32;
     let mut best_distance = 9999.0f32;
     let candidates = [

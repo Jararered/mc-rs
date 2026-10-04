@@ -5,7 +5,6 @@ use bevy::prelude::Vec3;
 
 use crate::block::blocks::Block;
 use crate::block::fluids::is_liquid;
-use crate::block::properties::is_torch;
 use crate::world::chunk::WorldChunks;
 
 /// Survival-style block reach. Creative in Beta used 5; this matches the default
@@ -270,7 +269,7 @@ fn hit_at(
     if !block.is_targetable() && !(include_liquid && is_liquid(block)) {
         return None;
     }
-    if is_torch(block) || matches!(block, Block::SnowLayer | Block::Farmland | Block::Crops) {
+    if block.is_torch() || matches!(block, Block::SnowLayer | Block::Farmland | Block::Crops) {
         let (min, mut max) = block.selection_bounds();
         if block == Block::SnowLayer {
             max[1] = (f32::from(chunks.metadata_at(x, y, z).min(7)) + 1.0) / 8.0;

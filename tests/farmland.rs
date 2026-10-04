@@ -5,10 +5,6 @@ use std::time::UNIX_EPOCH;
 
 use bevy::prelude::Vec3;
 use game::block::blocks::Block;
-use game::block::properties::collision_bounds;
-use game::block::properties::hardness;
-use game::block::properties::is_opaque_cube;
-use game::block::properties::selection_bounds;
 use game::entity::drops::blocks::DropRoll;
 use game::entity::drops::blocks::player_break_drops;
 use game::inventory::Hotbar;
@@ -234,15 +230,15 @@ fn successful_hoe_use_spends_durability_without_charging_failed_attempts() {
 fn farmland_has_beta_properties_tiles_and_dirt_drop() {
     assert!(Block::Farmland.in_world());
     assert_eq!(Block::Farmland.placed(0), Some(Block::Farmland));
-    assert!(!is_opaque_cube(Block::Farmland));
-    assert_eq!(hardness(Block::Farmland), 0.6);
+    assert!(!Block::Farmland.is_opaque_cube());
+    assert_eq!(Block::Farmland.hardness(), 0.6);
     assert_eq!(light_opacity(Block::Farmland), 15);
     assert_eq!(
-        collision_bounds(Block::Farmland),
+        Block::Farmland.collision_bounds(),
         Some(([0.0; 3], [1.0; 3]))
     );
     assert_eq!(
-        selection_bounds(Block::Farmland),
+        Block::Farmland.selection_bounds(),
         ([0.0; 3], [1.0, 15.0 / 16.0, 1.0])
     );
     assert_eq!(farmland_top_tile(false), (7, 5));

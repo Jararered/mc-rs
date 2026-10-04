@@ -314,7 +314,7 @@ fn tick_player_survival(
             && (y..crate::world::chunk::CHUNK_HEIGHT as i32).all(|above| {
                 !chunks
                     .block_at(x, above, z)
-                    .is_some_and(crate::block::properties::is_opaque_cube)
+                    .is_some_and(|block| block.is_opaque_cube())
             })
         {
             survival.fire_ticks = 0;

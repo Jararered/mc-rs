@@ -1,5 +1,4 @@
 use game::block::blocks::Block;
-use game::block::properties::selection_bounds;
 use game::rendering::meshing::BlockGeometry;
 use game::rendering::meshing::BlockLighting;
 use game::rendering::meshing::BlockVertex;
@@ -863,7 +862,7 @@ fn wall_torch_rotates_the_floor_post_without_tapering_or_flattening_its_cap() {
             "cap must tilt with shaft"
         );
         assert!(positions.iter().all(|point| point[1] > 40.25));
-        let (bounds_min, bounds_max) = selection_bounds(block);
+        let (bounds_min, bounds_max) = block.selection_bounds();
         if sign > 0.0 {
             assert!(positions.iter().any(|point| point[tilted_axis] < 8.0));
             assert_eq!(bounds_min[tilted_axis], 0.0);

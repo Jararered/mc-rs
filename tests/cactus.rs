@@ -1,10 +1,5 @@
 use bevy::prelude::Vec3;
 use game::block::blocks::Block;
-use game::block::properties::blocks_movement;
-use game::block::properties::collision_bounds;
-use game::block::properties::hardness;
-use game::block::properties::is_opaque_cube;
-use game::block::properties::selection_bounds;
 use game::item::ItemStack;
 use game::physics::Aabb;
 use game::physics::BlockFace;
@@ -165,16 +160,16 @@ fn cactus_uses_species_faces_and_an_inset_world_mesh() {
 
 #[test]
 fn cactus_is_nonopaque_but_collides_and_uses_beta_bounds_and_hardness() {
-    assert!(!is_opaque_cube(Block::Cactus));
-    assert!(blocks_movement(Block::Cactus));
+    assert!(!Block::Cactus.is_opaque_cube());
+    assert!(Block::Cactus.blocks_movement());
     assert_eq!(light_opacity(Block::Cactus), 0);
-    assert_eq!(hardness(Block::Cactus), 0.4);
+    assert_eq!(Block::Cactus.hardness(), 0.4);
     assert_eq!(
-        collision_bounds(Block::Cactus),
+        Block::Cactus.collision_bounds(),
         Some(([0.0625, 0.0, 0.0625], [0.9375, 0.9375, 0.9375]))
     );
     assert_eq!(
-        selection_bounds(Block::Cactus),
+        Block::Cactus.selection_bounds(),
         ([0.0625, 0.0, 0.0625], [0.9375, 1.0, 0.9375])
     );
 }
@@ -263,7 +258,7 @@ fn desert_chunks_generate_repeatable_cactus_columns() {
                                 ]
                                 .into_iter()
                                 .flatten()
-                                .all(|block| !is_opaque_cube(block))
+                                .all(|block| !block.is_opaque_cube())
                             );
                         }
                     }

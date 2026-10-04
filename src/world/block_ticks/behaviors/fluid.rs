@@ -14,7 +14,6 @@ pub use crate::block::fluids::Fluid;
 pub use crate::block::fluids::is_lava;
 pub use crate::block::fluids::is_liquid;
 pub use crate::block::fluids::is_water;
-use crate::block::properties::is_solid_material;
 use crate::world::block_ticks::BlockBehavior;
 use crate::world::block_ticks::TickWorld;
 
@@ -60,7 +59,7 @@ fn blocks_flow(world: &TickWorld, position: IVec3) -> bool {
     {
         return true;
     }
-    block != Block::Air && is_solid_material(block)
+    block != Block::Air && block.is_solid_material()
 }
 
 /// `BlockFlowing.liquidCanDisplaceBlock`: neither this fluid, nor lava, nor a
@@ -340,7 +339,7 @@ impl BlockBehavior for Stationary {
                     world.set_block_notify(cell, Block::Fire);
                     return;
                 }
-            } else if is_solid_material(block) {
+            } else if block.is_solid_material() {
                 return;
             }
         }

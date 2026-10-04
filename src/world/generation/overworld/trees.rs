@@ -3,7 +3,6 @@
 //! random, so each tree consumes exactly the draws Beta's does.
 
 use crate::block::blocks::Block;
-use crate::block::properties::is_opaque_cube;
 use crate::random::JavaRandom;
 use crate::world::chunk::CHUNK_HEIGHT;
 
@@ -158,7 +157,7 @@ fn generate_standard(
                 if (dx.abs() != radius
                     || dz.abs() != radius
                     || rand.next_int(2) != 0 && offset != 0)
-                    && !is_opaque_cube(world.get(lx, level, lz))
+                    && !(world.get(lx, level, lz)).is_opaque_cube()
                 {
                     world.set(lx, level, lz, leaves);
                 }
@@ -203,7 +202,7 @@ fn generate_taiga1(
             for lz in z - radius..=z + radius {
                 let dz = lz - z;
                 if (dx.abs() != radius || dz.abs() != radius || radius <= 0)
-                    && !is_opaque_cube(world.get(lx, level, lz))
+                    && !(world.get(lx, level, lz)).is_opaque_cube()
                 {
                     world.set(lx, level, lz, Block::SpruceLeaves);
                 }
@@ -256,7 +255,7 @@ fn generate_taiga2(
             for lz in z - radius..=z + radius {
                 let dz = lz - z;
                 if (dx.abs() != radius || dz.abs() != radius || radius <= 0)
-                    && !is_opaque_cube(world.get(lx, level, lz))
+                    && !(world.get(lx, level, lz)).is_opaque_cube()
                 {
                     world.set(lx, level, lz, Block::SpruceLeaves);
                 }

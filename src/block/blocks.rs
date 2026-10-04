@@ -205,4 +205,125 @@ impl Block {
     pub fn hardness(self) -> f32 {
         definition::properties(self).hardness
     }
+
+    /// Whether this block fully occludes its neighbours.
+    pub fn is_opaque_cube(self) -> bool {
+        definition::properties(self).opaque_cube
+    }
+
+    pub fn blocks_movement(self) -> bool {
+        definition::properties(self).blocks_movement
+    }
+
+    pub fn slipperiness(self) -> f32 {
+        definition::properties(self).slipperiness
+    }
+
+    pub fn collision_bounds(self) -> Option<definition::BlockBounds> {
+        definition::properties(self).collision_bounds
+    }
+
+    pub fn is_crossed_plant(self) -> bool {
+        definition::properties(self).crossed_plant
+    }
+
+    pub fn is_torch(self) -> bool {
+        definition::properties(self).torch
+    }
+
+    pub fn light_opacity(self) -> u8 {
+        definition::properties(self).light_opacity
+    }
+
+    pub fn light_emission(self) -> u8 {
+        definition::properties(self).light_emission
+    }
+
+    pub fn harvestable_by_hand(self) -> bool {
+        definition::properties(self).harvestable_by_hand
+    }
+
+    /// Beta's `Material.isSolid` classification.
+    pub fn is_solid_material(self) -> bool {
+        if self.is_ladder() {
+            return false;
+        }
+        !matches!(
+            self,
+            Self::Air
+                | Self::Water
+                | Self::FlowingWater
+                | Self::Lava
+                | Self::FlowingLava
+                | Self::Torch
+                | Self::TorchWest
+                | Self::TorchEast
+                | Self::TorchNorth
+                | Self::TorchSouth
+                | Self::DeadBush
+                | Self::TallGrass
+                | Self::Dandelion
+                | Self::Rose
+                | Self::Fern
+                | Self::BrownMushroom
+                | Self::RedMushroom
+                | Self::Fire
+                | Self::RedstoneWire
+                | Self::Crops
+                | Self::Sapling
+                | Self::Rail
+                | Self::PoweredRail
+                | Self::DetectorRail
+                | Self::Ladder
+                | Self::Lever
+                | Self::StonePressurePlate
+                | Self::WoodenPressurePlate
+                | Self::UnlitRedstoneTorch
+                | Self::RedstoneTorch
+                | Self::StoneButton
+                | Self::SugarCane
+                | Self::SnowLayer
+                | Self::Repeater
+                | Self::PoweredRepeater
+                | Self::NetherPortal
+        )
+    }
+
+    /// `BlockFlower.canThisPlantGrowOnThisBlockID`.
+    pub fn supports_plants(self) -> bool {
+        matches!(self, Self::Grass | Self::Dirt | Self::Farmland)
+    }
+
+    /// Beta `Block.getExplosionResistance`.
+    pub fn explosion_resistance(self) -> f32 {
+        let explicit = match self.item_form().0 {
+            Self::Bedrock => Some(6_000_000.0),
+            Self::Obsidian => Some(2000.0),
+            Self::Stone
+            | Self::Cobblestone
+            | Self::GoldBlock
+            | Self::IronBlock
+            | Self::DoubleStoneSlab
+            | Self::StoneSlab
+            | Self::Bricks
+            | Self::MossyCobblestone
+            | Self::DiamondBlock
+            | Self::Jukebox
+            | Self::CobblestoneStairs => Some(10.0),
+            Self::WoodenPlanks
+            | Self::GoldOre
+            | Self::IronOre
+            | Self::CoalOre
+            | Self::LapisOre
+            | Self::LapisBlock
+            | Self::DiamondOre
+            | Self::RedstoneOre
+            | Self::LitRedstoneOre
+            | Self::Fence
+            | Self::WoodenStairs => Some(5.0),
+            Self::Lava => return 100.0,
+            _ => None,
+        };
+        explicit.map_or_else(|| self.hardness().max(0.0), |resistance| resistance * 0.6)
+    }
 }

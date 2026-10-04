@@ -87,6 +87,16 @@ fn every_known_block_value_resolves_to_its_static_definition() {
             "{block:?}"
         );
         assert_eq!(behavior.torch(block), properties.torch, "{block:?}");
+        assert_eq!(block.is_opaque_cube(), properties.opaque_cube, "{block:?}");
+        assert_eq!(block.blocks_movement(), properties.blocks_movement, "{block:?}");
+        assert_eq!(block.slipperiness(), properties.slipperiness, "{block:?}");
+        assert_eq!(block.collision_bounds(), properties.collision_bounds, "{block:?}");
+        assert_eq!(block.selection_bounds(), properties.selection_bounds, "{block:?}");
+        assert_eq!(block.is_crossed_plant(), properties.crossed_plant, "{block:?}");
+        assert_eq!(block.is_torch(), properties.torch, "{block:?}");
+        assert_eq!(block.light_opacity(), properties.light_opacity, "{block:?}");
+        assert_eq!(block.light_emission(), properties.light_emission, "{block:?}");
+        assert_eq!(block.harvestable_by_hand(), properties.harvestable_by_hand, "{block:?}");
         assert!(properties.hardness.is_finite(), "{block:?}");
         assert!(properties.slipperiness.is_finite(), "{block:?}");
         assert!(properties.light_opacity <= 15, "{block:?}");
@@ -108,5 +118,28 @@ fn unknown_block_values_use_a_safe_fallback_definition() {
             properties.collision_bounds,
             Some(BlockProperties::FULL_BOUNDS)
         );
+        assert_eq!(unknown.collision_bounds(), properties.collision_bounds);
+        assert_eq!(unknown.light_opacity(), 15);
+        assert_eq!(unknown.light_emission(), 0);
+        assert!(unknown.is_solid_material());
+        assert_eq!(unknown.explosion_resistance(), 0.0);
     }
+}
+
+#[test]
+fn block_material_and_explosion_queries_preserve_beta_values() {
+    assert!(!Block::Air.is_solid_material());
+    assert!(!Block::TorchWest.is_solid_material());
+    assert!(!Block::LadderSouth.is_solid_material());
+    assert!(Block::Glass.is_solid_material());
+    assert!(Block::Ice.is_solid_material());
+    assert!(Block::Grass.supports_plants());
+    assert!(!Block::Sand.supports_plants());
+
+    assert_eq!(Block::Bedrock.explosion_resistance(), 6_000_000.0_f32 * 0.6);
+    assert_eq!(Block::Obsidian.explosion_resistance(), 1200.0);
+    assert_eq!(Block::Stone.explosion_resistance(), 6.0);
+    assert_eq!(Block::WoodenPlanks.explosion_resistance(), 3.0);
+    assert_eq!(Block::Lava.explosion_resistance(), 100.0);
+    assert_eq!(Block::Dirt.explosion_resistance(), Block::Dirt.hardness());
 }

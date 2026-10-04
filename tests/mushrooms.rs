@@ -1,8 +1,4 @@
 use game::block::blocks::Block;
-use game::block::properties::collision_bounds;
-use game::block::properties::is_crossed_plant;
-use game::block::properties::is_opaque_cube;
-use game::block::properties::selection_bounds;
 use game::rendering::meshing::mesh_chunk_with_settings;
 use game::rendering::textures::block_tile;
 use game::world::chunk::Chunk;
@@ -24,11 +20,11 @@ fn mushrooms_use_crossed_sprite_meshes_and_beta_atlas_tiles() {
 #[test]
 fn mushrooms_are_small_noncolliding_nonopaque_plants() {
     for mushroom in [Block::BrownMushroom, Block::RedMushroom] {
-        assert!(is_crossed_plant(mushroom));
-        assert!(!is_opaque_cube(mushroom));
-        assert_eq!(collision_bounds(mushroom), None);
+        assert!(mushroom.is_crossed_plant());
+        assert!(!mushroom.is_opaque_cube());
+        assert_eq!(mushroom.collision_bounds(), None);
         assert_eq!(
-            selection_bounds(mushroom),
+            mushroom.selection_bounds(),
             ([0.3, 0.0, 0.3], [0.7, 0.4, 0.7])
         );
     }

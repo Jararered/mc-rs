@@ -1,9 +1,5 @@
 use bevy::prelude::Vec3;
 use game::block::blocks::Block;
-use game::block::properties::blocks_movement;
-use game::block::properties::collision_bounds;
-use game::block::properties::is_opaque_cube;
-use game::block::properties::selection_bounds;
 use game::item::Item;
 use game::item::ItemStack;
 use game::physics::Aabb;
@@ -49,11 +45,11 @@ fn world_with(chunk: Chunk) -> WorldChunks {
 #[test]
 fn sugar_cane_is_a_centered_crossed_plant_with_beta_appearance() {
     assert_eq!(block_tile(Block::SugarCane, 0, false), (9, 4));
-    assert!(!is_opaque_cube(Block::SugarCane));
-    assert!(!blocks_movement(Block::SugarCane));
-    assert_eq!(collision_bounds(Block::SugarCane), None);
+    assert!(!Block::SugarCane.is_opaque_cube());
+    assert!(!Block::SugarCane.blocks_movement());
+    assert_eq!(Block::SugarCane.collision_bounds(), None);
     assert_eq!(
-        selection_bounds(Block::SugarCane),
+        Block::SugarCane.selection_bounds(),
         ([0.125, 0.0, 0.125], [0.875, 1.0, 0.875])
     );
 

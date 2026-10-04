@@ -5,8 +5,6 @@ use game::block::blocks::Block;
 use game::block::blocks::FurnaceFacing;
 use game::block::fluids::Fluid;
 use game::block::properties::hand_mine_progress_per_tick;
-use game::block::properties::hardness;
-use game::block::properties::harvestable_by_hand;
 use game::entity::EntitySize;
 use game::item::Item;
 use game::item::ItemStack;
@@ -428,8 +426,8 @@ fn usual_blocks_use_beta_hand_break_times() {
 
 #[test]
 fn airborne_and_water_only_slow_blocks_harvestable_by_hand() {
-    assert!(harvestable_by_hand(Block::Dirt));
-    assert!(!harvestable_by_hand(Block::Stone));
+    assert!(Block::Dirt.harvestable_by_hand());
+    assert!(!Block::Stone.harvestable_by_hand());
     assert_eq!(hand_ticks_to_break(Block::Dirt, false, false), Some(75));
     assert_eq!(hand_ticks_to_break(Block::Dirt, true, true), Some(75));
     assert_eq!(hand_ticks_to_break(Block::Stone, false, true), Some(150));
@@ -481,7 +479,7 @@ fn looking_at_a_new_block_resets_mining_progress() {
     assert!(mining.damage() > 0.0);
     mining.tick(Some(grass), None, true, false);
     assert_eq!(mining.damage(), 0.0);
-    assert!((hardness(Block::Grass) - 0.6).abs() < f32::EPSILON);
+    assert!((Block::Grass.hardness() - 0.6).abs() < f32::EPSILON);
     assert!(hand_mine_progress_per_tick(Block::Dirt, true, false) > 0.0);
 }
 

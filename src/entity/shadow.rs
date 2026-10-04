@@ -21,7 +21,6 @@ use bevy::render::render_resource::PrimitiveTopology;
 
 use crate::app::settings::GameSettings;
 use crate::app::state::AppScreen;
-use crate::block::properties::is_opaque_cube;
 use crate::entity::EntitySize;
 use crate::entity::PreviousTick;
 use crate::physics::PhysicsSet;
@@ -278,7 +277,7 @@ pub fn place_shadow(
     let ground_cell_y = feet_y.floor() as i32;
 
     let support = chunks.block_at(cell_x, ground_cell_y - 1, cell_z)?;
-    if !is_opaque_cube(support) {
+    if !support.is_opaque_cube() {
         return None;
     }
     let light = light_level_at(chunks, cell_x, ground_cell_y, cell_z, skylight_subtracted);

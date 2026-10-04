@@ -13,11 +13,6 @@ use crate::block::blocks::FurnaceFacing;
 use crate::block::fluids::Fluid;
 use crate::block::fluids::is_water;
 use crate::block::properties::cactus_can_stay;
-use crate::block::properties::is_crossed_plant;
-use crate::block::properties::is_opaque_cube;
-use crate::block::properties::is_solid_material;
-use crate::block::properties::is_torch;
-use crate::block::properties::plant_grows_on;
 use crate::block::properties::sugar_cane_can_stay;
 use crate::entity::CollisionState;
 use crate::entity::EntitySize;
@@ -279,7 +274,11 @@ pub(crate) fn interact_blocks(
         let blocked = [Some(group.first), group.second]
             .into_iter()
             .flatten()
-            .any(|(x, y, z)| chunks.block_at(x, y + 1, z).is_some_and(is_opaque_cube));
+            .any(|(x, y, z)| {
+                chunks
+                    .block_at(x, y + 1, z)
+                    .is_some_and(Block::is_opaque_cube)
+            });
         if blocked {
             state.mining.reset();
             *focus = BlockFocus::default();
@@ -609,7 +608,7 @@ pub fn place_fluid(
         return None;
     }
     let current = chunks.block_at(x, y, z)?;
-    if is_solid_material(current) {
+    if current.is_solid_material() {
         return None;
     }
     let metadata = chunks.metadata_at(x, y, z);
@@ -656,7 +655,7 @@ fn apply_break(
         .collect::<Vec<_>>();
     if let Some(plant) = chunks
         .block_at(hit.x, hit.y + 1, hit.z)
-        .filter(|block| is_crossed_plant(*block))
+        .filter(|block| (*block).is_crossed_plant())
     {
         attached.push((hit.x, hit.y + 1, hit.z, plant));
     }
@@ -668,13 +667,13 @@ fn apply_break(
         .chest_at(hit.x, hit.y, hit.z)
         .map(|chest| chest.slots.into_iter().flatten().collect::<Vec<_>>())
         .unwrap_or_default();
-    let light_edit = is_torch(hit.block)
+    let light_edit = hit.block.is_torch()
         || hit.block.is_lit_furnace()
         || attached
             .iter()
             .copied()
             .into_iter()
-            .any(|(_, _, _, attached_block)| is_torch(attached_block));
+            .any(|(_, _, _, attached_block)| attached_block.is_torch());
     let tool = hotbar.selected_stack();
     // `canHarvestBlock` gates the harvest drop. The tool still takes durability
     // when the block comes out, including a block the tool cannot harvest.
@@ -759,7 +758,7 @@ pub fn break_block(chunks: &mut WorldChunks, hit: BlockHit) -> bool {
         }
         if chunks
             .block_at(hit.x, hit.y + 1, hit.z)
-            .is_some_and(is_crossed_plant)
+            .is_some_and(Block::is_crossed_plant)
         {
             chunks.set_block(hit.x, hit.y + 1, hit.z, Block::Air);
         }
@@ -804,9 +803,9 @@ pub fn place_selected_block_facing(
     if selected == Block::Ladder && ladder_facing(chunks, x, y, z, hit.face, hit.block).is_none() {
         return false;
     }
-    if is_crossed_plant(selected)
+    if selected.is_crossed_plant()
         && selected != Block::SugarCane
-        && !chunks.block_at(x, y - 1, z).is_some_and(plant_grows_on)
+        && !chunks.block_at(x, y - 1, z).is_some_and(Block::supports_plants)
     {
         return false;
     }
@@ -841,10 +840,14 @@ pub fn place_selected_block_facing(
             return false;
         }
     }
-    if selected == Block::Pumpkin && !chunks.block_at(x, y - 1, z).is_some_and(is_opaque_cube) {
+    if selected == Block::Pumpkin
+        && !chunks
+            .block_at(x, y - 1, z)
+            .is_some_and(Block::is_opaque_cube)
+    {
         return false;
     }
-    if !is_opaque_cube(hit.block) && selected == Block::Torch {
+    if !hit.block.is_opaque_cube() && selected == Block::Torch {
         return false;
     }
     let block = if selected == Block::Torch {
@@ -870,7 +873,7 @@ pub fn place_selected_block_facing(
     } else {
         selected
     };
-    if is_opaque_cube(block)
+    if block.is_opaque_cube()
         && player.intersects(Aabb::new(
             Vec3::new(x as f32, y as f32, z as f32),
             Vec3::new(x as f32 + 1.0, y as f32 + 1.0, z as f32 + 1.0),
@@ -897,15 +900,15 @@ fn ladder_facing(
             .ladder_support_offset()?;
         chunks
             .block_at(x + dx, y + dy, z + dz)
-            .filter(|block| is_opaque_cube(*block))
+            .filter(|block| (*block).is_opaque_cube())
             .map(|_| facing)
     };
 
     let clicked_wall = match hit_face {
-        BlockFace::West if is_opaque_cube(hit_block) => Some(FurnaceFacing::East),
-        BlockFace::East if is_opaque_cube(hit_block) => Some(FurnaceFacing::West),
-        BlockFace::North if is_opaque_cube(hit_block) => Some(FurnaceFacing::South),
-        BlockFace::South if is_opaque_cube(hit_block) => Some(FurnaceFacing::North),
+        BlockFace::West if hit_block.is_opaque_cube() => Some(FurnaceFacing::East),
+        BlockFace::East if hit_block.is_opaque_cube() => Some(FurnaceFacing::West),
+        BlockFace::North if hit_block.is_opaque_cube() => Some(FurnaceFacing::South),
+        BlockFace::South if hit_block.is_opaque_cube() => Some(FurnaceFacing::North),
         _ => None,
     };
     clicked_wall

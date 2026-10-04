@@ -14,7 +14,6 @@ use bevy::prelude::*;
 use crate::block::blocks::Block;
 use crate::block::fluids::is_lava;
 use crate::block::fluids::is_water;
-use crate::block::properties::is_solid_material;
 use crate::entity::EntitySize;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::Chunk;
@@ -562,7 +561,7 @@ impl<'a> Region<'a> {
                         if self.metadata(x, y, z) & 4 == 0 {
                             return Clearance::Blocked;
                         }
-                    } else if is_solid_material(block) {
+                    } else if block.is_solid_material() {
                         return Clearance::Blocked;
                     } else if is_water(block) {
                         return Clearance::Water;

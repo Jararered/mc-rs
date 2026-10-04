@@ -6,9 +6,6 @@ use crate::block::blocks::Block;
 use crate::block::fluids::Fluid;
 use crate::block::fluids::corner_height;
 use crate::block::fluids::flow_vector;
-use crate::block::properties::is_crossed_plant;
-use crate::block::properties::is_opaque_cube;
-use crate::block::properties::is_torch;
 use crate::block::properties::torch_normal;
 use crate::block::properties::torch_point;
 use crate::rendering::textures::FoliageColors;
@@ -695,7 +692,7 @@ impl<'a> Mesher<'a> {
                 Some(neighbor) => {
                     Fluid::of(neighbor) != Some(fluid)
                         && neighbor != Block::Ice
-                        && (dy > 0 || !is_opaque_cube(neighbor))
+                        && (dy > 0 || !neighbor.is_opaque_cube())
                 }
             }
         };
@@ -791,7 +788,7 @@ impl<'a> Mesher<'a> {
                         continue;
                     }
                     let origin = [x as f32, (y - y_origin) as f32, z as f32];
-                    if is_torch(block) {
+                    if block.is_torch() {
                         meshes.grass_overlay.push_torch(origin, block);
                         continue;
                     }
@@ -831,7 +828,7 @@ impl<'a> Mesher<'a> {
                             .push_crops(origin, chunk.metadata(x, y, z), light);
                         continue;
                     }
-                    if is_crossed_plant(block) {
+                    if block.is_crossed_plant() {
                         let light = skylight.channels_at(x as i32, y as i32, z as i32);
                         meshes.masked.push_crossed_plant(
                             origin,
@@ -1503,7 +1500,7 @@ fn opaque_at(
     ];
     neighbors
         .get(chunk, position[0], position[1], position[2])
-        .is_some_and(is_opaque_cube)
+        .is_some_and(Block::is_opaque_cube)
 }
 
 fn is_leaf(block: Block) -> bool {
@@ -1608,7 +1605,7 @@ fn fluid_shell_face_visible(fluid: Fluid, neighbor: Option<Block>, dy: i32) -> b
         Some(neighbor) => {
             Fluid::of(neighbor) != Some(fluid)
                 && neighbor != Block::Ice
-                && (dy > 0 || !is_opaque_cube(neighbor))
+                && (dy > 0 || !neighbor.is_opaque_cube())
         }
     }
 }
@@ -1644,8 +1641,8 @@ fn neighbor_hides_face(block: Block, neighbor: Option<Block>, fancy_graphics: bo
         || neighbor == Block::MobSpawner
         || neighbor.is_chest()
         || neighbor.is_ladder()
-        || is_torch(neighbor)
-        || is_crossed_plant(neighbor)
+        || neighbor.is_torch()
+        || neighbor.is_crossed_plant()
     {
         return false;
     }

@@ -7,7 +7,6 @@ use crate::app::settings::Difficulty;
 use crate::app::settings::GameSettings;
 use crate::app::state::AppScreen;
 use crate::block::blocks::Block;
-use crate::block::properties::is_opaque_cube;
 use crate::entity::CollisionState;
 use crate::entity::EntityDiagnostics;
 use crate::entity::EntitySize;
@@ -658,7 +657,7 @@ pub fn can_spawn_at(
                     if by == y && !matches!(block, Block::Water | Block::FlowingWater) {
                         return false;
                     }
-                } else if crate::block::properties::collision_bounds(block).is_some()
+                } else if block.collision_bounds().is_some()
                     || matches!(
                         block,
                         Block::Water | Block::FlowingWater | Block::Lava | Block::FlowingLava
@@ -672,7 +671,7 @@ pub fn can_spawn_at(
     if kind == MobKind::Squid {
         return true;
     }
-    if !is_opaque_cube(chunks.block_at(x, y - 1, z).unwrap_or(Block::Air)) {
+    if !(chunks.block_at(x, y - 1, z).unwrap_or(Block::Air)).is_opaque_cube() {
         return false;
     }
     if kind == MobKind::Slime {

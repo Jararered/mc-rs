@@ -11,7 +11,6 @@ use super::Effects;
 use super::Surroundings;
 use super::Target;
 use super::grow;
-use crate::block::properties::is_opaque_cube;
 use crate::entity::combat::Hit;
 use crate::entity::combat::Source;
 use crate::entity::combat::hurt_player;
@@ -243,7 +242,12 @@ impl Body<'_> {
             self.living.path = path;
             return;
         }
-        let normal_cube = |x, y, z| world.chunks.block_at(x, y, z).is_some_and(is_opaque_cube);
+        let normal_cube = |x, y, z| {
+            world
+                .chunks
+                .block_at(x, y, z)
+                .is_some_and(|block| block.is_opaque_cube())
+        };
         let x = owner.eye.x.floor() as i32 - 2;
         let z = owner.eye.z.floor() as i32 - 2;
         let y = owner.feet.y.floor() as i32;

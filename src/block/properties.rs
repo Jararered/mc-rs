@@ -1,47 +1,14 @@
-//! Compatibility helpers for block gameplay properties.
-//!
-//! Block-specific values live in the block family definitions; this module keeps the
-//! established query API and the shared calculations used by callers.
+//! Calculations involving neighboring blocks, geometry, or mining context.
 
 use super::blocks::Block;
-use super::definition;
-
-/// Whether a block fully occludes its neighbours, mirroring the reference's
-/// `Block.opaqueCubeLookup`.
-pub fn is_opaque_cube(block: Block) -> bool {
-    definition::properties(block).opaque_cube
-}
-
-/// Whether an entity AABB should collide with this block.
-pub fn blocks_movement(block: Block) -> bool {
-    definition::properties(block).blocks_movement
-}
-
-/// Surface slipperiness used by Beta's living-entity ground acceleration and drag.
-pub fn slipperiness(block: Block) -> f32 {
-    definition::properties(block).slipperiness
-}
-
-/// Local collision bounds for a block, if it collides with entities.
-pub fn collision_bounds(block: Block) -> Option<([f32; 3], [f32; 3])> {
-    definition::properties(block).collision_bounds
-}
-
-/// Crossed sprites with no collision: flowers, mushrooms, plants, and reeds.
-pub fn is_crossed_plant(block: Block) -> bool {
-    definition::properties(block).crossed_plant
-}
-
-/// `BlockFlower.canThisPlantGrowOnThisBlockID`.
-pub fn plant_grows_on(block: Block) -> bool {
-    matches!(block, Block::Grass | Block::Dirt | Block::Farmland)
-}
 
 /// `BlockCactus.canBlockStay`: cactus may grow on sand or another cactus,
 /// provided each horizontal neighbour has a non-solid material.
 pub fn cactus_can_stay(below: Block, neighbors: [Block; 4]) -> bool {
     matches!(below, Block::Sand | Block::Cactus)
-        && neighbors.into_iter().all(|block| !is_solid_material(block))
+        && neighbors
+            .into_iter()
+            .all(|block| !block.is_solid_material())
 }
 
 /// Beta reed placement/growth rule. A cane segment stacks on another segment;
@@ -50,57 +17,6 @@ pub fn sugar_cane_can_stay(below: Block, adjacent_water: [bool; 4]) -> bool {
     below == Block::SugarCane
         || (matches!(below, Block::Grass | Block::Dirt | Block::Sand)
             && adjacent_water.into_iter().any(|is_water| is_water))
-}
-
-/// Beta's `Material.isSolid`. Transparent glass, ice, and leaves still count as
-/// solid materials; air, fluids, fire, and logic/plant blocks do not.
-pub fn is_solid_material(block: Block) -> bool {
-    if block.is_ladder() {
-        return false;
-    }
-    !matches!(
-        block,
-        Block::Air
-            | Block::Water
-            | Block::FlowingWater
-            | Block::Lava
-            | Block::FlowingLava
-            | Block::Torch
-            | Block::TorchWest
-            | Block::TorchEast
-            | Block::TorchNorth
-            | Block::TorchSouth
-            | Block::DeadBush
-            | Block::TallGrass
-            | Block::Dandelion
-            | Block::Rose
-            | Block::Fern
-            | Block::BrownMushroom
-            | Block::RedMushroom
-            | Block::Fire
-            | Block::RedstoneWire
-            | Block::Crops
-            | Block::Sapling
-            | Block::Rail
-            | Block::PoweredRail
-            | Block::DetectorRail
-            | Block::Ladder
-            | Block::Lever
-            | Block::StonePressurePlate
-            | Block::WoodenPressurePlate
-            | Block::UnlitRedstoneTorch
-            | Block::RedstoneTorch
-            | Block::StoneButton
-            | Block::SugarCane
-            | Block::SnowLayer
-            | Block::Repeater
-            | Block::PoweredRepeater
-            | Block::NetherPortal
-    )
-}
-
-pub fn is_torch(block: Block) -> bool {
-    definition::properties(block).torch
 }
 
 /// Rotate the floor torch's local geometry into its wall pose. This remains a
@@ -172,47 +88,6 @@ pub(crate) fn torch_selection_bounds(block: Block) -> ([f32; 3], [f32; 3]) {
     (min, max)
 }
 
-/// `Block.getExplosionResistance`: `blockResistance / 5`. `setHardness` raises
-/// the resistance to five times the hardness, and an explicit `setResistance`
-/// afterwards replaces it with three times its argument. Stairs copy their
-/// material's resistance. Still lava keeps Beta's hardness of 100.
-pub fn explosion_resistance(block: Block) -> f32 {
-    let explicit = match block.item_form().0 {
-        Block::Bedrock => Some(6_000_000.0),
-        Block::Obsidian => Some(2000.0),
-        Block::Stone
-        | Block::Cobblestone
-        | Block::GoldBlock
-        | Block::IronBlock
-        | Block::DoubleStoneSlab
-        | Block::StoneSlab
-        | Block::Bricks
-        | Block::MossyCobblestone
-        | Block::DiamondBlock
-        | Block::Jukebox
-        | Block::CobblestoneStairs => Some(10.0),
-        Block::WoodenPlanks
-        | Block::GoldOre
-        | Block::IronOre
-        | Block::CoalOre
-        | Block::LapisOre
-        | Block::LapisBlock
-        | Block::DiamondOre
-        | Block::RedstoneOre
-        | Block::LitRedstoneOre
-        | Block::Fence
-        | Block::WoodenStairs => Some(5.0),
-        Block::Lava => return 100.0,
-        _ => None,
-    };
-    explicit.map_or_else(|| block.hardness().max(0.0), |resistance| resistance * 0.6)
-}
-
-/// Empty-hand `InventoryPlayer.canHarvestBlock`.
-pub fn harvestable_by_hand(block: Block) -> bool {
-    definition::properties(block).harvestable_by_hand
-}
-
 /// Damage added each game tick, matching `Block.blockStrength`.
 ///
 /// `strength` is the held item's `getStrVsBlock` before the water and airborne
@@ -249,5 +124,5 @@ pub fn mine_progress_per_tick(
 
 /// Empty-hand `Block.blockStrength`.
 pub fn hand_mine_progress_per_tick(block: Block, on_ground: bool, in_water: bool) -> f32 {
-    mine_progress_per_tick(block, 1.0, harvestable_by_hand(block), on_ground, in_water)
+    mine_progress_per_tick(block, 1.0, block.harvestable_by_hand(), on_ground, in_water)
 }

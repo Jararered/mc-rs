@@ -1,4 +1,5 @@
 use crate::block::blocks::Block;
+use crate::block::definition::BlockBounds;
 use crate::block::definition::BlockDefinition;
 use crate::block::definition::BlockProperties;
 
@@ -120,10 +121,7 @@ fn properties(block: Block) -> BlockProperties {
     }
 }
 
-fn crossed_plant(
-    hardness: f32,
-    selection_bounds: crate::block::definition::BlockBounds,
-) -> BlockProperties {
+fn crossed_plant(hardness: f32, selection_bounds: BlockBounds) -> BlockProperties {
     BlockProperties {
         crossed_plant: true,
         selection_bounds,

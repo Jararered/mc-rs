@@ -5,9 +5,6 @@
 use bevy::math::IVec3;
 
 use crate::block::blocks::Block;
-use crate::block::definition::light_opacity;
-use crate::block::properties::is_opaque_cube;
-use crate::block::properties::is_solid_material;
 use crate::world::block_ticks::BlockBehavior;
 use crate::world::block_ticks::TickWorld;
 
@@ -36,14 +33,14 @@ impl BlockBehavior for Ice {
     }
 
     fn update_tick(&self, world: &mut TickWorld, position: IVec3) {
-        if world.block_light(position) > MELT_LIGHT - light_opacity(Block::Ice) {
+        if world.block_light(position) > MELT_LIGHT - Block::Ice.light_opacity() {
             melt(world, position, Block::Water);
         }
     }
 
     fn harvested(&self, world: &mut TickWorld, position: IVec3, _block: Block, _metadata: u8) {
         let below = world.block(position - IVec3::Y);
-        if is_solid_material(below) || is_liquid(below) {
+        if below.is_solid_material() || is_liquid(below) {
             world.set_block_notify(position, Block::FlowingWater);
         }
     }
@@ -58,7 +55,7 @@ impl SnowLayer {
     /// `BlockSnow.canPlaceBlockAt`.
     pub fn can_stay(world: &TickWorld, position: IVec3) -> bool {
         let below = world.block(position - IVec3::Y);
-        below != Block::Air && is_opaque_cube(below) && is_solid_material(below)
+        below != Block::Air && below.is_opaque_cube() && below.is_solid_material()
     }
 }
 

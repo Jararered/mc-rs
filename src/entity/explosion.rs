@@ -17,8 +17,6 @@ use bevy::prelude::*;
 use crate::app::settings::Difficulty;
 use crate::app::settings::GameSettings;
 use crate::block::blocks::Block;
-use crate::block::properties::explosion_resistance;
-use crate::block::properties::is_opaque_cube;
 use crate::entity::EntitySize;
 use crate::entity::Velocity;
 use crate::entity::combat::Hit;
@@ -99,7 +97,7 @@ pub fn blast_cells(
                         .block_at(cell.x, cell.y, cell.z)
                         .unwrap_or(Block::Air);
                     if block != Block::Air {
-                        power -= (explosion_resistance(block) + 0.3) * STEP;
+                        power -= (block.explosion_resistance() + 0.3) * STEP;
                     }
                     if power > 0.0 && seen.insert(cell) {
                         cells.push(cell);
@@ -263,7 +261,7 @@ pub(crate) fn apply_explosions(
                 if chunks.block_at(cell.x, cell.y, cell.z) == Some(Block::Air)
                     && chunks
                         .block_at(cell.x, cell.y - 1, cell.z)
-                        .is_some_and(is_opaque_cube)
+                        .is_some_and(Block::is_opaque_cube)
                     && rng.0.next_int(3) == 0
                     && let Some(previous) = chunks.set_block(cell.x, cell.y, cell.z, Block::Fire)
                 {

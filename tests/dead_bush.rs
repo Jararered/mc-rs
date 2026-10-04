@@ -1,8 +1,4 @@
 use game::block::blocks::Block;
-use game::block::properties::collision_bounds;
-use game::block::properties::is_crossed_plant;
-use game::block::properties::is_opaque_cube;
-use game::block::properties::selection_bounds;
 use game::rendering::meshing::mesh_chunk_with_settings;
 use game::rendering::textures::atlas_tile_uvs;
 use game::rendering::textures::block_tile;
@@ -12,11 +8,11 @@ use game::world::lighting::Skylight;
 #[test]
 fn dead_bush_uses_its_beta_sprite_tile_and_crossed_mesh() {
     assert_eq!(block_tile(Block::DeadBush, 0, false), (7, 3));
-    assert!(is_crossed_plant(Block::DeadBush));
-    assert!(!is_opaque_cube(Block::DeadBush));
-    assert_eq!(collision_bounds(Block::DeadBush), None);
+    assert!(Block::DeadBush.is_crossed_plant());
+    assert!(!Block::DeadBush.is_opaque_cube());
+    assert_eq!(Block::DeadBush.collision_bounds(), None);
     assert_eq!(
-        selection_bounds(Block::DeadBush),
+        Block::DeadBush.selection_bounds(),
         ([0.1, 0.0, 0.1], [0.9, 0.8, 0.9])
     );
 

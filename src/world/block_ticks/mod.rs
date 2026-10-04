@@ -40,7 +40,6 @@ use bevy::math::IVec3;
 use bevy::prelude::Resource;
 
 use crate::block::blocks::Block;
-use crate::block::definition;
 use crate::random::JavaRandom;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::Chunk;
@@ -115,8 +114,8 @@ impl BlockChange {
     /// Whether the change can alter light: the opacity or emission differs.
     /// Metadata-only changes and same-light swaps only need a remesh.
     pub fn changes_light(&self) -> bool {
-        definition::light_opacity(self.previous) != definition::light_opacity(self.block)
-            || definition::light_emission(self.previous) != definition::light_emission(self.block)
+        self.previous.light_opacity() != self.block.light_opacity()
+            || self.previous.light_emission() != self.block.light_emission()
     }
 }
 

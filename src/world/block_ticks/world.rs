@@ -4,10 +4,7 @@
 use bevy::math::IVec3;
 
 use crate::block::blocks::Block;
-use crate::block::definition::light_opacity;
 use crate::block::fluids::is_liquid;
-use crate::block::properties::is_opaque_cube;
-use crate::block::properties::is_solid_material;
 use crate::random::JavaRandom;
 use crate::world::biome::Biome;
 use crate::world::chunk::CHUNK_HEIGHT;
@@ -138,19 +135,19 @@ impl<'a> TickWorld<'a> {
 
     /// `World.isBlockOpaqueCube`.
     pub fn is_opaque_cube(&self, position: IVec3) -> bool {
-        is_opaque_cube(self.block(position))
+        (self.block(position)).is_opaque_cube()
     }
 
     /// `World.isBlockNormalCube`: a full, opaque cube that torches, ladders,
     /// and snow can rest against. The block definitions' opaque-cube flag
     /// already excludes translucent materials and shaped blocks.
     pub fn is_normal_cube(&self, position: IVec3) -> bool {
-        is_opaque_cube(self.block(position))
+        (self.block(position)).is_opaque_cube()
     }
 
     /// `World.getBlockMaterial(...).isSolid()`.
     pub fn is_solid(&self, position: IVec3) -> bool {
-        is_solid_material(self.block(position))
+        (self.block(position)).is_solid_material()
     }
 
     // --- Light and sky --------------------------------------------------
@@ -197,8 +194,11 @@ impl<'a> TickWorld<'a> {
     /// Beta keeps this as a heightmap of light-blocking blocks; the chunk
     /// heightmap here tracks the ground instead, so the column is scanned.
     pub fn sees_sky(&self, position: IVec3) -> bool {
-        (position.y.max(0)..CHUNK_HEIGHT as i32)
-            .all(|y| light_opacity(self.block(IVec3::new(position.x, y, position.z))) == 0)
+        (position.y.max(0)..CHUNK_HEIGHT as i32).all(|y| {
+            self.block(IVec3::new(position.x, y, position.z))
+                .light_opacity()
+                == 0
+        })
     }
 
     /// `World.canBlockBeRainedOn`: precipitation reaches this cell only if
@@ -238,7 +238,7 @@ impl<'a> TickWorld<'a> {
         let mut y = CHUNK_HEIGHT as i32 - 1;
         while y > 0 {
             let block = self.block(IVec3::new(x, y, z));
-            if is_solid_material(block) || is_liquid(block) {
+            if block.is_solid_material() || is_liquid(block) {
                 return y + 1;
             }
             y -= 1;

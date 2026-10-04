@@ -1,8 +1,5 @@
 use bevy::prelude::*;
 use game::block::blocks::Block;
-use game::block::properties::collision_bounds;
-use game::block::properties::is_opaque_cube;
-use game::block::properties::selection_bounds;
 use game::physics::Aabb;
 use game::physics::BLOCK_REACH;
 use game::physics::colliding_aabbs;
@@ -38,16 +35,16 @@ fn generated(chunk: Chunk) -> GeneratedChunk {
 
 #[test]
 fn thin_snow_is_non_opaque_with_selection_but_no_collision() {
-    assert!(!is_opaque_cube(Block::SnowLayer));
-    assert!(is_opaque_cube(Block::Snow));
+    assert!(!Block::SnowLayer.is_opaque_cube());
+    assert!(Block::Snow.is_opaque_cube());
     assert_eq!(light_opacity(Block::SnowLayer), 0);
     assert_eq!(light_opacity(Block::Snow), 15);
     assert_eq!(
-        selection_bounds(Block::SnowLayer),
+        Block::SnowLayer.selection_bounds(),
         ([0.0; 3], [1.0, 0.125, 1.0])
     );
-    assert_eq!(collision_bounds(Block::SnowLayer), None);
-    assert_eq!(collision_bounds(Block::Snow), Some(([0.0; 3], [1.0; 3])));
+    assert_eq!(Block::SnowLayer.collision_bounds(), None);
+    assert_eq!(Block::Snow.collision_bounds(), Some(([0.0; 3], [1.0; 3])));
 }
 
 #[test]

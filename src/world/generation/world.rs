@@ -9,8 +9,6 @@
 //! are placed. Block light is zero.
 
 use crate::block::blocks::Block;
-use crate::block::properties::is_opaque_cube;
-use crate::block::properties::is_solid_material;
 use crate::world::chest::Chest;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;
@@ -27,7 +25,7 @@ pub(super) fn beta_opacity(block: Block) -> u8 {
         Block::Leaves | Block::BirchLeaves | Block::SpruceLeaves => 1,
         Block::Water | Block::FlowingWater | Block::Ice => 3,
         Block::Lava | Block::FlowingLava | Block::Farmland => 15,
-        _ if is_opaque_cube(block) => 15,
+        _ if block.is_opaque_cube() => 15,
         _ => 0,
     }
 }
@@ -46,7 +44,7 @@ pub(super) fn is_water(block: Block) -> bool {
 
 /// Beta `Material.isSolid` and `getIsSolid`, which agree for every material.
 pub(super) fn is_solid(block: Block) -> bool {
-    is_solid_material(block)
+    block.is_solid_material()
 }
 
 pub(super) fn is_leaf(block: Block) -> bool {

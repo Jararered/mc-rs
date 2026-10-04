@@ -6,7 +6,6 @@
 use crate::block::blocks::Block;
 use crate::block::definition::BlockDefinition;
 use crate::block::definition::BlockProperties;
-use crate::block::properties::is_solid_material;
 
 pub(super) struct Definition;
 pub(super) static DEFINITION: Definition = Definition;
@@ -170,7 +169,7 @@ pub fn corner_height(
             }
             air += percent_air(metadata);
             weight += 1;
-        } else if !is_solid_material(block) {
+        } else if !block.is_solid_material() {
             air += 1.0;
             weight += 1;
         }
@@ -195,7 +194,7 @@ pub fn flow_vector(
         let (neighbor, neighbor_metadata) = cell(nx, y, nz);
         let neighbor_decay = effective_decay(fluid, neighbor, neighbor_metadata);
         let weight = if neighbor_decay < 0 {
-            if is_solid_material(neighbor) {
+            if neighbor.is_solid_material() {
                 continue;
             }
             let (below, below_metadata) = cell(nx, y - 1, nz);

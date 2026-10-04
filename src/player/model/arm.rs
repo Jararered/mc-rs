@@ -239,7 +239,15 @@ fn animate_arm(
     mut assets: ResMut<ArmAssets>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut cameras: Query<&mut Projection, With<ArmCamera>>,
+    mut wait_for_release: Local<bool>,
+    mut last_frame: Local<Option<u32>>,
+    frame: Res<bevy::diagnostic::FrameCount>,
 ) {
+    if last_frame.is_none_or(|last| last.wrapping_add(1) != frame.0) {
+        *wait_for_release = true;
+    }
+    *last_frame = Some(frame.0);
+
     if settings.is_changed() {
         for mut projection in &mut cameras {
             if let Projection::Perspective(perspective) = projection.as_mut() {
@@ -251,6 +259,13 @@ fn animate_arm(
     let locked = windows
         .single()
         .is_ok_and(|(window, cursor)| window.focused && cursor.grab_mode == CursorGrabMode::Locked);
+    // The click that grabbed the cursor must not also swing the arm.
+    if !locked {
+        *wait_for_release = true;
+    } else if *wait_for_release {
+        *wait_for_release = mouse.pressed(MouseButton::Left);
+    }
+    let carried = *wait_for_release;
     let Ok((bobbing, hotbar)) = players.single() else {
         return;
     };
@@ -267,9 +282,10 @@ fn animate_arm(
     };
     for (mut arm, mut transform, mut arm_visibility) in &mut arms {
         let start_swing = locked
-            && (mouse.just_pressed(MouseButton::Left)
-                || mouse.just_pressed(MouseButton::Right)
-                || (mouse.pressed(MouseButton::Left) && !arm.swinging));
+            && ((!carried
+                && (mouse.just_pressed(MouseButton::Left)
+                    || (mouse.pressed(MouseButton::Left) && !arm.swinging)))
+                || mouse.just_pressed(MouseButton::Right));
         if !locked {
             arm.swinging = false;
             arm.swing_tick = 0;

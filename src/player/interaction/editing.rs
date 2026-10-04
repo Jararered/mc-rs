@@ -78,6 +78,12 @@ pub const PLACED_BLOCK: Block = Block::Torch;
 pub(crate) struct BlockInteractState {
     place_delay: i32,
     mining: MiningState,
+    /// Set while the cursor is free; the left button must be released once
+    /// after the cursor is grabbed before it can mine or attack.
+    wait_for_release: bool,
+    /// Frame this system last ran; a gap means the world was not being played
+    /// (menus, pause, chat), so the cursor grab and its click are fresh.
+    last_frame: Option<u32>,
 }
 
 /// What the crosshair rests on.
@@ -117,7 +123,7 @@ pub(crate) fn interact_blocks(
         Query<(Entity, &mut Fireball, &Transform), Without<Player>>,
     ),
     mut focus: ResMut<BlockFocus>,
-    mut state: Local<BlockInteractState>,
+    (mut state, frame): (Local<BlockInteractState>, Res<bevy::diagnostic::FrameCount>),
     mut inventory_screen: ResMut<InventorySession>,
     mut workbench: ResMut<ActiveWorkbench>,
     mut item_rng: Local<ItemRng>,
@@ -129,14 +135,29 @@ pub(crate) fn interact_blocks(
         }
     }
 
+    if state
+        .last_frame
+        .is_none_or(|last| last.wrapping_add(1) != frame.0)
+    {
+        state.wait_for_release = true;
+    }
+    state.last_frame = Some(frame.0);
+
     let locked = windows
         .single()
         .is_ok_and(|(window, cursor)| window.focused && cursor.grab_mode == CursorGrabMode::Locked);
     if !locked {
         state.mining.reset();
+        state.wait_for_release = true;
         *focus = BlockFocus::default();
         return;
     }
+
+    // The click that grabbed the cursor must not also break a block.
+    if state.wait_for_release {
+        state.wait_for_release = mouse.pressed(MouseButton::Left);
+    }
+    let click_carried = state.wait_for_release;
 
     let Ok((transform, size, collision, mut hotbar, mut inventory, velocity)) = player.single_mut()
     else {
@@ -164,9 +185,9 @@ pub(crate) fn interact_blocks(
         }
     }
 
-    let left_click = mouse.just_pressed(MouseButton::Left);
+    let left_click = mouse.just_pressed(MouseButton::Left) && !click_carried;
     let right_click = mouse.just_pressed(MouseButton::Right);
-    let left_held = mouse.pressed(MouseButton::Left);
+    let left_held = mouse.pressed(MouseButton::Left) && !click_carried;
     let right_held = mouse.pressed(MouseButton::Right);
 
     if !left_held {

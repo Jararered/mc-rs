@@ -7,10 +7,10 @@ use crate::block::blocks::Block;
 use crate::block::definition::BlockDefinition;
 use crate::block::definition::BlockProperties;
 
-pub(super) struct Definition;
-pub(super) static DEFINITION: Definition = Definition;
+pub(super) struct FluidDefinition;
+pub(super) static FLUID_DEFINITION: FluidDefinition = FluidDefinition;
 
-impl BlockDefinition for Definition {
+impl BlockDefinition for FluidDefinition {
     fn in_world(&self, block: Block) -> bool {
         matches!(
             block,

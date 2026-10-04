@@ -3,10 +3,10 @@ use crate::block::definition::BlockBounds;
 use crate::block::definition::BlockDefinition;
 use crate::block::definition::BlockProperties;
 
-pub(super) struct Definition;
-pub(super) static DEFINITION: Definition = Definition;
+pub(super) struct PlantDefinition;
+pub(super) static PLANT_DEFINITION: PlantDefinition = PlantDefinition;
 
-impl BlockDefinition for Definition {
+impl BlockDefinition for PlantDefinition {
     fn in_world(&self, block: Block) -> bool {
         matches!(
             block,

@@ -1,11 +1,12 @@
 use crate::block::blocks::Block;
 use crate::block::definition::BlockDefinition;
 use crate::block::definition::BlockProperties;
+use crate::block::properties::torch_selection_bounds;
 
-pub(super) struct Definition;
-pub(super) static DEFINITION: Definition = Definition;
+pub(super) struct LightDefinition;
+pub(super) static LIGHT_DEFINITION: LightDefinition = LightDefinition;
 
-impl BlockDefinition for Definition {
+impl BlockDefinition for LightDefinition {
     fn in_world(&self, block: Block) -> bool {
         matches!(
             block,
@@ -58,7 +59,7 @@ fn properties(block: Block) -> BlockProperties {
         | Block::TorchNorth
         | Block::TorchSouth => BlockProperties {
             light_emission: 15,
-            selection_bounds: crate::block::properties::torch_selection_bounds(block),
+            selection_bounds: torch_selection_bounds(block),
             ..BlockProperties::non_colliding(0.0)
         },
         Block::Fire => BlockProperties {

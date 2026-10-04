@@ -12,7 +12,7 @@ mod soil;
 mod systems;
 
 use bevy::math::IVec3;
-use game::block::id::Id;
+use game::block::blocks::Block;
 use game::world::biome::Biome;
 use game::world::biome::BiomeMap;
 use game::world::biome::Climate;
@@ -75,18 +75,18 @@ impl TestWorld {
     }
 
     /// Write a block directly, without hooks, as world generation would.
-    pub fn set(&mut self, position: IVec3, block: Id) {
+    pub fn set(&mut self, position: IVec3, block: Block) {
         self.set_with_metadata(position, block, 0);
     }
 
-    pub fn set_with_metadata(&mut self, position: IVec3, block: Id, metadata: u8) {
+    pub fn set_with_metadata(&mut self, position: IVec3, block: Block, metadata: u8) {
         self.chunks
             .set_block_with_metadata(position.x, position.y, position.z, block, metadata)
             .expect("test cells are loaded");
     }
 
     /// Fill the inclusive box between two corners.
-    pub fn fill(&mut self, from: IVec3, to: IVec3, block: Id) {
+    pub fn fill(&mut self, from: IVec3, to: IVec3, block: Block) {
         for x in from.x.min(to.x)..=from.x.max(to.x) {
             for y in from.y.min(to.y)..=from.y.max(to.y) {
                 for z in from.z.min(to.z)..=from.z.max(to.z) {
@@ -98,7 +98,7 @@ impl TestWorld {
 
     /// Replace a block the way the player does: write it, then let the tick
     /// pass run the hooks and notify the neighbors.
-    pub fn place(&mut self, position: IVec3, block: Id) {
+    pub fn place(&mut self, position: IVec3, block: Block) {
         let previous = self.block(position);
         let metadata = self.metadata(position);
         self.set(position, block);
@@ -116,10 +116,10 @@ impl TestWorld {
             .process_events(&mut self.chunks, &mut self.light, self.time);
     }
 
-    pub fn block(&self, position: IVec3) -> Id {
+    pub fn block(&self, position: IVec3) -> Block {
         self.chunks
             .block_at(position.x, position.y, position.z)
-            .unwrap_or(Id::Air)
+            .unwrap_or(Block::Air)
     }
 
     pub fn metadata(&self, position: IVec3) -> u8 {
@@ -168,7 +168,7 @@ impl TestWorld {
     }
 
     /// The blocks dropped as items since the last call.
-    pub fn drops(&mut self) -> Vec<(IVec3, Id, u8)> {
+    pub fn drops(&mut self) -> Vec<(IVec3, Block, u8)> {
         self.effects()
             .into_iter()
             .filter_map(|effect| match effect {

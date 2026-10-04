@@ -2,7 +2,7 @@
 
 use crate::item::registry::ItemData;
 
-use super::id::Id;
+use super::blocks::Block;
 
 /// Horizontal face presented as the front of an oriented block.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -26,7 +26,7 @@ impl FurnaceFacing {
     }
 }
 
-impl Id {
+impl Block {
     pub const fn is_furnace(self) -> bool {
         matches!(
             self,

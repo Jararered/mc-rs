@@ -53,7 +53,7 @@ use bevy::tasks::futures::check_ready;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::block::id::Id;
+use crate::block::blocks::Block;
 use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
 use crate::item::ItemId;
@@ -687,7 +687,7 @@ impl StoredChunk {
                 .filter_map(|tick| {
                     Some(PendingTick {
                         index: tick.index,
-                        block: Id::from_u8(tick.block)?,
+                        block: Block::from_u8(tick.block)?,
                         delay: tick.delay,
                     })
                 })
@@ -730,7 +730,7 @@ impl StoredChunk {
             let y = index / (CHUNK_SIZE * CHUNK_SIZE);
             let z = index / CHUNK_SIZE % CHUNK_SIZE;
             let x = index % CHUNK_SIZE;
-            if !chunk.get(x, y, z).is_some_and(Id::is_chest) {
+            if !chunk.get(x, y, z).is_some_and(Block::is_chest) {
                 continue;
             }
             let slots = chest
@@ -795,7 +795,7 @@ fn encode_blocks(blocks: &[u8]) -> Vec<(u8, u16)> {
     runs
 }
 
-fn decode_blocks(runs: &[(u8, u16)]) -> Option<Vec<Id>> {
+fn decode_blocks(runs: &[(u8, u16)]) -> Option<Vec<Block>> {
     let total: usize = runs.iter().map(|(_, length)| *length as usize).sum();
     if total != BLOCKS_PER_CHUNK {
         return None;
@@ -806,15 +806,15 @@ fn decode_blocks(runs: &[(u8, u16)]) -> Option<Vec<Id>> {
         // facing. 92..=96 are also cake through trapdoor, so this remap runs
         // before `from_u8`.
         let block = match *value {
-            92 => Id::SpruceLeaves,
-            93 => Id::BirchLeaves,
-            94 => Id::SpruceWood,
-            95 => Id::BirchWood,
-            96 => Id::TorchWest,
-            97 => Id::TorchEast,
-            98 => Id::TorchNorth,
-            99 => Id::TorchSouth,
-            value => Id::from_u8(value)?,
+            92 => Block::SpruceLeaves,
+            93 => Block::BirchLeaves,
+            94 => Block::SpruceWood,
+            95 => Block::BirchWood,
+            96 => Block::TorchWest,
+            97 => Block::TorchEast,
+            98 => Block::TorchNorth,
+            99 => Block::TorchSouth,
+            value => Block::from_u8(value)?,
         };
         if !block.in_world() {
             return None;

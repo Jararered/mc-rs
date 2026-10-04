@@ -16,7 +16,7 @@ use bevy::prelude::*;
 
 use crate::app::settings::Difficulty;
 use crate::app::settings::GameSettings;
-use crate::block::id::Id;
+use crate::block::blocks::Block;
 use crate::block::properties::explosion_resistance;
 use crate::block::properties::is_opaque_cube;
 use crate::entity::EntitySize;
@@ -95,8 +95,10 @@ pub fn blast_cells(
                 const STEP: f32 = 0.3;
                 while power > 0.0 {
                     let cell = at.floor().as_ivec3();
-                    let block = chunks.block_at(cell.x, cell.y, cell.z).unwrap_or(Id::Air);
-                    if block != Id::Air {
+                    let block = chunks
+                        .block_at(cell.x, cell.y, cell.z)
+                        .unwrap_or(Block::Air);
+                    if block != Block::Air {
                         power -= (explosion_resistance(block) + 0.3) * STEP;
                     }
                     if power > 0.0 && seen.insert(cell) {
@@ -258,12 +260,12 @@ pub(crate) fn apply_explosions(
         let mut changed = Vec::new();
         if blast.flaming {
             for &cell in cells.iter().rev() {
-                if chunks.block_at(cell.x, cell.y, cell.z) == Some(Id::Air)
+                if chunks.block_at(cell.x, cell.y, cell.z) == Some(Block::Air)
                     && chunks
                         .block_at(cell.x, cell.y - 1, cell.z)
                         .is_some_and(is_opaque_cube)
                     && rng.0.next_int(3) == 0
-                    && let Some(previous) = chunks.set_block(cell.x, cell.y, cell.z, Id::Fire)
+                    && let Some(previous) = chunks.set_block(cell.x, cell.y, cell.z, Block::Fire)
                 {
                     changed.push((cell, previous, 0));
                 }
@@ -273,7 +275,7 @@ pub(crate) fn apply_explosions(
             let Some(block) = chunks.block_at(cell.x, cell.y, cell.z) else {
                 continue;
             };
-            if block == Id::Air {
+            if block == Block::Air {
                 continue;
             }
             let metadata = chunks.metadata_at(cell.x, cell.y, cell.z);
@@ -282,11 +284,11 @@ pub(crate) fn apply_explosions(
                     spawn_block_drop(&mut commands, &mut loot, cell, stack);
                 }
             }
-            if let Some(previous) = chunks.set_block(cell.x, cell.y, cell.z, Id::Air) {
+            if let Some(previous) = chunks.set_block(cell.x, cell.y, cell.z, Block::Air) {
                 changed.push((cell, previous, metadata));
             }
             // `BlockTNT.onBlockDestroyedByExplosion`: a short, random fuse.
-            if block == Id::Tnt {
+            if block == Block::Tnt {
                 let feet = Vec3::new(cell.x as f32 + 0.5, cell.y as f32, cell.z as f32 + 0.5);
                 prime_tnt(&mut commands, feet, rng.0.next_int(20) as u16 + 10);
             }

@@ -9,7 +9,7 @@ use bevy::window::CursorOptions;
 use bevy::window::PrimaryWindow;
 
 use crate::app::state::AppScreen;
-use crate::block::id::Id;
+use crate::block::blocks::Block;
 use crate::crafting::CraftingGrid;
 use crate::crafting::beta_recipe_book;
 use crate::inventory::DragPlace;
@@ -112,7 +112,8 @@ fn validate_workbench(
     let dx = player_position.x - (x as f32 + 0.5);
     let dy = player_position.y - (y as f32 + 0.5);
     let dz = player_position.z - (z as f32 + 0.5);
-    if chunks.block_at(x, y, z) == Some(Id::CraftingTable) && dx * dx + dy * dy + dz * dz <= 64.0 {
+    if chunks.block_at(x, y, z) == Some(Block::CraftingTable) && dx * dx + dy * dy + dz * dz <= 64.0
+    {
         return;
     }
     if let Ok((mut hotbar, mut inventory)) = player.single_mut() {
@@ -159,7 +160,7 @@ fn validate_furnace(
     };
     let delta = transform.translation - Vec3::new(x as f32 + 0.5, y as f32 + 0.5, z as f32 + 0.5);
     let block = chunks.block_at(x, y, z);
-    if block.is_some_and(Id::is_furnace) && delta.length_squared() <= 64.0 {
+    if block.is_some_and(Block::is_furnace) && delta.length_squared() <= 64.0 {
         return;
     }
     screen.open = false;

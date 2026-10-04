@@ -12,7 +12,7 @@ use bevy::prelude::*;
 
 use crate::app::settings::Difficulty;
 use crate::app::settings::GameSettings;
-use crate::block::id::Id;
+use crate::block::blocks::Block;
 use crate::entity::EntitySize;
 use crate::entity::PreviousTick;
 use crate::entity::Velocity;
@@ -69,7 +69,7 @@ pub struct Arrow {
     /// `arrowShake`: the quiver after striking a block.
     pub shake: i16,
     /// `inGround`, with the block it stuck in and that block's metadata.
-    stuck: Option<(IVec3, Id, u8)>,
+    stuck: Option<(IVec3, Block, u8)>,
     ticks_in_ground: u32,
     ticks_in_air: u32,
 }
@@ -417,7 +417,9 @@ pub(crate) fn tick_projectiles(
                 arrow.prev_yaw += 180.0;
                 arrow.ticks_in_air = 0;
             } else if let Some((cell, point)) = block_hit {
-                let block = chunks.block_at(cell.x, cell.y, cell.z).unwrap_or(Id::Air);
+                let block = chunks
+                    .block_at(cell.x, cell.y, cell.z)
+                    .unwrap_or(Block::Air);
                 arrow.stuck = Some((cell, block, chunks.metadata_at(cell.x, cell.y, cell.z)));
                 arrow.motion = point - position;
                 position -= arrow.motion.normalize_or_zero() * 0.05;

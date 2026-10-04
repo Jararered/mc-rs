@@ -2,7 +2,7 @@
 
 use bevy::prelude::*;
 
-use crate::block::id::Id;
+use crate::block::blocks::Block;
 use crate::entity::mobs::MobKind;
 use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
@@ -36,12 +36,12 @@ pub enum ChatCommand {
     },
     SetBlock {
         position: IVec3,
-        block: Id,
+        block: Block,
     },
     /// `block` is set only by `/wireframe set`. `on` and `off` clear it.
     Wireframe {
         enabled: bool,
-        block: Option<Id>,
+        block: Option<Block>,
     },
 }
 
@@ -259,7 +259,7 @@ fn parse_wireframe(_: &CommandRegistry, args: &[&str]) -> Result<ChatCommand, Co
         }),
         ["set", raw] => {
             let block = parse_block_id(raw)?;
-            if block == Id::Air {
+            if block == Block::Air {
                 return Err("Cannot show a wireframe of air".into());
             }
             Ok(ChatCommand::Wireframe {
@@ -272,10 +272,10 @@ fn parse_wireframe(_: &CommandRegistry, args: &[&str]) -> Result<ChatCommand, Co
 }
 
 /// Beta block IDs a player can type. Compact state IDs at 200 and above stay internal.
-fn parse_block_id(raw_text: &str) -> Result<Id, String> {
+fn parse_block_id(raw_text: &str) -> Result<Block, String> {
     let raw = raw_text.parse::<u8>().map_err(|_| "Invalid block ID")?;
     (raw <= 96)
-        .then(|| Id::from_u8(raw))
+        .then(|| Block::from_u8(raw))
         .flatten()
         .filter(|id| id.in_world())
         .ok_or_else(|| format!("Unsupported in-world block ID: {raw}"))
@@ -308,8 +308,8 @@ pub fn give_to_inventory(
 pub fn set_loaded_block(
     chunks: &mut WorldChunks,
     position: IVec3,
-    block: Id,
-) -> Result<Option<(Id, u8)>, &'static str> {
+    block: Block,
+) -> Result<Option<(Block, u8)>, &'static str> {
     let previous = chunks
         .block_at(position.x, position.y, position.z)
         .ok_or("Target chunk is not loaded or block is outside the world")?;

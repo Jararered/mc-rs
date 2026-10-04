@@ -8,7 +8,7 @@ use bevy::camera::visibility::NoAutoAabb;
 use bevy::camera::visibility::NoFrustumCulling;
 use bevy::mesh::MeshPlugin;
 use bevy::prelude::*;
-use game::block::id::Id;
+use game::block::blocks::Block;
 use game::player::Player;
 use game::world::chunk::CHUNK_HEIGHT;
 use game::world::chunk::CHUNK_SIZE;
@@ -54,7 +54,7 @@ fn rendered_positions(app: &mut App) -> Vec<ChunkPosition> {
     query.iter(app.world()).copied().collect()
 }
 
-fn block_at(app: &App, position: ChunkPosition, x: usize, y: usize, z: usize) -> Option<Id> {
+fn block_at(app: &App, position: ChunkPosition, x: usize, y: usize, z: usize) -> Option<Block> {
     app.world()
         .resource::<WorldChunks>()
         .get(position)
@@ -65,7 +65,7 @@ fn top_solid(chunk: &Chunk) -> (usize, usize, usize) {
     for y in (0..CHUNK_HEIGHT).rev() {
         for z in 0..CHUNK_SIZE {
             for x in 0..CHUNK_SIZE {
-                if chunk.get(x, y, z) != Some(Id::Air) {
+                if chunk.get(x, y, z) != Some(Block::Air) {
                     return (x, y, z);
                 }
             }
@@ -254,14 +254,14 @@ fn edited_chunk_remesh_is_dispatched_without_main_thread_meshing() {
         let mut chunks = app.world_mut().resource_mut::<WorldChunks>();
         let chunk = chunks.get_mut(origin).unwrap();
         let (x, y, z) = top_solid(&chunk.chunk);
-        chunk.chunk.set(x, y, z, Id::Air);
+        chunk.chunk.set(x, y, z, Block::Air);
         (x, y, z)
     };
     app.world_mut()
         .resource_mut::<WorldStreaming>()
         .request_remesh(origin);
     app.update();
-    assert_eq!(block_at(&app, origin, x, y, z), Some(Id::Air));
+    assert_eq!(block_at(&app, origin, x, y, z), Some(Block::Air));
     assert!(app.world().resource::<WorldStreaming>().meshing_job_count() > 0);
 
     // A second edit before the first job is applied must replace that job.
@@ -270,12 +270,12 @@ fn edited_chunk_remesh_is_dispatched_without_main_thread_meshing() {
         .get_mut(origin)
         .unwrap()
         .chunk
-        .set(x, y, z, Id::Stone);
+        .set(x, y, z, Block::Stone);
     app.world_mut()
         .resource_mut::<WorldStreaming>()
         .request_remesh(origin);
     app.update();
-    assert_eq!(block_at(&app, origin, x, y, z), Some(Id::Stone));
+    assert_eq!(block_at(&app, origin, x, y, z), Some(Block::Stone));
     assert!(app.world().resource::<WorldStreaming>().meshing_job_count() > 0);
 }
 
@@ -375,7 +375,7 @@ impl game::world::generation::ChunkGenerator for TestGenerator {
         self.bases
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let mut chunk = Chunk::new();
-        chunk.set(0, 40, 0, Id::Obsidian);
+        chunk.set(0, 40, 0, Block::Obsidian);
         GeneratedChunk {
             heightmap: Heightmap::from_chunk(&chunk),
             chunk,
@@ -401,7 +401,7 @@ impl game::world::generation::ChunkGenerator for TestGenerator {
         // Leave a marker in every member of the footprint, to exercise
         // neighboring writes and the shared finished-neighborhood rules.
         for generated in &mut chunks {
-            generated.chunk.set(1, 40, 1, Id::GoldBlock);
+            generated.chunk.set(1, 40, 1, Block::GoldBlock);
             generated.heightmap = game::world::chunk::Heightmap::from_chunk(&generated.chunk);
         }
         chunks[0].populated = true;
@@ -431,7 +431,7 @@ fn reusable_area_generation_populates_a_consistent_neighborhood() {
     assert!(area[&center].populated);
     assert!(
         area.values()
-            .all(|generated| generated.chunk.get(1, 40, 1) == Some(Id::GoldBlock))
+            .all(|generated| generated.chunk.get(1, 40, 1) == Some(Block::GoldBlock))
     );
     assert!(
         !area[&ChunkPosition {
@@ -462,11 +462,11 @@ fn streaming_uses_selected_backend_for_spawn_and_background_jobs() {
     app.update();
     assert_eq!(
         block_at(&app, ChunkPosition::ZERO, 0, 40, 0),
-        Some(Id::Obsidian)
+        Some(Block::Obsidian)
     );
     assert_eq!(
         block_at(&app, ChunkPosition::ZERO, 1, 40, 1),
-        Some(Id::GoldBlock)
+        Some(Block::GoldBlock)
     );
     assert_eq!(generator.bases.load(Ordering::Relaxed), 9);
     assert_eq!(generator.populations.load(Ordering::Relaxed), 4);
@@ -479,8 +479,8 @@ fn streaming_uses_selected_backend_for_spawn_and_background_jobs() {
             .resource::<WorldStreaming>()
             .neighborhood_finished(app.world().resource::<WorldChunks>(), center)
     }));
-    assert_eq!(block_at(&app, center, 0, 40, 0), Some(Id::Obsidian));
-    assert_eq!(block_at(&app, center, 1, 40, 1), Some(Id::GoldBlock));
+    assert_eq!(block_at(&app, center, 0, 40, 0), Some(Block::Obsidian));
+    assert_eq!(block_at(&app, center, 1, 40, 1), Some(Block::GoldBlock));
     assert!(generator.bases.load(Ordering::Relaxed) > 9);
     assert!(generator.populations.load(Ordering::Relaxed) > 4);
 }

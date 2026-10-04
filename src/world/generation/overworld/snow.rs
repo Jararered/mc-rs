@@ -1,6 +1,6 @@
 //! The snow pass at the end of Beta's `populate`.
 
-use crate::block::id::Id;
+use crate::block::blocks::Block;
 use crate::world::chunk::CHUNK_HEIGHT;
 
 use super::biome::BiomeGenerator;
@@ -24,9 +24,9 @@ pub(super) fn place_snow(world: &mut PopulationWorld, biomes: &BiomeGenerator) {
                 && y < CHUNK_HEIGHT as i32
                 && world.is_air(x, y, z)
                 && is_solid(world.get(x, y - 1, z))
-                && world.get(x, y - 1, z) != Id::Ice
+                && world.get(x, y - 1, z) != Block::Ice
             {
-                world.set(x, y, z, Id::SnowLayer);
+                world.set(x, y, z, Block::SnowLayer);
             }
         }
     }

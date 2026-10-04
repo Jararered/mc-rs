@@ -1,81 +1,87 @@
+use crate::block::blocks::Block;
 use crate::block::definition::BlockDefinition;
 use crate::block::definition::BlockProperties;
-use crate::block::id::Id;
 
 pub(super) struct Definition;
 pub(super) static DEFINITION: Definition = Definition;
 
 impl BlockDefinition for Definition {
-    fn in_world(&self, id: Id) -> bool {
+    fn in_world(&self, block: Block) -> bool {
         matches!(
-            id,
-            Id::Chest
-                | Id::ChestNorth
-                | Id::ChestEast
-                | Id::ChestSouth
-                | Id::ChestWest
-                | Id::Ladder
-                | Id::LadderNorth
-                | Id::LadderEast
-                | Id::LadderSouth
-                | Id::LadderWest
-                | Id::Furnace
-                | Id::LitFurnace
-                | Id::FurnaceNorth
-                | Id::FurnaceEast
-                | Id::FurnaceSouth
-                | Id::FurnaceWest
-                | Id::LitFurnaceNorth
-                | Id::LitFurnaceEast
-                | Id::LitFurnaceSouth
-                | Id::LitFurnaceWest
-                | Id::Pumpkin
-                | Id::PumpkinNorth
-                | Id::PumpkinEast
-                | Id::PumpkinSouth
-                | Id::PumpkinWest
+            block,
+            Block::Chest
+                | Block::ChestNorth
+                | Block::ChestEast
+                | Block::ChestSouth
+                | Block::ChestWest
+                | Block::Ladder
+                | Block::LadderNorth
+                | Block::LadderEast
+                | Block::LadderSouth
+                | Block::LadderWest
+                | Block::Furnace
+                | Block::LitFurnace
+                | Block::FurnaceNorth
+                | Block::FurnaceEast
+                | Block::FurnaceSouth
+                | Block::FurnaceWest
+                | Block::LitFurnaceNorth
+                | Block::LitFurnaceEast
+                | Block::LitFurnaceSouth
+                | Block::LitFurnaceWest
+                | Block::Pumpkin
+                | Block::PumpkinNorth
+                | Block::PumpkinEast
+                | Block::PumpkinSouth
+                | Block::PumpkinWest
         )
     }
 
-    fn properties(&self, id: Id) -> BlockProperties {
-        properties(id)
+    fn properties(&self, block: Block) -> BlockProperties {
+        properties(block)
     }
 
-    fn opaque_cube(&self, id: Id) -> bool {
+    fn opaque_cube(&self, block: Block) -> bool {
         !matches!(
-            id,
-            Id::Chest
-                | Id::ChestNorth
-                | Id::ChestEast
-                | Id::ChestSouth
-                | Id::ChestWest
-                | Id::Ladder
-                | Id::LadderNorth
-                | Id::LadderEast
-                | Id::LadderSouth
-                | Id::LadderWest
+            block,
+            Block::Chest
+                | Block::ChestNorth
+                | Block::ChestEast
+                | Block::ChestSouth
+                | Block::ChestWest
+                | Block::Ladder
+                | Block::LadderNorth
+                | Block::LadderEast
+                | Block::LadderSouth
+                | Block::LadderWest
         )
     }
 
-    fn light_opacity(&self, id: Id) -> u8 {
-        if id.is_ladder() { 0 } else { 15 }
+    fn light_opacity(&self, block: Block) -> u8 {
+        if block.is_ladder() { 0 } else { 15 }
     }
 
-    fn light_emission(&self, id: Id) -> u8 {
-        if id.is_lit_furnace() { 13 } else { 0 }
+    fn light_emission(&self, block: Block) -> u8 {
+        if block.is_lit_furnace() { 13 } else { 0 }
     }
 }
 
-fn properties(id: Id) -> BlockProperties {
-    match id {
-        Id::Chest | Id::ChestNorth | Id::ChestEast | Id::ChestSouth | Id::ChestWest => {
-            BlockProperties {
-                opaque_cube: false,
-                ..BlockProperties::solid(2.5)
-            }
-        }
-        Id::Ladder | Id::LadderNorth | Id::LadderEast | Id::LadderSouth | Id::LadderWest => {
-            let bounds = match id.ladder_support_offset() {
+fn properties(block: Block) -> BlockProperties {
+    match block {
+        Block::Chest
+        | Block::ChestNorth
+        | Block::ChestEast
+        | Block::ChestSouth
+        | Block::ChestWest => BlockProperties {
+            opaque_cube: false,
+            ..BlockProperties::solid(2.5)
+        },
+        Block::Ladder
+        | Block::LadderNorth
+        | Block::LadderEast
+        | Block::LadderSouth
+        | Block::LadderWest => {
+            let bounds = match block.ladder_support_offset() {
                 Some([0, 0, -1]) => ([0.0, 0.0, 0.0], [1.0, 1.0, 0.125]),
                 Some([0, 0, 1]) => ([0.0, 0.0, 0.875], [1.0, 1.0, 1.0]),
                 Some([1, 0, 0]) => ([0.875, 0.0, 0.0], [1.0, 1.0, 1.0]),
@@ -90,24 +96,26 @@ fn properties(id: Id) -> BlockProperties {
                 ..BlockProperties::solid(0.4)
             }
         }
-        Id::Furnace
-        | Id::LitFurnace
-        | Id::FurnaceNorth
-        | Id::FurnaceEast
-        | Id::FurnaceSouth
-        | Id::FurnaceWest
-        | Id::LitFurnaceNorth
-        | Id::LitFurnaceEast
-        | Id::LitFurnaceSouth
-        | Id::LitFurnaceWest => BlockProperties {
+        Block::Furnace
+        | Block::LitFurnace
+        | Block::FurnaceNorth
+        | Block::FurnaceEast
+        | Block::FurnaceSouth
+        | Block::FurnaceWest
+        | Block::LitFurnaceNorth
+        | Block::LitFurnaceEast
+        | Block::LitFurnaceSouth
+        | Block::LitFurnaceWest => BlockProperties {
             harvestable_by_hand: false,
-            light_emission: if id.is_lit_furnace() { 13 } else { 0 },
+            light_emission: if block.is_lit_furnace() { 13 } else { 0 },
             ..BlockProperties::solid(3.5)
         },
-        Id::Pumpkin | Id::PumpkinNorth | Id::PumpkinEast | Id::PumpkinSouth | Id::PumpkinWest => {
-            BlockProperties::solid(1.0)
-        }
-        Id::Unknown(_) => BlockProperties::unknown(),
+        Block::Pumpkin
+        | Block::PumpkinNorth
+        | Block::PumpkinEast
+        | Block::PumpkinSouth
+        | Block::PumpkinWest => BlockProperties::solid(1.0),
+        Block::Unknown(_) => BlockProperties::unknown(),
         _ => BlockProperties::unknown(),
     }
 }

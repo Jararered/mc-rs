@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
-use game::block::id::Id;
+use game::block::blocks::Block;
 use game::block::properties::blocks_movement;
 use game::block::properties::collision_bounds;
 use game::block::properties::is_breakable;
@@ -58,7 +58,7 @@ fn floor_world(floor_y: usize) -> WorldChunks {
     let mut chunk = Chunk::new();
     for z in 0..CHUNK_SIZE {
         for x in 0..CHUNK_SIZE {
-            chunk.set(x, floor_y, z, Id::Stone);
+            chunk.set(x, floor_y, z, Block::Stone);
         }
     }
     let mut chunks = WorldChunks::default();
@@ -66,11 +66,11 @@ fn floor_world(floor_y: usize) -> WorldChunks {
     chunks
 }
 
-fn fluid_world(fluid: Id) -> WorldChunks {
+fn fluid_world(fluid: Block) -> WorldChunks {
     let mut chunk = Chunk::new();
     for z in 0..CHUNK_SIZE {
         for x in 0..CHUNK_SIZE {
-            chunk.set(x, 64, z, Id::Stone);
+            chunk.set(x, 64, z, Block::Stone);
             for y in 65..69 {
                 chunk.set(x, y, z, fluid);
             }
@@ -81,7 +81,7 @@ fn fluid_world(fluid: Id) -> WorldChunks {
     chunks
 }
 
-fn player_fluid_tick(fluid: Id, velocity: Vec3, jumping: bool) -> (Vec3, Vec3) {
+fn player_fluid_tick(fluid: Block, velocity: Vec3, jumping: bool) -> (Vec3, Vec3) {
     let mut app = App::new();
     app.add_plugins(MinimalPlugins)
         .insert_resource(fluid_world(fluid))
@@ -106,21 +106,21 @@ fn player_fluid_tick(fluid: Id, velocity: Vec3, jumping: bool) -> (Vec3, Vec3) {
 
 #[test]
 fn air_and_water_do_not_block_movement() {
-    assert!(!blocks_movement(Id::Air));
-    assert!(!blocks_movement(Id::Water));
-    assert!(blocks_movement(Id::Stone));
-    assert!(blocks_movement(Id::Leaves));
-    assert!(blocks_movement(Id::Ice));
+    assert!(!blocks_movement(Block::Air));
+    assert!(!blocks_movement(Block::Water));
+    assert!(blocks_movement(Block::Stone));
+    assert!(blocks_movement(Block::Leaves));
+    assert!(blocks_movement(Block::Ice));
 }
 
 #[test]
 fn ladder_collision_is_a_thin_plate_on_the_supporting_wall() {
     assert_eq!(
-        collision_bounds(Id::LadderWest),
+        collision_bounds(Block::LadderWest),
         Some(([0.0, 0.0, 0.0], [0.125, 1.0, 1.0]))
     );
     assert_eq!(
-        collision_bounds(Id::LadderSouth),
+        collision_bounds(Block::LadderSouth),
         Some(([0.0, 0.0, 0.875], [1.0, 1.0, 1.0]))
     );
 }
@@ -129,8 +129,8 @@ fn ladder_collision_is_a_thin_plate_on_the_supporting_wall() {
 fn horizontal_collision_with_a_ladder_starts_a_climb() {
     let mut chunk = Chunk::new();
     for y in 65..70 {
-        chunk.set(8, y, 8, Id::Stone);
-        chunk.set(9, y, 8, Id::LadderWest);
+        chunk.set(8, y, 8, Block::Stone);
+        chunk.set(9, y, 8, Block::LadderWest);
     }
     let mut chunks = WorldChunks::default();
     chunks.insert(ChunkPosition::ZERO, generated(chunk));
@@ -159,33 +159,33 @@ fn horizontal_collision_with_a_ladder_starts_a_climb() {
 
 #[test]
 fn fluids_are_replaceable_and_bedrock_is_unbreakable() {
-    assert!(!is_targetable(Id::Air));
-    assert!(!is_targetable(Id::Water));
-    assert!(is_targetable(Id::Stone));
-    assert!(is_targetable(Id::Bedrock));
-    assert!(is_replaceable(Id::Air));
-    assert!(is_replaceable(Id::Water));
-    assert!(!is_replaceable(Id::Stone));
-    assert!(is_breakable(Id::Stone));
-    assert!(is_breakable(Id::Leaves));
-    assert!(!is_breakable(Id::Bedrock));
-    assert!(!is_breakable(Id::Water));
+    assert!(!is_targetable(Block::Air));
+    assert!(!is_targetable(Block::Water));
+    assert!(is_targetable(Block::Stone));
+    assert!(is_targetable(Block::Bedrock));
+    assert!(is_replaceable(Block::Air));
+    assert!(is_replaceable(Block::Water));
+    assert!(!is_replaceable(Block::Stone));
+    assert!(is_breakable(Block::Stone));
+    assert!(is_breakable(Block::Leaves));
+    assert!(!is_breakable(Block::Bedrock));
+    assert!(!is_breakable(Block::Water));
 }
 
 #[test]
 fn raycast_only_hits_the_torch_near_its_visible_shaft() {
     let mut chunk = Chunk::new();
-    chunk.set(8, 64, 8, Id::Torch);
+    chunk.set(8, 64, 8, Block::Torch);
     let mut chunks = WorldChunks::default();
     chunks.insert(ChunkPosition::ZERO, generated(chunk));
 
     assert_eq!(
-        selection_bounds(Id::Torch),
+        selection_bounds(Block::Torch),
         ([0.4, 0.0, 0.4], [0.6, 0.625, 0.6])
     );
     assert!(
         raycast_blocks(&chunks, Vec3::new(8.5, 64.4, 7.0), Vec3::Z, BLOCK_REACH)
-            .is_some_and(|hit| hit.block == Id::Torch)
+            .is_some_and(|hit| hit.block == Block::Torch)
     );
     assert!(raycast_blocks(&chunks, Vec3::new(8.8, 64.4, 7.0), Vec3::Z, BLOCK_REACH).is_none());
     assert!(raycast_blocks(&chunks, Vec3::new(8.5, 64.9, 7.0), Vec3::Z, BLOCK_REACH).is_none());
@@ -265,11 +265,11 @@ fn walking_stops_at_a_wall() {
     let mut chunk = Chunk::new();
     for z in 0..CHUNK_SIZE {
         for x in 0..CHUNK_SIZE {
-            chunk.set(x, 64, z, Id::Stone);
+            chunk.set(x, 64, z, Block::Stone);
         }
     }
-    chunk.set(10, 65, 8, Id::Stone);
-    chunk.set(10, 66, 8, Id::Stone);
+    chunk.set(10, 65, 8, Block::Stone);
+    chunk.set(10, 66, 8, Block::Stone);
     let mut chunks = WorldChunks::default();
     chunks.insert(ChunkPosition::ZERO, generated(chunk));
 
@@ -287,9 +287,9 @@ fn water_does_not_stop_a_falling_body() {
     let mut chunk = Chunk::new();
     for z in 0..CHUNK_SIZE {
         for x in 0..CHUNK_SIZE {
-            chunk.set(x, 60, z, Id::Stone);
-            chunk.set(x, 61, z, Id::Water);
-            chunk.set(x, 62, z, Id::Water);
+            chunk.set(x, 60, z, Block::Stone);
+            chunk.set(x, 61, z, Block::Water);
+            chunk.set(x, 62, z, Block::Water);
         }
     }
     let mut chunks = WorldChunks::default();
@@ -414,13 +414,13 @@ fn held_jump_uses_beta_impulse_and_gravity_per_tick() {
 
 #[test]
 fn water_and_lava_apply_their_beta_drag_and_swimming_jump() {
-    let (_, water_motion) = player_fluid_tick(Id::Water, Vec3::new(2.0, 0.0, 0.0), false);
-    let (_, lava_motion) = player_fluid_tick(Id::Lava, Vec3::new(2.0, 0.0, 0.0), false);
+    let (_, water_motion) = player_fluid_tick(Block::Water, Vec3::new(2.0, 0.0, 0.0), false);
+    let (_, lava_motion) = player_fluid_tick(Block::Lava, Vec3::new(2.0, 0.0, 0.0), false);
     assert!((water_motion.x - 1.6).abs() < 1e-4);
     assert!((lava_motion.x - 1.0).abs() < 1e-4);
 
-    let (water_position, water_jump) = player_fluid_tick(Id::Water, Vec3::ZERO, true);
-    let (lava_position, lava_jump) = player_fluid_tick(Id::Lava, Vec3::ZERO, true);
+    let (water_position, water_jump) = player_fluid_tick(Block::Water, Vec3::ZERO, true);
+    let (lava_position, lava_jump) = player_fluid_tick(Block::Lava, Vec3::ZERO, true);
     assert!(water_position.y > 65.0 + EntitySize::PLAYER.y_offset);
     assert!(lava_position.y > 65.0 + EntitySize::PLAYER.y_offset);
     assert!((water_jump.y - 0.24).abs() < 1e-4);
@@ -461,11 +461,11 @@ fn holding_jump_repeats_after_landing() {
 
 #[test]
 fn ground_friction_depends_on_surface_slipperiness() {
-    fn final_horizontal_speed(surface: Id) -> f32 {
+    fn final_horizontal_speed(surface: Block) -> f32 {
         let mut chunk = Chunk::new();
         for z in 0..CHUNK_SIZE {
             for x in 0..CHUNK_SIZE {
-                chunk.set(x, 64, z, Id::Stone);
+                chunk.set(x, 64, z, Block::Stone);
             }
         }
         chunk.set(8, 64, 8, surface);
@@ -491,8 +491,8 @@ fn ground_friction_depends_on_surface_slipperiness() {
         query.single(app.world()).unwrap().0.x
     }
 
-    let stone_speed = final_horizontal_speed(Id::Stone);
-    let ice_speed = final_horizontal_speed(Id::Ice);
+    let stone_speed = final_horizontal_speed(Block::Stone);
+    let ice_speed = final_horizontal_speed(Block::Ice);
     assert!(ice_speed > stone_speed * 1.5);
 }
 
@@ -573,11 +573,11 @@ fn player_has_air_control_and_momentum_decays_without_input() {
 
 #[test]
 fn player_steps_onto_low_obstacles_but_not_full_blocks() {
-    fn move_over(obstacle: Id, metadata: u8) -> game::physics::Movement {
+    fn move_over(obstacle: Block, metadata: u8) -> game::physics::Movement {
         let mut chunk = Chunk::new();
         for z in 0..CHUNK_SIZE {
             for x in 0..CHUNK_SIZE {
-                chunk.set(x, 64, z, Id::Stone);
+                chunk.set(x, 64, z, Block::Stone);
             }
         }
         chunk.set_with_metadata(9, 65, 8, obstacle, metadata);
@@ -587,22 +587,22 @@ fn player_steps_onto_low_obstacles_but_not_full_blocks() {
         move_entity(aabb, Vec3::new(0.5, 0.0, 0.0), 0.5, true, &chunks)
     }
 
-    let snow_step = move_over(Id::SnowLayer, 0);
+    let snow_step = move_over(Block::SnowLayer, 0);
     assert!(snow_step.displacement.x > 0.2);
     assert!((snow_step.aabb.min.y - 65.0).abs() < 1e-4);
 
-    let deep_snow = move_over(Id::SnowLayer, 3);
+    let deep_snow = move_over(Block::SnowLayer, 3);
     assert!(deep_snow.displacement.x > 0.2);
     assert!((deep_snow.aabb.min.y - 65.5).abs() < 1e-4);
 
-    let full_block = move_over(Id::Stone, 0);
+    let full_block = move_over(Block::Stone, 0);
     assert!(full_block.displacement.x <= 0.2 + 1e-4);
 }
 
 #[test]
 fn sneaking_brakes_at_the_edge_of_supported_ground() {
     let mut chunk = Chunk::new();
-    chunk.set(8, 64, 8, Id::Stone);
+    chunk.set(8, 64, 8, Block::Stone);
     let chunks = generated(chunk);
     let mut world = WorldChunks::default();
     world.insert(ChunkPosition::ZERO, chunks);
@@ -623,13 +623,13 @@ fn raycast_hits_the_top_of_a_stone_block() {
     assert_eq!(hit.y, 64);
     assert_eq!(hit.z, 8);
     assert_eq!(hit.face, BlockFace::Up);
-    assert_eq!(hit.block, Id::Stone);
+    assert_eq!(hit.block, Block::Stone);
 }
 
 #[test]
 fn raycast_reports_the_face_the_ray_entered() {
     let mut chunk = Chunk::new();
-    chunk.set(10, 65, 8, Id::Dirt);
+    chunk.set(10, 65, 8, Block::Dirt);
     let mut chunks = WorldChunks::default();
     chunks.insert(ChunkPosition::ZERO, generated(chunk));
 
@@ -637,22 +637,22 @@ fn raycast_reports_the_face_the_ray_entered() {
         .expect("should hit the wall");
     assert_eq!((hit.x, hit.y, hit.z), (10, 65, 8));
     assert_eq!(hit.face, BlockFace::West);
-    assert_eq!(hit.block, Id::Dirt);
+    assert_eq!(hit.block, Block::Dirt);
 }
 
 #[test]
 fn raycast_skips_water_and_hits_the_block_behind_it() {
     let mut chunk = Chunk::new();
-    chunk.set(8, 64, 8, Id::Stone);
-    chunk.set(8, 65, 8, Id::Water);
-    chunk.set(8, 66, 8, Id::Water);
+    chunk.set(8, 64, 8, Block::Stone);
+    chunk.set(8, 65, 8, Block::Water);
+    chunk.set(8, 66, 8, Block::Water);
     let mut chunks = WorldChunks::default();
     chunks.insert(ChunkPosition::ZERO, generated(chunk));
 
     let hit = raycast_blocks(&chunks, Vec3::new(8.5, 68.0, 8.5), Vec3::NEG_Y, BLOCK_REACH)
         .expect("should pass through water");
     assert_eq!((hit.x, hit.y, hit.z), (8, 64, 8));
-    assert_eq!(hit.block, Id::Stone);
+    assert_eq!(hit.block, Block::Stone);
 }
 
 #[test]
@@ -663,10 +663,10 @@ fn raycast_misses_when_nothing_is_in_range() {
 
 fn current_world() -> WorldChunks {
     let mut chunk = Chunk::new();
-    chunk.set(8, 64, 8, Id::Stone);
-    chunk.set(9, 64, 8, Id::Stone);
-    chunk.set(8, 65, 8, Id::Water);
-    chunk.set_with_metadata(9, 65, 8, Id::FlowingWater, 1);
+    chunk.set(8, 64, 8, Block::Stone);
+    chunk.set(9, 64, 8, Block::Stone);
+    chunk.set(8, 65, 8, Block::Water);
+    chunk.set_with_metadata(9, 65, 8, Block::FlowingWater, 1);
     let mut chunks = WorldChunks::default();
     chunks.insert(ChunkPosition::ZERO, generated(chunk));
     chunks

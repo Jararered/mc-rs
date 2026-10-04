@@ -5,7 +5,7 @@ use serde::Serialize;
 
 use crate::app::settings::Difficulty;
 use crate::app::state::AppScreen;
-use crate::block::id::Id;
+use crate::block::blocks::Block;
 use crate::block::properties::is_opaque_cube;
 use crate::entity::Velocity;
 use crate::entity::combat::Hit;
@@ -206,13 +206,13 @@ fn apply_lightning(
     let mut player = player.single_mut().ok();
     for &LightningStrike(center) in strikes.read() {
         let at = center.floor().as_ivec3();
-        if chunks.block_at(at.x, at.y, at.z) == Some(Id::Air)
+        if chunks.block_at(at.x, at.y, at.z) == Some(Block::Air)
             && chunks
                 .block_at(at.x, at.y - 1, at.z)
                 .is_some_and(is_opaque_cube)
         {
             let old_meta = chunks.metadata_at(at.x, at.y, at.z);
-            if let Some(old) = chunks.set_block(at.x, at.y, at.z, Id::Fire) {
+            if let Some(old) = chunks.set_block(at.x, at.y, at.z, Block::Fire) {
                 ticks.block_changed(at, old, old_meta);
                 if let Some(s) = streaming.as_deref_mut() {
                     s.request_block_update(at.x, at.y, at.z);

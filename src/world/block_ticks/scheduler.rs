@@ -7,7 +7,7 @@ use std::collections::HashSet;
 
 use bevy::math::IVec3;
 
-use crate::block::id::Id;
+use crate::block::blocks::Block;
 use crate::world::chunk::ChunkPosition;
 
 /// One `NextTickListEntry`: run `block`'s update at `position` once the world
@@ -15,17 +15,17 @@ use crate::world::chunk::ChunkPosition;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ScheduledTick {
     pub position: IVec3,
-    pub block: Id,
+    pub block: Block,
     pub due: u64,
 }
 
 #[derive(Default)]
 pub struct TickScheduler {
     /// Keyed by `(due, sequence)`, matching `NextTickListEntry.comparer`.
-    queue: BTreeMap<(u64, u64), (IVec3, Id)>,
+    queue: BTreeMap<(u64, u64), (IVec3, Block)>,
     /// Entries by identity. Beta's `NextTickListEntry.equals` compares only
     /// the cell and block, so a pending tick is never scheduled twice.
-    pending: HashSet<(IVec3, Id)>,
+    pending: HashSet<(IVec3, Block)>,
     next_sequence: u64,
 }
 
@@ -34,13 +34,13 @@ impl TickScheduler {
         self.queue.len()
     }
 
-    pub fn contains(&self, position: IVec3, block: Id) -> bool {
+    pub fn contains(&self, position: IVec3, block: Block) -> bool {
         self.pending.contains(&(position, block))
     }
 
     /// Add an entry unless the same cell and block is already pending, which
     /// keeps the earlier entry and its due time, as Beta does.
-    pub fn schedule(&mut self, position: IVec3, block: Id, due: u64) -> bool {
+    pub fn schedule(&mut self, position: IVec3, block: Block, due: u64) -> bool {
         if !self.pending.insert((position, block)) {
             return false;
         }

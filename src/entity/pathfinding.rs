@@ -11,9 +11,9 @@
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 
+use crate::block::blocks::Block;
 use crate::block::fluids::is_lava;
 use crate::block::fluids::is_water;
-use crate::block::id::Id;
 use crate::block::properties::is_solid_material;
 use crate::entity::EntitySize;
 use crate::world::chunk::CHUNK_HEIGHT;
@@ -536,10 +536,10 @@ impl<'a> Region<'a> {
         Some((chunk, (x & 15) as usize, y as usize, (z & 15) as usize))
     }
 
-    fn block(&self, x: i32, y: i32, z: i32) -> Id {
+    fn block(&self, x: i32, y: i32, z: i32) -> Block {
         self.chunk(x, y, z)
             .and_then(|(chunk, x, y, z)| chunk.get(x, y, z))
-            .unwrap_or(Id::Air)
+            .unwrap_or(Block::Air)
     }
 
     fn metadata(&self, x: i32, y: i32, z: i32) -> u8 {
@@ -554,10 +554,10 @@ impl<'a> Region<'a> {
             for y in at.y..at.y + span.y {
                 for z in at.z..at.z + span.z {
                     let block = self.block(x, y, z);
-                    if block == Id::Air {
+                    if block == Block::Air {
                         continue;
                     }
-                    if matches!(block, Id::WoodenDoor | Id::IronDoor) {
+                    if matches!(block, Block::WoodenDoor | Block::IronDoor) {
                         // `BlockDoor.isOpen`.
                         if self.metadata(x, y, z) & 4 == 0 {
                             return Clearance::Blocked;

@@ -1,4 +1,4 @@
-use game::block::id::Id;
+use game::block::blocks::Block;
 use game::world::block_ticks::behaviors::leaves::CHECK_DECAY;
 use game::world::block_ticks::behaviors::leaves::supported;
 
@@ -8,9 +8,9 @@ use super::at;
 /// A log at (8, 64, 8) and a line of leaves running east from it.
 fn branch(length: i32) -> TestWorld {
     let mut world = TestWorld::new(1);
-    world.set(at(8, 64, 8), Id::Wood);
+    world.set(at(8, 64, 8), Block::Wood);
     for x in 9..9 + length {
-        world.set(at(x, 64, 8), Id::Leaves);
+        world.set(at(x, 64, 8), Block::Leaves);
     }
     world
 }
@@ -34,13 +34,13 @@ fn removing_a_log_flags_nearby_leaves_which_then_decay() {
             "generated leaves are unflagged"
         );
     }
-    world.place(at(8, 64, 8), Id::Air);
+    world.place(at(8, 64, 8), Block::Air);
     for x in 9..12 {
         assert_ne!(world.metadata(at(x, 64, 8)) & CHECK_DECAY, 0);
     }
     for x in 9..12 {
         world.random_ticks(at(x, 64, 8), 1);
-        assert_eq!(world.block(at(x, 64, 8)), Id::Air);
+        assert_eq!(world.block(at(x, 64, 8)), Block::Air);
     }
     let dropped: Vec<_> = world
         .drops()
@@ -49,7 +49,7 @@ fn removing_a_log_flags_nearby_leaves_which_then_decay() {
         .collect();
     assert_eq!(
         dropped,
-        vec![Id::Leaves; 3],
+        vec![Block::Leaves; 3],
         "decayed leaves roll their sapling drop"
     );
 }
@@ -57,28 +57,28 @@ fn removing_a_log_flags_nearby_leaves_which_then_decay() {
 #[test]
 fn a_flagged_leaf_that_finds_a_log_clears_its_flag() {
     let mut world = branch(2);
-    world.set(at(10, 65, 8), Id::BirchWood);
-    world.place(at(8, 64, 8), Id::Air);
+    world.set(at(10, 65, 8), Block::BirchWood);
+    world.place(at(8, 64, 8), Block::Air);
     world.random_ticks(at(9, 64, 8), 1);
     world.random_ticks(at(10, 64, 8), 1);
     assert_eq!(
         world.block(at(9, 64, 8)),
-        Id::Leaves,
+        Block::Leaves,
         "another log still reaches it"
     );
     assert_eq!(world.metadata(at(9, 64, 8)) & CHECK_DECAY, 0);
-    assert_eq!(world.block(at(10, 64, 8)), Id::Leaves);
+    assert_eq!(world.block(at(10, 64, 8)), Block::Leaves);
 }
 
 #[test]
 fn unflagged_leaves_never_check_for_logs() {
     let mut world = TestWorld::new(1);
-    world.set(at(8, 64, 8), Id::SpruceLeaves);
+    world.set(at(8, 64, 8), Block::SpruceLeaves);
     world.random_ticks(at(8, 64, 8), 50);
-    assert_eq!(world.block(at(8, 64, 8)), Id::SpruceLeaves);
+    assert_eq!(world.block(at(8, 64, 8)), Block::SpruceLeaves);
 
     // Placed leaves carry the flag, as `ItemLeaves` sets it.
-    world.set_with_metadata(at(8, 64, 8), Id::SpruceLeaves, CHECK_DECAY);
+    world.set_with_metadata(at(8, 64, 8), Block::SpruceLeaves, CHECK_DECAY);
     world.random_ticks(at(8, 64, 8), 1);
-    assert_eq!(world.block(at(8, 64, 8)), Id::Air);
+    assert_eq!(world.block(at(8, 64, 8)), Block::Air);
 }

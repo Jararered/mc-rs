@@ -27,7 +27,7 @@ use bevy::render::render_resource::PrimitiveTopology;
 
 use crate::app::settings::GameSettings;
 use crate::app::state::AppScreen;
-use crate::block::id::Id;
+use crate::block::blocks::Block;
 use crate::player::Player;
 use crate::player::PlayerCamera;
 use crate::random::JavaRandom;
@@ -356,8 +356,8 @@ fn medium_at(chunks: &WorldChunks, eye: Vec3) -> Medium {
         eye.y.floor() as i32,
         eye.z.floor() as i32,
     ) {
-        Some(Id::Water | Id::FlowingWater) => Medium::Water,
-        Some(Id::Lava | Id::FlowingLava) => Medium::Lava,
+        Some(Block::Water | Block::FlowingWater) => Medium::Water,
+        Some(Block::Lava | Block::FlowingLava) => Medium::Lava,
         _ => Medium::Air,
     }
 }

@@ -1,5 +1,5 @@
 //! Beta 1.7.3 `MapGenBase` and `MapGenCaves`.
-use crate::block::id::Id;
+use crate::block::blocks::Block;
 use crate::random::JavaRandom;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::ChunkPosition;
@@ -189,7 +189,7 @@ fn carve_ellipsoid(
 
     // Beta scans only the shell of the box: interior columns check their top
     // cell and then skip straight to the bottom one.
-    let water = [Id::Water.as_u8(), Id::FlowingWater.as_u8()];
+    let water = [Block::Water.as_u8(), Block::FlowingWater.as_u8()];
     for x in x0..x1 {
         for z in z0..z1 {
             let mut y = y1 + 1;
@@ -207,9 +207,9 @@ fn carve_ellipsoid(
         }
     }
 
-    let stone = Id::Stone.as_u8();
-    let dirt = Id::Dirt.as_u8();
-    let grass = Id::Grass.as_u8();
+    let stone = Block::Stone.as_u8();
+    let dirt = Block::Dirt.as_u8();
+    let grass = Block::Grass.as_u8();
     for x in x0..x1 {
         let nx = (f64::from(x + target.x * 16) + 0.5 - p[0]) / width;
         for z in z0..z1 {
@@ -233,9 +233,9 @@ fn carve_ellipsoid(
                 }
                 if block == stone || block == dirt || block == grass {
                     if y < 10 {
-                        blocks[index] = Id::FlowingLava.as_u8();
+                        blocks[index] = Block::FlowingLava.as_u8();
                     } else {
-                        blocks[index] = Id::Air.as_u8();
+                        blocks[index] = Block::Air.as_u8();
                         let below = raw_index(x as usize, y as usize, z as usize);
                         if grass_seen && blocks[below] == dirt {
                             blocks[below] = grass;

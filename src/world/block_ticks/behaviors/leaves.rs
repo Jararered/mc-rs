@@ -9,7 +9,7 @@
 
 use bevy::math::IVec3;
 
-use crate::block::id::Id;
+use crate::block::blocks::Block;
 use crate::world::block_ticks::BlockBehavior;
 use crate::world::block_ticks::TickWorld;
 
@@ -19,12 +19,15 @@ pub const CHECK_DECAY: u8 = 8;
 const SUPPORT_REACH: i32 = 4;
 const SPAN: usize = (SUPPORT_REACH * 2 + 1) as usize;
 
-pub fn is_leaves(block: Id) -> bool {
-    matches!(block, Id::Leaves | Id::SpruceLeaves | Id::BirchLeaves)
+pub fn is_leaves(block: Block) -> bool {
+    matches!(
+        block,
+        Block::Leaves | Block::SpruceLeaves | Block::BirchLeaves
+    )
 }
 
-pub fn is_log(block: Id) -> bool {
-    matches!(block, Id::Wood | Id::SpruceWood | Id::BirchWood)
+pub fn is_log(block: Block) -> bool {
+    matches!(block, Block::Wood | Block::SpruceWood | Block::BirchWood)
 }
 
 /// Set [`CHECK_DECAY`] on every leaf within `radius` of `position`, without
@@ -98,11 +101,11 @@ pub struct Leaves;
 pub static LEAVES: Leaves = Leaves;
 
 impl BlockBehavior for Leaves {
-    fn ticks_randomly(&self, _block: Id) -> bool {
+    fn ticks_randomly(&self, _block: Block) -> bool {
         true
     }
 
-    fn on_removed(&self, world: &mut TickWorld, position: IVec3, _previous: Id, _metadata: u8) {
+    fn on_removed(&self, world: &mut TickWorld, position: IVec3, _previous: Block, _metadata: u8) {
         flag_leaves(world, position, 1);
     }
 
@@ -116,7 +119,7 @@ impl BlockBehavior for Leaves {
         } else {
             let block = world.block(position);
             world.drop_block_as_item(position, block, metadata);
-            world.set_block_notify(position, Id::Air);
+            world.set_block_notify(position, Block::Air);
         }
     }
 }
@@ -126,7 +129,7 @@ pub struct Log;
 pub static LOG: Log = Log;
 
 impl BlockBehavior for Log {
-    fn on_removed(&self, world: &mut TickWorld, position: IVec3, _previous: Id, _metadata: u8) {
+    fn on_removed(&self, world: &mut TickWorld, position: IVec3, _previous: Block, _metadata: u8) {
         flag_leaves(world, position, SUPPORT_REACH);
     }
 }

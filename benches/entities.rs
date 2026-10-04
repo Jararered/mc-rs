@@ -10,7 +10,7 @@ use std::time::Instant;
 
 use bevy::prelude::*;
 use game::app::settings::GameSettings;
-use game::block::id::Id;
+use game::block::blocks::Block;
 use game::entity::EntityDiagnostics;
 use game::entity::EntitySize;
 use game::entity::mobs::Mob;
@@ -58,10 +58,14 @@ fn hills(radius: i32) -> WorldChunks {
                 for z in 0..CHUNK_SIZE {
                     let top = surface(cx * 16 + x as i32, cz * 16 + z as i32) as usize;
                     for y in 0..top {
-                        let block = if y + 3 < top { Id::Stone } else { Id::Dirt };
+                        let block = if y + 3 < top {
+                            Block::Stone
+                        } else {
+                            Block::Dirt
+                        };
                         chunk.set(x, y, z, block);
                     }
-                    chunk.set(x, top, z, Id::Grass);
+                    chunk.set(x, top, z, Block::Grass);
                 }
             }
             chunks.insert(
@@ -90,7 +94,7 @@ fn hills(radius: i32) -> WorldChunks {
 fn pillar(chunks: &mut WorldChunks) -> Vec3 {
     let ground = surface(0, 0);
     for y in ground + 1..=ground + PILLAR {
-        chunks.set_block(0, y, 0, Id::Stone);
+        chunks.set_block(0, y, 0, Block::Stone);
     }
     Vec3::new(0.5, (ground + PILLAR + 1) as f32, 0.5)
 }

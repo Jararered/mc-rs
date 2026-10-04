@@ -6,7 +6,7 @@ use serde::Serialize;
 use crate::app::settings::Difficulty;
 use crate::app::settings::GameSettings;
 use crate::app::state::AppScreen;
-use crate::block::id::Id;
+use crate::block::blocks::Block;
 use crate::block::properties::is_opaque_cube;
 use crate::entity::CollisionState;
 use crate::entity::EntityDiagnostics;
@@ -655,13 +655,13 @@ pub fn can_spawn_at(
                     return false;
                 };
                 if kind == MobKind::Squid {
-                    if by == y && !matches!(block, Id::Water | Id::FlowingWater) {
+                    if by == y && !matches!(block, Block::Water | Block::FlowingWater) {
                         return false;
                     }
                 } else if crate::block::properties::collision_bounds(block).is_some()
                     || matches!(
                         block,
-                        Id::Water | Id::FlowingWater | Id::Lava | Id::FlowingLava
+                        Block::Water | Block::FlowingWater | Block::Lava | Block::FlowingLava
                     )
                 {
                     return false;
@@ -672,7 +672,7 @@ pub fn can_spawn_at(
     if kind == MobKind::Squid {
         return true;
     }
-    if !is_opaque_cube(chunks.block_at(x, y - 1, z).unwrap_or(Id::Air)) {
+    if !is_opaque_cube(chunks.block_at(x, y - 1, z).unwrap_or(Block::Air)) {
         return false;
     }
     if kind == MobKind::Slime {
@@ -693,7 +693,7 @@ pub fn can_spawn_at(
         .saturating_add(weather_penalty)
         .min(15);
     if !kind.hostile() {
-        return chunks.block_at(x, y - 1, z) == Some(Id::Grass)
+        return chunks.block_at(x, y - 1, z) == Some(Block::Grass)
             && combined_light(sky, block, subtracted) > 8;
     }
     sky <= rng.next_int(32) as u8 && combined_light(sky, block, subtracted) <= rng.next_int(8) as u8
@@ -827,7 +827,7 @@ fn spawn_naturally(
             let z = pos.z * CHUNK_SIZE as i32 + random.0.next_int(16) as i32;
             if chunks
                 .block_at(x, y, z)
-                .is_none_or(|b| b != Id::Air && category != SpawnCategory::Water)
+                .is_none_or(|b| b != Block::Air && category != SpawnCategory::Water)
             {
                 continue;
             }

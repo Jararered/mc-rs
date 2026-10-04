@@ -16,7 +16,7 @@ use bevy::render::renderer::RenderDevice;
 
 use super::BlockMaterial;
 use crate::app::state::AppScreen;
-use crate::block::id::Id;
+use crate::block::blocks::Block;
 use crate::chat::ChatFocus;
 
 /// Whether block meshes are drawn as wireframes. F4 toggles this while playing.
@@ -25,7 +25,7 @@ use crate::chat::ChatFocus;
 #[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MeshWireframe {
     pub enabled: bool,
-    pub block: Option<Id>,
+    pub block: Option<Block>,
 }
 
 impl Default for MeshWireframe {
@@ -54,7 +54,7 @@ pub fn configure_mesh_wireframe(
     mode: &mut MeshWireframe,
     materials: &mut Assets<BlockMaterial>,
     enabled: bool,
-    block: Option<Id>,
+    block: Option<Block>,
     supported: bool,
 ) -> Result<String, &'static str> {
     if !supported {

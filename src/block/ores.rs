@@ -1,55 +1,55 @@
+use crate::block::blocks::Block;
 use crate::block::definition::BlockDefinition;
 use crate::block::definition::BlockProperties;
-use crate::block::id::Id;
 
 pub(super) struct Definition;
 pub(super) static DEFINITION: Definition = Definition;
 
 impl BlockDefinition for Definition {
-    fn in_world(&self, id: Id) -> bool {
+    fn in_world(&self, block: Block) -> bool {
         matches!(
-            id,
-            Id::GoldOre
-                | Id::IronOre
-                | Id::CoalOre
-                | Id::LapisOre
-                | Id::LapisBlock
-                | Id::DiamondOre
-                | Id::RedstoneOre
-                | Id::LitRedstoneOre
+            block,
+            Block::GoldOre
+                | Block::IronOre
+                | Block::CoalOre
+                | Block::LapisOre
+                | Block::LapisBlock
+                | Block::DiamondOre
+                | Block::RedstoneOre
+                | Block::LitRedstoneOre
         )
     }
 
-    fn properties(&self, id: Id) -> BlockProperties {
-        properties(id)
+    fn properties(&self, block: Block) -> BlockProperties {
+        properties(block)
     }
 
-    fn light_emission(&self, id: Id) -> u8 {
-        if id == Id::LitRedstoneOre { 9 } else { 0 }
+    fn light_emission(&self, block: Block) -> u8 {
+        if block == Block::LitRedstoneOre { 9 } else { 0 }
     }
 }
 
-fn properties(id: Id) -> BlockProperties {
-    match id {
-        Id::GoldOre
-        | Id::IronOre
-        | Id::CoalOre
-        | Id::LapisOre
-        | Id::LapisBlock
-        | Id::DiamondOre => BlockProperties {
+fn properties(block: Block) -> BlockProperties {
+    match block {
+        Block::GoldOre
+        | Block::IronOre
+        | Block::CoalOre
+        | Block::LapisOre
+        | Block::LapisBlock
+        | Block::DiamondOre => BlockProperties {
             harvestable_by_hand: false,
             ..BlockProperties::solid(3.0)
         },
-        Id::RedstoneOre => BlockProperties {
+        Block::RedstoneOre => BlockProperties {
             harvestable_by_hand: false,
             ..BlockProperties::solid(3.0)
         },
-        Id::LitRedstoneOre => BlockProperties {
+        Block::LitRedstoneOre => BlockProperties {
             harvestable_by_hand: false,
             light_emission: 9,
             ..BlockProperties::solid(3.0)
         },
-        Id::Unknown(_) => BlockProperties::unknown(),
+        Block::Unknown(_) => BlockProperties::unknown(),
         _ => BlockProperties::unknown(),
     }
 }

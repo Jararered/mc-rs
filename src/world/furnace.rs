@@ -4,7 +4,7 @@ use bevy::math::IVec3;
 use bevy::prelude::Res;
 use bevy::prelude::ResMut;
 
-use crate::block::id::Id;
+use crate::block::blocks::Block;
 use crate::item::ItemId;
 use crate::item::ItemStack;
 use crate::world::block_ticks::BlockTicks;
@@ -103,13 +103,13 @@ impl Furnace {
 pub fn smelting_result(input: ItemStack) -> Option<ItemStack> {
     let (item, data) = (input.item().block(), input.data());
     let result = match (item, input.item()) {
-        (Some(Id::IronOre), _) => ItemStack::new(ItemId::IronIngot, 1).ok(),
-        (Some(Id::GoldOre), _) => ItemStack::new(ItemId::GoldIngot, 1).ok(),
-        (Some(Id::DiamondOre), _) => ItemStack::new(ItemId::Diamond, 1).ok(),
-        (Some(Id::Sand), _) => ItemStack::from_block(Id::Glass, 1).ok(),
-        (Some(Id::Cobblestone), _) => ItemStack::from_block(Id::Stone, 1).ok(),
-        (Some(Id::Cactus), _) => ItemStack::with_data(ItemId::Dye, 1, 2).ok(),
-        (Some(Id::Wood), _) if data <= 2 => ItemStack::with_data(ItemId::Coal, 1, 1).ok(),
+        (Some(Block::IronOre), _) => ItemStack::new(ItemId::IronIngot, 1).ok(),
+        (Some(Block::GoldOre), _) => ItemStack::new(ItemId::GoldIngot, 1).ok(),
+        (Some(Block::DiamondOre), _) => ItemStack::new(ItemId::Diamond, 1).ok(),
+        (Some(Block::Sand), _) => ItemStack::from_block(Block::Glass, 1).ok(),
+        (Some(Block::Cobblestone), _) => ItemStack::from_block(Block::Stone, 1).ok(),
+        (Some(Block::Cactus), _) => ItemStack::with_data(ItemId::Dye, 1, 2).ok(),
+        (Some(Block::Wood), _) if data <= 2 => ItemStack::with_data(ItemId::Coal, 1, 1).ok(),
         (_, ItemId::RawPorkchop) => ItemStack::new(ItemId::CookedPorkchop, 1).ok(),
         (_, ItemId::RawFish) => ItemStack::new(ItemId::CookedFish, 1).ok(),
         (_, ItemId::ClayBall) => ItemStack::new(ItemId::Brick, 1).ok(),
@@ -124,34 +124,34 @@ pub fn fuel_ticks(fuel: ItemStack) -> Option<u16> {
         ItemId::Coal => Some(1_600),
         ItemId::Stick => Some(100),
         ItemId::LavaBucket => Some(20_000),
-        item if item.block() == Some(Id::Sapling) => Some(100),
+        item if item.block() == Some(Block::Sapling) => Some(100),
         item if item.block().is_some_and(is_wood_material) => Some(300),
         _ => None,
     }
 }
 
-pub(crate) fn is_wood_material(block: Id) -> bool {
+pub(crate) fn is_wood_material(block: Block) -> bool {
     matches!(
         block,
-        Id::Wood
-            | Id::SpruceWood
-            | Id::BirchWood
-            | Id::WoodenPlanks
-            | Id::SprucePlanks
-            | Id::BirchPlanks
-            | Id::Chest
-            | Id::CraftingTable
-            | Id::Bookshelf
-            | Id::WoodenStairs
-            | Id::WoodenDoor
-            | Id::Fence
-            | Id::Trapdoor
-            | Id::WoodenPressurePlate
-            | Id::NoteBlock
-            | Id::Jukebox
-            | Id::LockedChest
-            | Id::StandingSign
-            | Id::WallSign
+        Block::Wood
+            | Block::SpruceWood
+            | Block::BirchWood
+            | Block::WoodenPlanks
+            | Block::SprucePlanks
+            | Block::BirchPlanks
+            | Block::Chest
+            | Block::CraftingTable
+            | Block::Bookshelf
+            | Block::WoodenStairs
+            | Block::WoodenDoor
+            | Block::Fence
+            | Block::Trapdoor
+            | Block::WoodenPressurePlate
+            | Block::NoteBlock
+            | Block::Jukebox
+            | Block::LockedChest
+            | Block::StandingSign
+            | Block::WallSign
     )
 }
 

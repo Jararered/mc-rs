@@ -3,9 +3,9 @@
 
 use bevy::math::IVec3;
 
+use crate::block::blocks::Block;
 use crate::block::definition::light_opacity;
 use crate::block::fluids::is_liquid;
-use crate::block::id::Id;
 use crate::block::properties::is_opaque_cube;
 use crate::block::properties::is_solid_material;
 use crate::random::JavaRandom;
@@ -103,10 +103,10 @@ impl<'a> TickWorld<'a> {
     // --- Reading blocks -------------------------------------------------
 
     /// `World.getBlockId`. Air outside the world or a loaded chunk.
-    pub fn block(&self, position: IVec3) -> Id {
+    pub fn block(&self, position: IVec3) -> Block {
         self.chunks
             .block_at(position.x, position.y, position.z)
-            .unwrap_or(Id::Air)
+            .unwrap_or(Block::Air)
     }
 
     /// `World.getBlockMetadata`.
@@ -116,7 +116,7 @@ impl<'a> TickWorld<'a> {
 
     /// `World.isAirBlock`.
     pub fn is_air(&self, position: IVec3) -> bool {
-        self.block(position) == Id::Air
+        self.block(position) == Block::Air
     }
 
     /// Whether the cell is inside the world height and its chunk is loaded.
@@ -253,13 +253,13 @@ impl<'a> TickWorld<'a> {
     /// block's [`on_added`](super::BlockBehavior::on_added). Neighbors are
     /// not notified. Returns `false` if the cell already held `block` or is
     /// not loaded.
-    pub fn set_block(&mut self, position: IVec3, block: Id) -> bool {
+    pub fn set_block(&mut self, position: IVec3, block: Block) -> bool {
         self.write(position, block, None)
     }
 
     /// `World.setBlockAndMetadata`. Unlike [`Self::set_block`], a change of
     /// metadata alone counts as a change and reruns both hooks.
-    pub fn set_block_and_metadata(&mut self, position: IVec3, block: Id, metadata: u8) -> bool {
+    pub fn set_block_and_metadata(&mut self, position: IVec3, block: Block, metadata: u8) -> bool {
         self.write(position, block, Some(metadata))
     }
 
@@ -287,7 +287,7 @@ impl<'a> TickWorld<'a> {
 
     /// `World.setBlockWithNotify`: [`Self::set_block`], then notify the six
     /// neighbors of the change.
-    pub fn set_block_notify(&mut self, position: IVec3, block: Id) -> bool {
+    pub fn set_block_notify(&mut self, position: IVec3, block: Block) -> bool {
         if !self.set_block(position, block) {
             return false;
         }
@@ -299,7 +299,7 @@ impl<'a> TickWorld<'a> {
     pub fn set_block_and_metadata_notify(
         &mut self,
         position: IVec3,
-        block: Id,
+        block: Block,
         metadata: u8,
     ) -> bool {
         if !self.set_block_and_metadata(position, block, metadata) {
@@ -318,7 +318,7 @@ impl<'a> TickWorld<'a> {
         }
     }
 
-    fn write(&mut self, position: IVec3, block: Id, metadata: Option<u8>) -> bool {
+    fn write(&mut self, position: IVec3, block: Block, metadata: Option<u8>) -> bool {
         if !self.is_loaded(position) {
             return false;
         }
@@ -345,10 +345,10 @@ impl<'a> TickWorld<'a> {
             block,
             metadata: metadata.unwrap_or(0) & 0x0f,
         });
-        if previous != Id::Air {
+        if previous != Block::Air {
             behavior(previous).on_removed(self, position, previous, previous_metadata);
         }
-        if block != Id::Air {
+        if block != Block::Air {
             behavior(block).on_added(self, position);
         }
         true
@@ -358,19 +358,19 @@ impl<'a> TickWorld<'a> {
 
     /// `World.notifyBlocksOfNeighborChange`: tell each face neighbor that
     /// `block` changed at `position`.
-    pub fn notify_neighbors(&mut self, position: IVec3, block: Id) {
+    pub fn notify_neighbors(&mut self, position: IVec3, block: Block) {
         for offset in NEIGHBORS {
             self.notify_neighbor(position + offset, block);
         }
     }
 
     /// `World.notifyBlockOfNeighborChange`.
-    pub fn notify_neighbor(&mut self, position: IVec3, neighbor: Id) {
+    pub fn notify_neighbor(&mut self, position: IVec3, neighbor: Block) {
         if self.editing || !self.is_loaded(position) {
             return;
         }
         let block = self.block(position);
-        if block == Id::Air {
+        if block == Block::Air {
             return;
         }
         if self.depth >= MAX_NOTIFY_DEPTH {
@@ -385,10 +385,10 @@ impl<'a> TickWorld<'a> {
     /// `World.scheduleBlockUpdate`: run `block`'s update at `position` after
     /// `delay` ticks, if the cell still holds it then. A second request for
     /// the same cell and block while one is pending is ignored.
-    pub fn schedule(&mut self, position: IVec3, block: Id, delay: u32) {
+    pub fn schedule(&mut self, position: IVec3, block: Block, delay: u32) {
         if self.immediate {
             if self.area_loaded(position, SCHEDULED_TICK_REACH)
-                && block != Id::Air
+                && block != Block::Air
                 && self.block(position) == block
             {
                 behavior(block).update_tick(self, position);
@@ -403,7 +403,7 @@ impl<'a> TickWorld<'a> {
     }
 
     /// Whether a tick for `block` at `position` is pending.
-    pub fn is_scheduled(&self, position: IVec3, block: Id) -> bool {
+    pub fn is_scheduled(&self, position: IVec3, block: Block) -> bool {
         self.ticks.scheduler.contains(position, block)
     }
 
@@ -423,7 +423,7 @@ impl<'a> TickWorld<'a> {
     /// would.
     pub fn update_tick(&mut self, position: IVec3) {
         let block = self.block(position);
-        if block != Id::Air {
+        if block != Block::Air {
             behavior(block).update_tick(self, position);
         }
     }
@@ -443,7 +443,7 @@ impl<'a> TickWorld<'a> {
                     .schedule(tick.position, tick.block, self.time + 1);
                 continue;
             }
-            if tick.block != Id::Air && self.block(tick.position) == tick.block {
+            if tick.block != Block::Air && self.block(tick.position) == tick.block {
                 behavior(tick.block).update_tick(self, tick.position);
             }
         }
@@ -519,15 +519,15 @@ impl<'a> TickWorld<'a> {
             return;
         }
         let below = top - IVec3::Y;
-        if self.block(below) == Id::Water && self.metadata(below) == 0 {
-            self.set_block_notify(below, Id::Ice);
+        if self.block(below) == Block::Water && self.metadata(below) == 0 {
+            self.set_block_notify(below, Block::Ice);
         }
         if self.raining
-            && self.block(top) == Id::Air
+            && self.block(top) == Block::Air
             && super::behaviors::snow::SnowLayer::can_stay(self, top)
-            && self.block(below) != Id::Ice
+            && self.block(below) != Block::Ice
         {
-            self.set_block_notify(top, Id::SnowLayer);
+            self.set_block_notify(top, Block::SnowLayer);
         }
     }
 
@@ -542,10 +542,10 @@ impl<'a> TickWorld<'a> {
                 if block == previous && self.metadata(position) == metadata {
                     return;
                 }
-                if previous != Id::Air {
+                if previous != Block::Air {
                     behavior(previous).on_removed(self, position, previous, metadata);
                 }
-                if block != Id::Air && self.block(position) == block {
+                if block != Block::Air && self.block(position) == block {
                     behavior(block).on_added(self, position);
                 }
                 let block = self.block(position);
@@ -587,7 +587,7 @@ impl<'a> TickWorld<'a> {
 
     /// `Block.dropBlockAsItem`: pop the block's natural drops at `position`.
     /// The items spawn after the tick pass, from `entity::drops`.
-    pub fn drop_block_as_item(&mut self, position: IVec3, block: Id, metadata: u8) {
+    pub fn drop_block_as_item(&mut self, position: IVec3, block: Block, metadata: u8) {
         self.ticks.effects.push(TickEffect::Drop {
             position,
             block,
@@ -597,7 +597,7 @@ impl<'a> TickWorld<'a> {
 
     /// Spawn an `EntityFallingSand` for `block` at `position`. The block stays
     /// in the world until the entity's first tick removes it, as in Beta.
-    pub fn spawn_falling_block(&mut self, position: IVec3, block: Id) {
+    pub fn spawn_falling_block(&mut self, position: IVec3, block: Block) {
         self.ticks
             .effects
             .push(TickEffect::FallingBlock { position, block });

@@ -1,7 +1,7 @@
+use game::block::blocks::Block;
 use game::block::fluids::Fluid;
 use game::block::fluids::corner_height;
 use game::block::fluids::percent_air;
-use game::block::id::Id;
 use game::world::block_ticks::BlockEvent;
 
 use super::TestWorld;
@@ -14,7 +14,7 @@ fn floored(radius: i32) -> TestWorld {
     world.fill(
         at(-16 * radius, 63, -16 * radius),
         at(reach, 63, reach),
-        Id::Stone,
+        Block::Stone,
     );
     world
 }
@@ -26,7 +26,7 @@ fn fluid_level(world: &TestWorld, x: i32, y: i32, z: i32, fluid: Fluid) -> Optio
 #[test]
 fn a_water_source_spreads_seven_blocks_across_a_floor() {
     let mut world = floored(1);
-    world.place(at(8, 64, 8), Id::FlowingWater);
+    world.place(at(8, 64, 8), Block::FlowingWater);
     world.run(200);
 
     assert_eq!(fluid_level(&world, 8, 64, 8, Fluid::Water), Some(0));
@@ -43,7 +43,7 @@ fn a_water_source_spreads_seven_blocks_across_a_floor() {
     }
     assert_eq!(
         world.block(at(16, 64, 8)),
-        Id::Air,
+        Block::Air,
         "water stops after seven"
     );
     assert_eq!(
@@ -52,7 +52,7 @@ fn a_water_source_spreads_seven_blocks_across_a_floor() {
         "the spread is a diamond"
     );
     // Once nothing changes, the flow settles into still water.
-    assert_eq!(world.block(at(12, 64, 8)), Id::Water);
+    assert_eq!(world.block(at(12, 64, 8)), Block::Water);
     assert!(
         world.ticks.scheduled_count() == 0,
         "a settled pool has nothing left to do"
@@ -62,9 +62,9 @@ fn a_water_source_spreads_seven_blocks_across_a_floor() {
 #[test]
 fn water_falls_over_an_edge_as_falling_water() {
     let mut world = TestWorld::new(1);
-    world.fill(at(4, 60, 4), at(8, 70, 8), Id::Stone);
-    world.fill(at(4, 71, 4), at(8, 71, 8), Id::Air);
-    world.place(at(8, 71, 6), Id::FlowingWater);
+    world.fill(at(4, 60, 4), at(8, 70, 8), Block::Stone);
+    world.fill(at(4, 71, 4), at(8, 71, 8), Block::Air);
+    world.place(at(8, 71, 6), Block::FlowingWater);
     // Each block of fall waits one five-tick water update.
     world.run(400);
 
@@ -87,13 +87,13 @@ fn water_falls_over_an_edge_as_falling_water() {
 fn flow_heads_for_the_nearest_drop() {
     let mut world = floored(1);
     // A hole three blocks east of the source; nothing to the west.
-    world.set(at(11, 63, 8), Id::Air);
-    world.place(at(8, 64, 8), Id::FlowingWater);
+    world.set(at(11, 63, 8), Block::Air);
+    world.place(at(8, 64, 8), Block::FlowingWater);
     world.run(15);
     assert!(fluid_level(&world, 9, 64, 8, Fluid::Water).is_some());
     assert_eq!(
         world.block(at(7, 64, 8)),
-        Id::Air,
+        Block::Air,
         "a source only flows toward the cheapest drop"
     );
 }
@@ -101,8 +101,8 @@ fn flow_heads_for_the_nearest_drop() {
 #[test]
 fn two_sources_beside_water_on_a_floor_make_a_new_source() {
     let mut world = floored(1);
-    world.place(at(6, 64, 8), Id::FlowingWater);
-    world.place(at(8, 64, 8), Id::FlowingWater);
+    world.place(at(6, 64, 8), Block::FlowingWater);
+    world.place(at(8, 64, 8), Block::FlowingWater);
     world.run(100);
     assert_eq!(
         fluid_level(&world, 7, 64, 8, Fluid::Water),
@@ -114,31 +114,31 @@ fn two_sources_beside_water_on_a_floor_make_a_new_source() {
 #[test]
 fn water_dries_up_once_its_source_is_gone() {
     let mut world = floored(1);
-    world.place(at(8, 64, 8), Id::FlowingWater);
+    world.place(at(8, 64, 8), Block::FlowingWater);
     world.run(200);
-    world.place(at(8, 64, 8), Id::Air);
+    world.place(at(8, 64, 8), Block::Air);
     world.run(400);
     for x in 0..16 {
-        assert_eq!(world.block(at(x, 64, 8)), Id::Air, "x = {x}");
+        assert_eq!(world.block(at(x, 64, 8)), Block::Air, "x = {x}");
     }
 }
 
 #[test]
 fn breaking_a_lakes_wall_lets_the_still_water_flow() {
     let mut world = floored(1);
-    world.fill(at(4, 64, 4), at(8, 64, 8), Id::Water);
-    world.fill(at(9, 64, 4), at(9, 64, 8), Id::Stone);
+    world.fill(at(4, 64, 4), at(8, 64, 8), Block::Water);
+    world.fill(at(9, 64, 4), at(9, 64, 8), Block::Stone);
     world.run(20);
     assert_eq!(
         world.block(at(10, 64, 6)),
-        Id::Air,
+        Block::Air,
         "the wall holds the lake"
     );
 
-    world.place(at(9, 64, 6), Id::Air);
+    world.place(at(9, 64, 6), Block::Air);
     assert_eq!(
         world.block(at(8, 64, 6)),
-        Id::FlowingWater,
+        Block::FlowingWater,
         "the lake wakes up"
     );
     world.run(40);
@@ -149,27 +149,27 @@ fn breaking_a_lakes_wall_lets_the_still_water_flow() {
 #[test]
 fn lava_spreads_three_blocks_on_a_floor() {
     let mut world = floored(1);
-    world.place(at(8, 64, 8), Id::FlowingLava);
+    world.place(at(8, 64, 8), Block::FlowingLava);
     world.run(1000);
     assert_eq!(fluid_level(&world, 9, 64, 8, Fluid::Lava), Some(2));
     assert_eq!(fluid_level(&world, 10, 64, 8, Fluid::Lava), Some(4));
     assert_eq!(fluid_level(&world, 11, 64, 8, Fluid::Lava), Some(6));
-    assert_eq!(world.block(at(12, 64, 8)), Id::Air);
+    assert_eq!(world.block(at(12, 64, 8)), Block::Air);
 }
 
 #[test]
 fn lava_meeting_water_hardens_into_obsidian_or_cobblestone() {
     let mut world = floored(1);
-    world.set(at(8, 64, 8), Id::Lava);
-    world.set_with_metadata(at(8, 64, 12), Id::FlowingLava, 3);
-    world.set_with_metadata(at(8, 64, 14), Id::FlowingLava, 6);
-    world.place(at(9, 64, 8), Id::Water);
-    world.place(at(9, 64, 12), Id::Water);
-    world.place(at(9, 64, 14), Id::Water);
-    assert_eq!(world.block(at(8, 64, 8)), Id::Obsidian, "a lava source");
+    world.set(at(8, 64, 8), Block::Lava);
+    world.set_with_metadata(at(8, 64, 12), Block::FlowingLava, 3);
+    world.set_with_metadata(at(8, 64, 14), Block::FlowingLava, 6);
+    world.place(at(9, 64, 8), Block::Water);
+    world.place(at(9, 64, 12), Block::Water);
+    world.place(at(9, 64, 14), Block::Water);
+    assert_eq!(world.block(at(8, 64, 8)), Block::Obsidian, "a lava source");
     assert_eq!(
         world.block(at(8, 64, 12)),
-        Id::Cobblestone,
+        Block::Cobblestone,
         "lava that spread four or less"
     );
     assert!(
@@ -181,18 +181,18 @@ fn lava_meeting_water_hardens_into_obsidian_or_cobblestone() {
 #[test]
 fn flowing_water_washes_away_plants_and_torches_as_items() {
     let mut world = floored(1);
-    world.set(at(9, 64, 8), Id::Torch);
-    world.set(at(7, 63, 8), Id::Grass);
-    world.set(at(7, 64, 8), Id::Dandelion);
-    world.place(at(8, 64, 8), Id::FlowingWater);
+    world.set(at(9, 64, 8), Block::Torch);
+    world.set(at(7, 63, 8), Block::Grass);
+    world.set(at(7, 64, 8), Block::Dandelion);
+    world.place(at(8, 64, 8), Block::FlowingWater);
     world.run(10);
     let dropped: Vec<_> = world
         .drops()
         .into_iter()
         .map(|(_, block, _)| block)
         .collect();
-    assert!(dropped.contains(&Id::Torch), "{dropped:?}");
-    assert!(dropped.contains(&Id::Dandelion), "{dropped:?}");
+    assert!(dropped.contains(&Block::Torch), "{dropped:?}");
+    assert!(dropped.contains(&Block::Dandelion), "{dropped:?}");
     assert!(Fluid::of(world.block(at(9, 64, 8))).is_some());
 }
 
@@ -207,22 +207,22 @@ fn fluid_levels_set_beta_surface_heights() {
 
     let source = |_: i32, y: i32, _: i32| {
         if y == 64 {
-            (Id::Water, 0)
+            (Block::Water, 0)
         } else {
-            (Id::Air, 0)
+            (Block::Air, 0)
         }
     };
     assert!((corner_height(Fluid::Water, 5, 64, 5, source) - 8.0 / 9.0).abs() < 1e-6);
-    let covered = |_: i32, _: i32, _: i32| (Id::Water, 0);
+    let covered = |_: i32, _: i32, _: i32| (Block::Water, 0);
     assert_eq!(corner_height(Fluid::Water, 5, 64, 5, covered), 1.0);
 }
 
 #[test]
 fn walking_does_not_disturb_fluids() {
     let mut world = floored(1);
-    world.set(at(8, 64, 8), Id::Water);
+    world.set(at(8, 64, 8), Block::Water);
     world.event(BlockEvent::Walked {
         position: at(8, 64, 8),
     });
-    assert_eq!(world.block(at(8, 64, 8)), Id::Water);
+    assert_eq!(world.block(at(8, 64, 8)), Block::Water);
 }

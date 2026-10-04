@@ -1,4 +1,4 @@
-use game::block::id::Id;
+use game::block::blocks::Block;
 use game::block::properties::collision_bounds;
 use game::block::properties::is_crossed_plant;
 use game::block::properties::is_opaque_cube;
@@ -11,17 +11,17 @@ use game::world::lighting::Skylight;
 
 #[test]
 fn dead_bush_uses_its_beta_sprite_tile_and_crossed_mesh() {
-    assert_eq!(block_tile(Id::DeadBush, 0, false), (7, 3));
-    assert!(is_crossed_plant(Id::DeadBush));
-    assert!(!is_opaque_cube(Id::DeadBush));
-    assert_eq!(collision_bounds(Id::DeadBush), None);
+    assert_eq!(block_tile(Block::DeadBush, 0, false), (7, 3));
+    assert!(is_crossed_plant(Block::DeadBush));
+    assert!(!is_opaque_cube(Block::DeadBush));
+    assert_eq!(collision_bounds(Block::DeadBush), None);
     assert_eq!(
-        selection_bounds(Id::DeadBush),
+        selection_bounds(Block::DeadBush),
         ([0.1, 0.0, 0.1], [0.9, 0.8, 0.9])
     );
 
     let mut chunk = Chunk::new();
-    chunk.set(4, 20, 4, Id::DeadBush);
+    chunk.set(4, 20, 4, Block::DeadBush);
     let meshes = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true);
     assert_eq!(meshes.opaque.vertex_count(), 0);
     let positions = meshes.masked.positions();

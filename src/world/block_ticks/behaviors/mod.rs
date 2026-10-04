@@ -6,7 +6,7 @@
 //! its family (or a new one), declare a `static` of it, and list the block's
 //! values in [`table`]. See `docs/BLOCK_TICKS.md`.
 
-use crate::block::id::Id;
+use crate::block::blocks::Block;
 
 use super::behavior::BlockBehavior;
 use super::behavior::inert_table;
@@ -26,7 +26,7 @@ pub mod sponge;
 /// Register `behavior` for every block in `blocks`.
 fn register(
     table: &mut [&'static dyn BlockBehavior; 256],
-    blocks: &[Id],
+    blocks: &[Block],
     behavior: &'static dyn BlockBehavior,
 ) {
     for block in blocks {
@@ -39,73 +39,73 @@ pub(super) fn table() -> [&'static dyn BlockBehavior; 256] {
     let mut table = inert_table();
     register(
         &mut table,
-        &[Id::FlowingWater, Id::FlowingLava],
+        &[Block::FlowingWater, Block::FlowingLava],
         &fluid::FLOWING,
     );
-    register(&mut table, &[Id::Water, Id::Lava], &fluid::STATIONARY);
-    register(&mut table, &[Id::Sand, Id::Gravel], &falling::FALLING);
-    register(&mut table, &[Id::Grass], &soil::GRASS);
-    register(&mut table, &[Id::Fire], &fire::FIRE);
-    register(&mut table, &[Id::Farmland], &soil::FARMLAND);
-    register(&mut table, &[Id::Crops], &crops::CROPS);
+    register(&mut table, &[Block::Water, Block::Lava], &fluid::STATIONARY);
+    register(&mut table, &[Block::Sand, Block::Gravel], &falling::FALLING);
+    register(&mut table, &[Block::Grass], &soil::GRASS);
+    register(&mut table, &[Block::Fire], &fire::FIRE);
+    register(&mut table, &[Block::Farmland], &soil::FARMLAND);
+    register(&mut table, &[Block::Crops], &crops::CROPS);
     register(
         &mut table,
         &[
-            Id::Dandelion,
-            Id::Rose,
-            Id::TallGrass,
-            Id::Fern,
-            Id::DeadBush,
+            Block::Dandelion,
+            Block::Rose,
+            Block::TallGrass,
+            Block::Fern,
+            Block::DeadBush,
         ],
         &plants::FLOWER,
     );
     register(
         &mut table,
-        &[Id::BrownMushroom, Id::RedMushroom],
+        &[Block::BrownMushroom, Block::RedMushroom],
         &plants::MUSHROOM,
     );
-    register(&mut table, &[Id::Cactus], &plants::CACTUS);
-    register(&mut table, &[Id::SugarCane], &plants::REED);
+    register(&mut table, &[Block::Cactus], &plants::CACTUS);
+    register(&mut table, &[Block::SugarCane], &plants::REED);
     register(
         &mut table,
-        &[Id::Leaves, Id::SpruceLeaves, Id::BirchLeaves],
+        &[Block::Leaves, Block::SpruceLeaves, Block::BirchLeaves],
         &leaves::LEAVES,
     );
     register(
         &mut table,
-        &[Id::Wood, Id::SpruceWood, Id::BirchWood],
+        &[Block::Wood, Block::SpruceWood, Block::BirchWood],
         &leaves::LOG,
     );
     register(
         &mut table,
-        &[Id::RedstoneOre, Id::LitRedstoneOre],
+        &[Block::RedstoneOre, Block::LitRedstoneOre],
         &ore::REDSTONE_ORE,
     );
-    register(&mut table, &[Id::Ice], &snow::ICE);
-    register(&mut table, &[Id::SnowLayer], &snow::SNOW_LAYER);
-    register(&mut table, &[Id::Snow], &snow::SNOW_BLOCK);
+    register(&mut table, &[Block::Ice], &snow::ICE);
+    register(&mut table, &[Block::SnowLayer], &snow::SNOW_LAYER);
+    register(&mut table, &[Block::Snow], &snow::SNOW_BLOCK);
     register(
         &mut table,
         &[
-            Id::Torch,
-            Id::TorchWest,
-            Id::TorchEast,
-            Id::TorchNorth,
-            Id::TorchSouth,
+            Block::Torch,
+            Block::TorchWest,
+            Block::TorchEast,
+            Block::TorchNorth,
+            Block::TorchSouth,
         ],
         &attached::TORCH,
     );
     register(
         &mut table,
         &[
-            Id::Ladder,
-            Id::LadderNorth,
-            Id::LadderEast,
-            Id::LadderSouth,
-            Id::LadderWest,
+            Block::Ladder,
+            Block::LadderNorth,
+            Block::LadderEast,
+            Block::LadderSouth,
+            Block::LadderWest,
         ],
         &attached::LADDER,
     );
-    register(&mut table, &[Id::Sponge], &sponge::SPONGE);
+    register(&mut table, &[Block::Sponge], &sponge::SPONGE);
     table
 }

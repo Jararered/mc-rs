@@ -1,4 +1,4 @@
-use game::block::id::Id;
+use game::block::blocks::Block;
 use game::block::properties::collision_bounds;
 use game::block::properties::is_crossed_plant;
 use game::block::properties::is_opaque_cube;
@@ -11,19 +11,19 @@ use game::world::lighting::Skylight;
 #[test]
 fn mushrooms_use_crossed_sprite_meshes_and_beta_atlas_tiles() {
     let mut chunk = Chunk::new();
-    chunk.set(4, 20, 4, Id::BrownMushroom);
-    chunk.set(8, 20, 8, Id::RedMushroom);
+    chunk.set(4, 20, 4, Block::BrownMushroom);
+    chunk.set(8, 20, 8, Block::RedMushroom);
 
     let meshes = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true);
     let positions = meshes.masked.positions();
     assert_eq!(positions.len(), 16, "two crossed quads per mushroom");
-    assert_eq!(block_tile(Id::BrownMushroom, 0, false), (13, 1));
-    assert_eq!(block_tile(Id::RedMushroom, 0, false), (12, 1));
+    assert_eq!(block_tile(Block::BrownMushroom, 0, false), (13, 1));
+    assert_eq!(block_tile(Block::RedMushroom, 0, false), (12, 1));
 }
 
 #[test]
 fn mushrooms_are_small_noncolliding_nonopaque_plants() {
-    for mushroom in [Id::BrownMushroom, Id::RedMushroom] {
+    for mushroom in [Block::BrownMushroom, Block::RedMushroom] {
         assert!(is_crossed_plant(mushroom));
         assert!(!is_opaque_cube(mushroom));
         assert_eq!(collision_bounds(mushroom), None);
@@ -37,7 +37,7 @@ fn mushrooms_are_small_noncolliding_nonopaque_plants() {
 #[test]
 fn mushroom_mesh_is_raised_by_two_pixels() {
     let mut chunk = Chunk::new();
-    chunk.set(4, 20, 4, Id::BrownMushroom);
+    chunk.set(4, 20, 4, Block::BrownMushroom);
     let meshes = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true);
     let positions = meshes.masked.positions();
     let min_y = positions

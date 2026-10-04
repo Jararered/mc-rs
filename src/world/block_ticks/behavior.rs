@@ -3,7 +3,7 @@
 
 use bevy::math::IVec3;
 
-use crate::block::id::Id;
+use crate::block::blocks::Block;
 
 use super::behaviors;
 use super::world::TickWorld;
@@ -18,13 +18,13 @@ use super::world::TickWorld;
 pub trait BlockBehavior: Sync {
     /// Beta `Block.tickOnLoad`: whether the world's random ticks reach this
     /// block. Random ticks call [`Self::update_tick`], like scheduled ticks.
-    fn ticks_randomly(&self, _block: Id) -> bool {
+    fn ticks_randomly(&self, _block: Block) -> bool {
         false
     }
 
     /// Beta `Block.tickRate`: the delay, in world ticks, a block usually
     /// passes to [`TickWorld::schedule`] for itself.
-    fn tick_rate(&self, _block: Id) -> u32 {
+    fn tick_rate(&self, _block: Block) -> u32 {
         10
     }
 
@@ -35,7 +35,7 @@ pub trait BlockBehavior: Sync {
     /// Beta `Block.onNeighborBlockChange`. `neighbor` is the block that
     /// changed next to `position`, as passed to
     /// [`TickWorld::notify_neighbors`].
-    fn neighbor_changed(&self, _world: &mut TickWorld, _position: IVec3, _neighbor: Id) {}
+    fn neighbor_changed(&self, _world: &mut TickWorld, _position: IVec3, _neighbor: Block) {}
 
     /// Beta `Block.onBlockAdded`. Runs after this block is written into the
     /// world, before neighbors are notified.
@@ -43,12 +43,19 @@ pub trait BlockBehavior: Sync {
 
     /// Beta `Block.onBlockRemoval`. Runs after `previous` has been replaced
     /// at `position`, so the world already holds the new block.
-    fn on_removed(&self, _world: &mut TickWorld, _position: IVec3, _previous: Id, _metadata: u8) {}
+    fn on_removed(
+        &self,
+        _world: &mut TickWorld,
+        _position: IVec3,
+        _previous: Block,
+        _metadata: u8,
+    ) {
+    }
 
     /// Beta `Block.harvestBlock`'s world side effect after a player broke this
     /// block with a tool that can harvest it. The block is already gone and
     /// its drops are handled by `entity::drops`.
-    fn harvested(&self, _world: &mut TickWorld, _position: IVec3, _block: Id, _metadata: u8) {}
+    fn harvested(&self, _world: &mut TickWorld, _position: IVec3, _block: Block, _metadata: u8) {}
 
     /// Beta `Block.onBlockClicked`: the player started mining this block.
     fn clicked(&self, _world: &mut TickWorld, _position: IVec3) {}
@@ -74,9 +81,9 @@ static BEHAVIORS: std::sync::LazyLock<[&dyn BlockBehavior; 256]> =
 
 /// The update behavior for a block. Unregistered values are inert.
 #[inline]
-pub fn behavior(block: Id) -> &'static dyn BlockBehavior {
+pub fn behavior(block: Block) -> &'static dyn BlockBehavior {
     match block {
-        Id::Unknown(_) => &INERT,
+        Block::Unknown(_) => &INERT,
         _ => BEHAVIORS[usize::from(block.as_u8())],
     }
 }
@@ -85,7 +92,7 @@ pub fn behavior(block: Id) -> &'static dyn BlockBehavior {
 /// tick sampler can test chunk bytes without decoding them.
 static RANDOM_TICKS: std::sync::LazyLock<[bool; 256]> = std::sync::LazyLock::new(|| {
     std::array::from_fn(|raw| {
-        let block = Id::from(raw as u8);
+        let block = Block::from(raw as u8);
         behavior(block).ticks_randomly(block)
     })
 });

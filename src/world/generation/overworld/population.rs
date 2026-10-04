@@ -6,7 +6,7 @@
 //! reads and writes the live [`PopulationWorld`], so later features see
 //! earlier ones exactly as Beta's do.
 
-use crate::block::id::Id;
+use crate::block::blocks::Block;
 use crate::random::JavaRandom;
 use crate::world::chunk::ChunkPosition;
 
@@ -58,7 +58,7 @@ pub(super) fn populate(
         let x = ox + rand.next_int(16) as i32 + 8;
         let y = rand.next_int(128) as i32;
         let z = oz + rand.next_int(16) as i32 + 8;
-        lake(world, rand, x, y, z, Id::Water);
+        lake(world, rand, x, y, z, Block::Water);
     }
     if rand.next_int(8) == 0 {
         let x = ox + rand.next_int(16) as i32 + 8;
@@ -66,7 +66,7 @@ pub(super) fn populate(
         let y = rand.next_int(bound) as i32;
         let z = oz + rand.next_int(16) as i32 + 8;
         if y < 64 || rand.next_int(10) == 0 {
-            lake(world, rand, x, y, z, Id::Lava);
+            lake(world, rand, x, y, z, Block::Lava);
         }
     }
     for _ in 0..8 {
@@ -81,14 +81,14 @@ pub(super) fn populate(
         let z = oz + rand.next_int(16) as i32;
         clay(world, rand, x, y, z, 32);
     }
-    const ORES: [(u32, u32, u32, Id); 7] = [
-        (20, 128, 32, Id::Dirt),
-        (10, 128, 32, Id::Gravel),
-        (20, 128, 16, Id::CoalOre),
-        (20, 64, 8, Id::IronOre),
-        (2, 32, 8, Id::GoldOre),
-        (8, 16, 7, Id::RedstoneOre),
-        (1, 16, 7, Id::DiamondOre),
+    const ORES: [(u32, u32, u32, Block); 7] = [
+        (20, 128, 32, Block::Dirt),
+        (10, 128, 32, Block::Gravel),
+        (20, 128, 16, Block::CoalOre),
+        (20, 64, 8, Block::IronOre),
+        (2, 32, 8, Block::GoldOre),
+        (8, 16, 7, Block::RedstoneOre),
+        (1, 16, 7, Block::DiamondOre),
     ];
     for (count, max_y, size, block) in ORES {
         for _ in 0..count {
@@ -102,7 +102,7 @@ pub(super) fn populate(
         let x = ox + rand.next_int(16) as i32;
         let y = rand.next_int(16) as i32 + rand.next_int(16) as i32;
         let z = oz + rand.next_int(16) as i32;
-        vein(world, rand, x, y, z, 6, Id::LapisOre);
+        vein(world, rand, x, y, z, 6, Block::LapisOre);
     }
 
     let density = terrain
@@ -137,7 +137,7 @@ pub(super) fn populate(
         let x = ox + rand.next_int(16) as i32 + 8;
         let y = rand.next_int(128) as i32;
         let z = oz + rand.next_int(16) as i32 + 8;
-        flower_patch(world, rand, x, y, z, Id::Dandelion);
+        flower_patch(world, rand, x, y, z, Block::Dandelion);
     }
 
     let grass = match biome {
@@ -149,9 +149,9 @@ pub(super) fn populate(
     for _ in 0..grass {
         // The rainforest fern roll comes before the patch position.
         let block = if biome == Biome::Rainforest && rand.next_int(3) != 0 {
-            Id::Fern
+            Block::Fern
         } else {
-            Id::TallGrass
+            Block::TallGrass
         };
         let x = ox + rand.next_int(16) as i32 + 8;
         let y = rand.next_int(128) as i32;
@@ -168,7 +168,11 @@ pub(super) fn populate(
         }
     }
 
-    for (chance, block) in [(2, Id::Rose), (4, Id::BrownMushroom), (8, Id::RedMushroom)] {
+    for (chance, block) in [
+        (2, Block::Rose),
+        (4, Block::BrownMushroom),
+        (8, Block::RedMushroom),
+    ] {
         if rand.next_int(chance) == 0 {
             let x = ox + rand.next_int(16) as i32 + 8;
             let y = rand.next_int(128) as i32;
@@ -209,7 +213,7 @@ fn vein(
     y: i32,
     z: i32,
     size: u32,
-    block: Id,
+    block: Block,
 ) {
     let [x0, x1, z0, z1, y0, y1] = vein_endpoints(rand, x, y, z, size);
     let count = f64::from(size);
@@ -235,7 +239,7 @@ fn vein(
                 }
                 for bz in math::floor_double(cz - hx)..=math::floor_double(cz + hx) {
                     let nz = (f64::from(bz) + 0.5 - cz) / hx;
-                    if nx * nx + ny * ny + nz * nz < 1.0 && world.get(bx, by, bz) == Id::Stone {
+                    if nx * nx + ny * ny + nz * nz < 1.0 && world.get(bx, by, bz) == Block::Stone {
                         world.set(bx, by, bz, block);
                     }
                 }
@@ -281,8 +285,8 @@ fn clay(world: &mut PopulationWorld, rand: &mut JavaRandom, x: i32, y: i32, z: i
                     let nx = (f64::from(bx) + 0.5 - cx) / hx;
                     let ny = (f64::from(by) + 0.5 - cy) / hy;
                     let nz = (f64::from(bz) + 0.5 - cz) / hx;
-                    if nx * nx + ny * ny + nz * nz < 1.0 && world.get(bx, by, bz) == Id::Sand {
-                        world.set(bx, by, bz, Id::Clay);
+                    if nx * nx + ny * ny + nz * nz < 1.0 && world.get(bx, by, bz) == Block::Sand {
+                        world.set(bx, by, bz, Block::Clay);
                     }
                 }
             }
@@ -292,7 +296,7 @@ fn clay(world: &mut PopulationWorld, rand: &mut JavaRandom, x: i32, y: i32, z: i
 
 /// `WorldGenLakes`: overlapping ellipsoids in a 16×8×16 box, liquid in the
 /// lower half and air above.
-fn lake(world: &mut PopulationWorld, rand: &mut JavaRandom, x: i32, y: i32, z: i32, liquid: Id) {
+fn lake(world: &mut PopulationWorld, rand: &mut JavaRandom, x: i32, y: i32, z: i32, liquid: Block) {
     let x = x - 8;
     let z = z - 8;
     let mut y = y;
@@ -351,7 +355,7 @@ fn lake(world: &mut PopulationWorld, rand: &mut JavaRandom, x: i32, y: i32, z: i
         for bz in 0..16 {
             for by in 0..8 {
                 if inside(bx, by, bz) {
-                    let block = if by >= 4 { Id::Air } else { liquid };
+                    let block = if by >= 4 { Block::Air } else { liquid };
                     world.set(x + bx, y + by, z + bz, block);
                 }
             }
@@ -361,15 +365,15 @@ fn lake(world: &mut PopulationWorld, rand: &mut JavaRandom, x: i32, y: i32, z: i
         for bz in 0..16 {
             for by in 4..8 {
                 if inside(bx, by, bz)
-                    && world.get(x + bx, y + by - 1, z + bz) == Id::Dirt
+                    && world.get(x + bx, y + by - 1, z + bz) == Block::Dirt
                     && world.sky_light(x + bx, y + by, z + bz) > 0
                 {
-                    world.set(x + bx, y + by - 1, z + bz, Id::Grass);
+                    world.set(x + bx, y + by - 1, z + bz, Block::Grass);
                 }
             }
         }
     }
-    if liquid == Id::Lava {
+    if liquid == Block::Lava {
         for bx in 0..16 {
             for bz in 0..16 {
                 for by in 0..8 {
@@ -377,7 +381,7 @@ fn lake(world: &mut PopulationWorld, rand: &mut JavaRandom, x: i32, y: i32, z: i
                         && (by < 4 || rand.next_int(2) != 0)
                         && is_solid(world.get(x + bx, y + by, z + bz))
                     {
-                        world.set(x + bx, y + by, z + bz, Id::Stone);
+                        world.set(x + bx, y + by, z + bz, Block::Stone);
                     }
                 }
             }
@@ -422,14 +426,14 @@ fn dungeon(world: &mut PopulationWorld, rand: &mut JavaRandom, x: i32, y: i32, z
                     && by != y + HEIGHT + 1
                     && bz != z + rz + 1;
                 if interior {
-                    world.set(bx, by, bz, Id::Air);
+                    world.set(bx, by, bz, Block::Air);
                 } else if by >= 0 && !is_solid(world.get(bx, by - 1, bz)) {
-                    world.set(bx, by, bz, Id::Air);
+                    world.set(bx, by, bz, Block::Air);
                 } else if is_solid(world.get(bx, by, bz)) {
                     let block = if by == y - 1 && rand.next_int(4) != 0 {
-                        Id::MossyCobblestone
+                        Block::MossyCobblestone
                     } else {
-                        Id::Cobblestone
+                        Block::Cobblestone
                     };
                     world.set(bx, by, bz, block);
                 }

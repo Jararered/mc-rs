@@ -2,7 +2,7 @@
 
 use bevy::math::IVec3;
 
-use crate::block::id::Id;
+use crate::block::blocks::Block;
 use crate::random::JavaRandom;
 use crate::world::block_ticks::BlockTicks;
 use crate::world::block_ticks::TickWorld;
@@ -17,18 +17,18 @@ use crate::world::chunk::GeneratedChunk;
 /// while that tick runs, scheduled fluid updates run immediately as in Beta.
 /// The boolean reports whether the pocket passed the Java preconditions,
 /// *not* whether a block was placed.
-pub fn generate_spring(world: &mut TickWorld, position: IVec3, liquid: Id) -> bool {
-    assert!(matches!(liquid, Id::FlowingWater | Id::FlowingLava));
-    if world.block(position + IVec3::Y) != Id::Stone
-        || world.block(position - IVec3::Y) != Id::Stone
-        || !matches!(world.block(position), Id::Air | Id::Stone)
+pub fn generate_spring(world: &mut TickWorld, position: IVec3, liquid: Block) -> bool {
+    assert!(matches!(liquid, Block::FlowingWater | Block::FlowingLava));
+    if world.block(position + IVec3::Y) != Block::Stone
+        || world.block(position - IVec3::Y) != Block::Stone
+        || !matches!(world.block(position), Block::Air | Block::Stone)
     {
         return false;
     }
     let sides = [IVec3::NEG_X, IVec3::X, IVec3::NEG_Z, IVec3::Z];
     let stones = sides
         .into_iter()
-        .filter(|&offset| world.block(position + offset) == Id::Stone)
+        .filter(|&offset| world.block(position + offset) == Block::Stone)
         .count();
     let air = sides
         .into_iter()
@@ -102,7 +102,7 @@ pub fn generate_attempts(world: &mut TickWorld, rand: &mut JavaRandom, source: C
         let bound = rand.next_int(120) + 8;
         let y = rand.next_int(bound) as i32;
         let z = oz + rand.next_int(16) as i32 + 8;
-        generate_spring(world, IVec3::new(x, y, z), Id::FlowingWater);
+        generate_spring(world, IVec3::new(x, y, z), Block::FlowingWater);
     }
     for _ in 0..20 {
         let x = ox + rand.next_int(16) as i32 + 8;
@@ -110,6 +110,6 @@ pub fn generate_attempts(world: &mut TickWorld, rand: &mut JavaRandom, source: C
         let bound = rand.next_int(bound) + 8;
         let y = rand.next_int(bound) as i32;
         let z = oz + rand.next_int(16) as i32 + 8;
-        generate_spring(world, IVec3::new(x, y, z), Id::FlowingLava);
+        generate_spring(world, IVec3::new(x, y, z), Block::FlowingLava);
     }
 }

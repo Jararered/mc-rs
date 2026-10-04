@@ -1,7 +1,7 @@
 //! Beta's creature pathfinder against small hand-built fields.
 
 use bevy::prelude::*;
-use game::block::id::Id;
+use game::block::blocks::Block;
 use game::entity::mobs::MobKind;
 use game::entity::pathfinding::LastSearch;
 use game::entity::pathfinding::Path;
@@ -20,9 +20,9 @@ pub fn field(y: usize) -> WorldChunks {
             for x in 0..16 {
                 for z in 0..16 {
                     for below in 0..y {
-                        chunk.set(x, below, z, Id::Stone);
+                        chunk.set(x, below, z, Block::Stone);
                     }
-                    chunk.set(x, y, z, Id::Grass);
+                    chunk.set(x, y, z, Block::Grass);
                 }
             }
             chunks.insert(
@@ -35,7 +35,7 @@ pub fn field(y: usize) -> WorldChunks {
 }
 
 /// Fill a column of `block` from `bottom` to `top` at every z in `-12..=12`.
-fn wall(chunks: &mut WorldChunks, x: i32, bottom: i32, top: i32, block: Id) {
+fn wall(chunks: &mut WorldChunks, x: i32, bottom: i32, top: i32, block: Block) {
     for z in -12..=12 {
         for y in bottom..=top {
             chunks.set_block(x, y, z, block);
@@ -65,7 +65,7 @@ fn crosses_open_ground_in_a_straight_line() {
 #[test]
 fn climbs_one_block_and_steps_back_down() {
     let mut chunks = field(4);
-    wall(&mut chunks, 3, 5, 5, Id::Stone);
+    wall(&mut chunks, 3, 5, 5, Block::Stone);
     let points = pig_path(&chunks, IVec3::new(6, 5, 0)).unwrap();
     assert!(points.contains(&IVec3::new(3, 6, 0)), "{points:?}");
     assert_eq!(points.last(), Some(&IVec3::new(6, 5, 0)));
@@ -74,7 +74,7 @@ fn climbs_one_block_and_steps_back_down() {
 #[test]
 fn stops_at_the_nearest_point_when_a_wall_cannot_be_climbed() {
     let mut chunks = field(4);
-    wall(&mut chunks, 3, 5, 6, Id::Stone);
+    wall(&mut chunks, 3, 5, 6, Block::Stone);
     let points = pig_path(&chunks, IVec3::new(6, 5, 0)).unwrap();
     assert_eq!(points.last(), Some(&IVec3::new(2, 5, 0)));
 }
@@ -82,7 +82,7 @@ fn stops_at_the_nearest_point_when_a_wall_cannot_be_climbed() {
 #[test]
 fn a_creature_already_at_the_closest_point_gets_no_path() {
     let mut chunks = field(4);
-    wall(&mut chunks, 1, 5, 6, Id::Stone);
+    wall(&mut chunks, 1, 5, 6, Block::Stone);
     assert_eq!(pig_path(&chunks, IVec3::new(6, 5, 0)), None);
 }
 
@@ -92,7 +92,7 @@ fn drops_three_blocks_but_not_four() {
     for x in 3..=10 {
         for z in -12..=12 {
             for y in 2..=4 {
-                chunks.set_block(x, y, z, Id::Air);
+                chunks.set_block(x, y, z, Block::Air);
             }
         }
     }
@@ -103,7 +103,7 @@ fn drops_three_blocks_but_not_four() {
 
     for x in 3..=10 {
         for z in -12..=12 {
-            chunks.set_block(x, 1, z, Id::Air);
+            chunks.set_block(x, 1, z, Block::Air);
         }
     }
     let points = pig_path(&chunks, IVec3::new(6, 1, 0)).unwrap();
@@ -113,11 +113,11 @@ fn drops_three_blocks_but_not_four() {
 #[test]
 fn walks_onto_water_but_never_toward_lava() {
     let mut chunks = field(4);
-    wall(&mut chunks, 3, 4, 4, Id::Water);
+    wall(&mut chunks, 3, 4, 4, Block::Water);
     let points = pig_path(&chunks, IVec3::new(6, 5, 0)).unwrap();
     assert!(points.contains(&IVec3::new(3, 5, 0)), "{points:?}");
 
-    wall(&mut chunks, 3, 4, 4, Id::Lava);
+    wall(&mut chunks, 3, 4, 4, Block::Lava);
     let points = pig_path(&chunks, IVec3::new(6, 5, 0)).unwrap();
     assert!(points.iter().all(|point| point.x <= 2), "{points:?}");
 }
@@ -125,9 +125,9 @@ fn walks_onto_water_but_never_toward_lava() {
 #[test]
 fn passes_open_doors_and_stops_at_closed_ones() {
     let mut chunks = field(4);
-    wall(&mut chunks, 3, 5, 6, Id::Stone);
-    chunks.set_block(3, 5, 0, Id::WoodenDoor);
-    chunks.set_block(3, 6, 0, Id::WoodenDoor);
+    wall(&mut chunks, 3, 5, 6, Block::Stone);
+    chunks.set_block(3, 5, 0, Block::WoodenDoor);
+    chunks.set_block(3, 6, 0, Block::WoodenDoor);
     let points = pig_path(&chunks, IVec3::new(6, 5, 0)).unwrap();
     assert_eq!(points.last(), Some(&IVec3::new(2, 5, 0)));
 
@@ -144,7 +144,7 @@ fn tall_bodies_need_headroom() {
     // A one-block gap under a ceiling: the pig fits, the cow does not.
     for x in 2..=4 {
         for z in -12..=12 {
-            chunks.set_block(x, 6, z, Id::Stone);
+            chunks.set_block(x, 6, z, Block::Stone);
         }
     }
     let feet = Vec3::new(0.5, 5.0, 0.5);
@@ -184,7 +184,7 @@ fn path_positions_center_the_body_on_each_cell() {
 /// The feet of a player standing on a three-block pillar at the origin.
 fn pillar(chunks: &mut WorldChunks) -> Vec3 {
     for y in 5..=7 {
-        chunks.set_block(0, y, 0, Id::Stone);
+        chunks.set_block(0, y, 0, Block::Stone);
     }
     Vec3::new(0.5, 8.0, 0.5)
 }
@@ -244,16 +244,16 @@ fn an_edit_the_search_could_see_runs_it_again() {
     let before = chase(&mut finder, &chunks, zombie, player, &mut last);
 
     // A step beside the pillar, then a second one, lets the zombie climb up.
-    chunks.set_block(1, 5, 0, Id::Stone);
-    chunks.set_block(2, 5, 0, Id::Stone);
-    chunks.set_block(1, 6, 0, Id::Stone);
+    chunks.set_block(1, 5, 0, Block::Stone);
+    chunks.set_block(2, 5, 0, Block::Stone);
+    chunks.set_block(1, 6, 0, Block::Stone);
     let after = chase(&mut finder, &chunks, zombie, player, &mut last);
     assert_ne!(after, before);
     assert_eq!(after, fresh(&chunks, zombie, player));
 
     // Opening a door changes only metadata, and that counts too.
-    chunks.set_block(4, 5, 0, Id::WoodenDoor);
-    chunks.set_block(4, 6, 0, Id::WoodenDoor);
+    chunks.set_block(4, 5, 0, Block::WoodenDoor);
+    chunks.set_block(4, 6, 0, Block::WoodenDoor);
     let closed = chase(&mut finder, &chunks, zombie, player, &mut last);
     assert_eq!(closed, fresh(&chunks, zombie, player));
     chunks.set_metadata(4, 5, 0, 4);
@@ -280,7 +280,7 @@ fn only_edits_inside_the_searched_region_count() {
 
     // The search sees the chunks within 32 blocks of the zombie; x = 100 is
     // well beyond them.
-    chunks.set_block(100, 5, 0, Id::Stone);
+    chunks.set_block(100, 5, 0, Block::Stone);
     assert_eq!(
         chase(&mut finder, &chunks, zombie, player, &mut last),
         first

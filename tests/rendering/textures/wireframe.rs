@@ -2,7 +2,7 @@ use bevy::asset::AssetPlugin;
 use bevy::prelude::*;
 use bevy::state::app::StatesPlugin;
 use game::app::state::AppScreen;
-use game::block::id::Id;
+use game::block::blocks::Block;
 use game::chat::ChatFocus;
 use game::rendering::textures::BlockMaterial;
 use game::rendering::textures::MeshWireframe;
@@ -95,7 +95,7 @@ fn f4_does_not_toggle_wireframe_while_chat_has_focus() {
 fn apply(
     app: &mut App,
     enabled: bool,
-    block: Option<Id>,
+    block: Option<Block>,
     supported: bool,
 ) -> Result<String, &'static str> {
     app.world_mut()
@@ -114,12 +114,12 @@ fn wireframe_commands_update_the_material_and_block_filter() {
     assert!(wireframe(&app));
 
     assert_eq!(
-        apply(&mut app, true, Some(Id::Water), true).unwrap(),
+        apply(&mut app, true, Some(Block::Water), true).unwrap(),
         "Wireframe showing Water (9)"
     );
     assert_eq!(
         app.world().resource::<MeshWireframe>().block,
-        Some(Id::Water)
+        Some(Block::Water)
     );
     assert!(wireframe(&app));
 
@@ -138,10 +138,10 @@ fn wireframe_commands_update_the_material_and_block_filter() {
 fn f4_clears_a_block_filter_and_restores_filled_meshes() {
     let mut app = test_app();
     enter_playing(&mut app);
-    apply(&mut app, true, Some(Id::Grass), true).unwrap();
+    apply(&mut app, true, Some(Block::Grass), true).unwrap();
     assert_eq!(
         app.world().resource::<MeshWireframe>().block,
-        Some(Id::Grass)
+        Some(Block::Grass)
     );
 
     press(&mut app, KeyCode::F4);

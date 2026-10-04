@@ -1,4 +1,4 @@
-use game::block::id::Id;
+use game::block::blocks::Block;
 use game::inventory::HOTBAR_SLOTS;
 use game::inventory::Hotbar;
 use game::inventory::collect_matching_stacks;
@@ -82,13 +82,13 @@ fn double_click_collection_requires_stack_compatible_item_data() {
 fn sorting_uses_block_families_then_materials_and_equipment() {
     let mut slots = [
         Some(ItemStack::new(ItemId::IronBoots, 1).unwrap()),
-        Some(ItemStack::from_block(Id::Torch, 4).unwrap()),
+        Some(ItemStack::from_block(Block::Torch, 4).unwrap()),
         Some(ItemStack::new(ItemId::WoodenPickaxe, 1).unwrap()),
-        Some(ItemStack::from_block(Id::Wool, 2).unwrap()),
+        Some(ItemStack::from_block(Block::Wool, 2).unwrap()),
         Some(ItemStack::new(ItemId::Diamond, 3).unwrap()),
-        Some(ItemStack::from_block(Id::WoodenPlanks, 6).unwrap()),
-        Some(ItemStack::from_block(Id::Dirt, 5).unwrap()),
-        Some(ItemStack::from_block(Id::Stone, 7).unwrap()),
+        Some(ItemStack::from_block(Block::WoodenPlanks, 6).unwrap()),
+        Some(ItemStack::from_block(Block::Dirt, 5).unwrap()),
+        Some(ItemStack::from_block(Block::Stone, 7).unwrap()),
         Some(ItemStack::new(ItemId::SugarCane, 2).unwrap()),
         Some(ItemStack::new(ItemId::Bow, 1).unwrap()),
     ];
@@ -102,12 +102,12 @@ fn sorting_uses_block_families_then_materials_and_equipment() {
     assert_eq!(
         items,
         vec![
-            ItemId::from_block(Id::Stone).unwrap(),
-            ItemId::from_block(Id::Dirt).unwrap(),
+            ItemId::from_block(Block::Stone).unwrap(),
+            ItemId::from_block(Block::Dirt).unwrap(),
             ItemId::SugarCane,
-            ItemId::from_block(Id::WoodenPlanks).unwrap(),
-            ItemId::from_block(Id::Wool).unwrap(),
-            ItemId::from_block(Id::Torch).unwrap(),
+            ItemId::from_block(Block::WoodenPlanks).unwrap(),
+            ItemId::from_block(Block::Wool).unwrap(),
+            ItemId::from_block(Block::Torch).unwrap(),
             ItemId::Diamond,
             ItemId::Bow,
             ItemId::WoodenPickaxe,
@@ -162,7 +162,7 @@ fn sorting_follows_the_top_level_tree_and_places_equipment_last() {
         Some(ItemStack::new(ItemId::Arrow, 8).unwrap()),
         Some(ItemStack::new(ItemId::Bow, 1).unwrap()),
         Some(ItemStack::new(ItemId::WoodenSword, 1).unwrap()),
-        Some(ItemStack::from_block(Id::Stone, 1).unwrap()),
+        Some(ItemStack::from_block(Block::Stone, 1).unwrap()),
         Some(ItemStack::new(ItemId::WoodenPickaxe, 1).unwrap()),
     ];
 
@@ -175,7 +175,7 @@ fn sorting_follows_the_top_level_tree_and_places_equipment_last() {
     assert_eq!(
         items,
         vec![
-            ItemId::from_block(Id::Stone).unwrap(),
+            ItemId::from_block(Block::Stone).unwrap(),
             ItemId::Apple,
             ItemId::GoldIngot,
             ItemId::Boat,
@@ -192,15 +192,15 @@ fn sorting_follows_the_top_level_tree_and_places_equipment_last() {
 #[test]
 fn block_sorting_follows_natural_building_functional_and_redstone_groups() {
     let mut slots = [
-        Some(ItemStack::from_block(Id::RedstoneWire, 1).unwrap()),
-        Some(ItemStack::from_block(Id::Chest, 1).unwrap()),
-        Some(ItemStack::from_block(Id::Wool, 1).unwrap()),
-        Some(ItemStack::from_block(Id::Dirt, 1).unwrap()),
-        Some(ItemStack::from_block(Id::Stone, 1).unwrap()),
-        Some(ItemStack::from_block(Id::CraftingTable, 1).unwrap()),
-        Some(ItemStack::from_block(Id::WoodenPlanks, 1).unwrap()),
-        Some(ItemStack::from_block(Id::Repeater, 1).unwrap()),
-        Some(ItemStack::from_block(Id::Torch, 1).unwrap()),
+        Some(ItemStack::from_block(Block::RedstoneWire, 1).unwrap()),
+        Some(ItemStack::from_block(Block::Chest, 1).unwrap()),
+        Some(ItemStack::from_block(Block::Wool, 1).unwrap()),
+        Some(ItemStack::from_block(Block::Dirt, 1).unwrap()),
+        Some(ItemStack::from_block(Block::Stone, 1).unwrap()),
+        Some(ItemStack::from_block(Block::CraftingTable, 1).unwrap()),
+        Some(ItemStack::from_block(Block::WoodenPlanks, 1).unwrap()),
+        Some(ItemStack::from_block(Block::Repeater, 1).unwrap()),
+        Some(ItemStack::from_block(Block::Torch, 1).unwrap()),
     ];
 
     sort_container_slots(&mut slots);
@@ -212,15 +212,15 @@ fn block_sorting_follows_natural_building_functional_and_redstone_groups() {
     assert_eq!(
         items,
         vec![
-            ItemId::from_block(Id::Stone).unwrap(),
-            ItemId::from_block(Id::Dirt).unwrap(),
-            ItemId::from_block(Id::WoodenPlanks).unwrap(),
-            ItemId::from_block(Id::Wool).unwrap(),
-            ItemId::from_block(Id::Chest).unwrap(),
-            ItemId::from_block(Id::CraftingTable).unwrap(),
-            ItemId::from_block(Id::RedstoneWire).unwrap(),
-            ItemId::from_block(Id::Torch).unwrap(),
-            ItemId::from_block(Id::Repeater).unwrap(),
+            ItemId::from_block(Block::Stone).unwrap(),
+            ItemId::from_block(Block::Dirt).unwrap(),
+            ItemId::from_block(Block::WoodenPlanks).unwrap(),
+            ItemId::from_block(Block::Wool).unwrap(),
+            ItemId::from_block(Block::Chest).unwrap(),
+            ItemId::from_block(Block::CraftingTable).unwrap(),
+            ItemId::from_block(Block::RedstoneWire).unwrap(),
+            ItemId::from_block(Block::Torch).unwrap(),
+            ItemId::from_block(Block::Repeater).unwrap(),
         ]
     );
 }
@@ -231,7 +231,7 @@ fn sorting_main_inventory_leaves_hotbar_and_cursor_unchanged() {
 
     let mut inventory = Inventory::default();
     inventory.main[0] = Some(ItemStack::new(ItemId::WoodenPickaxe, 1).unwrap());
-    inventory.main[1] = Some(ItemStack::from_block(Id::Stone, 3).unwrap());
+    inventory.main[1] = Some(ItemStack::from_block(Block::Stone, 3).unwrap());
     inventory.carried = Some(ItemStack::new(ItemId::Diamond, 2).unwrap());
     let mut hotbar = Hotbar::default();
     hotbar.slots[0] = Some(ItemStack::new(ItemId::IronAxe, 1).unwrap());
@@ -242,7 +242,7 @@ fn sorting_main_inventory_leaves_hotbar_and_cursor_unchanged() {
 
     assert_eq!(
         inventory.main[0],
-        Some(ItemStack::from_block(Id::Stone, 3).unwrap())
+        Some(ItemStack::from_block(Block::Stone, 3).unwrap())
     );
     assert_eq!(
         inventory.main[1],
@@ -313,7 +313,7 @@ fn stack(item: ItemId, count: u8) -> ItemStack {
     ItemStack::new(item, count).unwrap()
 }
 
-fn block(block: game::block::id::Id) -> ItemId {
+fn block(block: game::block::blocks::Block) -> ItemId {
     ItemId::from_block(block).unwrap()
 }
 
@@ -514,7 +514,7 @@ fn quick_move_drag_moves_only_what_fits_and_leaves_full_destinations_untouched()
 
 #[test]
 fn quick_move_drag_respects_furnace_slot_eligibility_and_empty_slots() {
-    use game::block::id::Id;
+    use game::block::blocks::Block;
     use game::inventory::SlotId;
     use game::inventory::quick_move_drag_slot;
     let mut inventory = game::inventory::Inventory::default();
@@ -547,7 +547,7 @@ fn quick_move_drag_respects_furnace_slot_eligibility_and_empty_slots() {
     assert!(furnace.iter().all(Option::is_none));
 
     let mut visited = Vec::new();
-    inventory.main[1] = Some(stack(block(Id::IronOre), 3));
+    inventory.main[1] = Some(stack(block(Block::IronOre), 3));
     assert!(quick_move_drag_slot(
         &mut visited,
         &mut inventory,
@@ -559,7 +559,7 @@ fn quick_move_drag_respects_furnace_slot_eligibility_and_empty_slots() {
         SlotId::Main(1),
     ));
     assert!(inventory.main[1].is_none());
-    assert_eq!(furnace[0], Some(stack(block(Id::IronOre), 3)));
+    assert_eq!(furnace[0], Some(stack(block(Block::IronOre), 3)));
 
     let mut visited = Vec::new();
     assert!(quick_move_drag_slot(
@@ -573,7 +573,7 @@ fn quick_move_drag_respects_furnace_slot_eligibility_and_empty_slots() {
         SlotId::Furnace(0),
     ));
     assert!(furnace[0].is_none());
-    assert_eq!(hotbar.slots[0], Some(stack(block(Id::IronOre), 3)));
+    assert_eq!(hotbar.slots[0], Some(stack(block(Block::IronOre), 3)));
 }
 
 #[test]
@@ -619,12 +619,12 @@ fn shift_click_returns_crafting_inputs_to_main_storage_first() {
 
 #[test]
 fn shift_click_crafting_result_repeats_and_fills_the_hotbar_from_the_right() {
-    use game::block::id::Id;
+    use game::block::blocks::Block;
     use game::inventory::SlotId;
     use game::inventory::shift_click_slot;
     let mut inventory = game::inventory::Inventory::default();
     let mut hotbar = Hotbar::default();
-    inventory.crafting[0] = Some(stack(block(Id::Wood), 2));
+    inventory.crafting[0] = Some(stack(block(Block::Wood), 2));
     assert!(shift_click_slot(
         &mut inventory,
         &mut hotbar,
@@ -633,20 +633,20 @@ fn shift_click_crafting_result_repeats_and_fills_the_hotbar_from_the_right() {
         SlotId::CraftResult
     ));
     assert!(inventory.crafting.iter().all(Option::is_none));
-    assert_eq!(hotbar.slots[8], Some(stack(block(Id::WoodenPlanks), 8)));
+    assert_eq!(hotbar.slots[8], Some(stack(block(Block::WoodenPlanks), 8)));
     assert!(hotbar.slots[..8].iter().all(Option::is_none));
 }
 
 #[test]
 fn shift_click_crafting_stops_when_the_next_output_does_not_fit() {
-    use game::block::id::Id;
+    use game::block::blocks::Block;
     use game::inventory::SlotId;
     use game::inventory::shift_click_slot;
     let mut inventory = game::inventory::Inventory::default();
     let mut hotbar = Hotbar::default();
     fill_storage(&mut inventory, &mut hotbar, stack(ItemId::Diamond, 64));
-    hotbar.slots[8] = Some(stack(block(Id::WoodenPlanks), 60));
-    inventory.crafting[0] = Some(stack(block(Id::Wood), 2));
+    hotbar.slots[8] = Some(stack(block(Block::WoodenPlanks), 60));
+    inventory.crafting[0] = Some(stack(block(Block::Wood), 2));
     assert!(shift_click_slot(
         &mut inventory,
         &mut hotbar,
@@ -654,21 +654,21 @@ fn shift_click_crafting_stops_when_the_next_output_does_not_fit() {
         false,
         SlotId::CraftResult
     ));
-    assert_eq!(inventory.crafting[0], Some(stack(block(Id::Wood), 1)));
-    assert_eq!(hotbar.slots[8], Some(stack(block(Id::WoodenPlanks), 64)));
+    assert_eq!(inventory.crafting[0], Some(stack(block(Block::Wood), 1)));
+    assert_eq!(hotbar.slots[8], Some(stack(block(Block::WoodenPlanks), 64)));
     assert_eq!(hotbar.slots[7], Some(stack(ItemId::Diamond, 64)));
 }
 
 #[test]
 fn shift_click_workbench_result_uses_the_three_by_three_grid() {
-    use game::block::id::Id;
+    use game::block::blocks::Block;
     use game::crafting::CraftingGrid;
     use game::inventory::SlotId;
     use game::inventory::shift_click_slot;
     let mut inventory = game::inventory::Inventory::default();
     let mut hotbar = Hotbar::default();
     let mut grid = CraftingGrid::workbench();
-    grid.set(0, 0, Some(stack(block(Id::Wood), 1)));
+    grid.set(0, 0, Some(stack(block(Block::Wood), 1)));
     assert!(shift_click_slot(
         &mut inventory,
         &mut hotbar,
@@ -677,7 +677,7 @@ fn shift_click_workbench_result_uses_the_three_by_three_grid() {
         SlotId::CraftResult
     ));
     assert!(grid.get(0, 0).is_none());
-    assert_eq!(hotbar.slots[8], Some(stack(block(Id::WoodenPlanks), 4)));
+    assert_eq!(hotbar.slots[8], Some(stack(block(Block::WoodenPlanks), 4)));
 }
 
 #[test]
@@ -836,12 +836,12 @@ fn hotbar_number_key_swaps_the_hovered_stack_into_that_slot() {
 
 #[test]
 fn hotbar_number_key_crafts_into_an_empty_slot_only() {
-    use game::block::id::Id;
+    use game::block::blocks::Block;
     use game::inventory::SlotId;
     use game::inventory::hotbar_key_swap;
     let mut inventory = game::inventory::Inventory::default();
     let mut hotbar = Hotbar::default();
-    inventory.crafting[0] = Some(stack(block(Id::Wood), 1));
+    inventory.crafting[0] = Some(stack(block(Block::Wood), 1));
     hotbar.slots[0] = Some(stack(ItemId::StoneSword, 1));
     assert!(!hotbar_key_swap(
         &mut inventory,
@@ -851,7 +851,7 @@ fn hotbar_number_key_crafts_into_an_empty_slot_only() {
         SlotId::CraftResult,
         0
     ));
-    assert_eq!(inventory.crafting[0], Some(stack(block(Id::Wood), 1)));
+    assert_eq!(inventory.crafting[0], Some(stack(block(Block::Wood), 1)));
     assert!(hotbar_key_swap(
         &mut inventory,
         &mut hotbar,
@@ -861,7 +861,7 @@ fn hotbar_number_key_crafts_into_an_empty_slot_only() {
         4
     ));
     assert!(inventory.crafting[0].is_none());
-    assert_eq!(hotbar.slots[4], Some(stack(block(Id::WoodenPlanks), 4)));
+    assert_eq!(hotbar.slots[4], Some(stack(block(Block::WoodenPlanks), 4)));
 }
 
 #[test]
@@ -875,7 +875,7 @@ fn closing_crafting_session_returns_inputs_or_drops_overflow_without_ui() {
     use game::random::ItemRng;
 
     for full in [false, true] {
-        let stone = ItemId::from_u16(u16::from(Id::Stone.as_u8())).unwrap();
+        let stone = ItemId::from_u16(u16::from(Block::Stone.as_u8())).unwrap();
         let mut hotbar = Hotbar::default();
         let mut inventory = Inventory::default();
         if full {

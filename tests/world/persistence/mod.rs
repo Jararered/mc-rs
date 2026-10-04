@@ -10,7 +10,7 @@ use std::time::UNIX_EPOCH;
 use bevy::asset::AssetPlugin;
 use bevy::mesh::MeshPlugin;
 use bevy::prelude::*;
-use game::block::id::Id;
+use game::block::blocks::Block;
 use game::entity::mobs::Mob;
 use game::entity::mobs::MobKind;
 use game::entity::mobs::MobRecord;
@@ -150,7 +150,7 @@ fn weather_and_spawner_mobs_round_trip_without_changing_older_saves() {
 
     let pos = ChunkPosition::ZERO;
     let mut generated = OverworldGenerator::new(9).generate(pos);
-    generated.chunk.set(2, 40, 3, Id::MobSpawner);
+    generated.chunk.set(2, 40, 3, Block::MobSpawner);
     let index = Chunk::index(2, 40, 3);
     let spawner = MobSpawner {
         kind: MobKind::Skeleton,
@@ -185,10 +185,10 @@ fn chunk_round_trips_through_a_chunk_file() {
     let position = ChunkPosition { x: -1, z: 2 };
     let mut generated = OverworldGenerator::new(0).generate(position);
     for (x, facing) in [
-        (1, Id::PumpkinNorth),
-        (2, Id::PumpkinEast),
-        (3, Id::PumpkinSouth),
-        (4, Id::PumpkinWest),
+        (1, Block::PumpkinNorth),
+        (2, Block::PumpkinEast),
+        (3, Block::PumpkinSouth),
+        (4, Block::PumpkinWest),
     ] {
         generated.chunk.set(x, 70, 1, facing);
     }
@@ -196,10 +196,10 @@ fn chunk_round_trips_through_a_chunk_file() {
 
     let loaded = storage.load_chunk(position).expect("chunk should load");
     assert_same_blocks(&loaded.chunk, &generated.chunk);
-    assert_eq!(loaded.chunk.get(1, 70, 1), Some(Id::PumpkinNorth));
-    assert_eq!(loaded.chunk.get(2, 70, 1), Some(Id::PumpkinEast));
-    assert_eq!(loaded.chunk.get(3, 70, 1), Some(Id::PumpkinSouth));
-    assert_eq!(loaded.chunk.get(4, 70, 1), Some(Id::PumpkinWest));
+    assert_eq!(loaded.chunk.get(1, 70, 1), Some(Block::PumpkinNorth));
+    assert_eq!(loaded.chunk.get(2, 70, 1), Some(Block::PumpkinEast));
+    assert_eq!(loaded.chunk.get(3, 70, 1), Some(Block::PumpkinSouth));
+    assert_eq!(loaded.chunk.get(4, 70, 1), Some(Block::PumpkinWest));
     for z in 0..CHUNK_SIZE {
         for x in 0..CHUNK_SIZE {
             assert_eq!(loaded.heightmap.get(x, z), generated.heightmap.get(x, z));
@@ -222,12 +222,14 @@ fn block_metadata_and_pending_ticks_round_trip_through_a_chunk_file() {
     let mut generated = OverworldGenerator::new(0).generate(position);
     generated
         .chunk
-        .set_with_metadata(4, 90, 5, Id::FlowingWater, 3);
-    generated.chunk.set_with_metadata(5, 90, 5, Id::Crops, 7);
-    generated.chunk.set_with_metadata(6, 90, 5, Id::Farmland, 6);
+        .set_with_metadata(4, 90, 5, Block::FlowingWater, 3);
+    generated.chunk.set_with_metadata(5, 90, 5, Block::Crops, 7);
+    generated
+        .chunk
+        .set_with_metadata(6, 90, 5, Block::Farmland, 6);
     let tick = PendingTick {
         index: Chunk::index(4, 90, 5) as u16,
-        block: Id::FlowingWater,
+        block: Block::FlowingWater,
         delay: 4,
     };
     generated.chunk.set_pending_ticks(vec![tick]);
@@ -253,8 +255,8 @@ fn block_metadata_and_pending_ticks_round_trip_through_a_chunk_file() {
 
 #[test]
 fn legacy_species_bytes_stay_spruce_while_cake_uses_the_same_number() {
-    assert_eq!(Id::Cake.as_u8(), 92);
-    assert!(!Id::Cake.in_world());
+    assert_eq!(Block::Cake.as_u8(), 92);
+    assert!(!Block::Cake.in_world());
     let saves = temp_saves("legacy-spruce");
     let storage = WorldStorage::create(&saves, 0, "Legacy").unwrap();
     let position = ChunkPosition::ZERO;
@@ -277,7 +279,7 @@ fn legacy_species_bytes_stay_spruce_while_cake_uses_the_same_number() {
             .chunk
             .blocks()
             .iter()
-            .all(|block| *block == Id::SpruceLeaves)
+            .all(|block| *block == Block::SpruceLeaves)
     );
 
     value["runs"] = serde_json::json!([[20, blocks as u16]]);
@@ -292,7 +294,7 @@ fn dropped_items_round_trip_inside_their_chunk() {
     let position = ChunkPosition { x: 1, z: -1 };
     let mut generated = OverworldGenerator::new(0).generate(position);
     generated.items.push(ChunkDroppedItem {
-        stack: ItemStack::from_block(Id::Cobblestone, 3).unwrap(),
+        stack: ItemStack::from_block(Block::Cobblestone, 3).unwrap(),
         position: [20.25, 70.0, -8.5],
         motion: [0.05, 0.2, -0.08],
         age_ticks: 12,
@@ -375,11 +377,11 @@ fn saving_one_chunk_keeps_the_others_in_its_region() {
 
     // Rewrite the first chunk with an edit and confirm the second is untouched.
     let mut edited = generator.generate(first);
-    edited.chunk.set(4, 70, 4, Id::GoldBlock);
+    edited.chunk.set(4, 70, 4, Block::GoldBlock);
     storage.save_chunk(first, &edited).unwrap();
 
     let reloaded = storage.load_chunk(first).unwrap();
-    assert_eq!(reloaded.chunk.get(4, 70, 4), Some(Id::GoldBlock));
+    assert_eq!(reloaded.chunk.get(4, 70, 4), Some(Block::GoldBlock));
     assert_same_blocks(
         &storage.load_chunk(second).unwrap().chunk,
         &generator.generate(second).chunk,
@@ -587,8 +589,8 @@ fn an_autosave_drain_reaches_disk_over_several_frames() {
         let edited = chunks
             .get_mut(ChunkPosition::ZERO)
             .expect("spawn chunk should be loaded");
-        assert_ne!(edited.chunk.get(4, 120, 4), Some(Id::GoldBlock));
-        edited.chunk.set(4, 120, 4, Id::GoldBlock);
+        assert_ne!(edited.chunk.get(4, 120, 4), Some(Block::GoldBlock));
+        edited.chunk.set(4, 120, 4, Block::GoldBlock);
     }
     app.world_mut()
         .resource_mut::<WorldPersistence>()
@@ -603,7 +605,7 @@ fn an_autosave_drain_reaches_disk_over_several_frames() {
     let saved = || {
         storage
             .load_chunk(ChunkPosition::ZERO)
-            .is_some_and(|chunk| chunk.chunk.get(4, 120, 4) == Some(Id::GoldBlock))
+            .is_some_and(|chunk| chunk.chunk.get(4, 120, 4) == Some(Block::GoldBlock))
     };
     assert!(
         run_until(&mut app, Duration::from_secs(20), |_| saved()),
@@ -677,7 +679,7 @@ fn a_chunk_unloads_without_the_mobs_that_left_it_since_the_autosave() {
             app.world()
                 .resource::<WorldChunks>()
                 .block_at(8, y, 8)
-                .is_some_and(|block| block != Id::Air)
+                .is_some_and(|block| block != Block::Air)
         })
         .unwrap();
     super::mobs::summon(
@@ -751,7 +753,7 @@ fn a_chunk_unloaded_while_its_write_is_in_flight_keeps_the_newer_edit() {
         .resource_mut::<WorldChunks>()
         .remove(ChunkPosition::ZERO)
         .expect("spawn chunk should be loaded");
-    chunk.chunk.set(4, 120, 4, Id::GoldBlock);
+    chunk.chunk.set(4, 120, 4, Block::GoldBlock);
     app.world_mut()
         .resource_mut::<WorldPersistence>()
         .queue_unload(ChunkPosition::ZERO, chunk);
@@ -767,5 +769,5 @@ fn a_chunk_unloaded_while_its_write_is_in_flight_keeps_the_newer_edit() {
     let reloaded = storage
         .load_chunk(ChunkPosition::ZERO)
         .expect("the chunk should be on disk");
-    assert_eq!(reloaded.chunk.get(4, 120, 4), Some(Id::GoldBlock));
+    assert_eq!(reloaded.chunk.get(4, 120, 4), Some(Block::GoldBlock));
 }

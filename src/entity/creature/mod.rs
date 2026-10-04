@@ -37,9 +37,9 @@ use bevy::prelude::*;
 
 use crate::app::settings::Difficulty;
 use crate::app::settings::GameSettings;
+use crate::block::blocks::Block;
 use crate::block::fluids::is_water;
 use crate::block::fluids::percent_air;
-use crate::block::id::Id;
 use crate::block::properties::is_opaque_cube;
 use crate::block::properties::slipperiness;
 use crate::entity::CollisionState;
@@ -267,7 +267,9 @@ impl Surroundings<'_> {
         };
         if matches!(
             self.chunks.block_at(x, y, z),
-            Some(Id::StoneSlab | Id::Farmland | Id::CobblestoneStairs | Id::WoodenStairs)
+            Some(
+                Block::StoneSlab | Block::Farmland | Block::CobblestoneStairs | Block::WoodenStairs
+            )
         ) {
             [(0, 1, 0), (1, 0, 0), (-1, 0, 0), (0, 0, 1), (0, 0, -1)]
                 .into_iter()
@@ -922,7 +924,7 @@ impl Body<'_> {
     fn path_weight(&self, world: &Surroundings, x: i32, y: i32, z: i32) -> f32 {
         if self.mob.kind.is_monster() {
             0.5 - world.brightness(x, y, z)
-        } else if world.chunks.block_at(x, y - 1, z) == Some(Id::Grass) {
+        } else if world.chunks.block_at(x, y - 1, z) == Some(Block::Grass) {
             10.0
         } else {
             world.brightness(x, y, z) - 0.5
@@ -1105,7 +1107,7 @@ impl Body<'_> {
             self.aabb().min.y.floor() as i32 - 1,
             self.feet.z.floor() as i32,
         ) {
-            Some(block) if block != Id::Air => slipperiness(block) * 0.91,
+            Some(block) if block != Block::Air => slipperiness(block) * 0.91,
             _ => 0.546,
         }
     }
@@ -1279,7 +1281,7 @@ fn touching_fire(chunks: &WorldChunks, area: Aabb) -> bool {
             (min.z..max.z).any(|z| {
                 matches!(
                     chunks.block_at(x, y, z),
-                    Some(Id::Fire | Id::Lava | Id::FlowingLava)
+                    Some(Block::Fire | Block::Lava | Block::FlowingLava)
                 )
             })
         })

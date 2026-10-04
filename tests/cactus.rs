@@ -1,5 +1,5 @@
 use bevy::prelude::Vec3;
-use game::block::id::Id;
+use game::block::blocks::Block;
 use game::block::properties::blocks_movement;
 use game::block::properties::collision_bounds;
 use game::block::properties::hardness;
@@ -52,12 +52,12 @@ fn world_with(chunk: Chunk) -> WorldChunks {
 
 #[test]
 fn cactus_uses_species_faces_and_an_inset_world_mesh() {
-    assert_eq!(block_tile(Id::Cactus, 0, false), (5, 4));
-    assert_eq!(block_tile(Id::Cactus, 1, false), (7, 4));
-    assert_eq!(block_tile(Id::Cactus, 2, false), (6, 4));
+    assert_eq!(block_tile(Block::Cactus, 0, false), (5, 4));
+    assert_eq!(block_tile(Block::Cactus, 1, false), (7, 4));
+    assert_eq!(block_tile(Block::Cactus, 2, false), (6, 4));
 
     let mut chunk = Chunk::new();
-    chunk.set(1, 1, 1, Id::Cactus);
+    chunk.set(1, 1, 1, Block::Cactus);
     let meshes = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), false);
     assert_eq!(meshes.opaque.vertex_count(), 0);
     assert_eq!(meshes.masked.vertex_count(), 24);
@@ -113,7 +113,7 @@ fn cactus_uses_species_faces_and_an_inset_world_mesh() {
     assert_eq!((top_min, top_max), (top_u0, top_u1));
 
     for face in 0..6 {
-        let tile = block_tile(Id::Cactus, face, false);
+        let tile = block_tile(Block::Cactus, face, false);
         let (u0, v0, u1, v1) = atlas_tile_uvs(tile.0, tile.1);
         let face_uvs = &uvs[face * 4..face * 4 + 4];
         assert_eq!(
@@ -146,7 +146,7 @@ fn cactus_uses_species_faces_and_an_inset_world_mesh() {
         );
     }
 
-    let dropped = dropped_block_meshes(Id::Cactus, false, [1.0; 3], [1.0; 3]);
+    let dropped = dropped_block_meshes(Block::Cactus, false, [1.0; 3], [1.0; 3]);
     assert!(dropped.alpha_masked);
     assert_eq!(dropped.body.vertex_count(), 24);
     let dropped_positions = dropped.body.positions();
@@ -165,16 +165,16 @@ fn cactus_uses_species_faces_and_an_inset_world_mesh() {
 
 #[test]
 fn cactus_is_nonopaque_but_collides_and_uses_beta_bounds_and_hardness() {
-    assert!(!is_opaque_cube(Id::Cactus));
-    assert!(blocks_movement(Id::Cactus));
-    assert_eq!(light_opacity(Id::Cactus), 0);
-    assert_eq!(hardness(Id::Cactus), 0.4);
+    assert!(!is_opaque_cube(Block::Cactus));
+    assert!(blocks_movement(Block::Cactus));
+    assert_eq!(light_opacity(Block::Cactus), 0);
+    assert_eq!(hardness(Block::Cactus), 0.4);
     assert_eq!(
-        collision_bounds(Id::Cactus),
+        collision_bounds(Block::Cactus),
         Some(([0.0625, 0.0, 0.0625], [0.9375, 0.9375, 0.9375]))
     );
     assert_eq!(
-        selection_bounds(Id::Cactus),
+        selection_bounds(Block::Cactus),
         ([0.0625, 0.0, 0.0625], [0.9375, 1.0, 0.9375])
     );
 }
@@ -186,14 +186,14 @@ fn cactus_placement_requires_sand_support_and_clear_sides() {
         y: 64,
         z: 8,
         face: BlockFace::Up,
-        block: Id::Sand,
+        block: Block::Sand,
     };
     let player = Aabb::new(Vec3::new(0.0, 70.0, 0.0), Vec3::new(0.6, 71.8, 0.6));
-    let cactus_stack = ItemStack::from_block(Id::Cactus, 1).unwrap();
-    assert_eq!(cactus_stack.runtime_block(), Some(Id::Cactus));
+    let cactus_stack = ItemStack::from_block(Block::Cactus, 1).unwrap();
+    assert_eq!(cactus_stack.runtime_block(), Some(Block::Cactus));
 
     let mut supported = Chunk::new();
-    supported.set(8, 64, 8, Id::Sand);
+    supported.set(8, 64, 8, Block::Sand);
     let mut chunks = world_with(supported);
     assert!(place_selected_block(
         &mut chunks,
@@ -201,29 +201,34 @@ fn cactus_placement_requires_sand_support_and_clear_sides() {
         player,
         cactus_stack.runtime_block().unwrap(),
     ));
-    assert_eq!(chunks.block_at(8, 65, 8), Some(Id::Cactus));
+    assert_eq!(chunks.block_at(8, 65, 8), Some(Block::Cactus));
 
     let mut obstructed = Chunk::new();
-    obstructed.set(8, 64, 8, Id::Sand);
-    obstructed.set(7, 65, 8, Id::Stone);
+    obstructed.set(8, 64, 8, Block::Sand);
+    obstructed.set(7, 65, 8, Block::Stone);
     let mut chunks = world_with(obstructed);
-    assert!(!place_selected_block(&mut chunks, hit, player, Id::Cactus,));
-    assert_eq!(chunks.block_at(8, 65, 8), Some(Id::Air));
+    assert!(!place_selected_block(
+        &mut chunks,
+        hit,
+        player,
+        Block::Cactus,
+    ));
+    assert_eq!(chunks.block_at(8, 65, 8), Some(Block::Air));
 
     let mut cactus_support = Chunk::new();
-    cactus_support.set(8, 64, 8, Id::Cactus);
+    cactus_support.set(8, 64, 8, Block::Cactus);
     let mut chunks = world_with(cactus_support);
     let cactus_hit = BlockHit {
-        block: Id::Cactus,
+        block: Block::Cactus,
         ..hit
     };
     assert!(place_selected_block(
         &mut chunks,
         cactus_hit,
         player,
-        Id::Cactus,
+        Block::Cactus,
     ));
-    assert_eq!(chunks.block_at(8, 65, 8), Some(Id::Cactus));
+    assert_eq!(chunks.block_at(8, 65, 8), Some(Block::Cactus));
 }
 
 #[test]
@@ -235,18 +240,18 @@ fn desert_chunks_generate_repeatable_cactus_columns() {
             .chunk
             .blocks()
             .iter()
-            .filter(|&&block| block == Id::Cactus)
+            .filter(|&&block| block == Block::Cactus)
             .count();
         if cactus_count > 0 {
             for z in 0..CHUNK_SIZE {
                 for x in 0..CHUNK_SIZE {
                     for y in 0..CHUNK_HEIGHT {
-                        if generated.chunk.get(x, y, z) != Some(Id::Cactus) {
+                        if generated.chunk.get(x, y, z) != Some(Block::Cactus) {
                             continue;
                         }
                         assert!(matches!(
                             generated.chunk.get(x, y.saturating_sub(1), z),
-                            Some(Id::Sand | Id::Cactus)
+                            Some(Block::Sand | Block::Cactus)
                         ));
                         if x > 0 && x < CHUNK_SIZE - 1 && z > 0 && z < CHUNK_SIZE - 1 {
                             assert!(

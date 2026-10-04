@@ -292,19 +292,19 @@ fn tick_player_survival(
         );
         let block = chunks
             .block_at(x, y, z)
-            .unwrap_or(crate::block::id::Id::Air);
+            .unwrap_or(crate::block::blocks::Block::Air);
         if matches!(
             block,
-            crate::block::id::Id::Water | crate::block::id::Id::FlowingWater
+            crate::block::blocks::Block::Water | crate::block::blocks::Block::FlowingWater
         ) {
             survival.fire_ticks = 0;
         } else if matches!(
             block,
-            crate::block::id::Id::Fire
-                | crate::block::id::Id::Lava
-                | crate::block::id::Id::FlowingLava
+            crate::block::blocks::Block::Fire
+                | crate::block::blocks::Block::Lava
+                | crate::block::blocks::Block::FlowingLava
         ) {
-            survival.fire_ticks = if block == crate::block::id::Id::Fire {
+            survival.fire_ticks = if block == crate::block::blocks::Block::Fire {
                 160
             } else {
                 300

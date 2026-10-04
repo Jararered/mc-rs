@@ -1,7 +1,7 @@
 //! Beta `WorldGenFlowers`, `WorldGenTallGrass`, and `WorldGenDeadBush`, with
 //! the `canBlockStay` rules of the plants they place.
 
-use crate::block::id::Id;
+use crate::block::blocks::Block;
 use crate::block::properties::is_opaque_cube;
 use crate::block::properties::plant_grows_on;
 use crate::random::JavaRandom;
@@ -21,15 +21,15 @@ fn scatter(rand: &mut JavaRandom, x: i32, y: i32, z: i32) -> (i32, i32, i32) {
 
 /// `BlockFlower.canBlockStay` and the `BlockMushroom` and `BlockDeadBush`
 /// overrides.
-fn can_stay(world: &PopulationWorld, x: i32, y: i32, z: i32, block: Id) -> bool {
+fn can_stay(world: &PopulationWorld, x: i32, y: i32, z: i32, block: Block) -> bool {
     let below = world.get(x, y - 1, z);
     match block {
-        Id::BrownMushroom | Id::RedMushroom => {
+        Block::BrownMushroom | Block::RedMushroom => {
             (0..CHUNK_HEIGHT as i32).contains(&y)
                 && world.light(x, y, z) < 13
                 && is_opaque_cube(below)
         }
-        Id::DeadBush => lit_or_open(world, x, y, z) && below == Id::Sand,
+        Block::DeadBush => lit_or_open(world, x, y, z) && below == Block::Sand,
         _ => lit_or_open(world, x, y, z) && plant_grows_on(below),
     }
 }
@@ -45,7 +45,7 @@ pub(super) fn flower_patch(
     x: i32,
     y: i32,
     z: i32,
-    block: Id,
+    block: Block,
 ) {
     for _ in 0..64 {
         let (x, y, z) = scatter(rand, x, y, z);
@@ -71,7 +71,7 @@ pub(super) fn tall_grass_patch(
     x: i32,
     y: i32,
     z: i32,
-    block: Id,
+    block: Block,
 ) {
     let y = descend(world, x, y, z);
     for _ in 0..128 {
@@ -93,8 +93,8 @@ pub(super) fn dead_bush_patch(
     let y = descend(world, x, y, z);
     for _ in 0..4 {
         let (x, y, z) = scatter(rand, x, y, z);
-        if world.is_air(x, y, z) && can_stay(world, x, y, z, Id::DeadBush) {
-            world.set(x, y, z, Id::DeadBush);
+        if world.is_air(x, y, z) && can_stay(world, x, y, z, Block::DeadBush) {
+            world.set(x, y, z, Block::DeadBush);
         }
     }
 }

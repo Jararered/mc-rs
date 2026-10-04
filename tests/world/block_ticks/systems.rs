@@ -1,7 +1,7 @@
 use bevy::asset::AssetPlugin;
 use bevy::mesh::MeshPlugin;
 use bevy::prelude::*;
-use game::block::id::Id;
+use game::block::blocks::Block;
 use game::entity::DroppedItem;
 use game::entity::falling_block::FallingBlock;
 use game::world::biome::Biome;
@@ -26,7 +26,7 @@ fn app() -> App {
             if x == 0 && z == 0 {
                 for cx in 0..16 {
                     for cz in 0..16 {
-                        chunk.set(cx, 60, cz, Id::Stone);
+                        chunk.set(cx, 60, cz, Block::Stone);
                     }
                 }
             }
@@ -49,12 +49,12 @@ fn step(app: &mut App) {
     app.update();
 }
 
-fn block(app: &App, x: i32, y: i32, z: i32) -> Option<Id> {
+fn block(app: &App, x: i32, y: i32, z: i32) -> Option<Block> {
     app.world().resource::<WorldChunks>().block_at(x, y, z)
 }
 
 /// Write a block and report it, as block editing does.
-fn place(app: &mut App, x: i32, y: i32, z: i32, placed: Id) {
+fn place(app: &mut App, x: i32, y: i32, z: i32, placed: Block) {
     let previous = app
         .world_mut()
         .resource_mut::<WorldChunks>()
@@ -68,7 +68,7 @@ fn place(app: &mut App, x: i32, y: i32, z: i32, placed: Id) {
 #[test]
 fn unsupported_sand_falls_as_an_entity_and_lands_as_a_block() {
     let mut app = app();
-    place(&mut app, 8, 70, 8, Id::Sand);
+    place(&mut app, 8, 70, 8, Block::Sand);
     let mut spawned = false;
     for _ in 0..80 {
         step(&mut app);
@@ -83,10 +83,10 @@ fn unsupported_sand_falls_as_an_entity_and_lands_as_a_block() {
         }
     }
     assert!(spawned, "the sand became a falling entity");
-    assert_eq!(block(&app, 8, 70, 8), Some(Id::Air));
+    assert_eq!(block(&app, 8, 70, 8), Some(Block::Air));
     assert_eq!(
         block(&app, 8, 61, 8),
-        Some(Id::Sand),
+        Some(Block::Sand),
         "it lands on the floor"
     );
     assert_eq!(
@@ -103,13 +103,13 @@ fn a_torch_that_loses_its_floor_drops_an_item_entity() {
     let mut app = app();
     app.world_mut()
         .resource_mut::<WorldChunks>()
-        .set_block(8, 61, 8, Id::Stone);
+        .set_block(8, 61, 8, Block::Stone);
     app.world_mut()
         .resource_mut::<WorldChunks>()
-        .set_block(8, 62, 8, Id::Torch);
-    place(&mut app, 8, 61, 8, Id::Air);
+        .set_block(8, 62, 8, Block::Torch);
+    place(&mut app, 8, 61, 8, Block::Air);
     step(&mut app);
-    assert_eq!(block(&app, 8, 62, 8), Some(Id::Air));
+    assert_eq!(block(&app, 8, 62, 8), Some(Block::Air));
     let items: Vec<_> = app
         .world_mut()
         .query::<&DroppedItem>()
@@ -117,5 +117,8 @@ fn a_torch_that_loses_its_floor_drops_an_item_entity() {
         .map(|item| item.0.item())
         .collect();
     assert_eq!(items.len(), 1);
-    assert_eq!(items[0], game::item::ItemId::from_block(Id::Torch).unwrap());
+    assert_eq!(
+        items[0],
+        game::item::ItemId::from_block(Block::Torch).unwrap()
+    );
 }

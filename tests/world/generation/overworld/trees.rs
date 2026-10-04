@@ -1,4 +1,4 @@
-use game::block::id::Id;
+use game::block::blocks::Block;
 use game::world::biome::Biome;
 use game::world::chunk::CHUNK_HEIGHT;
 use game::world::chunk::CHUNK_SIZE;
@@ -6,7 +6,7 @@ use game::world::chunk::Chunk;
 use game::world::chunk::ChunkPosition;
 use game::world::generation::overworld::OverworldGenerator;
 
-fn count(chunk: &Chunk, block: Id) -> usize {
+fn count(chunk: &Chunk, block: Block) -> usize {
     let mut total = 0;
     for y in 0..CHUNK_HEIGHT {
         for z in 0..CHUNK_SIZE {
@@ -20,12 +20,15 @@ fn count(chunk: &Chunk, block: Id) -> usize {
     total
 }
 
-fn is_leaf(block: Id) -> bool {
-    matches!(block, Id::Leaves | Id::SpruceLeaves | Id::BirchLeaves)
+fn is_leaf(block: Block) -> bool {
+    matches!(
+        block,
+        Block::Leaves | Block::SpruceLeaves | Block::BirchLeaves
+    )
 }
 
-fn is_wood(block: Id) -> bool {
-    matches!(block, Id::Wood | Id::SpruceWood | Id::BirchWood)
+fn is_wood(block: Block) -> bool {
+    matches!(block, Block::Wood | Block::SpruceWood | Block::BirchWood)
 }
 
 #[test]
@@ -42,7 +45,7 @@ fn forest_chunk_contains_grounded_trees_with_canopies() {
                 continue;
             };
             // Branch columns have air below; only inspect grounded trunks.
-            if !matches!(chunk.get(x, base - 1, z), Some(Id::Dirt | Id::Grass)) {
+            if !matches!(chunk.get(x, base - 1, z), Some(Block::Dirt | Block::Grass)) {
                 continue;
             }
             assert!(
@@ -82,8 +85,8 @@ fn taiga_chunks_generate_spruce_trees() {
                 if !contains_taiga {
                     continue;
                 }
-                let spruce_trunks = count(&generated.chunk, Id::SpruceWood);
-                let spruce_leaves = count(&generated.chunk, Id::SpruceLeaves);
+                let spruce_trunks = count(&generated.chunk, Block::SpruceWood);
+                let spruce_leaves = count(&generated.chunk, Block::SpruceLeaves);
                 if spruce_trunks > 0 {
                     assert!(spruce_leaves > 0, "spruce trunks need spruce canopies");
                     return;
@@ -121,12 +124,12 @@ fn desert_chunks_generate_dead_bushes_on_sand() {
             continue;
         }
 
-        let bushes = count(&generated.chunk, Id::DeadBush);
+        let bushes = count(&generated.chunk, Block::DeadBush);
         for z in 0..CHUNK_SIZE {
             for x in 0..CHUNK_SIZE {
                 for y in 1..CHUNK_HEIGHT {
-                    if generated.chunk.get(x, y, z) == Some(Id::DeadBush) {
-                        assert_eq!(generated.chunk.get(x, y - 1, z), Some(Id::Sand));
+                    if generated.chunk.get(x, y, z) == Some(Block::DeadBush) {
+                        assert_eq!(generated.chunk.get(x, y - 1, z), Some(Block::Sand));
                     }
                 }
             }
@@ -155,11 +158,14 @@ fn pumpkin_patches_generate_facing_pumpkins_on_grass() {
                         };
                         if !matches!(
                             block,
-                            Id::PumpkinNorth | Id::PumpkinEast | Id::PumpkinSouth | Id::PumpkinWest
+                            Block::PumpkinNorth
+                                | Block::PumpkinEast
+                                | Block::PumpkinSouth
+                                | Block::PumpkinWest
                         ) {
                             continue;
                         }
-                        assert_eq!(generated.chunk.get(x, y - 1, z), Some(Id::Grass));
+                        assert_eq!(generated.chunk.get(x, y - 1, z), Some(Block::Grass));
                         assert!(block.pumpkin_facing().is_some());
                         return;
                     }
@@ -170,7 +176,11 @@ fn pumpkin_patches_generate_facing_pumpkins_on_grass() {
     panic!("seeded terrain should eventually generate pumpkins");
 }
 
-fn assert_wood_components_do_not_merge_trunks(chunk: &Chunk, chunk_pos: ChunkPosition, wood: Id) {
+fn assert_wood_components_do_not_merge_trunks(
+    chunk: &Chunk,
+    chunk_pos: ChunkPosition,
+    wood: Block,
+) {
     let mut visited = [[[false; CHUNK_SIZE]; CHUNK_SIZE]; CHUNK_HEIGHT];
     for y in 0..CHUNK_HEIGHT {
         for z in 0..CHUNK_SIZE {
@@ -184,7 +194,7 @@ fn assert_wood_components_do_not_merge_trunks(chunk: &Chunk, chunk_pos: ChunkPos
                 while let Some((x, y, z)) = pending.pop() {
                     if y > 0
                         && y + 2 < CHUNK_HEIGHT
-                        && matches!(chunk.get(x, y - 1, z), Some(Id::Dirt | Id::Grass))
+                        && matches!(chunk.get(x, y - 1, z), Some(Block::Dirt | Block::Grass))
                         && chunk.get(x, y + 1, z) == Some(wood)
                         && chunk.get(x, y + 2, z) == Some(wood)
                     {
@@ -229,7 +239,7 @@ fn tree_wood_components_do_not_merge_trunks() {
             for x in -1..=1 {
                 let position = ChunkPosition { x, z };
                 let generated = generator.generate(position);
-                for wood in [Id::BirchWood, Id::SpruceWood] {
+                for wood in [Block::BirchWood, Block::SpruceWood] {
                     if count(&generated.chunk, wood) == 0 {
                         continue;
                     }
@@ -263,9 +273,9 @@ fn assert_trunks_start_on_ground(chunk: &Chunk, found_birch: &mut bool) {
     for z in 0..CHUNK_SIZE {
         for x in 0..CHUNK_SIZE {
             for y in 1..CHUNK_HEIGHT - 1 {
-                if chunk.get(x, y, z) != Some(Id::BirchWood)
-                    || chunk.get(x, y + 1, z) != Some(Id::BirchWood)
-                    || chunk.get(x, y - 1, z) == Some(Id::BirchWood)
+                if chunk.get(x, y, z) != Some(Block::BirchWood)
+                    || chunk.get(x, y + 1, z) != Some(Block::BirchWood)
+                    || chunk.get(x, y - 1, z) == Some(Block::BirchWood)
                 {
                     continue;
                 }
@@ -288,13 +298,13 @@ fn dry_biomes_have_no_trees() {
     // Seed 1 puts the tree biome at the chunk's far corner in the desert, which
     // subtracts more trees than the density noise can add.
     let generated = OverworldGenerator::new(1).generate(ChunkPosition::ZERO);
-    assert_eq!(count(&generated.chunk, Id::Wood), 0);
-    assert_eq!(count(&generated.chunk, Id::Leaves), 0);
+    assert_eq!(count(&generated.chunk, Block::Wood), 0);
+    assert_eq!(count(&generated.chunk, Block::Leaves), 0);
 }
 
 fn grounded_trunk_base(chunk: &Chunk, x: usize, z: usize) -> Option<usize> {
     let base = (0..CHUNK_HEIGHT).find(|&y| is_wood(chunk.get(x, y, z).unwrap()))?;
-    matches!(chunk.get(x, base - 1, z), Some(Id::Dirt | Id::Grass)).then_some(base)
+    matches!(chunk.get(x, base - 1, z), Some(Block::Dirt | Block::Grass)).then_some(base)
 }
 
 fn has_nearby_leaf(chunk: &Chunk, x0: usize, z0: usize, base: usize, along_x: bool) -> bool {
@@ -362,21 +372,21 @@ fn canopies_continue_across_chunk_boundaries() {
     );
 }
 
-fn terrain_top(chunk: &Chunk, x: usize, z: usize) -> (usize, Id) {
+fn terrain_top(chunk: &Chunk, x: usize, z: usize) -> (usize, Block) {
     let y = (0..CHUNK_HEIGHT)
         .rev()
         .find(|&y| {
             matches!(
                 chunk.get(x, y, z),
                 Some(
-                    Id::Stone
-                        | Id::Dirt
-                        | Id::Grass
-                        | Id::Sand
-                        | Id::Gravel
-                        | Id::Bedrock
-                        | Id::Water
-                        | Id::Ice
+                    Block::Stone
+                        | Block::Dirt
+                        | Block::Grass
+                        | Block::Sand
+                        | Block::Gravel
+                        | Block::Bedrock
+                        | Block::Water
+                        | Block::Ice
                 )
             )
         })
@@ -395,7 +405,7 @@ fn trees_do_not_plant_on_sand() {
                 for lz in 0..CHUNK_SIZE {
                     for lx in 0..CHUNK_SIZE {
                         let (top, block) = terrain_top(&generated.chunk, lx, lz);
-                        if block != Id::Sand {
+                        if block != Block::Sand {
                             continue;
                         }
                         sand_columns += 1;
@@ -430,7 +440,7 @@ fn canopies_over_sand_still_have_a_trunk() {
             }
         }
 
-        let block_at = |wx: i32, y: usize, wz: i32| -> Option<Id> {
+        let block_at = |wx: i32, y: usize, wz: i32| -> Option<Block> {
             let pos = ChunkPosition {
                 x: wx.div_euclid(CHUNK_SIZE as i32),
                 z: wz.div_euclid(CHUNK_SIZE as i32),
@@ -447,7 +457,7 @@ fn canopies_over_sand_still_have_a_trunk() {
             for z in 0..CHUNK_SIZE {
                 for x in 0..CHUNK_SIZE {
                     let (top, block) = terrain_top(&generated.chunk, x, z);
-                    if block != Id::Sand {
+                    if block != Block::Sand {
                         continue;
                     }
                     let has_leaf = (top + 1..CHUNK_HEIGHT)
@@ -463,12 +473,12 @@ fn canopies_over_sand_still_have_a_trunk() {
                             let nx = wx + dx;
                             let nz = wz + dz;
                             for y in 0..CHUNK_HEIGHT {
-                                if !is_wood(block_at(nx, y, nz).unwrap_or(Id::Air)) {
+                                if !is_wood(block_at(nx, y, nz).unwrap_or(Block::Air)) {
                                     continue;
                                 }
                                 if matches!(
                                     block_at(nx, y.saturating_sub(1), nz),
-                                    Some(Id::Dirt | Id::Grass)
+                                    Some(Block::Dirt | Block::Grass)
                                 ) {
                                     found_trunk = true;
                                     break 'search;
@@ -495,7 +505,7 @@ fn timing_probe() {
     for z in -5..5 {
         for x in -5..5 {
             let generated = generator.generate(ChunkPosition { x, z });
-            blocks += count(&generated.chunk, Id::Leaves);
+            blocks += count(&generated.chunk, Block::Leaves);
         }
     }
     let elapsed = start.elapsed();

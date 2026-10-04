@@ -1,4 +1,4 @@
-use crate::block::id::Id;
+use crate::block::blocks::Block;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::ChunkPosition;
@@ -63,7 +63,7 @@ impl TerrainGenerator {
     pub fn generate_base(&self, position: ChunkPosition, biomes: &BiomeMap) -> RawBlocks {
         let density = self.density(position, biomes);
         let index = |x: usize, z: usize, y: usize| (x * GRID + z) * VERTICAL_GRID + y;
-        let mut blocks = vec![Id::Air.as_u8(); CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE];
+        let mut blocks = vec![Block::Air.as_u8(); CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE];
         // Each 4×8×4 cell interpolates by accumulating steps, as Beta does,
         // rather than evaluating a lerp per block.
         for gx in 0..4 {
@@ -89,18 +89,18 @@ impl TerrainGenerator {
                             let z_step = (far - near) * 0.25;
                             for dz in 0..4 {
                                 let z = gz * 4 + dz;
-                                let mut block = Id::Air;
+                                let mut block = Block::Air;
                                 if y < SEA_LEVEL {
                                     block = if biomes.get(x, z).temperature < 0.5
                                         && y >= SEA_LEVEL - 1
                                     {
-                                        Id::Ice
+                                        Block::Ice
                                     } else {
-                                        Id::Water
+                                        Block::Water
                                     };
                                 }
                                 if value > 0.0 {
-                                    block = Id::Stone;
+                                    block = Block::Stone;
                                 }
                                 blocks[raw_index(x, y, z)] = block.as_u8();
                                 value += z_step;

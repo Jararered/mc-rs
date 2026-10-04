@@ -2,8 +2,8 @@
 
 use bevy::math::IVec3;
 
+use crate::block::blocks::Block;
 use crate::block::definition::light_opacity;
-use crate::block::id::Id;
 use crate::world::block_ticks::BlockBehavior;
 use crate::world::block_ticks::TickWorld;
 
@@ -16,7 +16,7 @@ pub struct Grass;
 pub static GRASS: Grass = Grass;
 
 impl BlockBehavior for Grass {
-    fn ticks_randomly(&self, _block: Id) -> bool {
+    fn ticks_randomly(&self, _block: Block) -> bool {
         true
     }
 
@@ -27,7 +27,7 @@ impl BlockBehavior for Grass {
             if world.random().next_int(4) != 0 {
                 return;
             }
-            world.set_block_notify(position, Id::Dirt);
+            world.set_block_notify(position, Block::Dirt);
         } else if light >= 9 {
             let target = IVec3::new(
                 position.x + world.random().next_int(3) as i32 - 1,
@@ -35,11 +35,11 @@ impl BlockBehavior for Grass {
                 position.z + world.random().next_int(3) as i32 - 1,
             );
             let over = target + IVec3::Y;
-            if world.block(target) == Id::Dirt
+            if world.block(target) == Block::Dirt
                 && world.light(over) >= 4
                 && light_opacity(world.block(over)) <= 2
             {
-                world.set_block_notify(target, Id::Grass);
+                world.set_block_notify(target, Block::Grass);
             }
         }
     }
@@ -68,7 +68,7 @@ impl Farmland {
 }
 
 impl BlockBehavior for Farmland {
-    fn ticks_randomly(&self, _block: Id) -> bool {
+    fn ticks_randomly(&self, _block: Block) -> bool {
         true
     }
 
@@ -83,20 +83,20 @@ impl BlockBehavior for Farmland {
         let moisture = world.metadata(position);
         if moisture > 0 {
             world.set_metadata_notify(position, moisture - 1);
-        } else if world.block(position + IVec3::Y) != Id::Crops {
-            world.set_block_notify(position, Id::Dirt);
+        } else if world.block(position + IVec3::Y) != Block::Crops {
+            world.set_block_notify(position, Block::Dirt);
         }
     }
 
     fn entity_walked(&self, world: &mut TickWorld, position: IVec3) {
         if world.random().next_int(4) == 0 {
-            world.set_block_notify(position, Id::Dirt);
+            world.set_block_notify(position, Block::Dirt);
         }
     }
 
-    fn neighbor_changed(&self, world: &mut TickWorld, position: IVec3, _neighbor: Id) {
+    fn neighbor_changed(&self, world: &mut TickWorld, position: IVec3, _neighbor: Block) {
         if world.is_solid(position + IVec3::Y) {
-            world.set_block_notify(position, Id::Dirt);
+            world.set_block_notify(position, Block::Dirt);
         }
     }
 }

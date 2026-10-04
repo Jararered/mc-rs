@@ -1,6 +1,6 @@
 //! Beta reed (sugar cane) patches from `WorldGenReed`.
 
-use crate::block::id::Id;
+use crate::block::blocks::Block;
 use crate::random::JavaRandom;
 
 use super::world::PopulationWorld;
@@ -17,8 +17,8 @@ fn adjacent_water(world: &PopulationWorld, x: i32, y: i32, z: i32) -> bool {
 /// beside water. Unlike the game's placement rule, sand never holds a reed.
 fn can_stay(world: &PopulationWorld, x: i32, y: i32, z: i32) -> bool {
     match world.get(x, y - 1, z) {
-        Id::SugarCane => true,
-        Id::Grass | Id::Dirt => adjacent_water(world, x, y - 1, z),
+        Block::SugarCane => true,
+        Block::Grass | Block::Dirt => adjacent_water(world, x, y - 1, z),
         _ => false,
     }
 }
@@ -42,7 +42,7 @@ pub(super) fn reed_patch(
         let height = 2 + rand.next_int(bound) as i32;
         for offset in 0..height {
             if can_stay(world, x, y + offset, z) {
-                world.set(x, y + offset, z, Id::SugarCane);
+                world.set(x, y + offset, z, Block::SugarCane);
             }
         }
     }

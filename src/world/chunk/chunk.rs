@@ -4,7 +4,7 @@ use std::sync::Arc;
 use bevy::platform::collections::HashMap as FastHashMap;
 use bevy::prelude::Resource;
 
-use crate::block::id::Id;
+use crate::block::blocks::Block;
 use crate::world::biome::Climate;
 use crate::world::chest::Chest;
 use crate::world::chunk::GeneratedChunk;
@@ -47,7 +47,7 @@ pub struct PendingTick {
     pub index: u16,
     /// The block the tick was scheduled for. It only runs if the cell still
     /// holds this block.
-    pub block: Id,
+    pub block: Block,
     /// Ticks remaining when the chunk left the world.
     pub delay: u32,
 }
@@ -80,7 +80,7 @@ pub struct Chunk {
 impl Chunk {
     pub fn new() -> Self {
         Self {
-            blocks: vec![Id::Air.as_u8(); CHUNK_VOLUME].into(),
+            blocks: vec![Block::Air.as_u8(); CHUNK_VOLUME].into(),
             metadata: None,
             furnaces: HashMap::new(),
             chests: HashMap::new(),
@@ -92,7 +92,7 @@ impl Chunk {
     }
 
     /// Rebuild a chunk from a flat block array in [`Self::index`] order.
-    pub fn from_blocks(blocks: Vec<Id>) -> Self {
+    pub fn from_blocks(blocks: Vec<Block>) -> Self {
         assert_eq!(
             blocks.len(),
             CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE,
@@ -113,11 +113,11 @@ impl Chunk {
         let spawners = blocks
             .iter()
             .enumerate()
-            .filter(|(_, block)| **block == Id::MobSpawner)
+            .filter(|(_, block)| **block == Block::MobSpawner)
             .map(|(index, _)| (index, Default::default()))
             .collect();
         Self {
-            blocks: blocks.into_iter().map(Id::as_u8).collect(),
+            blocks: blocks.into_iter().map(Block::as_u8).collect(),
             metadata: None,
             furnaces,
             chests,
@@ -135,20 +135,20 @@ impl Chunk {
             CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE,
             "a chunk holds exactly one block per position"
         );
-        let indices = |matches: fn(Id) -> bool| {
+        let indices = |matches: fn(Block) -> bool| {
             blocks
                 .iter()
                 .enumerate()
-                .filter(move |(_, raw)| matches(Id::from(**raw)))
+                .filter(move |(_, raw)| matches(Block::from(**raw)))
                 .map(|(index, _)| index)
         };
         let furnaces = indices(is_furnace)
             .map(|index| (index, Furnace::default()))
             .collect();
-        let chests = indices(Id::is_chest)
+        let chests = indices(Block::is_chest)
             .map(|index| (index, Chest::default()))
             .collect();
-        let spawners = indices(|block| block == Id::MobSpawner)
+        let spawners = indices(|block| block == Block::MobSpawner)
             .map(|index| (index, Default::default()))
             .collect();
         Self {
@@ -193,7 +193,7 @@ impl Chunk {
     }
 
     pub fn insert_spawner(&mut self, index: usize, spawner: crate::entity::mobs::MobSpawner) {
-        if index < CHUNK_VOLUME && self.blocks[index] == Id::MobSpawner.as_u8() {
+        if index < CHUNK_VOLUME && self.blocks[index] == Block::MobSpawner.as_u8() {
             self.spawners.insert(index, spawner);
         }
     }
@@ -273,44 +273,44 @@ impl Chunk {
 
     /// Every block decoded, in [`Self::index`] order. This copies the chunk;
     /// hot paths read [`Self::raw_blocks`].
-    pub fn blocks(&self) -> Vec<Id> {
-        self.blocks.iter().map(|&raw| Id::from(raw)).collect()
+    pub fn blocks(&self) -> Vec<Block> {
+        self.blocks.iter().map(|&raw| Block::from(raw)).collect()
     }
 
-    pub fn get(&self, x: usize, y: usize, z: usize) -> Option<Id> {
+    pub fn get(&self, x: usize, y: usize, z: usize) -> Option<Block> {
         if x >= CHUNK_SIZE || y >= CHUNK_HEIGHT || z >= CHUNK_SIZE {
             return None;
         }
-        Some(Id::from(self.blocks[Self::index(x, y, z)]))
+        Some(Block::from(self.blocks[Self::index(x, y, z)]))
     }
 
     /// Replace a block. Like Beta's `Chunk.setBlockID`, a different block
     /// starts with metadata zero; setting the same block keeps its metadata.
-    pub fn set(&mut self, x: usize, y: usize, z: usize, block: Id) {
+    pub fn set(&mut self, x: usize, y: usize, z: usize, block: Block) {
         assert!(x < CHUNK_SIZE && y < CHUNK_HEIGHT && z < CHUNK_SIZE);
         let index = Self::index(x, y, z);
-        if Id::from(self.blocks[index]) != block {
+        if Block::from(self.blocks[index]) != block {
             self.set_metadata_at_index(index, 0);
         }
         self.set_block_only(index, block);
     }
 
     /// Beta `Chunk.setBlockIDWithMetadata`.
-    pub fn set_with_metadata(&mut self, x: usize, y: usize, z: usize, block: Id, metadata: u8) {
+    pub fn set_with_metadata(&mut self, x: usize, y: usize, z: usize, block: Block, metadata: u8) {
         assert!(x < CHUNK_SIZE && y < CHUNK_HEIGHT && z < CHUNK_SIZE);
         let index = Self::index(x, y, z);
         self.set_block_only(index, block);
         self.set_metadata_at_index(index, metadata);
     }
 
-    fn set_block_only(&mut self, index: usize, block: Id) {
+    fn set_block_only(&mut self, index: usize, block: Block) {
         self.revision = self.revision.wrapping_add(1);
-        if block != Id::MobSpawner {
+        if block != Block::MobSpawner {
             self.spawners.remove(&index);
         } else {
             self.spawners.entry(index).or_insert_with(Default::default);
         }
-        let previous = Id::from(self.blocks[index]);
+        let previous = Block::from(self.blocks[index]);
         if is_furnace(previous) && !is_furnace(block) {
             self.furnaces.remove(&index);
         } else if !is_furnace(previous) && is_furnace(block) {
@@ -363,7 +363,7 @@ impl Chunk {
     }
 }
 
-fn is_furnace(block: Id) -> bool {
+fn is_furnace(block: Block) -> bool {
     block.is_furnace()
 }
 
@@ -443,7 +443,7 @@ impl WorldChunks {
         Some(generated.biomes.get(local_x, local_z))
     }
 
-    pub fn block_at(&self, x: i32, y: i32, z: i32) -> Option<Id> {
+    pub fn block_at(&self, x: i32, y: i32, z: i32) -> Option<Block> {
         if y < 0 || y >= CHUNK_HEIGHT as i32 {
             return None;
         }
@@ -487,9 +487,9 @@ impl WorldChunks {
         x: i32,
         y: i32,
         z: i32,
-        block: Id,
+        block: Block,
         metadata: u8,
-    ) -> Option<(Id, u8)> {
+    ) -> Option<(Block, u8)> {
         if y < 0 || y >= CHUNK_HEIGHT as i32 {
             return None;
         }
@@ -571,12 +571,12 @@ impl WorldChunks {
     /// Resolve one chest or a valid adjacent pair in stable inventory order.
     /// Invalid clusters never become a multi-chest inventory view.
     pub fn chest_group_at(&self, x: i32, y: i32, z: i32) -> Option<ChestGroup> {
-        if !self.block_at(x, y, z).is_some_and(Id::is_chest) {
+        if !self.block_at(x, y, z).is_some_and(Block::is_chest) {
             return None;
         }
         let adjacent = [(x - 1, y, z), (x + 1, y, z), (x, y, z - 1), (x, y, z + 1)]
             .into_iter()
-            .filter(|&(nx, ny, nz)| self.block_at(nx, ny, nz).is_some_and(Id::is_chest))
+            .filter(|&(nx, ny, nz)| self.block_at(nx, ny, nz).is_some_and(Block::is_chest))
             .collect::<Vec<_>>();
         let [neighbor] = adjacent.as_slice() else {
             return adjacent.is_empty().then_some(ChestGroup {
@@ -598,7 +598,7 @@ impl WorldChunks {
                     && other != pair[1]
                     && self
                         .block_at(other.0, other.1, other.2)
-                        .is_some_and(Id::is_chest)
+                        .is_some_and(Block::is_chest)
                 {
                     return None;
                 }
@@ -623,7 +623,7 @@ impl WorldChunks {
     ///
     /// Returns the previous block, or `None` when the cell is outside the world
     /// or its chunk is not loaded.
-    pub fn set_block(&mut self, x: i32, y: i32, z: i32, block: Id) -> Option<Id> {
+    pub fn set_block(&mut self, x: i32, y: i32, z: i32, block: Block) -> Option<Block> {
         if y < 0 || y >= CHUNK_HEIGHT as i32 {
             return None;
         }

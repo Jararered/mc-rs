@@ -188,7 +188,7 @@ fn primed_tnt_damages_nearby_players_and_removes_weak_blocks() {
         .get_mut(ChunkPosition::ZERO)
         .unwrap()
         .chunk
-        .set(7, 12, 6, game::block::id::Id::Dirt);
+        .set(7, 12, 6, game::block::blocks::Block::Dirt);
     prime_tnt(&mut app.world_mut().commands(), Vec3::new(6., 12., 6.), 1);
     app.world_mut().resource_mut::<WorldTick>().advance(0.05);
     app.world_mut().run_schedule(Update);
@@ -201,7 +201,7 @@ fn primed_tnt_damages_nearby_players_and_removes_weak_blocks() {
     assert!(health < 20);
     assert_eq!(
         app.world().resource::<WorldChunks>().block_at(7, 12, 6),
-        Some(game::block::id::Id::Air)
+        Some(game::block::blocks::Block::Air)
     );
     assert_eq!(
         app.world_mut()
@@ -221,16 +221,16 @@ fn fire_contact_hurts_once_per_invulnerability_window() {
         // A one-block pit with fire at the bottom.
         for x in 6..=8 {
             for z in 6..=8 {
-                chunk.set(x, 9, z, game::block::id::Id::Stone);
+                chunk.set(x, 9, z, game::block::blocks::Block::Stone);
                 for y in 10..=12 {
-                    chunk.set(x, y, z, game::block::id::Id::Stone);
+                    chunk.set(x, y, z, game::block::blocks::Block::Stone);
                 }
             }
         }
         for y in 10..=12 {
-            chunk.set(7, y, 7, game::block::id::Id::Air);
+            chunk.set(7, y, 7, game::block::blocks::Block::Air);
         }
-        chunk.set(7, 10, 7, game::block::id::Id::Fire);
+        chunk.set(7, 10, 7, game::block::blocks::Block::Fire);
     }
     spawn(
         &mut app.world_mut().commands(),
@@ -368,7 +368,7 @@ fn squid_swim_in_pulses_and_stay_in_the_water() {
     for x in -14..=14 {
         for z in -14..=14 {
             for y in 5..=14 {
-                chunks.set_block(x, y, z, game::block::id::Id::Water);
+                chunks.set_block(x, y, z, game::block::blocks::Block::Water);
             }
         }
     }

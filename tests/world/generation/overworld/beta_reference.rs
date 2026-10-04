@@ -9,7 +9,7 @@
 //! therefore hashed alike. The server populated its spawn area `x`-major, as
 //! [`OverworldGenerator::generate_area`] does.
 
-use game::block::id::Id;
+use game::block::blocks::Block;
 use game::world::chunk::Chunk;
 use game::world::chunk::ChunkPosition;
 use game::world::generation::overworld::OverworldGenerator;
@@ -30,25 +30,27 @@ const CHUNKS: [(i32, i32, u64); 7] = [
 
 /// A block as the saved world stores it: Beta's ID in the high bits and, for
 /// logs, leaves, and tall grass, its species.
-fn beta_value(block: Id) -> u16 {
+fn beta_value(block: Block) -> u16 {
     let (id, species) = match block {
-        Id::Air
-        | Id::Water
-        | Id::FlowingWater
-        | Id::Lava
-        | Id::FlowingLava
-        | Id::Gravel
-        | Id::Obsidian => (0, 0),
-        Id::Wood => (17, 0),
-        Id::SpruceWood => (17, 1),
-        Id::BirchWood => (17, 2),
-        Id::Leaves => (18, 0),
-        Id::SpruceLeaves => (18, 1),
-        Id::BirchLeaves => (18, 2),
-        Id::TallGrass => (31, 1),
-        Id::Fern => (31, 2),
-        Id::PumpkinNorth | Id::PumpkinEast | Id::PumpkinSouth | Id::PumpkinWest => (86, 0),
-        Id::ChestNorth | Id::ChestEast | Id::ChestSouth | Id::ChestWest => (54, 0),
+        Block::Air
+        | Block::Water
+        | Block::FlowingWater
+        | Block::Lava
+        | Block::FlowingLava
+        | Block::Gravel
+        | Block::Obsidian => (0, 0),
+        Block::Wood => (17, 0),
+        Block::SpruceWood => (17, 1),
+        Block::BirchWood => (17, 2),
+        Block::Leaves => (18, 0),
+        Block::SpruceLeaves => (18, 1),
+        Block::BirchLeaves => (18, 2),
+        Block::TallGrass => (31, 1),
+        Block::Fern => (31, 2),
+        Block::PumpkinNorth | Block::PumpkinEast | Block::PumpkinSouth | Block::PumpkinWest => {
+            (86, 0)
+        }
+        Block::ChestNorth | Block::ChestEast | Block::ChestSouth | Block::ChestWest => (54, 0),
         other => (u16::from(other.as_u8()), 0),
     };
     id << 4 | species
@@ -59,7 +61,7 @@ fn hash(chunk: &Chunk) -> u64 {
     chunk
         .raw_blocks()
         .iter()
-        .map(|&raw| beta_value(Id::from(raw)))
+        .map(|&raw| beta_value(Block::from(raw)))
         .fold(0xcbf2_9ce4_8422_2325, |hash, value| {
             (hash ^ u64::from(value)).wrapping_mul(0x0000_0100_0000_01b3)
         })

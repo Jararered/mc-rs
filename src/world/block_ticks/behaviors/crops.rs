@@ -6,7 +6,7 @@
 
 use bevy::math::IVec3;
 
-use crate::block::id::Id;
+use crate::block::blocks::Block;
 use crate::world::block_ticks::BlockBehavior;
 use crate::world::block_ticks::TickWorld;
 
@@ -23,7 +23,7 @@ impl Crops {
     /// crop (wet farmland counts triple, neighbors a quarter), halved when
     /// crops sit diagonally or line both axes.
     pub fn growth_rate(world: &TickWorld, position: IVec3) -> f32 {
-        let crop = |dx: i32, dz: i32| world.block(position + IVec3::new(dx, 0, dz)) == Id::Crops;
+        let crop = |dx: i32, dz: i32| world.block(position + IVec3::new(dx, 0, dz)) == Block::Crops;
         let along_x = crop(-1, 0) || crop(1, 0);
         let along_z = crop(0, -1) || crop(0, 1);
         let diagonal = crop(-1, -1) || crop(1, -1) || crop(1, 1) || crop(-1, 1);
@@ -32,7 +32,7 @@ impl Crops {
             for dz in -1..=1 {
                 let soil = position + IVec3::new(dx, -1, dz);
                 let mut value = 0.0;
-                if world.block(soil) == Id::Farmland {
+                if world.block(soil) == Block::Farmland {
                     value = if world.metadata(soil) > 0 { 3.0 } else { 1.0 };
                 }
                 if dx != 0 || dz != 0 {
@@ -49,17 +49,17 @@ impl Crops {
 }
 
 impl BlockBehavior for Crops {
-    fn ticks_randomly(&self, _block: Id) -> bool {
+    fn ticks_randomly(&self, _block: Block) -> bool {
         true
     }
 
-    fn neighbor_changed(&self, world: &mut TickWorld, position: IVec3, _neighbor: Id) {
+    fn neighbor_changed(&self, world: &mut TickWorld, position: IVec3, _neighbor: Block) {
         check_flower_change(world, position);
     }
 
     fn update_tick(&self, world: &mut TickWorld, position: IVec3) {
         check_flower_change(world, position);
-        if world.block(position) != Id::Crops || world.light(position + IVec3::Y) < 9 {
+        if world.block(position) != Block::Crops || world.light(position + IVec3::Y) < 9 {
             return;
         }
         let stage = world.metadata(position);

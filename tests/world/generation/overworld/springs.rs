@@ -1,5 +1,5 @@
 use bevy::math::IVec3;
-use game::block::id::Id;
+use game::block::blocks::Block;
 use game::random::JavaRandom;
 use game::world::biome::Biome;
 use game::world::biome::BiomeMap;
@@ -42,18 +42,18 @@ fn world() -> (WorldChunks, BlockTicks, LightCache) {
     (chunks, BlockTicks::new(123), LightCache::default())
 }
 
-fn set(chunks: &mut WorldChunks, at: IVec3, id: Id) {
-    chunks.set_block_with_metadata(at.x, at.y, at.z, id, 0);
+fn set(chunks: &mut WorldChunks, at: IVec3, block: Block) {
+    chunks.set_block_with_metadata(at.x, at.y, at.z, block, 0);
 }
 
 fn pocket(chunks: &mut WorldChunks, at: IVec3) {
-    set(chunks, at, Id::Stone);
-    set(chunks, at + IVec3::Y, Id::Stone);
-    set(chunks, at - IVec3::Y, Id::Stone);
-    set(chunks, at + IVec3::NEG_X, Id::Stone);
-    set(chunks, at + IVec3::NEG_Z, Id::Stone);
-    set(chunks, at + IVec3::Z, Id::Stone);
-    set(chunks, at + IVec3::X - IVec3::Y, Id::Stone);
+    set(chunks, at, Block::Stone);
+    set(chunks, at + IVec3::Y, Block::Stone);
+    set(chunks, at - IVec3::Y, Block::Stone);
+    set(chunks, at + IVec3::NEG_X, Block::Stone);
+    set(chunks, at + IVec3::NEG_Z, Block::Stone);
+    set(chunks, at + IVec3::Z, Block::Stone);
+    set(chunks, at + IVec3::X - IVec3::Y, Block::Stone);
 }
 
 #[test]
@@ -64,24 +64,24 @@ fn spring_requires_the_java_stone_and_air_pocket() {
     assert!(generate_spring(
         &mut ticks.world(&mut chunks, &mut light, 0),
         at,
-        Id::FlowingWater
+        Block::FlowingWater
     ));
     assert!(matches!(
         chunks.block_at(at.x, at.y, at.z),
-        Some(Id::Water | Id::FlowingWater)
+        Some(Block::Water | Block::FlowingWater)
     ));
     // The direct update starts the first outward flow before the pass ends.
     assert!(matches!(
         chunks.block_at(at.x + 1, at.y, at.z),
-        Some(Id::Water | Id::FlowingWater)
+        Some(Block::Water | Block::FlowingWater)
     ));
-    assert!(ticks.is_scheduled(at, Id::FlowingWater));
+    assert!(ticks.is_scheduled(at, Block::FlowingWater));
     let origin = ChunkPosition::ZERO;
     let mut chunk = chunks.remove(origin).unwrap().chunk;
     ticks.unload_chunk(origin, &mut chunk);
     assert!(chunk.pending_ticks().iter().any(|tick| {
         tick.index == Chunk::index(at.x as usize, at.y as usize, at.z as usize) as u16
-            && tick.block == Id::FlowingWater
+            && tick.block == Block::FlowingWater
     }));
 }
 
@@ -90,15 +90,15 @@ fn a_spring_can_start_in_air_as_well_as_stone() {
     let at = IVec3::new(12, 40, 12);
     let (mut chunks, mut ticks, mut light) = world();
     pocket(&mut chunks, at);
-    set(&mut chunks, at, Id::Air);
+    set(&mut chunks, at, Block::Air);
     assert!(generate_spring(
         &mut ticks.world(&mut chunks, &mut light, 0),
         at,
-        Id::FlowingWater,
+        Block::FlowingWater,
     ));
     assert!(matches!(
         chunks.block_at(at.x, at.y, at.z),
-        Some(Id::Water | Id::FlowingWater)
+        Some(Block::Water | Block::FlowingWater)
     ));
 }
 
@@ -106,11 +106,11 @@ fn a_spring_can_start_in_air_as_well_as_stone() {
 fn spring_rejects_wrong_caps_center_and_horizontal_neighbors() {
     let at = IVec3::new(12, 40, 12);
     for (changed, id, expected) in [
-        (at + IVec3::Y, Id::Dirt, false),
-        (at - IVec3::Y, Id::Air, false),
-        (at, Id::Dirt, false),
-        (at + IVec3::NEG_X, Id::Air, true),
-        (at + IVec3::X, Id::Dirt, true),
+        (at + IVec3::Y, Block::Dirt, false),
+        (at - IVec3::Y, Block::Air, false),
+        (at, Block::Dirt, false),
+        (at + IVec3::NEG_X, Block::Air, true),
+        (at + IVec3::X, Block::Dirt, true),
     ] {
         let (mut chunks, mut ticks, mut light) = world();
         pocket(&mut chunks, at);
@@ -120,7 +120,7 @@ fn spring_rejects_wrong_caps_center_and_horizontal_neighbors() {
             generate_spring(
                 &mut ticks.world(&mut chunks, &mut light, 0),
                 at,
-                Id::FlowingWater
+                Block::FlowingWater
             ),
             expected
         );
@@ -136,15 +136,15 @@ fn lava_spring_flows_and_a_missing_immediate_neighborhood_stops_at_the_edge() {
     assert!(generate_spring(
         &mut ticks.world(&mut chunks, &mut light, 0),
         at,
-        Id::FlowingLava
+        Block::FlowingLava
     ));
     assert!(matches!(
         chunks.block_at(at.x, at.y, at.z),
-        Some(Id::Lava | Id::FlowingLava)
+        Some(Block::Lava | Block::FlowingLava)
     ));
     // x=24 can be written, but its 8-block scheduled-tick neighborhood
     // reaches chunk x=2, outside population's four loaded chunks.
-    assert_eq!(chunks.block_at(24, 40, 12), Some(Id::FlowingLava));
+    assert_eq!(chunks.block_at(24, 40, 12), Some(Block::FlowingLava));
     assert_eq!(chunks.metadata_at(24, 40, 12), 2);
 }
 
@@ -166,11 +166,11 @@ fn attempt_positions_and_draw_count_match_java_random() {
     assert_eq!(rand.next_int(1_000_000), 533616);
     assert!(matches!(
         chunks.block_at(water.x, water.y, water.z),
-        Some(Id::Water | Id::FlowingWater)
+        Some(Block::Water | Block::FlowingWater)
     ));
     assert!(matches!(
         chunks.block_at(lava.x, lava.y, lava.z),
-        Some(Id::Lava | Id::FlowingLava)
+        Some(Block::Lava | Block::FlowingLava)
     ));
 }
 
@@ -180,12 +180,13 @@ fn populated_chunks_contain_overworld_springs() {
     let water = area
         .values()
         .flat_map(|generated| generated.chunk.blocks())
-        .filter(|&id| id == Id::FlowingWater)
+        .filter(|&id| id == Block::FlowingWater)
         .count();
     assert!(water > 0, "expected at least one flowing water spring");
     let lava_above_caves = area.values().any(|generated| {
         (10..128).any(|y| {
-            (0..16).any(|x| (0..16).any(|z| generated.chunk.get(x, y, z) == Some(Id::FlowingLava)))
+            (0..16)
+                .any(|x| (0..16).any(|z| generated.chunk.get(x, y, z) == Some(Block::FlowingLava)))
         })
     });
     assert!(

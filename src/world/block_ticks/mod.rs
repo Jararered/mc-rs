@@ -39,8 +39,8 @@ use std::collections::VecDeque;
 use bevy::math::IVec3;
 use bevy::prelude::Resource;
 
+use crate::block::blocks::Block;
 use crate::block::definition;
-use crate::block::id::Id;
 use crate::random::JavaRandom;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::Chunk;
@@ -84,13 +84,13 @@ pub enum BlockEvent {
     /// neighbors, as `World.setBlockWithNotify` would have.
     Changed {
         position: IVec3,
-        previous: Id,
+        previous: Block,
         metadata: u8,
     },
     /// A player broke `block` with a tool that can harvest it.
     Harvested {
         position: IVec3,
-        block: Id,
+        block: Block,
         metadata: u8,
     },
     /// The player started mining the block at `position`.
@@ -105,9 +105,9 @@ pub enum BlockEvent {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BlockChange {
     pub position: IVec3,
-    pub previous: Id,
+    pub previous: Block,
     pub previous_metadata: u8,
-    pub block: Id,
+    pub block: Block,
     pub metadata: u8,
 }
 
@@ -126,12 +126,12 @@ pub enum TickEffect {
     /// `Block.dropBlockAsItem`: spawn `block`'s natural drops in the cell.
     Drop {
         position: IVec3,
-        block: Id,
+        block: Block,
         metadata: u8,
     },
     /// Spawn a falling block entity for `block`, which is still at
     /// `position`.
-    FallingBlock { position: IVec3, block: Id },
+    FallingBlock { position: IVec3, block: Block },
     /// TNT ignited by fire becomes an entity with a burning fuse.
     PrimedTnt { position: IVec3, fuse: u16 },
 }
@@ -150,7 +150,7 @@ pub struct BlockTicks {
     events: Vec<BlockEvent>,
     changes: Vec<BlockChange>,
     effects: Vec<TickEffect>,
-    deferred: VecDeque<(IVec3, Id)>,
+    deferred: VecDeque<(IVec3, Block)>,
     /// Reused random tick candidates.
     candidates: Vec<IVec3>,
 }
@@ -211,12 +211,12 @@ impl BlockTicks {
         self.scheduler.len()
     }
 
-    pub fn is_scheduled(&self, position: IVec3, block: Id) -> bool {
+    pub fn is_scheduled(&self, position: IVec3, block: Block) -> bool {
         self.scheduler.contains(position, block)
     }
 
     /// Schedule `block`'s update at `position` for world tick `due`.
-    pub fn schedule(&mut self, position: IVec3, block: Id, due: u64) {
+    pub fn schedule(&mut self, position: IVec3, block: Block, due: u64) {
         self.scheduler.schedule(position, block, due);
     }
 
@@ -227,7 +227,7 @@ impl BlockTicks {
 
     /// Report that the block at `position` was replaced outside the tick
     /// pass. `previous` and `metadata` are what the cell held before.
-    pub fn block_changed(&mut self, position: IVec3, previous: Id, metadata: u8) {
+    pub fn block_changed(&mut self, position: IVec3, previous: Block, metadata: u8) {
         self.push_event(BlockEvent::Changed {
             position,
             previous,

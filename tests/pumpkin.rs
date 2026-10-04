@@ -1,21 +1,21 @@
-use game::block::id::FurnaceFacing;
-use game::block::id::Id;
+use game::block::blocks::Block;
+use game::block::blocks::FurnaceFacing;
 use game::rendering::textures::block_tile;
 
 #[test]
 fn pumpkin_metadata_preserves_beta_front_directions() {
     let expected = [
-        (Id::PumpkinWest, FurnaceFacing::West, 3),
-        (Id::PumpkinSouth, FurnaceFacing::South, 4),
-        (Id::PumpkinEast, FurnaceFacing::East, 2),
-        (Id::PumpkinNorth, FurnaceFacing::North, 5),
+        (Block::PumpkinWest, FurnaceFacing::West, 3),
+        (Block::PumpkinSouth, FurnaceFacing::South, 4),
+        (Block::PumpkinEast, FurnaceFacing::East, 2),
+        (Block::PumpkinNorth, FurnaceFacing::North, 5),
     ];
     for (metadata, (block, facing, front_face)) in expected.into_iter().enumerate() {
-        assert_eq!(Id::pumpkin_from_metadata(metadata as u32), block);
+        assert_eq!(Block::pumpkin_from_metadata(metadata as u32), block);
         assert_eq!(block.pumpkin_facing(), Some(facing));
         assert!(block.in_world());
-        assert_eq!(block.item_form(), (Id::Pumpkin, 0));
-        assert_eq!(Id::from_u8(block.as_u8()), Some(block));
+        assert_eq!(block.item_form(), (Block::Pumpkin, 0));
+        assert_eq!(Block::from_u8(block.as_u8()), Some(block));
         for face in 0..6 {
             let tile = block_tile(block, face, false);
             let expected_tile = if face <= 1 {
@@ -28,9 +28,9 @@ fn pumpkin_metadata_preserves_beta_front_directions() {
             assert_eq!(tile, expected_tile);
         }
     }
-    assert_eq!(Id::Pumpkin.placed(0), Some(Id::Pumpkin));
+    assert_eq!(Block::Pumpkin.placed(0), Some(Block::Pumpkin));
     assert_eq!(
-        Id::Pumpkin.with_pumpkin_facing(FurnaceFacing::North),
-        Id::PumpkinNorth
+        Block::Pumpkin.with_pumpkin_facing(FurnaceFacing::North),
+        Block::PumpkinNorth
     );
 }

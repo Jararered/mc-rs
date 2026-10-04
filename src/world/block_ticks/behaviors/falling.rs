@@ -7,7 +7,7 @@
 
 use bevy::math::IVec3;
 
-use crate::block::id::Id;
+use crate::block::blocks::Block;
 use crate::world::block_ticks::BlockBehavior;
 use crate::world::block_ticks::TickWorld;
 
@@ -20,21 +20,21 @@ pub const FALL_DELAY: u32 = 3;
 const ENTITY_REACH: i32 = 32;
 
 /// `BlockSand.canFallBelow`: air, fire, water, and lava.
-pub fn can_fall_below(block: Id) -> bool {
-    block == Id::Air || block == Id::Fire || is_liquid(block)
+pub fn can_fall_below(block: Block) -> bool {
+    block == Block::Air || block == Block::Fire || is_liquid(block)
 }
 
 /// `World.canBlockBePlacedAt` for a landing falling block: the cell holds
 /// air, a fluid, fire, or a snow layer, which the block replaces.
-pub fn can_land_in(block: Id) -> bool {
-    can_fall_below(block) || block == Id::SnowLayer
+pub fn can_land_in(block: Block) -> bool {
+    can_fall_below(block) || block == Block::SnowLayer
 }
 
 pub struct Falling;
 pub static FALLING: Falling = Falling;
 
 impl BlockBehavior for Falling {
-    fn tick_rate(&self, _block: Id) -> u32 {
+    fn tick_rate(&self, _block: Block) -> u32 {
         FALL_DELAY
     }
 
@@ -43,7 +43,7 @@ impl BlockBehavior for Falling {
         world.schedule(position, block, FALL_DELAY);
     }
 
-    fn neighbor_changed(&self, world: &mut TickWorld, position: IVec3, _neighbor: Id) {
+    fn neighbor_changed(&self, world: &mut TickWorld, position: IVec3, _neighbor: Block) {
         let block = world.block(position);
         world.schedule(position, block, FALL_DELAY);
     }
@@ -58,7 +58,7 @@ impl BlockBehavior for Falling {
             world.spawn_falling_block(position, block);
             return;
         }
-        world.set_block_notify(position, Id::Air);
+        world.set_block_notify(position, Block::Air);
         let mut landing = position;
         while landing.y > 0 && can_fall_below(world.block(landing - IVec3::Y)) {
             landing.y -= 1;

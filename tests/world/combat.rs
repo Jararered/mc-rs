@@ -2,7 +2,7 @@
 
 use bevy::prelude::*;
 use game::app::settings::Difficulty;
-use game::block::id::Id;
+use game::block::blocks::Block;
 use game::entity::DroppedItem;
 use game::entity::Velocity;
 use game::entity::combat::HURT_TICKS;
@@ -210,7 +210,7 @@ fn blasts_eat_through_soil_but_stop_at_obsidian() {
     let solid = |chunks: &game::world::chunk::WorldChunks, cells: &[IVec3]| {
         cells
             .iter()
-            .filter(|cell| chunks.block_at(cell.x, cell.y, cell.z) != Some(Id::Air))
+            .filter(|cell| chunks.block_at(cell.x, cell.y, cell.z) != Some(Block::Air))
             .count()
     };
     let cells = blast_cells(&soil, center, 3.0, &mut rng);
@@ -221,11 +221,11 @@ fn blasts_eat_through_soil_but_stop_at_obsidian() {
         for z in -4..=4 {
             for y in 3..=8 {
                 if x == -4 || x == 4 || z == -4 || z == 4 || y == 3 || y == 8 {
-                    sealed.set_block(x, y, z, Id::Obsidian);
+                    sealed.set_block(x, y, z, Block::Obsidian);
                 }
             }
             if x.abs() < 4 && z.abs() < 4 {
-                sealed.set_block(x, 4, z, Id::Air);
+                sealed.set_block(x, 4, z, Block::Air);
             }
         }
     }
@@ -246,7 +246,7 @@ fn walls_shield_bodies_from_a_blast() {
     assert_eq!(exposure(&chunks, center, body), 1.0);
     for y in 5..=8 {
         for z in -2..=2 {
-            chunks.set_block(2, y, z, Id::Stone);
+            chunks.set_block(2, y, z, Block::Stone);
         }
     }
     assert_eq!(exposure(&chunks, center, body), 0.0);
@@ -283,7 +283,7 @@ fn creepers_hiss_and_blow_a_crater_beside_the_player() {
     assert_eq!(creepers, 0, "the creeper should have exploded");
     assert!(player_health(&mut app) < 20);
     let chunks = app.world().resource::<game::world::chunk::WorldChunks>();
-    let cratered = (-2..=3).any(|x| (4..=9).any(|z| chunks.block_at(x, 4, z) == Some(Id::Air)));
+    let cratered = (-2..=3).any(|x| (4..=9).any(|z| chunks.block_at(x, 4, z) == Some(Block::Air)));
     assert!(cratered);
 }
 
@@ -344,7 +344,7 @@ fn arrows_stick_in_walls() {
     let mut chunks = field(4);
     for y in 5..=8 {
         for z in -3..=3 {
-            chunks.set_block(5, y, z, Id::Stone);
+            chunks.set_block(5, y, z, Block::Stone);
         }
     }
     let mut app = creature_app(chunks, Vec3::new(-6.5, 5.0, 8.5));

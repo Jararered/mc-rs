@@ -11,7 +11,7 @@ use bevy::prelude::*;
 use bevy::render::render_resource::PrimitiveTopology;
 
 use crate::app::state::AppScreen;
-use crate::block::id::Id;
+use crate::block::blocks::Block;
 use crate::block::properties::blocks_movement;
 use crate::physics::BlockFace;
 use crate::physics::BlockHit;
@@ -181,7 +181,7 @@ impl BlockParticles {
         &mut self,
         position: Vec3,
         outward: Vec3,
-        block: Id,
+        block: Block,
         climate: Option<Climate>,
         foliage: Option<&FoliageColors>,
         grass: Option<&GrassColors>,
@@ -204,11 +204,11 @@ impl BlockParticles {
         let patch_min = Vec2::new(u0, v0) + jitter * tile_size * 0.25;
         let patch_max = patch_min + tile_size * 0.24975;
         let block_tint = match block {
-            Id::TallGrass | Id::Fern => Some(grass.map_or_else(
+            Block::TallGrass | Block::Fern => Some(grass.map_or_else(
                 || GrassColors::default().sample_optional(climate),
                 |colors| colors.sample_optional(climate),
             )),
-            Id::Leaves | Id::SpruceLeaves | Id::BirchLeaves => {
+            Block::Leaves | Block::SpruceLeaves | Block::BirchLeaves => {
                 climate.map(|climate| foliage.map_or([0.28, 0.71, 0.09], |f| f.sample(climate)))
             }
             _ => None,

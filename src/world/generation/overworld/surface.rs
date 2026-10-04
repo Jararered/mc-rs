@@ -1,4 +1,4 @@
-use crate::block::id::Id;
+use crate::block::blocks::Block;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::ChunkPosition;
@@ -20,11 +20,11 @@ fn surface_chunk_seed(position: ChunkPosition) -> u64 {
 }
 
 /// Biome `topBlock` and `fillerBlock`. Only the two deserts differ.
-fn biome_blocks(biome: Biome) -> (Id, Id) {
+fn biome_blocks(biome: Biome) -> (Block, Block) {
     if matches!(biome, Biome::Desert | Biome::IceDesert) {
-        (Id::Sand, Id::Sand)
+        (Block::Sand, Block::Sand)
     } else {
-        (Id::Grass, Id::Dirt)
+        (Block::Grass, Block::Dirt)
     }
 }
 
@@ -58,8 +58,8 @@ pub(super) fn apply_surface(
         [scale * 2.0; 3],
     );
 
-    let air = Id::Air.as_u8();
-    let stone_id = Id::Stone.as_u8();
+    let air = Block::Air.as_u8();
+    let stone_id = Block::Stone.as_u8();
     // Columns go z-outer, x-inner, so each column draws the same random values
     // it does in Beta.
     for z in 0..CHUNK_SIZE {
@@ -76,7 +76,7 @@ pub(super) fn apply_surface(
             for y in (0..CHUNK_HEIGHT as i32).rev() {
                 let index = raw_index(x, y as usize, z);
                 if y <= random.next_int(5) as i32 {
-                    blocks[index] = Id::Bedrock.as_u8();
+                    blocks[index] = Block::Bedrock.as_u8();
                     continue;
                 }
                 let block = blocks[index];
@@ -86,31 +86,31 @@ pub(super) fn apply_surface(
                 } else if block == stone_id {
                     if remaining == -1 {
                         if depth <= 0 {
-                            top = Id::Air;
-                            filler = Id::Stone;
+                            top = Block::Air;
+                            filler = Block::Stone;
                         } else if (SEA_LEVEL - 4..=SEA_LEVEL + 1).contains(&y) {
                             top = biome_top;
                             filler = biome_filler;
                             if gravelly {
-                                top = Id::Air;
-                                filler = Id::Gravel;
+                                top = Block::Air;
+                                filler = Block::Gravel;
                             }
                             if sandy {
-                                top = Id::Sand;
-                                filler = Id::Sand;
+                                top = Block::Sand;
+                                filler = Block::Sand;
                             }
                         }
-                        if y < SEA_LEVEL && top == Id::Air {
-                            top = Id::Water;
+                        if y < SEA_LEVEL && top == Block::Air {
+                            top = Block::Water;
                         }
                         remaining = depth;
                         blocks[index] = if y >= SEA_LEVEL - 1 { top } else { filler }.as_u8();
                     } else if remaining > 0 {
                         remaining -= 1;
                         blocks[index] = filler.as_u8();
-                        if remaining == 0 && filler == Id::Sand {
+                        if remaining == 0 && filler == Block::Sand {
                             remaining = random.next_int(4) as i32;
-                            filler = Id::Sandstone;
+                            filler = Block::Sandstone;
                         }
                     }
                 }

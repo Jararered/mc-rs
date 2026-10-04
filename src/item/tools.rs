@@ -6,7 +6,7 @@
 
 use super::ItemId;
 use super::ItemStack;
-use crate::block::id::Id;
+use crate::block::blocks::Block;
 use crate::block::properties::harvestable_by_hand;
 use crate::block::properties::is_breakable;
 use crate::block::properties::mine_progress_per_tick;
@@ -121,60 +121,69 @@ pub fn is_hoe(id: ItemId) -> bool {
     matches!(kind(id), Some(Kind::Hoe(_)))
 }
 
-fn is_log(block: Id) -> bool {
-    matches!(block, Id::Wood | Id::SpruceWood | Id::BirchWood)
+fn is_log(block: Block) -> bool {
+    matches!(block, Block::Wood | Block::SpruceWood | Block::BirchWood)
 }
 
-fn is_leaves(block: Id) -> bool {
-    matches!(block, Id::Leaves | Id::SpruceLeaves | Id::BirchLeaves)
+fn is_leaves(block: Block) -> bool {
+    matches!(
+        block,
+        Block::Leaves | Block::SpruceLeaves | Block::BirchLeaves
+    )
 }
 
 /// `ItemPickaxe.blocksEffectiveAgainst`. Obsidian, redstone ore, furnaces,
 /// dispensers, bricks, and glowstone are absent on purpose.
-fn pick_effective(block: Id) -> bool {
+fn pick_effective(block: Block) -> bool {
     matches!(
         block,
-        Id::Cobblestone
-            | Id::DoubleStoneSlab
-            | Id::Stone
-            | Id::Sandstone
-            | Id::MossyCobblestone
-            | Id::IronOre
-            | Id::IronBlock
-            | Id::CoalOre
-            | Id::GoldBlock
-            | Id::GoldOre
-            | Id::DiamondOre
-            | Id::DiamondBlock
-            | Id::Ice
-            | Id::Netherrack
-            | Id::LapisOre
-            | Id::LapisBlock
+        Block::Cobblestone
+            | Block::DoubleStoneSlab
+            | Block::Stone
+            | Block::Sandstone
+            | Block::MossyCobblestone
+            | Block::IronOre
+            | Block::IronBlock
+            | Block::CoalOre
+            | Block::GoldBlock
+            | Block::GoldOre
+            | Block::DiamondOre
+            | Block::DiamondBlock
+            | Block::Ice
+            | Block::Netherrack
+            | Block::LapisOre
+            | Block::LapisBlock
     )
 }
 
 /// `ItemAxe.blocksEffectiveAgainst`. Crafting tables, note blocks, jukeboxes,
 /// and pumpkins are wood or pumpkin and are not in this list.
-fn axe_effective(block: Id) -> bool {
+fn axe_effective(block: Block) -> bool {
     is_log(block)
         || block.is_chest()
         || matches!(
             block,
-            Id::WoodenPlanks | Id::SprucePlanks | Id::BirchPlanks | Id::Bookshelf
+            Block::WoodenPlanks | Block::SprucePlanks | Block::BirchPlanks | Block::Bookshelf
         )
 }
 
 /// `ItemSpade.blocksEffectiveAgainst`. The snow block is the layered entry
 /// that has a real hardness here. Farmland and the snow layer are catalog blocks.
-fn shovel_effective(block: Id) -> bool {
+fn shovel_effective(block: Block) -> bool {
     matches!(
         block,
-        Id::Grass | Id::Dirt | Id::Sand | Id::Gravel | Id::Snow | Id::Farmland | Id::Clay
+        Block::Grass
+            | Block::Dirt
+            | Block::Sand
+            | Block::Gravel
+            | Block::Snow
+            | Block::Farmland
+            | Block::Clay
     )
 }
 
 /// `Item.getStrVsBlock` for the held stack. An empty hand is `1.0`.
-pub fn str_vs_block(tool: Option<ItemStack>, block: Id) -> f32 {
+pub fn str_vs_block(tool: Option<ItemStack>, block: Block) -> f32 {
     let Some(tool) = tool else {
         return 1.0;
     };
@@ -183,10 +192,10 @@ pub fn str_vs_block(tool: Option<ItemStack>, block: Id) -> f32 {
         Some(Kind::Axe(tier)) if axe_effective(block) => tier.efficiency(),
         Some(Kind::Shovel(tier)) if shovel_effective(block) => tier.efficiency(),
         // `ItemSword.getStrVsBlock` is 15 on web and 1.5 on everything else.
-        Some(Kind::Sword(_)) if block == Id::Cobweb => 15.0,
+        Some(Kind::Sword(_)) if block == Block::Cobweb => 15.0,
         Some(Kind::Sword(_)) => 1.5,
-        Some(Kind::Shears) if is_leaves(block) || block == Id::Cobweb => 15.0,
-        Some(Kind::Shears) if block == Id::Wool => 5.0,
+        Some(Kind::Shears) if is_leaves(block) || block == Block::Cobweb => 15.0,
+        Some(Kind::Shears) if block == Block::Wool => 5.0,
         _ => 1.0,
     }
 }
@@ -194,82 +203,82 @@ pub fn str_vs_block(tool: Option<ItemStack>, block: Id) -> f32 {
 /// `InventoryPlayer.canHarvestBlock`. Hand-harvestable materials win before
 /// the tool is consulted. A false result still breaks the block, slowly, and
 /// suppresses its drop.
-pub fn can_harvest(tool: Option<ItemStack>, block: Id) -> bool {
+pub fn can_harvest(tool: Option<ItemStack>, block: Block) -> bool {
     if harvestable_by_hand(block) {
         return true;
     }
     tool.is_some_and(|tool| tool_can_harvest(tool.item(), block))
 }
 
-fn tool_can_harvest(id: ItemId, block: Id) -> bool {
+fn tool_can_harvest(id: ItemId, block: Block) -> bool {
     match kind(id) {
         Some(Kind::Pick(tier)) => pick_can_harvest(tier, block),
         // `ItemSpade.canHarvestBlock`: the snow layer and the snow block.
-        Some(Kind::Shovel(_)) => matches!(block, Id::Snow | Id::SnowLayer),
+        Some(Kind::Shovel(_)) => matches!(block, Block::Snow | Block::SnowLayer),
         // `ItemSword` and `ItemShears` harvest web only. Leaves are already
         // hand-harvestable; shears change the drop, not this gate.
-        Some(Kind::Sword(_) | Kind::Shears) => block == Id::Cobweb,
+        Some(Kind::Sword(_) | Kind::Shears) => block == Block::Cobweb,
         _ => false,
     }
 }
 
 /// `ItemPickaxe.canHarvestBlock`. Rock and iron fall through to any pick.
 /// Iron blocks and the tiered ores are handled before that fallthrough.
-fn pick_can_harvest(tier: Tier, block: Id) -> bool {
+fn pick_can_harvest(tier: Tier, block: Block) -> bool {
     let level = tier.level();
-    if block == Id::Obsidian {
+    if block == Block::Obsidian {
         return level == 3;
     }
-    if matches!(block, Id::DiamondBlock | Id::DiamondOre) {
+    if matches!(block, Block::DiamondBlock | Block::DiamondOre) {
         return level >= 2;
     }
-    if matches!(block, Id::GoldBlock | Id::GoldOre) {
+    if matches!(block, Block::GoldBlock | Block::GoldOre) {
         return level >= 2;
     }
-    if matches!(block, Id::IronBlock | Id::IronOre) {
+    if matches!(block, Block::IronBlock | Block::IronOre) {
         return level >= 1;
     }
-    if matches!(block, Id::LapisBlock | Id::LapisOre) {
+    if matches!(block, Block::LapisBlock | Block::LapisOre) {
         return level >= 1;
     }
-    if matches!(block, Id::RedstoneOre | Id::LitRedstoneOre) {
+    if matches!(block, Block::RedstoneOre | Block::LitRedstoneOre) {
         return level >= 2;
     }
     matches!(
         block,
-        Id::Stone
-            | Id::Cobblestone
-            | Id::Bedrock
-            | Id::CoalOre
-            | Id::Dispenser
-            | Id::Sandstone
-            | Id::DoubleStoneSlab
-            | Id::StoneSlab
-            | Id::Bricks
-            | Id::MossyCobblestone
-            | Id::Furnace
-            | Id::LitFurnace
-            | Id::CobblestoneStairs
-            | Id::StonePressurePlate
-            | Id::IronDoor
-            | Id::Netherrack
-            | Id::Glowstone
+        Block::Stone
+            | Block::Cobblestone
+            | Block::Bedrock
+            | Block::CoalOre
+            | Block::Dispenser
+            | Block::Sandstone
+            | Block::DoubleStoneSlab
+            | Block::StoneSlab
+            | Block::Bricks
+            | Block::MossyCobblestone
+            | Block::Furnace
+            | Block::LitFurnace
+            | Block::CobblestoneStairs
+            | Block::StonePressurePlate
+            | Block::IronDoor
+            | Block::Netherrack
+            | Block::Glowstone
     )
 }
 
 /// Damage from `onBlockDestroyed`. Picks, axes, and shovels always lose one
 /// use. Swords lose two. Shears lose one on leaves and web. Hoes lose none.
-pub fn break_durability(tool: ItemStack, block: Id) -> u16 {
+pub fn break_durability(tool: ItemStack, block: Block) -> u16 {
     match kind(tool.item()) {
         Some(Kind::Pick(_) | Kind::Axe(_) | Kind::Shovel(_)) => 1,
         Some(Kind::Sword(_)) => 2,
-        Some(Kind::Shears) if is_leaves(block) || block == Id::Cobweb => 1,
+        Some(Kind::Shears) if is_leaves(block) || block == Block::Cobweb => 1,
         _ => 0,
     }
 }
 
 /// One tick of `Block.blockStrength` for this held stack.
-pub fn mine_step(block: Id, tool: Option<ItemStack>, on_ground: bool, in_water: bool) -> f32 {
+pub fn mine_step(block: Block, tool: Option<ItemStack>, on_ground: bool, in_water: bool) -> f32 {
     mine_progress_per_tick(
         block,
         str_vs_block(tool, block),
@@ -282,7 +291,7 @@ pub fn mine_step(block: Id, tool: Option<ItemStack>, on_ground: bool, in_water: 
 /// Ticks of mining needed to break `block`, or `None` if it cannot break.
 /// A result of `1` is an instant break on click (`blockStrength >= 1`).
 pub fn ticks_to_break(
-    block: Id,
+    block: Block,
     tool: Option<ItemStack>,
     on_ground: bool,
     in_water: bool,

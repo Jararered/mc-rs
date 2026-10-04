@@ -1,4 +1,4 @@
-use game::block::id::Id;
+use game::block::blocks::Block;
 use game::world::chunk::Chunk;
 
 #[test]
@@ -10,9 +10,9 @@ fn revision_advances_with_every_block_and_metadata_write() {
         seen = chunk.revision();
         moved
     };
-    chunk.set(1, 2, 3, Id::Stone);
+    chunk.set(1, 2, 3, Block::Stone);
     assert!(advanced(&chunk));
-    chunk.set_with_metadata(1, 3, 3, Id::Water, 2);
+    chunk.set_with_metadata(1, 3, 3, Block::Water, 2);
     assert!(advanced(&chunk));
     chunk.set_metadata(1, 3, 3, 5);
     assert!(advanced(&chunk));

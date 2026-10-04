@@ -6,23 +6,23 @@
 
 use bevy::math::IVec3;
 
-use crate::block::id::Id;
+use crate::block::blocks::Block;
 use crate::world::block_ticks::BlockBehavior;
 use crate::world::block_ticks::TickWorld;
 
 /// `BlockTorch.canPlaceTorchOn`: a normal cube or a fence.
 fn torch_rests_on(world: &TickWorld, position: IVec3) -> bool {
-    world.is_normal_cube(position) || world.block(position) == Id::Fence
+    world.is_normal_cube(position) || world.block(position) == Block::Fence
 }
 
 /// The cell a torch leans against, from its facing.
-pub fn torch_support(torch: Id) -> Option<IVec3> {
+pub fn torch_support(torch: Block) -> Option<IVec3> {
     match torch {
-        Id::Torch => Some(IVec3::NEG_Y),
-        Id::TorchWest => Some(IVec3::NEG_X),
-        Id::TorchEast => Some(IVec3::X),
-        Id::TorchNorth => Some(IVec3::NEG_Z),
-        Id::TorchSouth => Some(IVec3::Z),
+        Block::Torch => Some(IVec3::NEG_Y),
+        Block::TorchWest => Some(IVec3::NEG_X),
+        Block::TorchEast => Some(IVec3::X),
+        Block::TorchNorth => Some(IVec3::NEG_Z),
+        Block::TorchSouth => Some(IVec3::Z),
         _ => None,
     }
 }
@@ -39,7 +39,7 @@ fn break_off(world: &mut TickWorld, position: IVec3) {
     let block = world.block(position);
     let metadata = world.metadata(position);
     world.drop_block_as_item(position, block, metadata);
-    world.set_block_notify(position, Id::Air);
+    world.set_block_notify(position, Block::Air);
 }
 
 pub struct Torch;
@@ -57,7 +57,7 @@ impl Torch {
             return;
         };
         let support = position + offset;
-        let holds = if torch == Id::Torch {
+        let holds = if torch == Block::Torch {
             torch_rests_on(world, support)
         } else {
             world.is_normal_cube(support)
@@ -77,7 +77,7 @@ impl BlockBehavior for Torch {
         }
     }
 
-    fn neighbor_changed(&self, world: &mut TickWorld, position: IVec3, _neighbor: Id) {
+    fn neighbor_changed(&self, world: &mut TickWorld, position: IVec3, _neighbor: Block) {
         Self::check_support(world, position);
     }
 }
@@ -86,7 +86,7 @@ pub struct Ladder;
 pub static LADDER: Ladder = Ladder;
 
 impl BlockBehavior for Ladder {
-    fn neighbor_changed(&self, world: &mut TickWorld, position: IVec3, _neighbor: Id) {
+    fn neighbor_changed(&self, world: &mut TickWorld, position: IVec3, _neighbor: Block) {
         let ladder = world.block(position);
         let holds = match ladder.ladder_support_offset() {
             Some([x, y, z]) => world.is_normal_cube(position + IVec3::new(x, y, z)),

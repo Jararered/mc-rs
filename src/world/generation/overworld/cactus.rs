@@ -1,6 +1,6 @@
 //! Beta desert cactus patches from `WorldGenCactus`.
 
-use crate::block::id::Id;
+use crate::block::blocks::Block;
 use crate::block::properties::cactus_can_stay;
 use crate::random::JavaRandom;
 
@@ -29,7 +29,7 @@ pub(super) fn cactus_patch(
             let neighbors = [(x - 1, z), (x + 1, z), (x, z - 1), (x, z + 1)]
                 .map(|(x, z)| world.get(x, cactus_y, z));
             if cactus_can_stay(world.get(x, cactus_y - 1, z), neighbors) {
-                world.set(x, cactus_y, z, Id::Cactus);
+                world.set(x, cactus_y, z, Block::Cactus);
             }
         }
     }

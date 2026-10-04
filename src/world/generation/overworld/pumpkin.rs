@@ -1,6 +1,6 @@
 //! Beta pumpkin patches from `WorldGenPumpkin`.
 
-use crate::block::id::Id;
+use crate::block::blocks::Block;
 use crate::random::JavaRandom;
 
 use super::world::PopulationWorld;
@@ -17,8 +17,8 @@ pub(super) fn pumpkin_patch(
         let x = x + rand.next_int(8) as i32 - rand.next_int(8) as i32;
         let y = y + rand.next_int(4) as i32 - rand.next_int(4) as i32;
         let z = z + rand.next_int(8) as i32 - rand.next_int(8) as i32;
-        if world.is_air(x, y, z) && world.get(x, y - 1, z) == Id::Grass {
-            world.set(x, y, z, Id::pumpkin_from_metadata(rand.next_int(4)));
+        if world.is_air(x, y, z) && world.get(x, y - 1, z) == Block::Grass {
+            world.set(x, y, z, Block::pumpkin_from_metadata(rand.next_int(4)));
         }
     }
 }

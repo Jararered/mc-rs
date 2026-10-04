@@ -9,11 +9,11 @@
 
 use bevy::math::IVec3;
 
+use crate::block::blocks::Block;
 pub use crate::block::fluids::Fluid;
 pub use crate::block::fluids::is_lava;
 pub use crate::block::fluids::is_liquid;
 pub use crate::block::fluids::is_water;
-use crate::block::id::Id;
 use crate::block::properties::is_solid_material;
 use crate::world::block_ticks::BlockBehavior;
 use crate::world::block_ticks::TickWorld;
@@ -31,7 +31,7 @@ fn flow_decay(world: &TickWorld, position: IVec3, fluid: Fluid) -> i32 {
 /// `BlockFluid.checkForHarden`: lava touching water on a side or from above
 /// becomes obsidian if it is a source, or cobblestone if it spread four or
 /// fewer blocks.
-fn check_for_harden(world: &mut TickWorld, position: IVec3, block: Id) {
+fn check_for_harden(world: &mut TickWorld, position: IVec3, block: Block) {
     if world.block(position) != block || Fluid::of(block) != Some(Fluid::Lava) {
         return;
     }
@@ -43,9 +43,9 @@ fn check_for_harden(world: &mut TickWorld, position: IVec3, block: Id) {
     }
     let metadata = world.metadata(position);
     if metadata == 0 {
-        world.set_block_notify(position, Id::Obsidian);
+        world.set_block_notify(position, Block::Obsidian);
     } else if metadata <= 4 {
-        world.set_block_notify(position, Id::Cobblestone);
+        world.set_block_notify(position, Block::Cobblestone);
     }
 }
 
@@ -55,12 +55,12 @@ fn blocks_flow(world: &TickWorld, position: IVec3) -> bool {
     let block = world.block(position);
     if matches!(
         block,
-        Id::WoodenDoor | Id::IronDoor | Id::StandingSign | Id::SugarCane
+        Block::WoodenDoor | Block::IronDoor | Block::StandingSign | Block::SugarCane
     ) || block.is_ladder()
     {
         return true;
     }
-    block != Id::Air && is_solid_material(block)
+    block != Block::Air && is_solid_material(block)
 }
 
 /// `BlockFlowing.liquidCanDisplaceBlock`: neither this fluid, nor lava, nor a
@@ -162,7 +162,7 @@ fn flow_into(world: &mut TickWorld, position: IVec3, fluid: Fluid, decay: i32) {
         return;
     }
     let block = world.block(position);
-    if block != Id::Air && fluid == Fluid::Water {
+    if block != Block::Air && fluid == Fluid::Water {
         let metadata = world.metadata(position);
         world.drop_block_as_item(position, block, metadata);
     }
@@ -182,11 +182,11 @@ pub static FLOWING: Flowing = Flowing;
 impl BlockBehavior for Flowing {
     /// `BlockFluid` ticks on load, so a flowing block left without a
     /// scheduled tick still settles or spreads eventually.
-    fn ticks_randomly(&self, _block: Id) -> bool {
+    fn ticks_randomly(&self, _block: Block) -> bool {
         true
     }
 
-    fn tick_rate(&self, block: Id) -> u32 {
+    fn tick_rate(&self, block: Block) -> u32 {
         Fluid::of(block).map_or(10, Fluid::tick_rate)
     }
 
@@ -198,7 +198,7 @@ impl BlockBehavior for Flowing {
         }
     }
 
-    fn neighbor_changed(&self, world: &mut TickWorld, position: IVec3, _neighbor: Id) {
+    fn neighbor_changed(&self, world: &mut TickWorld, position: IVec3, _neighbor: Block) {
         let block = world.block(position);
         check_for_harden(world, position, block);
     }
@@ -249,7 +249,7 @@ impl BlockBehavior for Flowing {
             if next != decay {
                 decay = next;
                 if next < 0 {
-                    world.set_block_notify(position, Id::Air);
+                    world.set_block_notify(position, Block::Air);
                 } else {
                     world.set_metadata_notify(position, next as u8);
                     world.schedule(position, block, fluid.tick_rate());
@@ -287,11 +287,11 @@ pub static STATIONARY: Stationary = Stationary;
 
 impl BlockBehavior for Stationary {
     /// Only still lava ticks on load, to set fire to its surroundings.
-    fn ticks_randomly(&self, block: Id) -> bool {
-        block == Id::Lava
+    fn ticks_randomly(&self, block: Block) -> bool {
+        block == Block::Lava
     }
 
-    fn tick_rate(&self, block: Id) -> u32 {
+    fn tick_rate(&self, block: Block) -> u32 {
         Fluid::of(block).map_or(10, Fluid::tick_rate)
     }
 
@@ -300,7 +300,7 @@ impl BlockBehavior for Stationary {
         check_for_harden(world, position, block);
     }
 
-    fn neighbor_changed(&self, world: &mut TickWorld, position: IVec3, _neighbor: Id) {
+    fn neighbor_changed(&self, world: &mut TickWorld, position: IVec3, _neighbor: Block) {
         let block = world.block(position);
         check_for_harden(world, position, block);
         if world.block(position) != block {
@@ -322,7 +322,7 @@ impl BlockBehavior for Stationary {
     /// to air beside anything flammable. Fire is not in the world yet, so the
     /// walk runs (and draws its random numbers) but places nothing.
     fn update_tick(&self, world: &mut TickWorld, position: IVec3) {
-        if world.block(position) != Id::Lava {
+        if world.block(position) != Block::Lava {
             return;
         }
         let steps = world.random().next_int(3);
@@ -332,12 +332,12 @@ impl BlockBehavior for Stationary {
             cell.y += 1;
             cell.z += world.random().next_int(3) as i32 - 1;
             let block = world.block(cell);
-            if block == Id::Air {
+            if block == Block::Air {
                 let flammable = crate::world::block_ticks::NEIGHBORS
                     .into_iter()
                     .any(|offset| is_flammable(world.block(cell + offset)));
-                if flammable && Id::Fire.in_world() {
-                    world.set_block_notify(cell, Id::Fire);
+                if flammable && Block::Fire.in_world() {
+                    world.set_block_notify(cell, Block::Fire);
                     return;
                 }
             } else if is_solid_material(block) {
@@ -348,11 +348,11 @@ impl BlockBehavior for Stationary {
 }
 
 /// Beta `Material.getBurning`: wood, leaves, wool, and TNT.
-pub fn is_flammable(block: Id) -> bool {
+pub fn is_flammable(block: Block) -> bool {
     crate::world::furnace::is_wood_material(block)
         || block.is_chest()
         || matches!(
             block,
-            Id::Leaves | Id::SpruceLeaves | Id::BirchLeaves | Id::Wool | Id::Tnt
+            Block::Leaves | Block::SpruceLeaves | Block::BirchLeaves | Block::Wool | Block::Tnt
         )
 }

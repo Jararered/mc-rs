@@ -10,7 +10,7 @@ use bevy::camera::visibility::NoFrustumCulling;
 use bevy::prelude::*;
 
 use crate::app::settings::GameSettings;
-use crate::block::id::Id;
+use crate::block::blocks::Block;
 use crate::entity::PreviousTick;
 use crate::entity::drops::items::spawn_block_drop;
 use crate::item::ItemStack;
@@ -41,7 +41,7 @@ const MAX_FALL_TICKS: u32 = 100;
 /// `posY` with `yOffset = height / 2`.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct FallingBlock {
-    pub block: Id,
+    pub block: Block,
     /// Beta `fallTime`.
     pub fall_ticks: u32,
     /// Blocks per tick.
@@ -53,7 +53,7 @@ pub struct FallingBlock {
 pub(crate) struct FallingBlockVisual;
 
 /// Spawn a falling block centered in the cell it leaves.
-pub fn spawn_falling_block(commands: &mut Commands, position: IVec3, block: Id) {
+pub fn spawn_falling_block(commands: &mut Commands, position: IVec3, block: Block) {
     let center = position.as_vec3() + Vec3::splat(0.5);
     commands.spawn((
         Name::new("Falling block"),
@@ -113,7 +113,7 @@ pub fn step_falling_block(
 
     let cell = center.floor().as_ivec3();
     if chunks.block_at(cell.x, cell.y, cell.z) == Some(falling.block) {
-        write_block(chunks, ticks, edits, cell, Id::Air);
+        write_block(chunks, ticks, edits, cell, Block::Air);
     }
     if falling.on_ground {
         falling.motion.x *= 0.7;
@@ -124,7 +124,7 @@ pub fn step_falling_block(
             .is_some_and(can_land_in);
         let below = chunks
             .block_at(cell.x, cell.y - 1, cell.z)
-            .unwrap_or(Id::Air);
+            .unwrap_or(Block::Air);
         if placeable
             && !can_fall_below(below)
             && write_block(chunks, ticks, edits, cell, falling.block)
@@ -145,7 +145,7 @@ fn write_block(
     ticks: &mut BlockTicks,
     edits: &mut Vec<IVec3>,
     cell: IVec3,
-    block: Id,
+    block: Block,
 ) -> bool {
     let metadata = chunks.metadata_at(cell.x, cell.y, cell.z);
     let Some(previous) = chunks.set_block(cell.x, cell.y, cell.z, block) else {

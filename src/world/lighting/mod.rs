@@ -6,8 +6,8 @@ use std::sync::OnceLock;
 use bevy::platform::collections::HashMap;
 use bevy::prelude::Resource;
 
+use crate::block::blocks::Block;
 use crate::block::definition::BlockProperties;
-use crate::block::id::Id;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::Chunk;
@@ -654,7 +654,7 @@ fn light_tables() -> &'static LightTables {
             emission: [0; 256],
         };
         for raw in 0..=u8::MAX {
-            let block = Id::from(raw);
+            let block = Block::from(raw);
             tables.opacity[usize::from(raw)] = light_opacity_from_table(table, block);
             tables.emission[usize::from(raw)] = light_emission_from_table(table, block);
         }
@@ -795,26 +795,26 @@ fn propagate(
 
 /// Beta `Block.lightOpacity`, expressed in light levels rather than its old
 /// internal 0..255 table.
-pub fn light_opacity(block: Id) -> u8 {
+pub fn light_opacity(block: Block) -> u8 {
     crate::block::definition::light_opacity(block)
 }
 
-pub fn light_emission(block: Id) -> u8 {
+pub fn light_emission(block: Block) -> u8 {
     crate::block::definition::light_emission(block)
 }
 
 #[inline]
-fn light_opacity_from_table(table: &[BlockProperties; 256], block: Id) -> u8 {
+fn light_opacity_from_table(table: &[BlockProperties; 256], block: Block) -> u8 {
     match block {
-        Id::Unknown(_) => 15,
+        Block::Unknown(_) => 15,
         _ => table[block.as_u8() as usize].light_opacity,
     }
 }
 
 #[inline]
-fn light_emission_from_table(table: &[BlockProperties; 256], block: Id) -> u8 {
+fn light_emission_from_table(table: &[BlockProperties; 256], block: Block) -> u8 {
     match block {
-        Id::Unknown(_) => 0,
+        Block::Unknown(_) => 0,
         _ => table[block.as_u8() as usize].light_emission,
     }
 }

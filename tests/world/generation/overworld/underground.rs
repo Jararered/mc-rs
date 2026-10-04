@@ -1,4 +1,4 @@
-use game::block::id::Id;
+use game::block::blocks::Block;
 use game::world::chunk::CHUNK_HEIGHT;
 use game::world::chunk::CHUNK_SIZE;
 use game::world::chunk::ChunkPosition;
@@ -64,10 +64,10 @@ fn common_ores_generate_and_cave_lava_stays_below_y10() {
             for z in 0..CHUNK_SIZE {
                 for x in 0..CHUNK_SIZE {
                     match generated.chunk.get(x, y, z).unwrap() {
-                        Id::CoalOre => coal += 1,
-                        Id::IronOre => iron += 1,
-                        Id::FlowingLava if y < 10 => {}
-                        Id::FlowingLava => panic!("cave lava above Beta's Y=10 cutoff"),
+                        Block::CoalOre => coal += 1,
+                        Block::IronOre => iron += 1,
+                        Block::FlowingLava if y < 10 => {}
+                        Block::FlowingLava => panic!("cave lava above Beta's Y=10 cutoff"),
                         _ => {}
                     }
                 }
@@ -94,16 +94,16 @@ fn population_places_clay_and_dungeon_blocks() {
             let generated = generator.generate(ChunkPosition { x, z });
             for block in generated.chunk.blocks() {
                 match block {
-                    Id::Clay => clay += 1,
-                    Id::MobSpawner => spawners += 1,
-                    Id::Chest => chests += 1,
-                    Id::Lava => lake_lava += 1,
-                    Id::FlowingLava => cave_lava += 1,
-                    Id::GoldOre => rare_ores[0] += 1,
-                    Id::RedstoneOre => rare_ores[1] += 1,
-                    Id::DiamondOre => rare_ores[2] += 1,
-                    Id::LapisOre => rare_ores[3] += 1,
-                    Id::IronOre => rare_ores[4] += 1,
+                    Block::Clay => clay += 1,
+                    Block::MobSpawner => spawners += 1,
+                    Block::Chest => chests += 1,
+                    Block::Lava => lake_lava += 1,
+                    Block::FlowingLava => cave_lava += 1,
+                    Block::GoldOre => rare_ores[0] += 1,
+                    Block::RedstoneOre => rare_ores[1] += 1,
+                    Block::DiamondOre => rare_ores[2] += 1,
+                    Block::LapisOre => rare_ores[3] += 1,
+                    Block::IronOre => rare_ores[4] += 1,
                     _ => {}
                 }
             }

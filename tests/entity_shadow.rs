@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use game::block::id::Id;
+use game::block::blocks::Block;
 use game::entity::EntitySize;
 use game::entity::shadow::Shadow;
 use game::entity::shadow::place_shadow;
@@ -44,7 +44,7 @@ fn lit_floor_world(floor_y: usize) -> WorldChunks {
     let mut chunk = Chunk::new();
     for z in 0..CHUNK_SIZE {
         for x in 0..CHUNK_SIZE {
-            chunk.set(x, floor_y, z, Id::Stone);
+            chunk.set(x, floor_y, z, Block::Stone);
         }
     }
     world_with(chunk)
@@ -56,8 +56,8 @@ fn dark_floor_world(floor_y: usize) -> WorldChunks {
     let mut chunk = Chunk::new();
     for z in 0..CHUNK_SIZE {
         for x in 0..CHUNK_SIZE {
-            chunk.set(x, floor_y, z, Id::Stone);
-            chunk.set(x, floor_y + 2, z, Id::Stone);
+            chunk.set(x, floor_y, z, Block::Stone);
+            chunk.set(x, floor_y + 2, z, Block::Stone);
         }
     }
     world_with(chunk)

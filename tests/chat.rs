@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use game::block::id::Id;
+use game::block::blocks::Block;
 use game::chat::commands::ChatCommand;
 use game::chat::commands::give_to_inventory;
 use game::chat::commands::set_loaded_block;
@@ -48,14 +48,14 @@ fn parses_numeric_beta_ids_and_three_commands() {
         parse_command("/setblock -1 70 2 0").unwrap(),
         ChatCommand::SetBlock {
             position: IVec3::new(-1, 70, 2),
-            block: Id::Air
+            block: Block::Air
         }
     );
     assert_eq!(
         parse_command("/setblock 1 4 3 1").unwrap(),
         ChatCommand::SetBlock {
             position: IVec3::new(1, 4, 3),
-            block: Id::Stone
+            block: Block::Stone
         }
     );
     assert_eq!(
@@ -76,14 +76,14 @@ fn parses_numeric_beta_ids_and_three_commands() {
         parse_command("/wireframe set 9").unwrap(),
         ChatCommand::Wireframe {
             enabled: true,
-            block: Some(Id::Water)
+            block: Some(Block::Water)
         }
     );
     assert_eq!(
         parse_command("/wireframe set 2").unwrap(),
         ChatCommand::Wireframe {
             enabled: true,
-            block: Some(Id::Grass)
+            block: Some(Block::Grass)
         }
     );
 }
@@ -162,20 +162,20 @@ fn world_with(chunk: Chunk) -> WorldChunks {
 #[test]
 fn setblock_changes_only_loaded_cells_and_preserves_previous_metadata_for_ticks() {
     let mut chunk = Chunk::new();
-    chunk.set_with_metadata(1, 70, 2, Id::Crops, 7);
+    chunk.set_with_metadata(1, 70, 2, Block::Crops, 7);
     let mut world = world_with(chunk);
     let pos = IVec3::new(1, 70, 2);
     assert_eq!(
-        set_loaded_block(&mut world, pos, Id::Stone),
-        Ok(Some((Id::Crops, 7)))
+        set_loaded_block(&mut world, pos, Block::Stone),
+        Ok(Some((Block::Crops, 7)))
     );
-    assert_eq!(world.block_at(1, 70, 2), Some(Id::Stone));
+    assert_eq!(world.block_at(1, 70, 2), Some(Block::Stone));
     assert_eq!(world.metadata_at(1, 70, 2), 0);
-    assert_eq!(set_loaded_block(&mut world, pos, Id::Stone), Ok(None));
-    assert!(set_loaded_block(&mut world, IVec3::new(20, 70, 2), Id::Stone).is_err());
-    assert!(set_loaded_block(&mut world, IVec3::new(1, 128, 2), Id::Stone).is_err());
+    assert_eq!(set_loaded_block(&mut world, pos, Block::Stone), Ok(None));
+    assert!(set_loaded_block(&mut world, IVec3::new(20, 70, 2), Block::Stone).is_err());
+    assert!(set_loaded_block(&mut world, IVec3::new(1, 128, 2), Block::Stone).is_err());
     let mut ticks = BlockTicks::default();
-    ticks.block_changed(pos, Id::Crops, 7);
+    ticks.block_changed(pos, Block::Crops, 7);
     assert!(ticks.has_pending_events());
 }
 
@@ -325,7 +325,7 @@ fn submitted_commands_change_player_inventory_and_world() {
     use game::ui::icons::overlay::UiFont;
 
     let mut chunk = Chunk::new();
-    chunk.set(1, 70, 2, Id::Dirt);
+    chunk.set(1, 70, 2, Block::Dirt);
     let mut app = App::new();
     app.add_plugins((MinimalPlugins, StatesPlugin))
         .init_state::<AppScreen>()
@@ -411,7 +411,7 @@ fn submitted_commands_change_player_inventory_and_world() {
     assert_eq!(player.1.slots[1].unwrap().count(), 6);
     assert_eq!(
         app.world().resource::<WorldChunks>().block_at(1, 70, 2),
-        Some(Id::Stone)
+        Some(Block::Stone)
     );
     assert!(app.world().resource::<BlockTicks>().has_pending_events());
     assert!(
@@ -617,7 +617,7 @@ fn help_and_time_work_without_player_and_preserve_scheduled_delays() {
     let pos = IVec3::new(1, 70, 2);
     app.world_mut()
         .resource_mut::<BlockTicks>()
-        .schedule(pos, Id::FlowingWater, 7);
+        .schedule(pos, Block::FlowingWater, 7);
     app.world_mut().resource_mut::<WorldTick>().advance(0.1);
     for (command, expected) in [
         ("/time night", 13000),

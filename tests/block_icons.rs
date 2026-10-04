@@ -1,4 +1,4 @@
-use game::block::id::Id;
+use game::block::blocks::Block;
 use game::rendering::icons::ICON_SIZE;
 use game::rendering::icons::rasterize_icon;
 
@@ -18,7 +18,7 @@ fn wood_icon_has_top_and_differently_lit_sides() {
             }
         }
     }
-    let icon = rasterize_icon(&terrain, 256, Id::Wood);
+    let icon = rasterize_icon(&terrain, 256, Block::Wood);
     assert_eq!(pixel(&icon, 0, 0), [0, 0, 0, 0]);
     assert_eq!(pixel(&icon, 16, 5), [220, 30, 20, 255]);
     let left = pixel(&icon, 8, 18);
@@ -31,7 +31,7 @@ fn wood_icon_has_top_and_differently_lit_sides() {
 #[test]
 fn transparent_texels_remain_transparent() {
     let terrain = vec![0; 256 * 256 * 4];
-    let icon = rasterize_icon(&terrain, 256, Id::Leaves);
+    let icon = rasterize_icon(&terrain, 256, Block::Leaves);
     assert!(icon.chunks_exact(4).all(|pixel| pixel[3] == 0));
 }
 
@@ -53,6 +53,6 @@ fn padded_terrain_samples_inner_tile_pixels() {
             terrain[at..at + 4].copy_from_slice(&[0, 200, 0, 255]);
         }
     }
-    let icon = rasterize_icon(&terrain, width as u32, Id::Stone);
+    let icon = rasterize_icon(&terrain, width as u32, Block::Stone);
     assert_eq!(pixel(&icon, 16, 8), [0, 200, 0, 255]);
 }

@@ -368,7 +368,7 @@ fn idle_hud_and_inventory_stop_invalidating_ui_components() {
         .world_mut()
         .query_filtered::<&mut Hotbar, With<Player>>();
     hotbars.single_mut(app.world_mut()).unwrap().slots[0] =
-        Some(ItemStack::from_block(game::block::id::Id::Dirt, 64).unwrap());
+        Some(ItemStack::from_block(game::block::blocks::Block::Dirt, 64).unwrap());
     app.update();
     assert!(app.world().resource::<UiChanges>().0 > 0);
     app.update();

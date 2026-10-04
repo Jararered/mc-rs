@@ -32,11 +32,12 @@ fn lightning_needs_an_exposed_nondry_column() {
         super::block_ticks::generated(Chunk::new(), Biome::Plains),
     );
     assert!(can_strike(&chunks, 8, 65, 8));
-    chunks
-        .get_mut(ChunkPosition::ZERO)
-        .unwrap()
-        .chunk
-        .set(8, 70, 8, game::block::id::Id::Stone);
+    chunks.get_mut(ChunkPosition::ZERO).unwrap().chunk.set(
+        8,
+        70,
+        8,
+        game::block::blocks::Block::Stone,
+    );
     assert!(!can_strike(&chunks, 8, 65, 8));
     let mut desert = WorldChunks::default();
     desert.insert(

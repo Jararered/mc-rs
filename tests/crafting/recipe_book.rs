@@ -1,4 +1,4 @@
-use game::block::id::Id;
+use game::block::blocks::Block;
 use game::crafting::CraftingGrid;
 use game::crafting::beta_recipe_book;
 use game::item::ItemId;
@@ -11,8 +11,11 @@ use super::stack;
 fn beta_book_crafts_common_items_in_two_by_two_and_three_by_three() {
     let book = beta_recipe_book();
     let mut player = CraftingGrid::player();
-    player.set(0, 0, Some(stack(block(Id::Wood), 1)));
-    assert_eq!(book.find(&player).unwrap().item(), block(Id::WoodenPlanks));
+    player.set(0, 0, Some(stack(block(Block::Wood), 1)));
+    assert_eq!(
+        book.find(&player).unwrap().item(),
+        block(Block::WoodenPlanks)
+    );
     assert_eq!(book.find(&player).unwrap().count(), 4);
 
     let mut workbench = CraftingGrid::workbench();
@@ -21,7 +24,10 @@ fn beta_book_crafts_common_items_in_two_by_two_and_three_by_three() {
             workbench.set(x, y, Some(stack(ItemId::IronIngot, 1)));
         }
     }
-    assert_eq!(book.find(&workbench).unwrap().item(), block(Id::IronBlock));
+    assert_eq!(
+        book.find(&workbench).unwrap().item(),
+        block(Block::IronBlock)
+    );
     assert!(book.find(&player).is_some());
 }
 
@@ -43,14 +49,14 @@ fn paper_recipe_uses_three_sugar_cane_in_any_arrangement() {
 fn logs_craft_into_matching_species_of_planks() {
     let book = beta_recipe_book();
     for (log, species, planks) in [
-        (Id::Wood, 0, Id::WoodenPlanks),
-        (Id::SpruceWood, 1, Id::SprucePlanks),
-        (Id::BirchWood, 2, Id::BirchPlanks),
+        (Block::Wood, 0, Block::WoodenPlanks),
+        (Block::SpruceWood, 1, Block::SprucePlanks),
+        (Block::BirchWood, 2, Block::BirchPlanks),
     ] {
         let mut grid = CraftingGrid::player();
         grid.set(0, 0, Some(ItemStack::from_block(log, 1).unwrap()));
         let output = book.find(&grid).expect("a log should craft into planks");
-        assert_eq!(output.item(), block(Id::WoodenPlanks));
+        assert_eq!(output.item(), block(Block::WoodenPlanks));
         assert_eq!(output.count(), 4);
         assert_eq!(output.data(), species);
         assert_eq!(output.runtime_block(), Some(planks));

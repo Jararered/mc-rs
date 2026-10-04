@@ -1,4 +1,4 @@
-use crate::block::id::Id;
+use crate::block::blocks::Block;
 use crate::block::properties::is_crossed_plant;
 use crate::block::properties::is_torch;
 use crate::world::chunk::CHUNK_HEIGHT;
@@ -57,17 +57,17 @@ impl Heightmap {
 
 /// Blocks that raise the ground surface. Plants and torches stand in the air
 /// cell above that surface, and tree logs and leaves above it.
-fn occupies_column(block: Id) -> bool {
+fn occupies_column(block: Block) -> bool {
     !matches!(
         block,
-        Id::Air
-            | Id::Water
-            | Id::Wood
-            | Id::BirchWood
-            | Id::SpruceWood
-            | Id::Leaves
-            | Id::BirchLeaves
-            | Id::SpruceLeaves
+        Block::Air
+            | Block::Water
+            | Block::Wood
+            | Block::BirchWood
+            | Block::SpruceWood
+            | Block::Leaves
+            | Block::BirchLeaves
+            | Block::SpruceLeaves
     ) && !block.is_ladder()
         && !is_torch(block)
         && !is_crossed_plant(block)

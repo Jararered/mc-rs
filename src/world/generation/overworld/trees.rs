@@ -2,7 +2,7 @@
 //! and `WorldGenBigTree`, run on the population world with the population
 //! random, so each tree consumes exactly the draws Beta's does.
 
-use crate::block::id::Id;
+use crate::block::blocks::Block;
 use crate::block::properties::is_opaque_cube;
 use crate::random::JavaRandom;
 use crate::world::chunk::CHUNK_HEIGHT;
@@ -72,10 +72,17 @@ pub(super) fn generate_tree(
     z: i32,
 ) -> bool {
     match kind {
-        TreeKind::Oak => generate_standard(world, rand, x, y, z, Id::Wood, Id::Leaves, 4),
-        TreeKind::Birch => {
-            generate_standard(world, rand, x, y, z, Id::BirchWood, Id::BirchLeaves, 5)
-        }
+        TreeKind::Oak => generate_standard(world, rand, x, y, z, Block::Wood, Block::Leaves, 4),
+        TreeKind::Birch => generate_standard(
+            world,
+            rand,
+            x,
+            y,
+            z,
+            Block::BirchWood,
+            Block::BirchLeaves,
+            5,
+        ),
         TreeKind::Spruce1 => generate_taiga1(world, rand, x, y, z),
         TreeKind::Spruce2 => generate_taiga2(world, rand, x, y, z),
         // Population calls `func_517_a(1.0, 1.0, 1.0)` on every generator,
@@ -107,8 +114,8 @@ fn space_is_clear(
     true
 }
 
-fn grows_on(block: Id) -> bool {
-    matches!(block, Id::Grass | Id::Dirt)
+fn grows_on(block: Block) -> bool {
+    matches!(block, Block::Grass | Block::Dirt)
 }
 
 /// `WorldGenTrees` and `WorldGenForest`, which differ only in trunk height and
@@ -120,8 +127,8 @@ fn generate_standard(
     x: i32,
     y: i32,
     z: i32,
-    wood: Id,
-    leaves: Id,
+    wood: Block,
+    leaves: Block,
     base_height: i32,
 ) -> bool {
     let height = rand.next_int(3) as i32 + base_height;
@@ -140,7 +147,7 @@ fn generate_standard(
     if !clear || !grows_on(world.get(x, y - 1, z)) || y >= HEIGHT - height - 1 {
         return false;
     }
-    world.set(x, y - 1, z, Id::Dirt);
+    world.set(x, y - 1, z, Block::Dirt);
     for level in y - 3 + height..=y + height {
         let offset = level - (y + height);
         let radius = 1 - offset / 2;
@@ -187,7 +194,7 @@ fn generate_taiga1(
     if !clear || !grows_on(world.get(x, y - 1, z)) || y >= HEIGHT - height - 1 {
         return false;
     }
-    world.set(x, y - 1, z, Id::Dirt);
+    world.set(x, y - 1, z, Block::Dirt);
     let mut radius = 0;
     let mut level = y + height;
     while level >= y + trunk {
@@ -198,7 +205,7 @@ fn generate_taiga1(
                 if (dx.abs() != radius || dz.abs() != radius || radius <= 0)
                     && !is_opaque_cube(world.get(lx, level, lz))
                 {
-                    world.set(lx, level, lz, Id::SpruceLeaves);
+                    world.set(lx, level, lz, Block::SpruceLeaves);
                 }
             }
         }
@@ -211,7 +218,7 @@ fn generate_taiga1(
     }
     for level in 0..height - 1 {
         if is_air_or_leaves(world.get(x, y + level, z)) {
-            world.set(x, y + level, z, Id::SpruceWood);
+            world.set(x, y + level, z, Block::SpruceWood);
         }
     }
     true
@@ -238,7 +245,7 @@ fn generate_taiga2(
     if !clear || !grows_on(world.get(x, y - 1, z)) || y >= HEIGHT - height - 1 {
         return false;
     }
-    world.set(x, y - 1, z, Id::Dirt);
+    world.set(x, y - 1, z, Block::Dirt);
     let mut radius = rand.next_int(2) as i32;
     let mut threshold = 1;
     let mut next_radius = 0;
@@ -251,7 +258,7 @@ fn generate_taiga2(
                 if (dx.abs() != radius || dz.abs() != radius || radius <= 0)
                     && !is_opaque_cube(world.get(lx, level, lz))
                 {
-                    world.set(lx, level, lz, Id::SpruceLeaves);
+                    world.set(lx, level, lz, Block::SpruceLeaves);
                 }
             }
         }
@@ -269,7 +276,7 @@ fn generate_taiga2(
     let trunk_gap = rand.next_int(3) as i32;
     for level in 0..height - trunk_gap {
         if is_air_or_leaves(world.get(x, y + level, z)) {
-            world.set(x, y + level, z, Id::SpruceWood);
+            world.set(x, y + level, z, Block::SpruceWood);
         }
     }
     true
@@ -507,7 +514,7 @@ impl BigTree {
                 }
                 let (lx, lz) = (x + offset_x, z + offset_z);
                 if is_air_or_leaves(world.get(lx, y, lz)) {
-                    world.set(lx, y, lz, Id::Leaves);
+                    world.set(lx, y, lz, Block::Leaves);
                 }
             }
         }
@@ -558,7 +565,7 @@ impl BigTree {
             pos[axis] = (f64::from(from[axis] + offset) + 0.5).floor() as i32;
             pos[a] = (f64::from(from[a]) + f64::from(offset) * slope_a + 0.5).floor() as i32;
             pos[b] = (f64::from(from[b]) + f64::from(offset) * slope_b + 0.5).floor() as i32;
-            world.set(pos[0], pos[1], pos[2], Id::Wood);
+            world.set(pos[0], pos[1], pos[2], Block::Wood);
             offset += step;
         }
     }

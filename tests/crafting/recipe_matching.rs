@@ -1,4 +1,4 @@
-use game::block::id::Id;
+use game::block::blocks::Block;
 use game::crafting::CraftingGrid;
 use game::crafting::Ingredient;
 use game::crafting::IngredientData;
@@ -20,7 +20,7 @@ fn shaped_recipes_offset_and_mirror_inside_three_by_three() {
             None,
             Some(Ingredient::any(ItemId::Diamond)),
         ],
-        output: stack(block(Id::Torch), 1),
+        output: stack(block(Block::Torch), 1),
     };
     let mut grid = CraftingGrid::workbench();
     grid.set(1, 1, Some(stack(ItemId::Coal, 1)));

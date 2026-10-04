@@ -1,4 +1,4 @@
-use game::block::id::Id;
+use game::block::blocks::Block;
 use game::rendering::meshing::BlockLighting;
 use game::rendering::meshing::ChunkNeighbors;
 use game::rendering::meshing::mesh_chunk_with_biomes;
@@ -53,8 +53,8 @@ fn grass_color_varies_with_climate_within_one_biome() {
 #[test]
 fn crossed_grass_mesh_uses_each_column_biome_grass_color() {
     let mut chunk = Chunk::new();
-    chunk.set(2, 64, 3, Id::TallGrass);
-    chunk.set(4, 64, 5, Id::Fern);
+    chunk.set(2, 64, 3, Block::TallGrass);
+    chunk.set(4, 64, 5, Block::Fern);
     let wet = Climate {
         temperature: 0.5,
         humidity: 0.5,
@@ -122,8 +122,8 @@ fn greedy_grass_tops_merge_only_when_the_quantized_tint_matches() {
 
     let top_quads = |biomes: &BiomeMap| {
         let mut chunk = Chunk::new();
-        chunk.set(2, 2, 4, Id::Grass);
-        chunk.set(3, 2, 4, Id::Grass);
+        chunk.set(2, 2, 4, Block::Grass);
+        chunk.set(3, 2, 4, Block::Grass);
         let meshes = mesh_chunk_with_biomes(
             &chunk,
             &ChunkNeighbors::default(),
@@ -173,9 +173,9 @@ fn greedy_grass_tops_merge_only_when_the_quantized_tint_matches() {
 
 #[test]
 fn grass_side_under_snow_draws_the_snowcapped_tile_and_drops_the_overlay() {
-    let sides_and_overlays = |cover: Option<Id>| {
+    let sides_and_overlays = |cover: Option<Block>| {
         let mut chunk = Chunk::new();
-        chunk.set(2, 2, 4, Id::Grass);
+        chunk.set(2, 2, 4, Block::Grass);
         if let Some(cover) = cover {
             chunk.set(2, 3, 4, cover);
         }
@@ -211,7 +211,7 @@ fn grass_side_under_snow_draws_the_snowcapped_tile_and_drops_the_overlay() {
     // `BlockGrass.getBlockTexture` swaps the side tile for 68 under either
     // `Material.snow` or `Material.builtSnow`, and `RenderBlocks` then skips
     // the overlay because the tile is no longer 3.
-    for cover in [Id::SnowLayer, Id::Snow] {
+    for cover in [Block::SnowLayer, Block::Snow] {
         let (covered, overlays) = sides_and_overlays(Some(cover));
         assert_eq!(covered.len(), 4);
         assert!(
@@ -225,9 +225,9 @@ fn grass_side_under_snow_draws_the_snowcapped_tile_and_drops_the_overlay() {
 #[test]
 fn greedy_grass_sides_do_not_merge_across_a_snow_cover_boundary() {
     let mut chunk = Chunk::new();
-    chunk.set(2, 2, 4, Id::Grass);
-    chunk.set(3, 2, 4, Id::Grass);
-    chunk.set(3, 3, 4, Id::Snow);
+    chunk.set(2, 2, 4, Block::Grass);
+    chunk.set(3, 2, 4, Block::Grass);
+    chunk.set(3, 3, 4, Block::Snow);
     let meshes = mesh_chunk_with_biomes(
         &chunk,
         &ChunkNeighbors::default(),
@@ -299,11 +299,11 @@ fn fancy_grass_overlays_share_the_base_faces_packed_triangles() {
             let mut chunk = Chunk::new();
             for x in 1..7 {
                 for z in 1..7 {
-                    chunk.set(x, 2, z, Id::Grass);
+                    chunk.set(x, 2, z, Block::Grass);
                 }
             }
             if torch {
-                chunk.set(3, 2, 0, Id::Torch);
+                chunk.set(3, 2, 0, Block::Torch);
             }
             let meshes = mesh_chunk_with_biomes(
                 &chunk,

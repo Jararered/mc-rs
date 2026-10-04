@@ -5,7 +5,7 @@
 //! provides the gameplay properties consumed by physics, mining, picking, and
 //! lighting.
 
-use super::id::Id;
+use super::blocks::Block;
 use std::sync::LazyLock;
 
 pub type BlockBounds = ([f32; 3], [f32; 3]);
@@ -79,37 +79,37 @@ impl BlockProperties {
 /// variants can share an implementation while preserving their distinct
 /// behavior.
 pub trait BlockDefinition: Sync {
-    fn in_world(&self, id: Id) -> bool;
-    fn properties(&self, id: Id) -> BlockProperties;
+    fn in_world(&self, block: Block) -> bool;
+    fn properties(&self, block: Block) -> BlockProperties;
 
     /// Hot-path scalar queries have defaults for ordinary full opaque cubes.
     /// Special families override them so lighting and meshing do not build a
     /// complete property record for each sampled voxel.
-    fn opaque_cube(&self, _id: Id) -> bool {
+    fn opaque_cube(&self, _block: Block) -> bool {
         true
     }
 
-    fn light_opacity(&self, _id: Id) -> u8 {
+    fn light_opacity(&self, _block: Block) -> u8 {
         15
     }
 
-    fn light_emission(&self, _id: Id) -> u8 {
+    fn light_emission(&self, _block: Block) -> u8 {
         0
     }
 
-    fn crossed_plant(&self, _id: Id) -> bool {
+    fn crossed_plant(&self, _block: Block) -> bool {
         false
     }
 
-    fn torch(&self, _id: Id) -> bool {
+    fn torch(&self, _block: Block) -> bool {
         false
     }
 }
 
 /// Resolve a compact block value to its static family definition.
 #[inline]
-pub fn definition(id: Id) -> &'static dyn BlockDefinition {
-    super::registry::definition(id)
+pub fn definition(block: Block) -> &'static dyn BlockDefinition {
+    super::registry::definition(block)
 }
 
 /// Cached block properties for hot voxel queries. The table is initialized
@@ -117,7 +117,7 @@ pub fn definition(id: Id) -> &'static dyn BlockDefinition {
 static BLOCK_PROPERTIES: LazyLock<[BlockProperties; 256]> = LazyLock::new(|| {
     std::array::from_fn(|raw| {
         let raw = raw as u8;
-        let state = Id::from_u8(raw).unwrap_or(Id::Unknown(raw));
+        let state = Block::from_u8(raw).unwrap_or(Block::Unknown(raw));
         definition(state).properties(state)
     })
 });
@@ -127,19 +127,19 @@ pub fn properties_table() -> &'static [BlockProperties; 256] {
 }
 
 #[inline]
-pub fn properties(id: Id) -> BlockProperties {
-    match id {
-        Id::Unknown(_) => BlockProperties::unknown(),
-        _ => properties_table()[id.as_u8() as usize],
+pub fn properties(block: Block) -> BlockProperties {
+    match block {
+        Block::Unknown(_) => BlockProperties::unknown(),
+        _ => properties_table()[block.as_u8() as usize],
     }
 }
 
 #[inline]
-pub fn light_opacity(id: Id) -> u8 {
-    properties(id).light_opacity
+pub fn light_opacity(block: Block) -> u8 {
+    properties(block).light_opacity
 }
 
 #[inline]
-pub fn light_emission(id: Id) -> u8 {
-    properties(id).light_emission
+pub fn light_emission(block: Block) -> u8 {
+    properties(block).light_emission
 }

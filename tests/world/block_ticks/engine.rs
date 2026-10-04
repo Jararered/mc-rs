@@ -1,5 +1,5 @@
 use bevy::math::IVec3;
-use game::block::id::Id;
+use game::block::blocks::Block;
 use game::world::block_ticks::BlockChange;
 use game::world::block_ticks::BlockTicks;
 use game::world::block_ticks::MAX_SCHEDULED_PER_TICK;
@@ -22,7 +22,7 @@ fn chunk_metadata_is_a_nibble_that_resets_when_the_block_changes() {
         chunk.raw_metadata().is_none(),
         "no storage until a value is set"
     );
-    chunk.set_with_metadata(3, 70, 5, Id::FlowingWater, 0x1b);
+    chunk.set_with_metadata(3, 70, 5, Block::FlowingWater, 0x1b);
     assert_eq!(chunk.metadata(3, 70, 5), 0x0b, "only four bits are kept");
     assert_eq!(
         chunk.metadata(2, 70, 5),
@@ -35,9 +35,9 @@ fn chunk_metadata_is_a_nibble_that_resets_when_the_block_changes() {
 
     // `setBlockID` zeroes the metadata of a different block, but setting
     // the same block keeps it.
-    chunk.set(3, 70, 5, Id::FlowingWater);
+    chunk.set(3, 70, 5, Block::FlowingWater);
     assert_eq!(chunk.metadata(3, 70, 5), 0x0b);
-    chunk.set(3, 70, 5, Id::Stone);
+    chunk.set(3, 70, 5, Block::Stone);
     assert_eq!(chunk.metadata(3, 70, 5), 0);
 
     // Clones share storage until one is written.
@@ -50,9 +50,9 @@ fn chunk_metadata_is_a_nibble_that_resets_when_the_block_changes() {
 fn a_scheduled_tick_runs_once_its_delay_has_passed() {
     let mut world = TestWorld::new(2);
     let sand = at(8, 70, 8);
-    world.place(sand, Id::Sand);
+    world.place(sand, Block::Sand);
     assert!(
-        world.ticks.is_scheduled(sand, Id::Sand),
+        world.ticks.is_scheduled(sand, Block::Sand),
         "sand schedules itself when added"
     );
 
@@ -66,27 +66,27 @@ fn a_scheduled_tick_runs_once_its_delay_has_passed() {
         world.effects(),
         vec![TickEffect::FallingBlock {
             position: sand,
-            block: Id::Sand,
+            block: Block::Sand,
         }]
     );
-    assert!(!world.ticks.is_scheduled(sand, Id::Sand));
+    assert!(!world.ticks.is_scheduled(sand, Block::Sand));
 }
 
 #[test]
 fn a_pending_tick_is_never_scheduled_twice_and_keeps_its_first_due_time() {
     let mut ticks = BlockTicks::new(0);
     let cell = at(1, 64, 1);
-    ticks.schedule(cell, Id::Sand, 10);
-    ticks.schedule(cell, Id::Sand, 5);
-    ticks.schedule(cell, Id::Gravel, 7);
+    ticks.schedule(cell, Block::Sand, 10);
+    ticks.schedule(cell, Block::Sand, 5);
+    ticks.schedule(cell, Block::Gravel, 7);
     let scheduled: Vec<_> = ticks.scheduled().collect();
     assert_eq!(
         scheduled.len(),
         2,
         "a different block at the cell is its own entry"
     );
-    assert_eq!(scheduled[0].block, Id::Gravel);
-    assert_eq!((scheduled[1].block, scheduled[1].due), (Id::Sand, 10));
+    assert_eq!(scheduled[0].block, Block::Gravel);
+    assert_eq!((scheduled[1].block, scheduled[1].due), (Block::Sand, 10));
 }
 
 #[test]
@@ -96,10 +96,10 @@ fn due_ticks_run_in_due_order_then_scheduling_order() {
     // spawns its falling entity in the order the ticks were scheduled.
     let cells = [at(2, 70, 2), at(4, 70, 4), at(6, 70, 6)];
     for (index, cell) in cells.into_iter().enumerate() {
-        world.set(cell, Id::Sand);
+        world.set(cell, Block::Sand);
         world
             .ticks
-            .schedule(cell, Id::Sand, if index == 0 { 2 } else { 1 });
+            .schedule(cell, Block::Sand, if index == 0 { 2 } else { 1 });
     }
     world.run(2);
     let order: Vec<_> = world
@@ -118,11 +118,11 @@ fn due_ticks_run_in_due_order_then_scheduling_order() {
 fn a_tick_for_a_block_that_was_replaced_does_nothing() {
     let mut world = TestWorld::new(2);
     let cell = at(8, 70, 8);
-    world.place(cell, Id::Sand);
-    world.set(cell, Id::Stone);
+    world.place(cell, Block::Sand);
+    world.set(cell, Block::Stone);
     world.run(5);
     assert!(world.effects().is_empty());
-    assert_eq!(world.block(cell), Id::Stone);
+    assert_eq!(world.block(cell), Block::Stone);
 }
 
 #[test]
@@ -131,12 +131,12 @@ fn a_tick_waits_while_its_surroundings_are_not_loaded() {
     // blocks around it that Beta requires.
     let mut world = TestWorld::new(0);
     let cell = at(1, 70, 8);
-    world.set(cell, Id::Sand);
-    world.ticks.schedule(cell, Id::Sand, 1);
+    world.set(cell, Block::Sand);
+    world.ticks.schedule(cell, Block::Sand, 1);
     world.run(5);
     assert!(world.effects().is_empty());
     assert!(
-        world.ticks.is_scheduled(cell, Id::Sand),
+        world.ticks.is_scheduled(cell, Block::Sand),
         "the tick is kept for when the area loads"
     );
 }
@@ -145,13 +145,13 @@ fn a_tick_waits_while_its_surroundings_are_not_loaded() {
 fn at_most_a_thousand_scheduled_ticks_run_per_world_tick() {
     let mut world = TestWorld::new(1);
     // Supported sand: every tick runs and nothing falls.
-    world.fill(at(0, 0, 0), at(15, 0, 15), Id::Stone);
+    world.fill(at(0, 0, 0), at(15, 0, 15), Block::Stone);
     let mut scheduled = 0;
     'fill: for x in 0..16 {
         for z in 0..16 {
             for y in 1..10 {
-                world.set(at(x, y, z), Id::Sand);
-                world.ticks.schedule(at(x, y, z), Id::Sand, 1);
+                world.set(at(x, y, z), Block::Sand);
+                world.ticks.schedule(at(x, y, z), Block::Sand, 1);
                 scheduled += 1;
                 if scheduled == MAX_SCHEDULED_PER_TICK + 200 {
                     break 'fill;
@@ -168,23 +168,23 @@ fn random_ticks_reach_eighty_cells_per_chunk_and_only_ticking_blocks() {
     let mut world = TestWorld::new(1);
     // Fill the whole chunk with lit redstone ore, which every random tick
     // puts out.
-    world.fill(at(0, 0, 0), at(15, 127, 15), Id::LitRedstoneOre);
+    world.fill(at(0, 0, 0), at(15, 127, 15), Block::LitRedstoneOre);
     world.run_with_random(1, &[ChunkPosition::ZERO]);
     let dimmed = world
         .changes()
         .iter()
-        .filter(|change| change.block == Id::RedstoneOre)
+        .filter(|change| change.block == Block::RedstoneOre)
         .count();
     assert!(
         (60..=RANDOM_TICKS_PER_CHUNK).contains(&dimmed),
         "80 samples, with a few repeats: {dimmed}"
     );
 
-    assert!(ticks_randomly(Id::LitRedstoneOre.as_u8()));
-    assert!(!ticks_randomly(Id::RedstoneOre.as_u8()));
-    assert!(!ticks_randomly(Id::Stone.as_u8()));
-    assert!(ticks_randomly(Id::Grass.as_u8()));
-    assert!(behavior(Id::Grass).ticks_randomly(Id::Grass));
+    assert!(ticks_randomly(Block::LitRedstoneOre.as_u8()));
+    assert!(!ticks_randomly(Block::RedstoneOre.as_u8()));
+    assert!(!ticks_randomly(Block::Stone.as_u8()));
+    assert!(ticks_randomly(Block::Grass.as_u8()));
+    assert!(behavior(Block::Grass).ticks_randomly(Block::Grass));
 }
 
 #[test]
@@ -192,10 +192,10 @@ fn unloading_a_chunk_saves_its_pending_ticks_with_their_remaining_delay() {
     let mut world = TestWorld::new(1);
     world.run(10);
     let cell = at(-3, 64, 5);
-    world.set(cell, Id::Sand);
-    world.ticks.schedule(cell, Id::Sand, world.time + 7);
+    world.set(cell, Block::Sand);
+    world.ticks.schedule(cell, Block::Sand, world.time + 7);
     let other = at(20, 64, 5);
-    world.ticks.schedule(other, Id::Sand, world.time + 2);
+    world.ticks.schedule(other, Block::Sand, world.time + 2);
 
     let position = ChunkPosition::from_block(cell.x, cell.z);
     let mut generated = world.chunks.remove(position).unwrap();
@@ -204,13 +204,13 @@ fn unloading_a_chunk_saves_its_pending_ticks_with_their_remaining_delay() {
         generated.chunk.pending_ticks(),
         &[PendingTick {
             index: Chunk::index(13, 64, 5) as u16,
-            block: Id::Sand,
+            block: Block::Sand,
             delay: 7,
         }]
     );
-    assert!(!world.ticks.is_scheduled(cell, Id::Sand));
+    assert!(!world.ticks.is_scheduled(cell, Block::Sand));
     assert!(
-        world.ticks.is_scheduled(other, Id::Sand),
+        world.ticks.is_scheduled(other, Block::Sand),
         "other chunks keep theirs"
     );
 
@@ -232,12 +232,20 @@ fn changing_a_block_notifies_all_six_neighbors() {
     // Still water on every side of the changed cell turns flowing.
     let center = at(8, 64, 8);
     for offset in game::world::block_ticks::NEIGHBORS {
-        world.set(center + offset, Id::Water);
+        world.set(center + offset, Block::Water);
     }
-    world.place(center, Id::Stone);
+    world.place(center, Block::Stone);
     for offset in game::world::block_ticks::NEIGHBORS {
-        assert_eq!(world.block(center + offset), Id::FlowingWater, "{offset}");
-        assert!(world.ticks.is_scheduled(center + offset, Id::FlowingWater));
+        assert_eq!(
+            world.block(center + offset),
+            Block::FlowingWater,
+            "{offset}"
+        );
+        assert!(
+            world
+                .ticks
+                .is_scheduled(center + offset, Block::FlowingWater)
+        );
     }
 }
 
@@ -250,28 +258,28 @@ fn block_changes_know_when_they_change_light_or_meshes() {
         block,
         metadata,
     };
-    assert!(change(Id::Stone, 0, Id::Air, 0).changes_light());
-    assert!(change(Id::RedstoneOre, 0, Id::LitRedstoneOre, 0).changes_light());
-    assert!(!change(Id::Water, 0, Id::FlowingWater, 0).changes_light());
-    assert!(!change(Id::Crops, 1, Id::Crops, 2).changes_light());
-    assert!(!change(Id::Grass, 0, Id::Dirt, 0).changes_light());
+    assert!(change(Block::Stone, 0, Block::Air, 0).changes_light());
+    assert!(change(Block::RedstoneOre, 0, Block::LitRedstoneOre, 0).changes_light());
+    assert!(!change(Block::Water, 0, Block::FlowingWater, 0).changes_light());
+    assert!(!change(Block::Crops, 1, Block::Crops, 2).changes_light());
+    assert!(!change(Block::Grass, 0, Block::Dirt, 0).changes_light());
 
     // Only changes the mesher can see are remeshed.
-    assert!(!change(Id::FlowingLava, 0, Id::Lava, 0).needs_remesh());
-    assert!(change(Id::FlowingWater, 1, Id::FlowingWater, 2).needs_remesh());
-    assert!(change(Id::Crops, 1, Id::Crops, 2).needs_remesh());
-    assert!(!change(Id::Leaves, 0, Id::Leaves, 8).needs_remesh());
-    assert!(!change(Id::Cactus, 3, Id::Cactus, 4).needs_remesh());
-    assert!(!change(Id::Farmland, 7, Id::Farmland, 6).needs_remesh());
-    assert!(change(Id::Farmland, 1, Id::Farmland, 0).needs_remesh());
-    assert!(change(Id::Grass, 0, Id::Dirt, 0).needs_remesh());
-    assert!(change(Id::RedstoneOre, 0, Id::LitRedstoneOre, 0).needs_remesh());
+    assert!(!change(Block::FlowingLava, 0, Block::Lava, 0).needs_remesh());
+    assert!(change(Block::FlowingWater, 1, Block::FlowingWater, 2).needs_remesh());
+    assert!(change(Block::Crops, 1, Block::Crops, 2).needs_remesh());
+    assert!(!change(Block::Leaves, 0, Block::Leaves, 8).needs_remesh());
+    assert!(!change(Block::Cactus, 3, Block::Cactus, 4).needs_remesh());
+    assert!(!change(Block::Farmland, 7, Block::Farmland, 6).needs_remesh());
+    assert!(change(Block::Farmland, 1, Block::Farmland, 0).needs_remesh());
+    assert!(change(Block::Grass, 0, Block::Dirt, 0).needs_remesh());
+    assert!(change(Block::RedstoneOre, 0, Block::LitRedstoneOre, 0).needs_remesh());
 }
 
 #[test]
 fn the_light_cache_answers_from_a_relit_chunk() {
     let mut world = TestWorld::new(1);
-    world.set(at(8, 64, 8), Id::Torch);
+    world.set(at(8, 64, 8), Block::Torch);
     let mut light = LightCache::default();
     assert_eq!(light.channels(8, 64, 9), None);
     light.relight(&world.chunks, ChunkPosition::ZERO);

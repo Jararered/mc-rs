@@ -410,12 +410,12 @@ pub fn colliding_aabbs(chunks: &WorldChunks, area: Aabb) -> Vec<Aabb> {
 /// Deep snow layers collide as a half slab.
 pub(crate) fn block_collision_box(chunks: &WorldChunks, x: i32, y: i32, z: i32) -> Option<Aabb> {
     let block = chunks.block_at(x, y, z)?;
-    let (min, max) = if block == crate::block::id::Id::SnowLayer && chunks.metadata_at(x, y, z) >= 3
-    {
-        ([0.0; 3], [1.0, 0.5, 1.0])
-    } else {
-        collision_bounds(block)?
-    };
+    let (min, max) =
+        if block == crate::block::blocks::Block::SnowLayer && chunks.metadata_at(x, y, z) >= 3 {
+            ([0.0; 3], [1.0, 0.5, 1.0])
+        } else {
+            collision_bounds(block)?
+        };
     let origin = Vec3::new(x as f32, y as f32, z as f32);
     Some(Aabb::new(
         origin + Vec3::from_array(min),
@@ -662,11 +662,11 @@ pub(crate) fn step_on_block(
     );
     let block = chunks
         .block_at(underfoot.x, underfoot.y, underfoot.z)
-        .unwrap_or(crate::block::id::Id::Air);
+        .unwrap_or(crate::block::blocks::Block::Air);
     let stepped = steps.advance(
         movement.displacement,
         sneaking_on_ground,
-        block == crate::block::id::Id::Air,
+        block == crate::block::blocks::Block::Air,
     );
     if stepped && let Some(block_ticks) = block_ticks {
         block_ticks.push_event(BlockEvent::Walked {
@@ -684,7 +684,7 @@ fn player_is_on_ladder(aabb: Aabb, chunks: &WorldChunks) -> bool {
         .is_some_and(|block| block.is_ladder())
 }
 
-fn block_under_player(chunks: &WorldChunks, aabb: Aabb) -> Option<crate::block::id::Id> {
+fn block_under_player(chunks: &WorldChunks, aabb: Aabb) -> Option<crate::block::blocks::Block> {
     let x = ((aabb.min.x + aabb.max.x) * 0.5).floor() as i32;
     let y = aabb.min.y.floor() as i32 - 1;
     let z = ((aabb.min.z + aabb.max.z) * 0.5).floor() as i32;
@@ -791,7 +791,7 @@ fn water_flow_vector(x: i32, y: i32, z: i32, chunks: &WorldChunks) -> Vec3 {
         (
             chunks
                 .block_at(x, y, z)
-                .unwrap_or(crate::block::id::Id::Air),
+                .unwrap_or(crate::block::blocks::Block::Air),
             chunks.metadata_at(x, y, z),
         )
     });
@@ -821,7 +821,7 @@ pub fn intersects_liquid(aabb: Aabb, chunks: &WorldChunks) -> bool {
 fn contains_liquid_material(
     area: Aabb,
     chunks: &WorldChunks,
-    matches: impl Fn(crate::block::id::Id) -> bool,
+    matches: impl Fn(crate::block::blocks::Block) -> bool,
 ) -> bool {
     let (min_x, max_x, min_y, max_y, min_z, max_z) = block_range(area);
     for x in min_x..max_x {

@@ -3,8 +3,8 @@
 use bevy::prelude::IVec3;
 use bevy::prelude::Vec3;
 
+use crate::block::blocks::Block;
 use crate::block::fluids::is_liquid;
-use crate::block::id::Id;
 use crate::block::properties::is_targetable;
 use crate::block::properties::is_torch;
 use crate::block::properties::selection_bounds;
@@ -58,7 +58,7 @@ pub struct BlockHit {
     pub y: i32,
     pub z: i32,
     pub face: BlockFace,
-    pub block: Id,
+    pub block: Block,
 }
 
 /// Walk the voxel grid from `origin` along `direction` and return the first
@@ -116,7 +116,7 @@ pub fn block_hit_distance(
     direction: Vec3,
 ) -> f32 {
     let (min, mut max) = selection_bounds(hit.block);
-    if hit.block == Id::SnowLayer {
+    if hit.block == Block::SnowLayer {
         max[1] = (f32::from(chunks.metadata_at(hit.x, hit.y, hit.z).min(7)) + 1.0) / 8.0;
     }
     let cell = Vec3::new(hit.x as f32, hit.y as f32, hit.z as f32);
@@ -272,9 +272,9 @@ fn hit_at(
     if !is_targetable(block) && !(include_liquid && is_liquid(block)) {
         return None;
     }
-    if is_torch(block) || matches!(block, Id::SnowLayer | Id::Farmland | Id::Crops) {
+    if is_torch(block) || matches!(block, Block::SnowLayer | Block::Farmland | Block::Crops) {
         let (min, mut max) = selection_bounds(block);
-        if block == Id::SnowLayer {
+        if block == Block::SnowLayer {
             max[1] = (f32::from(chunks.metadata_at(x, y, z).min(7)) + 1.0) / 8.0;
         }
         let block_origin = Vec3::new(x as f32, y as f32, z as f32);

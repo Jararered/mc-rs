@@ -4,7 +4,7 @@
 
 use bevy::math::IVec3;
 
-use crate::block::id::Id;
+use crate::block::blocks::Block;
 use crate::block::properties::cactus_can_stay;
 use crate::block::properties::is_opaque_cube;
 use crate::block::properties::plant_grows_on;
@@ -15,20 +15,20 @@ use crate::world::block_ticks::TickWorld;
 use super::fluid::is_water;
 
 /// `canThisPlantGrowOnThisBlockID` for each `BlockFlower` subclass.
-fn grows_on(plant: Id, ground: Id) -> bool {
+fn grows_on(plant: Block, ground: Block) -> bool {
     match plant {
-        Id::DeadBush => ground == Id::Sand,
-        Id::Crops => ground == Id::Farmland,
-        Id::BrownMushroom | Id::RedMushroom => is_opaque_cube(ground),
+        Block::DeadBush => ground == Block::Sand,
+        Block::Crops => ground == Block::Farmland,
+        Block::BrownMushroom | Block::RedMushroom => is_opaque_cube(ground),
         _ => plant_grows_on(ground),
     }
 }
 
 /// `BlockFlower.canBlockStay`, and `BlockMushroom`'s override: mushrooms need
 /// shade, everything else light or open sky.
-pub fn plant_can_stay(world: &mut TickWorld, position: IVec3, plant: Id) -> bool {
+pub fn plant_can_stay(world: &mut TickWorld, position: IVec3, plant: Block) -> bool {
     let ground = world.block(position - IVec3::Y);
-    if matches!(plant, Id::BrownMushroom | Id::RedMushroom) {
+    if matches!(plant, Block::BrownMushroom | Block::RedMushroom) {
         return world.is_loaded(position)
             && world.full_light(position) < 13
             && grows_on(plant, ground);
@@ -43,7 +43,7 @@ pub fn check_flower_change(world: &mut TickWorld, position: IVec3) {
     if !plant_can_stay(world, position, plant) {
         let metadata = world.metadata(position);
         world.drop_block_as_item(position, plant, metadata);
-        world.set_block_notify(position, Id::Air);
+        world.set_block_notify(position, Block::Air);
     }
 }
 
@@ -52,11 +52,11 @@ pub struct Flower;
 pub static FLOWER: Flower = Flower;
 
 impl BlockBehavior for Flower {
-    fn ticks_randomly(&self, _block: Id) -> bool {
+    fn ticks_randomly(&self, _block: Block) -> bool {
         true
     }
 
-    fn neighbor_changed(&self, world: &mut TickWorld, position: IVec3, _neighbor: Id) {
+    fn neighbor_changed(&self, world: &mut TickWorld, position: IVec3, _neighbor: Block) {
         check_flower_change(world, position);
     }
 
@@ -71,11 +71,11 @@ pub struct Mushroom;
 pub static MUSHROOM: Mushroom = Mushroom;
 
 impl BlockBehavior for Mushroom {
-    fn ticks_randomly(&self, _block: Id) -> bool {
+    fn ticks_randomly(&self, _block: Block) -> bool {
         true
     }
 
-    fn neighbor_changed(&self, world: &mut TickWorld, position: IVec3, _neighbor: Id) {
+    fn neighbor_changed(&self, world: &mut TickWorld, position: IVec3, _neighbor: Block) {
         check_flower_change(world, position);
     }
 
@@ -131,7 +131,7 @@ fn break_off(world: &mut TickWorld, position: IVec3) {
     let block = world.block(position);
     let metadata = world.metadata(position);
     world.drop_block_as_item(position, block, metadata);
-    world.set_block_notify(position, Id::Air);
+    world.set_block_notify(position, Block::Air);
 }
 
 /// Beta `BlockCactus`: grows, and breaks when a solid block touches its side
@@ -140,7 +140,7 @@ pub struct Cactus;
 pub static CACTUS: Cactus = Cactus;
 
 impl BlockBehavior for Cactus {
-    fn ticks_randomly(&self, _block: Id) -> bool {
+    fn ticks_randomly(&self, _block: Block) -> bool {
         true
     }
 
@@ -148,7 +148,7 @@ impl BlockBehavior for Cactus {
         grow_stack(world, position);
     }
 
-    fn neighbor_changed(&self, world: &mut TickWorld, position: IVec3, _neighbor: Id) {
+    fn neighbor_changed(&self, world: &mut TickWorld, position: IVec3, _neighbor: Block) {
         let sides = [IVec3::NEG_X, IVec3::X, IVec3::NEG_Z, IVec3::Z]
             .map(|offset| world.block(position + offset));
         if !cactus_can_stay(world.block(position - IVec3::Y), sides) {
@@ -163,7 +163,7 @@ pub struct Reed;
 pub static REED: Reed = Reed;
 
 impl BlockBehavior for Reed {
-    fn ticks_randomly(&self, _block: Id) -> bool {
+    fn ticks_randomly(&self, _block: Block) -> bool {
         true
     }
 
@@ -173,7 +173,7 @@ impl BlockBehavior for Reed {
 
     /// `BlockReed.checkBlockCoordValid`, with the game's placement rule,
     /// which also accepts sand.
-    fn neighbor_changed(&self, world: &mut TickWorld, position: IVec3, _neighbor: Id) {
+    fn neighbor_changed(&self, world: &mut TickWorld, position: IVec3, _neighbor: Block) {
         let ground = position - IVec3::Y;
         let water = [IVec3::NEG_X, IVec3::X, IVec3::NEG_Z, IVec3::Z]
             .map(|offset| is_water(world.block(ground + offset)));

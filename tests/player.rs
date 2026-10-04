@@ -1,9 +1,9 @@
 use bevy::mesh::VertexAttributeValues;
 use bevy::prelude::Mesh;
 use bevy::prelude::Vec3;
+use game::block::blocks::Block;
+use game::block::blocks::FurnaceFacing;
 use game::block::fluids::Fluid;
-use game::block::id::FurnaceFacing;
-use game::block::id::Id;
 use game::block::properties::hand_mine_progress_per_tick;
 use game::block::properties::hardness;
 use game::block::properties::harvestable_by_hand;
@@ -90,7 +90,7 @@ fn world_with(chunk: Chunk) -> WorldChunks {
     chunks
 }
 
-fn hit(x: i32, y: i32, z: i32, face: BlockFace, block: Id) -> BlockHit {
+fn hit(x: i32, y: i32, z: i32, face: BlockFace, block: Block) -> BlockHit {
     BlockHit {
         x,
         y,
@@ -103,14 +103,14 @@ fn hit(x: i32, y: i32, z: i32, face: BlockFace, block: Id) -> BlockHit {
 #[test]
 fn breaking_replaces_a_solid_block_with_air() {
     let mut chunk = Chunk::new();
-    chunk.set(8, 64, 8, Id::Dirt);
+    chunk.set(8, 64, 8, Block::Dirt);
     let mut chunks = world_with(chunk);
 
     assert!(break_block(
         &mut chunks,
-        hit(8, 64, 8, BlockFace::Up, Id::Dirt)
+        hit(8, 64, 8, BlockFace::Up, Block::Dirt)
     ));
-    assert_eq!(chunks.block_at(8, 64, 8), Some(Id::Air));
+    assert_eq!(chunks.block_at(8, 64, 8), Some(Block::Air));
     assert_eq!(
         chunks.get(ChunkPosition::ZERO).unwrap().heightmap.get(8, 8),
         0
@@ -120,30 +120,30 @@ fn breaking_replaces_a_solid_block_with_air() {
 #[test]
 fn bedrock_cannot_be_broken() {
     let mut chunk = Chunk::new();
-    chunk.set(8, 0, 8, Id::Bedrock);
+    chunk.set(8, 0, 8, Block::Bedrock);
     let mut chunks = world_with(chunk);
 
     assert!(!break_block(
         &mut chunks,
-        hit(8, 0, 8, BlockFace::Up, Id::Bedrock)
+        hit(8, 0, 8, BlockFace::Up, Block::Bedrock)
     ));
-    assert_eq!(chunks.block_at(8, 0, 8), Some(Id::Bedrock));
+    assert_eq!(chunks.block_at(8, 0, 8), Some(Block::Bedrock));
 }
 
 #[test]
 fn placing_puts_torch_against_the_hit_face() {
     let mut chunk = Chunk::new();
-    chunk.set(8, 64, 8, Id::Dirt);
+    chunk.set(8, 64, 8, Block::Dirt);
     let mut chunks = world_with(chunk);
     let player = EntitySize::PLAYER.aabb(Vec3::new(8.5, 70.0, 8.5));
 
     assert!(place_block(
         &mut chunks,
-        hit(8, 64, 8, BlockFace::Up, Id::Dirt),
+        hit(8, 64, 8, BlockFace::Up, Block::Dirt),
         player
     ));
     assert_eq!(chunks.block_at(8, 65, 8), Some(PLACED_BLOCK));
-    assert_eq!(PLACED_BLOCK, Id::Torch);
+    assert_eq!(PLACED_BLOCK, Block::Torch);
     assert_eq!(
         chunks.get(ChunkPosition::ZERO).unwrap().heightmap.get(8, 8),
         65
@@ -153,20 +153,20 @@ fn placing_puts_torch_against_the_hit_face() {
 #[test]
 fn placed_furnace_front_faces_the_player_and_survives_lit_transitions() {
     let mut chunk = Chunk::new();
-    chunk.set(8, 64, 8, Id::Dirt);
+    chunk.set(8, 64, 8, Block::Dirt);
     let mut chunks = world_with(chunk);
     let player = Aabb::new(Vec3::new(0.0, 70.0, 0.0), Vec3::new(0.6, 71.8, 0.6));
 
     assert!(place_selected_block_facing(
         &mut chunks,
-        hit(8, 64, 8, BlockFace::Up, Id::Dirt),
+        hit(8, 64, 8, BlockFace::Up, Block::Dirt),
         player,
-        Id::Furnace,
+        Block::Furnace,
         FurnaceFacing::East,
     ));
     let furnace = chunks.block_at(8, 65, 8).unwrap();
-    assert_eq!(furnace, Id::FurnaceEast);
-    assert_eq!(furnace.with_furnace_lit(true), Id::LitFurnaceEast);
+    assert_eq!(furnace, Block::FurnaceEast);
+    assert_eq!(furnace.with_furnace_lit(true), Block::LitFurnaceEast);
     assert_eq!(
         furnace.with_furnace_lit(true).with_furnace_lit(false),
         furnace
@@ -176,268 +176,268 @@ fn placed_furnace_front_faces_the_player_and_survives_lit_transitions() {
 #[test]
 fn placed_ladder_attaches_to_the_clicked_wall_and_drops_as_a_ladder_item() {
     let mut chunk = Chunk::new();
-    chunk.set(8, 64, 8, Id::Stone);
+    chunk.set(8, 64, 8, Block::Stone);
     let mut chunks = world_with(chunk);
     let player = Aabb::new(Vec3::new(2.0, 70.0, 2.0), Vec3::new(2.6, 71.8, 2.6));
 
     assert!(place_selected_block_facing(
         &mut chunks,
-        hit(8, 64, 8, BlockFace::East, Id::Stone),
+        hit(8, 64, 8, BlockFace::East, Block::Stone),
         player,
-        Id::Ladder,
+        Block::Ladder,
         FurnaceFacing::South,
     ));
     let ladder = chunks.block_at(9, 64, 8).unwrap();
-    assert_eq!(ladder, Id::LadderWest);
-    assert_eq!(ladder.item_form(), (Id::Ladder, 0));
-    assert_eq!(ladder.item_form().0.placed(0), Some(Id::Ladder));
+    assert_eq!(ladder, Block::LadderWest);
+    assert_eq!(ladder.item_form(), (Block::Ladder, 0));
+    assert_eq!(ladder.item_form().0.placed(0), Some(Block::Ladder));
     assert!(break_block(
         &mut chunks,
-        hit(8, 64, 8, BlockFace::Up, Id::Stone)
+        hit(8, 64, 8, BlockFace::Up, Block::Stone)
     ));
-    assert_eq!(chunks.block_at(9, 64, 8), Some(Id::Air));
+    assert_eq!(chunks.block_at(9, 64, 8), Some(Block::Air));
 }
 
 #[test]
 fn placed_pumpkin_front_faces_the_player() {
     let mut chunk = Chunk::new();
-    chunk.set(8, 64, 8, Id::Grass);
+    chunk.set(8, 64, 8, Block::Grass);
     let mut chunks = world_with(chunk);
     let player = Aabb::new(Vec3::new(2.0, 70.0, 2.0), Vec3::new(2.6, 71.8, 2.6));
 
     assert!(place_selected_block_facing(
         &mut chunks,
-        hit(8, 64, 8, BlockFace::Up, Id::Grass),
+        hit(8, 64, 8, BlockFace::Up, Block::Grass),
         player,
-        Id::Pumpkin,
+        Block::Pumpkin,
         FurnaceFacing::East,
     ));
-    assert_eq!(chunks.block_at(8, 65, 8), Some(Id::PumpkinEast));
+    assert_eq!(chunks.block_at(8, 65, 8), Some(Block::PumpkinEast));
 }
 
 #[test]
 fn placing_torch_can_overlap_the_player() {
     let mut chunk = Chunk::new();
-    chunk.set(8, 64, 8, Id::Stone);
+    chunk.set(8, 64, 8, Block::Stone);
     let mut chunks = world_with(chunk);
     let player = EntitySize::PLAYER.aabb(Vec3::new(8.5, 65.0 + EntitySize::PLAYER.y_offset, 8.5));
 
     assert!(place_block(
         &mut chunks,
-        hit(8, 64, 8, BlockFace::Up, Id::Stone),
+        hit(8, 64, 8, BlockFace::Up, Block::Stone),
         player
     ));
-    assert_eq!(chunks.block_at(8, 65, 8), Some(Id::Torch));
+    assert_eq!(chunks.block_at(8, 65, 8), Some(Block::Torch));
 }
 
 #[test]
 fn placing_replaces_water_and_not_solid_blocks() {
     let mut chunk = Chunk::new();
-    chunk.set(8, 64, 8, Id::Stone);
-    chunk.set(8, 65, 8, Id::Water);
-    chunk.set(9, 64, 8, Id::Dirt);
+    chunk.set(8, 64, 8, Block::Stone);
+    chunk.set(8, 65, 8, Block::Water);
+    chunk.set(9, 64, 8, Block::Dirt);
     let mut chunks = world_with(chunk);
     let player = Aabb::new(Vec3::new(0.0, 70.0, 0.0), Vec3::new(0.6, 71.8, 0.6));
 
     assert!(place_block(
         &mut chunks,
-        hit(8, 64, 8, BlockFace::Up, Id::Stone),
+        hit(8, 64, 8, BlockFace::Up, Block::Stone),
         player
     ));
-    assert_eq!(chunks.block_at(8, 65, 8), Some(Id::Torch));
+    assert_eq!(chunks.block_at(8, 65, 8), Some(Block::Torch));
 
     assert!(!place_block(
         &mut chunks,
-        hit(8, 64, 8, BlockFace::East, Id::Stone),
+        hit(8, 64, 8, BlockFace::East, Block::Stone),
         player
     ));
-    assert_eq!(chunks.block_at(9, 64, 8), Some(Id::Dirt));
+    assert_eq!(chunks.block_at(9, 64, 8), Some(Block::Dirt));
 }
 
 #[test]
 fn torch_attaches_to_walls_and_drops_when_support_breaks() {
     let mut chunk = Chunk::new();
-    chunk.set(8, 64, 8, Id::Stone);
+    chunk.set(8, 64, 8, Block::Stone);
     let mut chunks = world_with(chunk);
     let player = Aabb::new(Vec3::ZERO, Vec3::ZERO);
 
     assert!(place_block(
         &mut chunks,
-        hit(8, 64, 8, BlockFace::East, Id::Stone),
+        hit(8, 64, 8, BlockFace::East, Block::Stone),
         player,
     ));
-    assert_eq!(chunks.block_at(9, 64, 8), Some(Id::TorchWest));
+    assert_eq!(chunks.block_at(9, 64, 8), Some(Block::TorchWest));
     assert!(break_block(
         &mut chunks,
-        hit(8, 64, 8, BlockFace::Up, Id::Stone),
+        hit(8, 64, 8, BlockFace::Up, Block::Stone),
     ));
-    assert_eq!(chunks.block_at(9, 64, 8), Some(Id::Air));
+    assert_eq!(chunks.block_at(9, 64, 8), Some(Block::Air));
 }
 
 #[test]
 fn empty_bucket_picks_up_a_water_source_and_leaves_air() {
     let mut chunk = Chunk::new();
-    chunk.set(8, 64, 8, Id::Water);
+    chunk.set(8, 64, 8, Block::Water);
     let mut chunks = world_with(chunk);
 
     let (x, y, z, previous, fluid) =
         pick_up_fluid(&mut chunks, Vec3::new(8.5, 66.0, 8.5), Vec3::NEG_Y)
             .expect("a water source should be picked up");
     assert_eq!((x, y, z), (8, 64, 8));
-    assert_eq!(previous, Id::Water);
+    assert_eq!(previous, Block::Water);
     assert_eq!(fluid, Fluid::Water);
-    assert_eq!(chunks.block_at(8, 64, 8), Some(Id::Air));
+    assert_eq!(chunks.block_at(8, 64, 8), Some(Block::Air));
 }
 
 #[test]
 fn empty_bucket_picks_up_a_lava_source() {
     let mut chunk = Chunk::new();
-    chunk.set(8, 64, 8, Id::Lava);
+    chunk.set(8, 64, 8, Block::Lava);
     let mut chunks = world_with(chunk);
 
     let (.., fluid) = pick_up_fluid(&mut chunks, Vec3::new(8.5, 66.0, 8.5), Vec3::NEG_Y)
         .expect("a lava source should be picked up");
     assert_eq!(fluid, Fluid::Lava);
-    assert_eq!(chunks.block_at(8, 64, 8), Some(Id::Air));
+    assert_eq!(chunks.block_at(8, 64, 8), Some(Block::Air));
 }
 
 #[test]
 fn empty_bucket_leaves_flowing_water_in_place() {
     let mut chunk = Chunk::new();
-    chunk.set_with_metadata(8, 64, 8, Id::FlowingWater, 3);
+    chunk.set_with_metadata(8, 64, 8, Block::FlowingWater, 3);
     let mut chunks = world_with(chunk);
 
     assert!(pick_up_fluid(&mut chunks, Vec3::new(8.5, 66.0, 8.5), Vec3::NEG_Y).is_none());
-    assert_eq!(chunks.block_at(8, 64, 8), Some(Id::FlowingWater));
+    assert_eq!(chunks.block_at(8, 64, 8), Some(Block::FlowingWater));
     assert_eq!(chunks.metadata_at(8, 64, 8), 3);
 }
 
 #[test]
 fn empty_bucket_stays_empty_when_aimed_at_a_solid_block() {
     let mut chunk = Chunk::new();
-    chunk.set(8, 64, 8, Id::Stone);
+    chunk.set(8, 64, 8, Block::Stone);
     let mut chunks = world_with(chunk);
 
     assert!(pick_up_fluid(&mut chunks, Vec3::new(8.5, 66.0, 8.5), Vec3::NEG_Y).is_none());
-    assert_eq!(chunks.block_at(8, 64, 8), Some(Id::Stone));
+    assert_eq!(chunks.block_at(8, 64, 8), Some(Block::Stone));
 }
 
 #[test]
 fn water_bucket_fills_the_non_solid_cell_beside_the_hit_face() {
     let mut chunk = Chunk::new();
-    chunk.set(8, 64, 8, Id::Stone);
+    chunk.set(8, 64, 8, Block::Stone);
     let mut chunks = world_with(chunk);
 
     let (x, y, z, previous, metadata) = place_fluid(
         &mut chunks,
-        hit(8, 64, 8, BlockFace::Up, Id::Stone),
+        hit(8, 64, 8, BlockFace::Up, Block::Stone),
         Fluid::Water,
     )
     .expect("air above a solid block accepts the fluid");
     assert_eq!((x, y, z), (8, 65, 8));
-    assert_eq!(previous, Id::Air);
+    assert_eq!(previous, Block::Air);
     assert_eq!(metadata, 0);
-    assert_eq!(chunks.block_at(8, 65, 8), Some(Id::FlowingWater));
+    assert_eq!(chunks.block_at(8, 65, 8), Some(Block::FlowingWater));
     assert_eq!(chunks.metadata_at(8, 65, 8), 0);
 }
 
 #[test]
 fn lava_bucket_places_flowing_lava() {
     let mut chunk = Chunk::new();
-    chunk.set(8, 64, 8, Id::Stone);
+    chunk.set(8, 64, 8, Block::Stone);
     let mut chunks = world_with(chunk);
 
     place_fluid(
         &mut chunks,
-        hit(8, 64, 8, BlockFace::Up, Id::Stone),
+        hit(8, 64, 8, BlockFace::Up, Block::Stone),
         Fluid::Lava,
     )
     .expect("air above a solid block accepts the fluid");
-    assert_eq!(chunks.block_at(8, 65, 8), Some(Id::FlowingLava));
+    assert_eq!(chunks.block_at(8, 65, 8), Some(Block::FlowingLava));
     assert_eq!(chunks.metadata_at(8, 65, 8), 0);
 }
 
 #[test]
 fn water_bucket_overwrites_non_solid_blocks_without_dropping_them() {
     let mut chunk = Chunk::new();
-    chunk.set(8, 64, 8, Id::Grass);
-    chunk.set(8, 65, 8, Id::TallGrass);
+    chunk.set(8, 64, 8, Block::Grass);
+    chunk.set(8, 65, 8, Block::TallGrass);
     let mut chunks = world_with(chunk);
 
     let (x, y, z, previous, _) = place_fluid(
         &mut chunks,
-        hit(8, 64, 8, BlockFace::Up, Id::Grass),
+        hit(8, 64, 8, BlockFace::Up, Block::Grass),
         Fluid::Water,
     )
     .expect("tall grass is not a solid material");
     assert_eq!((x, y, z), (8, 65, 8));
-    assert_eq!(previous, Id::TallGrass);
-    assert_eq!(chunks.block_at(8, 65, 8), Some(Id::FlowingWater));
+    assert_eq!(previous, Block::TallGrass);
+    assert_eq!(chunks.block_at(8, 65, 8), Some(Block::FlowingWater));
 }
 
 #[test]
 fn lava_bucket_cannot_fill_a_solid_block() {
     let mut chunk = Chunk::new();
-    chunk.set(8, 64, 8, Id::Stone);
-    chunk.set(9, 64, 8, Id::Dirt);
+    chunk.set(8, 64, 8, Block::Stone);
+    chunk.set(9, 64, 8, Block::Dirt);
     let mut chunks = world_with(chunk);
 
     assert!(
         place_fluid(
             &mut chunks,
-            hit(8, 64, 8, BlockFace::East, Id::Stone),
+            hit(8, 64, 8, BlockFace::East, Block::Stone),
             Fluid::Lava,
         )
         .is_none()
     );
-    assert_eq!(chunks.block_at(9, 64, 8), Some(Id::Dirt));
+    assert_eq!(chunks.block_at(9, 64, 8), Some(Block::Dirt));
 }
 
 #[test]
 fn torch_requires_a_support_face() {
     let mut chunk = Chunk::new();
-    chunk.set(8, 64, 8, Id::Stone);
+    chunk.set(8, 64, 8, Block::Stone);
     let mut chunks = world_with(chunk);
     let player = Aabb::new(Vec3::ZERO, Vec3::ZERO);
     assert!(!place_block(
         &mut chunks,
-        hit(8, 64, 8, BlockFace::Down, Id::Stone),
+        hit(8, 64, 8, BlockFace::Down, Block::Stone),
         player,
     ));
-    assert_eq!(chunks.block_at(8, 63, 8), Some(Id::Air));
+    assert_eq!(chunks.block_at(8, 63, 8), Some(Block::Air));
 }
 
 #[test]
 fn usual_blocks_use_beta_hand_break_times() {
     let grounded = |block| hand_ticks_to_break(block, true, false);
-    assert_eq!(grounded(Id::Dirt), Some(15));
-    assert_eq!(grounded(Id::Grass), Some(18));
-    assert_eq!(grounded(Id::Sand), Some(15));
-    assert_eq!(grounded(Id::Gravel), Some(18));
-    assert_eq!(grounded(Id::Leaves), Some(6));
-    assert_eq!(grounded(Id::Wood), Some(60));
-    assert_eq!(grounded(Id::WoodenPlanks), Some(60));
-    assert_eq!(grounded(Id::Stone), Some(150));
-    assert_eq!(grounded(Id::Cobblestone), Some(200));
-    assert_eq!(grounded(Id::CoalOre), Some(300));
-    assert_eq!(grounded(Id::Netherrack), Some(40));
-    assert_eq!(grounded(Id::Obsidian), Some(1000));
-    assert_eq!(grounded(Id::Tnt), Some(1));
-    assert_eq!(grounded(Id::Bedrock), None);
+    assert_eq!(grounded(Block::Dirt), Some(15));
+    assert_eq!(grounded(Block::Grass), Some(18));
+    assert_eq!(grounded(Block::Sand), Some(15));
+    assert_eq!(grounded(Block::Gravel), Some(18));
+    assert_eq!(grounded(Block::Leaves), Some(6));
+    assert_eq!(grounded(Block::Wood), Some(60));
+    assert_eq!(grounded(Block::WoodenPlanks), Some(60));
+    assert_eq!(grounded(Block::Stone), Some(150));
+    assert_eq!(grounded(Block::Cobblestone), Some(200));
+    assert_eq!(grounded(Block::CoalOre), Some(300));
+    assert_eq!(grounded(Block::Netherrack), Some(40));
+    assert_eq!(grounded(Block::Obsidian), Some(1000));
+    assert_eq!(grounded(Block::Tnt), Some(1));
+    assert_eq!(grounded(Block::Bedrock), None);
 }
 
 #[test]
 fn airborne_and_water_only_slow_blocks_harvestable_by_hand() {
-    assert!(harvestable_by_hand(Id::Dirt));
-    assert!(!harvestable_by_hand(Id::Stone));
-    assert_eq!(hand_ticks_to_break(Id::Dirt, false, false), Some(75));
-    assert_eq!(hand_ticks_to_break(Id::Dirt, true, true), Some(75));
-    assert_eq!(hand_ticks_to_break(Id::Stone, false, true), Some(150));
+    assert!(harvestable_by_hand(Block::Dirt));
+    assert!(!harvestable_by_hand(Block::Stone));
+    assert_eq!(hand_ticks_to_break(Block::Dirt, false, false), Some(75));
+    assert_eq!(hand_ticks_to_break(Block::Dirt, true, true), Some(75));
+    assert_eq!(hand_ticks_to_break(Block::Stone, false, true), Some(150));
 }
 
 #[test]
 fn punching_accumulates_until_the_block_breaks() {
-    let dirt = hit(8, 64, 8, BlockFace::Up, Id::Dirt);
+    let dirt = hit(8, 64, 8, BlockFace::Up, Block::Dirt);
     let mut mining = MiningState::default();
     assert!(mining.tick(Some(dirt), None, true, false).is_none());
     let mut ticks = 0;
@@ -454,20 +454,25 @@ fn punching_accumulates_until_the_block_breaks() {
 
 #[test]
 fn hardness_zero_breaks_on_the_click() {
-    let tnt = hit(4, 10, 4, BlockFace::North, Id::Tnt);
+    let tnt = hit(4, 10, 4, BlockFace::North, Block::Tnt);
     let mut mining = MiningState::default();
     assert!(mining.try_instant(tnt, None, true, false).is_some());
     assert!(
         mining
-            .try_instant(hit(4, 10, 4, BlockFace::North, Id::Dirt), None, true, false)
+            .try_instant(
+                hit(4, 10, 4, BlockFace::North, Block::Dirt),
+                None,
+                true,
+                false
+            )
             .is_none()
     );
 }
 
 #[test]
 fn looking_at_a_new_block_resets_mining_progress() {
-    let dirt = hit(8, 64, 8, BlockFace::Up, Id::Dirt);
-    let grass = hit(8, 65, 8, BlockFace::Up, Id::Grass);
+    let dirt = hit(8, 64, 8, BlockFace::Up, Block::Dirt);
+    let grass = hit(8, 65, 8, BlockFace::Up, Block::Grass);
     let mut mining = MiningState::default();
     mining.tick(Some(dirt), None, true, false);
     for _ in 0..10 {
@@ -476,8 +481,8 @@ fn looking_at_a_new_block_resets_mining_progress() {
     assert!(mining.damage() > 0.0);
     mining.tick(Some(grass), None, true, false);
     assert_eq!(mining.damage(), 0.0);
-    assert!((hardness(Id::Grass) - 0.6).abs() < f32::EPSILON);
-    assert!(hand_mine_progress_per_tick(Id::Dirt, true, false) > 0.0);
+    assert!((hardness(Block::Grass) - 0.6).abs() < f32::EPSILON);
+    assert!(hand_mine_progress_per_tick(Block::Dirt, true, false) > 0.0);
 }
 
 #[test]
@@ -491,7 +496,7 @@ fn destroy_stage_follows_beta_damage_partial_time() {
 
 #[test]
 fn mining_reset_clears_the_destroy_overlay_stage() {
-    let dirt = hit(8, 64, 8, BlockFace::Up, Id::Dirt);
+    let dirt = hit(8, 64, 8, BlockFace::Up, Block::Dirt);
     let mut mining = MiningState::default();
     mining.tick(Some(dirt), None, true, false);
     for _ in 0..10 {
@@ -513,7 +518,7 @@ fn mining_reset_clears_the_destroy_overlay_stage() {
 
 #[test]
 fn diamond_pick_breaks_stone_in_six_damaging_ticks() {
-    let stone = hit(8, 64, 8, BlockFace::Up, Id::Stone);
+    let stone = hit(8, 64, 8, BlockFace::Up, Block::Stone);
     let pick = Some(ItemStack::new(ItemId::DiamondPickaxe, 1).unwrap());
     let mut mining = MiningState::default();
     assert!(mining.tick(Some(stone), pick, true, false).is_none());
@@ -531,7 +536,7 @@ fn diamond_pick_breaks_stone_in_six_damaging_ticks() {
 
 #[test]
 fn shears_break_leaves_on_the_click() {
-    let leaves = hit(3, 70, 3, BlockFace::Up, Id::Leaves);
+    let leaves = hit(3, 70, 3, BlockFace::Up, Block::Leaves);
     let shears = Some(ItemStack::new(ItemId::Shears, 1).unwrap());
     let mut mining = MiningState::default();
     assert!(mining.try_instant(leaves, shears, true, false).is_some());
@@ -541,7 +546,7 @@ fn shears_break_leaves_on_the_click() {
 
 #[test]
 fn switching_tools_keeps_mining_progress() {
-    let stone = hit(8, 64, 8, BlockFace::Up, Id::Stone);
+    let stone = hit(8, 64, 8, BlockFace::Up, Block::Stone);
     let wood = Some(ItemStack::new(ItemId::WoodenPickaxe, 1).unwrap());
     let diamond = Some(ItemStack::new(ItemId::DiamondPickaxe, 1).unwrap());
     let mut mining = MiningState::default();

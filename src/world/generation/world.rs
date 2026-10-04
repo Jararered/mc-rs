@@ -8,7 +8,7 @@
 //! from `Chunk.generateSkylightMap`, adjusted by `Chunk.relightBlock` as blocks
 //! are placed. Block light is zero.
 
-use crate::block::id::Id;
+use crate::block::blocks::Block;
 use crate::block::properties::is_opaque_cube;
 use crate::block::properties::is_solid_material;
 use crate::world::chest::Chest;
@@ -22,41 +22,44 @@ const SIZE: i32 = CHUNK_SIZE as i32;
 const CELLS: usize = CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE;
 
 /// Beta `Block.lightOpacity`, in light levels.
-pub(super) fn beta_opacity(block: Id) -> u8 {
+pub(super) fn beta_opacity(block: Block) -> u8 {
     match block {
-        Id::Leaves | Id::BirchLeaves | Id::SpruceLeaves => 1,
-        Id::Water | Id::FlowingWater | Id::Ice => 3,
-        Id::Lava | Id::FlowingLava | Id::Farmland => 15,
+        Block::Leaves | Block::BirchLeaves | Block::SpruceLeaves => 1,
+        Block::Water | Block::FlowingWater | Block::Ice => 3,
+        Block::Lava | Block::FlowingLava | Block::Farmland => 15,
         _ if is_opaque_cube(block) => 15,
         _ => 0,
     }
 }
 
 /// Beta `Material.getIsLiquid`.
-pub(super) fn is_liquid(block: Id) -> bool {
+pub(super) fn is_liquid(block: Block) -> bool {
     matches!(
         block,
-        Id::Water | Id::FlowingWater | Id::Lava | Id::FlowingLava
+        Block::Water | Block::FlowingWater | Block::Lava | Block::FlowingLava
     )
 }
 
-pub(super) fn is_water(block: Id) -> bool {
-    matches!(block, Id::Water | Id::FlowingWater)
+pub(super) fn is_water(block: Block) -> bool {
+    matches!(block, Block::Water | Block::FlowingWater)
 }
 
 /// Beta `Material.isSolid` and `getIsSolid`, which agree for every material.
-pub(super) fn is_solid(block: Id) -> bool {
+pub(super) fn is_solid(block: Block) -> bool {
     is_solid_material(block)
 }
 
-pub(super) fn is_leaf(block: Id) -> bool {
-    matches!(block, Id::Leaves | Id::BirchLeaves | Id::SpruceLeaves)
+pub(super) fn is_leaf(block: Block) -> bool {
+    matches!(
+        block,
+        Block::Leaves | Block::BirchLeaves | Block::SpruceLeaves
+    )
 }
 
 /// Beta stores every leaf species as block 18. Generators that look for "air
 /// or leaves" treat all of them alike.
-pub(super) fn is_air_or_leaves(block: Id) -> bool {
-    block == Id::Air || is_leaf(block)
+pub(super) fn is_air_or_leaves(block: Block) -> bool {
+    block == Block::Air || is_leaf(block)
 }
 
 struct PopulatedChunk {
@@ -78,8 +81,8 @@ impl PopulatedChunk {
         populated
     }
 
-    fn block(&self, x: usize, y: usize, z: usize) -> Id {
-        Id::from(self.chunk.raw_blocks()[Chunk::index(x, y, z)])
+    fn block(&self, x: usize, y: usize, z: usize) -> Block {
+        Block::from(self.chunk.raw_blocks()[Chunk::index(x, y, z)])
     }
 
     /// `Chunk.generateSkylightMap`: heightmap, then full light down each
@@ -182,33 +185,33 @@ impl PopulationWorld {
 
     /// `World.getBlockId`. Outside the four chunks is air, which no Beta
     /// overworld feature reaches.
-    pub fn get(&self, x: i32, y: i32, z: i32) -> Id {
+    pub fn get(&self, x: i32, y: i32, z: i32) -> Block {
         if !(0..HEIGHT).contains(&y) {
-            return Id::Air;
+            return Block::Air;
         }
-        self.locate(x, z).map_or(Id::Air, |(chunk, lx, lz)| {
+        self.locate(x, z).map_or(Block::Air, |(chunk, lx, lz)| {
             self.chunks[chunk].block(lx, y as usize, lz)
         })
     }
 
     pub fn is_air(&self, x: i32, y: i32, z: i32) -> bool {
-        self.get(x, y, z) == Id::Air
+        self.get(x, y, z) == Block::Air
     }
 
     /// `Chunk.setBlockID` through `World.setBlock`, including the heightmap
     /// and relight updates and the only `onBlockAdded` side effect that
     /// matters during generation: lava hardening next to water.
-    pub fn set(&mut self, x: i32, y: i32, z: i32, block: Id) -> bool {
+    pub fn set(&mut self, x: i32, y: i32, z: i32, block: Block) -> bool {
         if !self.set_raw(x, y, z, block) {
             return false;
         }
-        if block == Id::Lava && self.touches_water(x, y, z) {
-            self.set_raw(x, y, z, Id::Obsidian);
+        if block == Block::Lava && self.touches_water(x, y, z) {
+            self.set_raw(x, y, z, Block::Obsidian);
         }
         true
     }
 
-    fn set_raw(&mut self, x: i32, y: i32, z: i32, block: Id) -> bool {
+    fn set_raw(&mut self, x: i32, y: i32, z: i32, block: Block) -> bool {
         if !(0..HEIGHT).contains(&y) {
             return false;
         }
@@ -246,7 +249,7 @@ impl PopulationWorld {
     }
 
     pub fn set_chest(&mut self, x: i32, y: i32, z: i32, chest: Chest) {
-        self.set(x, y, z, Id::Chest);
+        self.set(x, y, z, Block::Chest);
         if let Some((index, lx, lz)) = self.locate(x, z)
             && (0..HEIGHT).contains(&y)
         {
@@ -257,7 +260,7 @@ impl PopulationWorld {
     }
 
     pub fn set_spawner(&mut self, x: i32, y: i32, z: i32, kind: crate::entity::mobs::MobKind) {
-        self.set(x, y, z, Id::MobSpawner);
+        self.set(x, y, z, Block::MobSpawner);
         if let Some((index, lx, lz)) = self.locate(x, z)
             && (0..HEIGHT).contains(&y)
         {

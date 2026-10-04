@@ -6,7 +6,7 @@ use std::time::Duration;
 use bevy::prelude::*;
 use bevy::tasks::Task;
 
-use crate::block::id::Id;
+use crate::block::blocks::Block;
 
 use super::chunk::CHUNK_SIZE;
 use super::chunk::ChunkPosition;
@@ -130,7 +130,7 @@ pub struct WorldStreaming {
     materials: ChunkMaterials,
     fancy_graphics: bool,
     /// Chunk meshes include only this block while it is set.
-    wireframe_block: Option<Id>,
+    wireframe_block: Option<Block>,
     remesh_queue: VecDeque<ChunkPosition>,
     /// Sections each queued chunk must rebuild even if its light did not
     /// change, because blocks they draw or sample changed.

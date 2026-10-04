@@ -3,40 +3,40 @@
 //! for a source, `1..=7` for how far it has spread, and `8` and up for fluid
 //! falling from above.
 
+use crate::block::blocks::Block;
 use crate::block::definition::BlockDefinition;
 use crate::block::definition::BlockProperties;
-use crate::block::id::Id;
 use crate::block::properties::is_solid_material;
 
 pub(super) struct Definition;
 pub(super) static DEFINITION: Definition = Definition;
 
 impl BlockDefinition for Definition {
-    fn in_world(&self, id: Id) -> bool {
+    fn in_world(&self, block: Block) -> bool {
         matches!(
-            id,
-            Id::FlowingWater | Id::Water | Id::FlowingLava | Id::Lava
+            block,
+            Block::FlowingWater | Block::Water | Block::FlowingLava | Block::Lava
         )
     }
 
-    fn properties(&self, id: Id) -> BlockProperties {
-        properties(id)
+    fn properties(&self, block: Block) -> BlockProperties {
+        properties(block)
     }
 
-    fn opaque_cube(&self, _id: Id) -> bool {
+    fn opaque_cube(&self, _block: Block) -> bool {
         false
     }
 
-    fn light_opacity(&self, id: Id) -> u8 {
-        if matches!(id, Id::Water | Id::FlowingWater) {
+    fn light_opacity(&self, block: Block) -> u8 {
+        if matches!(block, Block::Water | Block::FlowingWater) {
             3
         } else {
             15
         }
     }
 
-    fn light_emission(&self, id: Id) -> u8 {
-        if matches!(id, Id::FlowingLava | Id::Lava) {
+    fn light_emission(&self, block: Block) -> u8 {
+        if matches!(block, Block::FlowingLava | Block::Lava) {
             15
         } else {
             0
@@ -44,18 +44,18 @@ impl BlockDefinition for Definition {
     }
 }
 
-fn properties(id: Id) -> BlockProperties {
-    match id {
-        Id::FlowingWater | Id::Water => BlockProperties {
+fn properties(block: Block) -> BlockProperties {
+    match block {
+        Block::FlowingWater | Block::Water => BlockProperties {
             light_opacity: 3,
             ..BlockProperties::fluid(100.0)
         },
-        Id::FlowingLava | Id::Lava => BlockProperties {
+        Block::FlowingLava | Block::Lava => BlockProperties {
             light_opacity: 15,
             light_emission: 15,
             ..BlockProperties::fluid(0.0)
         },
-        Id::Unknown(_) => BlockProperties::unknown(),
+        Block::Unknown(_) => BlockProperties::unknown(),
         _ => BlockProperties::unknown(),
     }
 }
@@ -69,25 +69,25 @@ pub enum Fluid {
 
 impl Fluid {
     /// The material of `block`, if it is a fluid.
-    pub const fn of(block: Id) -> Option<Self> {
+    pub const fn of(block: Block) -> Option<Self> {
         match block {
-            Id::Water | Id::FlowingWater => Some(Self::Water),
-            Id::Lava | Id::FlowingLava => Some(Self::Lava),
+            Block::Water | Block::FlowingWater => Some(Self::Water),
+            Block::Lava | Block::FlowingLava => Some(Self::Lava),
             _ => None,
         }
     }
 
-    pub const fn flowing(self) -> Id {
+    pub const fn flowing(self) -> Block {
         match self {
-            Self::Water => Id::FlowingWater,
-            Self::Lava => Id::FlowingLava,
+            Self::Water => Block::FlowingWater,
+            Self::Lava => Block::FlowingLava,
         }
     }
 
-    pub const fn still(self) -> Id {
+    pub const fn still(self) -> Block {
         match self {
-            Self::Water => Id::Water,
-            Self::Lava => Id::Lava,
+            Self::Water => Block::Water,
+            Self::Lava => Block::Lava,
         }
     }
 
@@ -110,15 +110,15 @@ impl Fluid {
 }
 
 /// Beta `Material.getIsLiquid`.
-pub const fn is_liquid(block: Id) -> bool {
+pub const fn is_liquid(block: Block) -> bool {
     Fluid::of(block).is_some()
 }
 
-pub const fn is_water(block: Id) -> bool {
+pub const fn is_water(block: Block) -> bool {
     matches!(Fluid::of(block), Some(Fluid::Water))
 }
 
-pub const fn is_lava(block: Id) -> bool {
+pub const fn is_lava(block: Block) -> bool {
     matches!(Fluid::of(block), Some(Fluid::Lava))
 }
 
@@ -132,7 +132,7 @@ pub fn percent_air(metadata: u8) -> f32 {
 
 /// `BlockFluid.getEffectiveFlowDecay`: `-1` unless the cell holds `fluid`;
 /// falling fluid reads as a source.
-pub fn effective_decay(fluid: Fluid, block: Id, metadata: u8) -> i32 {
+pub fn effective_decay(fluid: Fluid, block: Block, metadata: u8) -> i32 {
     if Fluid::of(block) != Some(fluid) {
         return -1;
     }
@@ -153,7 +153,7 @@ pub fn corner_height(
     x: i32,
     y: i32,
     z: i32,
-    cell: impl Fn(i32, i32, i32) -> (Id, u8),
+    cell: impl Fn(i32, i32, i32) -> (Block, u8),
 ) -> f32 {
     let mut weight = 0;
     let mut air = 0.0;
@@ -185,7 +185,7 @@ pub fn flow_vector(
     x: i32,
     y: i32,
     z: i32,
-    cell: impl Fn(i32, i32, i32) -> (Id, u8),
+    cell: impl Fn(i32, i32, i32) -> (Block, u8),
 ) -> [f32; 2] {
     let (block, metadata) = cell(x, y, z);
     let decay = effective_decay(fluid, block, metadata);

@@ -42,7 +42,7 @@ fn text_seeds_use_java_string_hash() {
     // Reference values computed as `h = h * 31 + c` over the ASCII code units.
     assert_eq!(parse_seed("a"), 97);
     assert_eq!(parse_seed("hello"), 99_162_322);
-    assert_eq!(parse_seed("glacier"), 108_181_935);
+    assert_eq!(parse_seed("Glacier"), 1_772_835_215);
     assert_eq!(parse_seed(""), 0);
 }
 

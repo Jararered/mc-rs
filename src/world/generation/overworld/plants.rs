@@ -2,6 +2,7 @@
 //! the `canBlockStay` rules of the plants they place.
 
 use crate::block::blocks::Block;
+use crate::block::properties::plant_ground_can_hold;
 use crate::random::JavaRandom;
 use crate::world::chunk::CHUNK_HEIGHT;
 
@@ -21,15 +22,13 @@ fn scatter(rand: &mut JavaRandom, x: i32, y: i32, z: i32) -> (i32, i32, i32) {
 /// overrides.
 fn can_stay(world: &PopulationWorld, x: i32, y: i32, z: i32, block: Block) -> bool {
     let below = world.get(x, y - 1, z);
-    match block {
+    let lit = match block {
         Block::BrownMushroom | Block::RedMushroom => {
-            (0..CHUNK_HEIGHT as i32).contains(&y)
-                && world.light(x, y, z) < 13
-                && below.is_opaque_cube()
+            (0..CHUNK_HEIGHT as i32).contains(&y) && world.light(x, y, z) < 13
         }
-        Block::DeadBush => lit_or_open(world, x, y, z) && below == Block::Sand,
-        _ => lit_or_open(world, x, y, z) && below.supports_plants(),
-    }
+        _ => lit_or_open(world, x, y, z),
+    };
+    lit && plant_ground_can_hold(block, below)
 }
 
 fn lit_or_open(world: &PopulationWorld, x: i32, y: i32, z: i32) -> bool {

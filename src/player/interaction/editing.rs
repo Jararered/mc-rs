@@ -13,6 +13,7 @@ use crate::block::direction::HorizontalFacing;
 use crate::block::fluids::FluidType;
 use crate::block::fluids::is_water;
 use crate::block::properties::cactus_can_stay;
+use crate::block::properties::plant_ground_can_hold;
 use crate::block::properties::sugar_cane_can_stay;
 use crate::entity::CollisionState;
 use crate::entity::EntitySize;
@@ -811,7 +812,7 @@ pub fn place_selected_block_facing(
         && selected != Block::SugarCane
         && !chunks
             .block_at(x, y - 1, z)
-            .is_some_and(Block::supports_plants)
+            .is_some_and(|ground| plant_ground_can_hold(selected, ground))
     {
         return false;
     }

@@ -20,6 +20,18 @@ pub fn sugar_cane_can_stay(below: Block, adjacent_water: [bool; 4]) -> bool {
             && adjacent_water.into_iter().any(|is_water| is_water))
 }
 
+/// `canThisPlantGrowOnThisBlockID` for each `BlockFlower` subclass: dead bushes
+/// only take on sand, mushrooms on any opaque cube, crops on tilled soil, and
+/// everything else on soil.
+pub fn plant_ground_can_hold(plant: Block, ground: Block) -> bool {
+    match plant {
+        Block::DeadBush => ground == Block::Sand,
+        Block::Crops => ground == Block::Farmland,
+        Block::BrownMushroom | Block::RedMushroom => ground.is_opaque_cube(),
+        _ => ground.supports_plants(),
+    }
+}
+
 const TORCH_TILT: f32 = 0.55;
 
 /// Rotate the floor torch's local geometry into its wall pose. `facing` is

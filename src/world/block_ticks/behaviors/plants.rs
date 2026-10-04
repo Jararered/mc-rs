@@ -6,21 +6,12 @@ use bevy::math::IVec3;
 
 use crate::block::blocks::Block;
 use crate::block::properties::cactus_can_stay;
+use crate::block::properties::plant_ground_can_hold;
 use crate::block::properties::sugar_cane_can_stay;
 use crate::world::block_ticks::BlockBehavior;
 use crate::world::block_ticks::TickWorld;
 
 use super::fluid::is_water;
-
-/// `canThisPlantGrowOnThisBlockID` for each `BlockFlower` subclass.
-fn grows_on(plant: Block, ground: Block) -> bool {
-    match plant {
-        Block::DeadBush => ground == Block::Sand,
-        Block::Crops => ground == Block::Farmland,
-        Block::BrownMushroom | Block::RedMushroom => ground.is_opaque_cube(),
-        _ => ground.supports_plants(),
-    }
-}
 
 /// `BlockFlower.canBlockStay`, and `BlockMushroom`'s override: mushrooms need
 /// shade, everything else light or open sky.
@@ -29,9 +20,10 @@ pub fn plant_can_stay(world: &mut TickWorld, position: IVec3, plant: Block) -> b
     if matches!(plant, Block::BrownMushroom | Block::RedMushroom) {
         return world.is_loaded(position)
             && world.full_light(position) < 13
-            && grows_on(plant, ground);
+            && plant_ground_can_hold(plant, ground);
     }
-    (world.full_light(position) >= 8 || world.sees_sky(position)) && grows_on(plant, ground)
+    (world.full_light(position) >= 8 || world.sees_sky(position))
+        && plant_ground_can_hold(plant, ground)
 }
 
 /// `BlockFlower.checkFlowerChange`: pop the plant off if it can no longer

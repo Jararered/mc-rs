@@ -57,7 +57,7 @@ fn removing_a_log_flags_nearby_leaves_which_then_decay() {
 #[test]
 fn a_flagged_leaf_that_finds_a_log_clears_its_flag() {
     let mut world = branch(2);
-    world.set(at(10, 65, 8), Block::BirchWood);
+    world.set_with_metadata(at(10, 65, 8), Block::Wood, 2);
     world.place(at(8, 64, 8), Block::Air);
     world.random_ticks(at(9, 64, 8), 1);
     world.random_ticks(at(10, 64, 8), 1);
@@ -73,12 +73,13 @@ fn a_flagged_leaf_that_finds_a_log_clears_its_flag() {
 #[test]
 fn unflagged_leaves_never_check_for_logs() {
     let mut world = TestWorld::new(1);
-    world.set(at(8, 64, 8), Block::SpruceLeaves);
+    world.set_with_metadata(at(8, 64, 8), Block::Leaves, 1);
     world.random_ticks(at(8, 64, 8), 50);
-    assert_eq!(world.block(at(8, 64, 8)), Block::SpruceLeaves);
+    assert_eq!(world.block(at(8, 64, 8)), Block::Leaves);
+    assert_eq!(world.metadata(at(8, 64, 8)), 1, "the species stays");
 
     // Placed leaves carry the flag, as `ItemLeaves` sets it.
-    world.set_with_metadata(at(8, 64, 8), Block::SpruceLeaves, CHECK_DECAY);
+    world.set_with_metadata(at(8, 64, 8), Block::Leaves, 1 | CHECK_DECAY);
     world.random_ticks(at(8, 64, 8), 1);
     assert_eq!(world.block(at(8, 64, 8)), Block::Air);
 }

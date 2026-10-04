@@ -411,6 +411,8 @@ pub(crate) fn block_collision_box(chunks: &WorldChunks, x: i32, y: i32, z: i32) 
     let (min, max) =
         if block == crate::block::blocks::Block::SnowLayer && chunks.metadata_at(x, y, z) >= 3 {
             ([0.0; 3], [1.0, 0.5, 1.0])
+        } else if block == crate::block::blocks::Block::Ladder {
+            block.collision_bounds_for(chunks.metadata_at(x, y, z))?
         } else {
             block.collision_bounds()?
         };

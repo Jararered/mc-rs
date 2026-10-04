@@ -1,9 +1,11 @@
 use bevy::prelude::Vec3;
 use game::block::blocks::Block;
+use game::block::direction::HorizontalFacing;
 use game::entity::EntitySize;
 use game::entity::drops::blocks::DropRoll;
 use game::entity::drops::blocks::natural_drops;
-use game::entity::drops::blocks::player_break_drops;
+use game::entity::drops::blocks::natural_drops_with_metadata;
+use game::entity::drops::blocks::player_break_drops_with_metadata;
 use game::entity::drops::items::block_drop_position;
 use game::entity::drops::items::dropped_block_model;
 use game::entity::drops::items::hotbar_icon_scale;
@@ -48,8 +50,18 @@ fn held(item: Item) -> Option<ItemStack> {
 }
 
 fn break_drops(block: Block, tool: Option<ItemStack>, rolls: &[u32]) -> Vec<ItemStack> {
-    player_break_drops(
+    break_drops_with(block, 0, tool, rolls)
+}
+
+fn break_drops_with(
+    block: Block,
+    metadata: u8,
+    tool: Option<ItemStack>,
+    rolls: &[u32],
+) -> Vec<ItemStack> {
+    player_break_drops_with_metadata(
         block,
+        metadata,
         tool,
         &mut Rolls {
             values: rolls,
@@ -182,7 +194,7 @@ fn break_drops_follow_beta_tool_and_item_rules() {
         vec![one(Item::from_block(Block::Sapling).unwrap(), 0)]
     );
     assert_eq!(
-        break_drops(Block::SpruceLeaves, None, &[0]),
+        break_drops_with(Block::Leaves, 1, None, &[0]),
         vec![one(Item::from_block(Block::Sapling).unwrap(), 1)]
     );
     assert_eq!(
@@ -190,11 +202,11 @@ fn break_drops_follow_beta_tool_and_item_rules() {
         vec![block_item(Block::Leaves)]
     );
     assert_eq!(
-        break_drops(Block::SpruceLeaves, shears, &[]),
+        break_drops_with(Block::Leaves, 1, shears, &[]),
         vec![one(Item::from_block(Block::Leaves).unwrap(), 1)]
     );
     assert_eq!(
-        break_drops(Block::BirchLeaves, shears, &[]),
+        break_drops_with(Block::Leaves, 2, shears, &[]),
         vec![one(Item::from_block(Block::Leaves).unwrap(), 2)]
     );
 
@@ -230,16 +242,17 @@ fn break_drops_follow_beta_tool_and_item_rules() {
 #[test]
 fn break_drops_preserve_wood_species_and_clear_torch_facing() {
     assert_eq!(
-        break_drops(Block::SpruceWood, None, &[]),
+        break_drops_with(Block::Wood, 1, None, &[]),
         vec![one(Item::from_block(Block::Wood).unwrap(), 1)]
     );
     assert_eq!(
-        break_drops(Block::BirchWood, None, &[]),
+        break_drops_with(Block::Wood, 2, None, &[]),
         vec![one(Item::from_block(Block::Wood).unwrap(), 2)]
     );
     assert_eq!(
-        natural_drops(
-            Block::TorchWest,
+        natural_drops_with_metadata(
+            Block::Torch,
+            Block::Torch.facing_metadata(HorizontalFacing::West),
             &mut Rolls {
                 values: &[],
                 index: 0
@@ -369,14 +382,14 @@ fn stack_copies_follow_beta_thresholds() {
 
 #[test]
 fn dropped_blocks_use_the_world_cube() {
-    let dirt = dropped_block_meshes(Block::Dirt, true, [0.2, 0.8, 0.3], [1.0, 1.0, 1.0]);
+    let dirt = dropped_block_meshes(Block::Dirt, 0, true, [0.2, 0.8, 0.3], [1.0, 1.0, 1.0]);
     assert_eq!(position_count(&dirt.body), 24);
     assert!(dirt.overlay.is_none());
     assert!(!dirt.cutout);
 
-    let grass = dropped_block_meshes(Block::Grass, true, [0.2, 0.8, 0.3], [1.0, 1.0, 1.0]);
+    let grass = dropped_block_meshes(Block::Grass, 0, true, [0.2, 0.8, 0.3], [1.0, 1.0, 1.0]);
     assert_eq!(position_count(grass.overlay.as_ref().unwrap()), 16);
-    let fast = dropped_block_meshes(Block::Grass, false, [0.2, 0.8, 0.3], [1.0, 1.0, 1.0]);
+    let fast = dropped_block_meshes(Block::Grass, 0, false, [0.2, 0.8, 0.3], [1.0, 1.0, 1.0]);
     assert!(fast.overlay.is_none());
 
     let positions = positions_of(&grass.body);
@@ -388,15 +401,16 @@ fn dropped_blocks_use_the_world_cube() {
     assert!((colors[0][0] - 1.0).abs() < 1e-5);
     assert!((colors[4][0] - 0.55).abs() < 1e-5);
 
-    let leaves = dropped_block_meshes(Block::Leaves, true, [1.0; 3], [0.2, 0.7, 0.1]);
+    let leaves = dropped_block_meshes(Block::Leaves, 0, true, [1.0; 3], [0.2, 0.7, 0.1]);
     assert!(leaves.cutout);
-    assert!(!dropped_block_meshes(Block::Leaves, false, [1.0; 3], [0.2, 0.7, 0.1]).cutout);
+    assert!(!dropped_block_meshes(Block::Leaves, 0, false, [1.0; 3], [0.2, 0.7, 0.1]).cutout);
 }
 
 #[test]
 fn dropped_ladder_uses_the_flat_item_sprite() {
-    let ladder = ItemStack::from_block(Block::LadderWest, 1).unwrap();
-    assert_eq!(ladder.runtime_block(), Some(Block::Ladder));
+    let west = Block::Ladder.facing_metadata(HorizontalFacing::West);
+    let ladder = ItemStack::from_block_state(Block::Ladder, west, 1).unwrap();
+    assert_eq!(ladder.runtime_block(), Some((Block::Ladder, 0)));
     assert_eq!(dropped_block_model(ladder), None);
 }
 

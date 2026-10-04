@@ -112,9 +112,10 @@ pub fn block_hit_distance(
     origin: Vec3,
     direction: Vec3,
 ) -> f32 {
-    let (min, mut max) = hit.block.selection_bounds();
+    let metadata = chunks.metadata_at(hit.x, hit.y, hit.z);
+    let (min, mut max) = hit.block.selection_bounds_for(metadata);
     if hit.block == Block::SnowLayer {
-        max[1] = (f32::from(chunks.metadata_at(hit.x, hit.y, hit.z).min(7)) + 1.0) / 8.0;
+        max[1] = (f32::from(metadata.min(7)) + 1.0) / 8.0;
     }
     let cell = Vec3::new(hit.x as f32, hit.y as f32, hit.z as f32);
     segment_entry(
@@ -270,9 +271,10 @@ fn hit_at(
         return None;
     }
     if block.is_torch() || matches!(block, Block::SnowLayer | Block::Farmland | Block::Crops) {
-        let (min, mut max) = block.selection_bounds();
+        let metadata = chunks.metadata_at(x, y, z);
+        let (min, mut max) = block.selection_bounds_for(metadata);
         if block == Block::SnowLayer {
-            max[1] = (f32::from(chunks.metadata_at(x, y, z).min(7)) + 1.0) / 8.0;
+            max[1] = (f32::from(metadata.min(7)) + 1.0) / 8.0;
         }
         let block_origin = Vec3::new(x as f32, y as f32, z as f32);
         if !ray_intersects_box(

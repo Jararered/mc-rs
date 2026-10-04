@@ -22,7 +22,7 @@ const CELLS: usize = CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE;
 /// Beta `Block.lightOpacity`, in light levels.
 pub(super) fn beta_opacity(block: Block) -> u8 {
     match block {
-        Block::Leaves | Block::BirchLeaves | Block::SpruceLeaves => 1,
+        Block::Leaves => 1,
         Block::Water | Block::FlowingWater | Block::Ice => 3,
         Block::Lava | Block::FlowingLava | Block::Farmland => 15,
         _ if block.is_opaque_cube() => 15,
@@ -47,17 +47,10 @@ pub(super) fn is_solid(block: Block) -> bool {
     block.is_solid_material()
 }
 
-pub(super) fn is_leaf(block: Block) -> bool {
-    matches!(
-        block,
-        Block::Leaves | Block::BirchLeaves | Block::SpruceLeaves
-    )
-}
-
 /// Beta stores every leaf species as block 18. Generators that look for "air
 /// or leaves" treat all of them alike.
 pub(super) fn is_air_or_leaves(block: Block) -> bool {
-    block == Block::Air || is_leaf(block)
+    block == Block::Air || block.is_leaves()
 }
 
 struct PopulatedChunk {
@@ -207,6 +200,27 @@ impl PopulationWorld {
             self.set_raw(x, y, z, Block::Obsidian);
         }
         true
+    }
+
+    /// [`Self::set`] for a block that carries metadata, such as a leaf species
+    /// or a pumpkin's facing.
+    pub fn set_with_metadata(
+        &mut self,
+        x: i32,
+        y: i32,
+        z: i32,
+        block: Block,
+        metadata: u8,
+    ) -> bool {
+        let changed = self.set(x, y, z, block);
+        if (0..HEIGHT).contains(&y)
+            && let Some((index, lx, lz)) = self.locate(x, z)
+        {
+            self.chunks[index]
+                .chunk
+                .set_metadata(lx, y as usize, lz, metadata);
+        }
+        changed
     }
 
     fn set_raw(&mut self, x: i32, y: i32, z: i32, block: Block) -> bool {

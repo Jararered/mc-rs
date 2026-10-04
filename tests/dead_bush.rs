@@ -7,7 +7,7 @@ use game::world::lighting::Skylight;
 
 #[test]
 fn dead_bush_uses_its_beta_sprite_tile_and_crossed_mesh() {
-    assert_eq!(block_tile(Block::DeadBush, 0, false), (7, 3));
+    assert_eq!(block_tile(Block::DeadBush, 0, 0, false), (7, 3));
     assert!(Block::DeadBush.is_crossed_plant());
     assert!(!Block::DeadBush.is_opaque_cube());
     assert_eq!(Block::DeadBush.collision_bounds(), None);

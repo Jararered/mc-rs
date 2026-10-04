@@ -2,8 +2,8 @@
 
 use crate::block::blocks::Block;
 use crate::inventory::Inventory;
-use crate::item::ItemData;
 use crate::item::Item;
+use crate::item::ItemData;
 use crate::item::ItemStack;
 
 /// Sort stacks by category, merge compatible stacks, and keep empty slots at
@@ -99,16 +99,12 @@ fn sort_key(stack: ItemStack) -> (u8, u8, u8, u16, u16) {
         | Item::IronShovel
         | Item::DiamondShovel
         | Item::GoldShovel => (5, 1, 1),
-        Item::WoodenAxe
-        | Item::StoneAxe
-        | Item::IronAxe
-        | Item::DiamondAxe
-        | Item::GoldAxe => (5, 1, 2),
-        Item::WoodenHoe
-        | Item::StoneHoe
-        | Item::IronHoe
-        | Item::DiamondHoe
-        | Item::GoldHoe => (5, 1, 3),
+        Item::WoodenAxe | Item::StoneAxe | Item::IronAxe | Item::DiamondAxe | Item::GoldAxe => {
+            (5, 1, 2)
+        }
+        Item::WoodenHoe | Item::StoneHoe | Item::IronHoe | Item::DiamondHoe | Item::GoldHoe => {
+            (5, 1, 3)
+        }
         Item::Shears => (5, 1, 4),
         Item::FishingRod => (5, 1, 5),
         Item::FlintAndSteel => (5, 1, 6),
@@ -155,13 +151,10 @@ fn block_sort_path(block: Block) -> (u8, u8) {
         | Block::DiamondOre
         | Block::RedstoneOre
         | Block::LitRedstoneOre => (0, 4),
-        Block::Wood | Block::SpruceWood | Block::BirchWood => (0, 5),
+        Block::Wood => (0, 5),
         Block::Leaves
-        | Block::SpruceLeaves
-        | Block::BirchLeaves
         | Block::Sapling
         | Block::TallGrass
-        | Block::Fern
         | Block::DeadBush
         | Block::Dandelion
         | Block::Rose
@@ -182,7 +175,7 @@ fn block_sort_path(block: Block) -> (u8, u8) {
         | Block::Pumpkin
         | Block::JackOLantern => (0, 8),
         // buildingBlock: planks, cobblestone, bricks, glass, wool, slabs/stairs
-        Block::WoodenPlanks | Block::SprucePlanks | Block::BirchPlanks => (1, 0),
+        Block::WoodenPlanks => (1, 0),
         Block::Cobblestone | Block::MossyCobblestone => (1, 1),
         Block::Bricks => (1, 2),
         Block::Glass => (1, 3),

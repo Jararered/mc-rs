@@ -82,8 +82,11 @@ use crate::world::streaming::setup_streaming;
 pub const SAVES_DIRECTORY: &str = "saves";
 /// Chunks per region along each axis. `regions0,0` covers chunks 0..15.
 pub const REGION_SIZE: i32 = 16;
-/// On-disk format version, written into both the manifest and every chunk file.
+/// On-disk format version, written into the manifest and the player file.
 pub const FORMAT_VERSION: u32 = 1;
+/// Chunk file version. Version 2 stores species and orientation in block
+/// metadata instead of in extra block ids; version 1 chunks regenerate.
+pub const CHUNK_FORMAT_VERSION: u32 = 2;
 
 const MANIFEST_FILE: &str = "level.json";
 const PLAYER_FILE: &str = "player.json";
@@ -572,7 +575,7 @@ impl StoredChunk {
         ticks: &[PendingTick],
     ) -> Self {
         Self {
-            format_version: FORMAT_VERSION,
+            format_version: CHUNK_FORMAT_VERSION,
             runs: encode_blocks(generated.chunk.raw_blocks()),
             heightmap: generated.heightmap.heights().to_vec(),
             biomes: generated
@@ -652,7 +655,7 @@ impl StoredChunk {
     }
 
     fn into_generated(self) -> Option<GeneratedChunk> {
-        if self.format_version != FORMAT_VERSION {
+        if self.format_version != CHUNK_FORMAT_VERSION {
             return None;
         }
         if self.heightmap.len() != COLUMNS_PER_CHUNK || self.biomes.len() != COLUMNS_PER_CHUNK {
@@ -802,20 +805,7 @@ fn decode_blocks(runs: &[(u8, u16)]) -> Option<Vec<Block>> {
     }
     let mut blocks = Vec::with_capacity(total);
     for (value, length) in runs {
-        // Bytes 92..=99 are the older chunk encoding of species and torch
-        // facing. 92..=96 are also cake through trapdoor, so this remap runs
-        // before `from_u8`.
-        let block = match *value {
-            92 => Block::SpruceLeaves,
-            93 => Block::BirchLeaves,
-            94 => Block::SpruceWood,
-            95 => Block::BirchWood,
-            96 => Block::TorchWest,
-            97 => Block::TorchEast,
-            98 => Block::TorchNorth,
-            99 => Block::TorchSouth,
-            value => Block::from_u8(value)?,
-        };
+        let block = Block::from_u8(*value)?;
         if !block.in_world() {
             return None;
         }

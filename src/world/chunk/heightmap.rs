@@ -58,15 +58,6 @@ impl Heightmap {
 fn occupies_column(block: Block) -> bool {
     !matches!(
         block,
-        Block::Air
-            | Block::Water
-            | Block::Wood
-            | Block::BirchWood
-            | Block::SpruceWood
-            | Block::Leaves
-            | Block::BirchLeaves
-            | Block::SpruceLeaves
-    ) && !block.is_ladder()
-        && !block.is_torch()
-        && !block.is_crossed_plant()
+        Block::Air | Block::Water | Block::Wood | Block::Leaves | Block::Ladder | Block::Torch
+    ) && !block.is_crossed_plant()
 }

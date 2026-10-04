@@ -19,17 +19,6 @@ pub const CHECK_DECAY: u8 = 8;
 const SUPPORT_REACH: i32 = 4;
 const SPAN: usize = (SUPPORT_REACH * 2 + 1) as usize;
 
-pub fn is_leaves(block: Block) -> bool {
-    matches!(
-        block,
-        Block::Leaves | Block::SpruceLeaves | Block::BirchLeaves
-    )
-}
-
-pub fn is_log(block: Block) -> bool {
-    matches!(block, Block::Wood | Block::SpruceWood | Block::BirchWood)
-}
-
 /// Set [`CHECK_DECAY`] on every leaf within `radius` of `position`, without
 /// notifying anything, as `onBlockRemoval` does.
 fn flag_leaves(world: &mut TickWorld, position: IVec3, radius: i32) {
@@ -40,7 +29,7 @@ fn flag_leaves(world: &mut TickWorld, position: IVec3, radius: i32) {
         for dy in -radius..=radius {
             for dz in -radius..=radius {
                 let cell = position + IVec3::new(dx, dy, dz);
-                if is_leaves(world.block(cell)) {
+                if world.block(cell).is_leaves() {
                     let metadata = world.metadata(cell);
                     if metadata & CHECK_DECAY == 0 {
                         world.set_metadata(cell, metadata | CHECK_DECAY);
@@ -64,9 +53,9 @@ pub fn supported(world: &TickWorld, position: IVec3) -> bool {
         for y in -SUPPORT_REACH..=SUPPORT_REACH {
             for z in -SUPPORT_REACH..=SUPPORT_REACH {
                 let block = world.block(position + IVec3::new(x, y, z));
-                distance[index(x, y, z)] = if is_log(block) {
+                distance[index(x, y, z)] = if block == Block::Wood {
                     0
-                } else if is_leaves(block) {
+                } else if block.is_leaves() {
                     -2
                 } else {
                     -1

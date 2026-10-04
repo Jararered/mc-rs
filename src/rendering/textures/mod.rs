@@ -6,6 +6,7 @@ use bevy::prelude::*;
 
 use crate::app::settings::GameSettings;
 use crate::app::settings::GraphicsQuality;
+use crate::block::blocks::species;
 use crate::rendering::meshing::BlockLighting;
 use crate::rendering::meshing::WATER_ALPHA;
 use crate::world::environment::celestial_angle;
@@ -382,46 +383,26 @@ fn apply_water_quality(material: &mut StandardMaterial, graphics: GraphicsQualit
 }
 
 // The original terrain.png is a 16 by 16 grid of 16-pixel tiles.
+///
+/// `metadata` picks the species of wood and leaves and the facing of furnaces,
+/// chests, and pumpkins.
 pub fn block_tile(
     block: crate::block::blocks::Block,
+    metadata: u8,
     face: usize,
     fancy_graphics: bool,
 ) -> (u8, u8) {
     use crate::block::blocks::Block;
 
     match block {
-        Block::Ladder
-        | Block::LadderNorth
-        | Block::LadderEast
-        | Block::LadderSouth
-        | Block::LadderWest => (3, 5),
-        Block::Furnace
-        | Block::FurnaceNorth
-        | Block::FurnaceEast
-        | Block::FurnaceSouth
-        | Block::FurnaceWest
-        | Block::LitFurnace
-        | Block::LitFurnaceNorth
-        | Block::LitFurnaceEast
-        | Block::LitFurnaceSouth
-        | Block::LitFurnaceWest
-            if face == 0 || face == 1 =>
-        {
-            (14, 3)
-        }
-        Block::Furnace
-        | Block::FurnaceNorth
-        | Block::FurnaceEast
-        | Block::FurnaceSouth
-        | Block::FurnaceWest
-        | Block::LitFurnace
-        | Block::LitFurnaceNorth
-        | Block::LitFurnaceEast
-        | Block::LitFurnaceSouth
-        | Block::LitFurnaceWest => {
-            let facing = block.furnace_facing().expect("matched furnace");
-            if face == facing.face_index() {
-                if block.is_lit_furnace() {
+        Block::Ladder => (3, 5),
+        Block::Furnace | Block::LitFurnace if face == 0 || face == 1 => (14, 3),
+        Block::Furnace | Block::LitFurnace => {
+            if block
+                .facing(metadata)
+                .is_some_and(|facing| facing.face_index() == face)
+            {
+                if block == Block::LitFurnace {
                     (13, 3)
                 } else {
                     (12, 2)
@@ -438,29 +419,17 @@ pub fn block_tile(
         Block::Farmland if face == 0 => farmland_top_tile(false),
         Block::Farmland => (2, 0),
         Block::Cobblestone => (0, 1),
-        Block::WoodenPlanks | Block::SprucePlanks | Block::BirchPlanks => (4, 0),
+        Block::WoodenPlanks => (4, 0),
         // Beta BlockWorkbench: top 43, plank bottom 4, and two alternating
         // side tiles (59/60) based on the block face orientation.
         Block::CraftingTable if face == 0 => (11, 2),
         Block::CraftingTable if face == 1 => (4, 0),
         Block::CraftingTable if face == 2 || face == 4 => (12, 3),
         Block::CraftingTable => (11, 3),
-        Block::Pumpkin
-        | Block::PumpkinNorth
-        | Block::PumpkinEast
-        | Block::PumpkinSouth
-        | Block::PumpkinWest
-            if face == 0 || face == 1 =>
-        {
-            (6, 6)
-        }
-        Block::Pumpkin
-        | Block::PumpkinNorth
-        | Block::PumpkinEast
-        | Block::PumpkinSouth
-        | Block::PumpkinWest => {
+        Block::Pumpkin if face == 0 || face == 1 => (6, 6),
+        Block::Pumpkin => {
             if block
-                .pumpkin_facing()
+                .facing(metadata)
                 .is_some_and(|facing| facing.face_index() == face)
             {
                 (7, 7)
@@ -475,24 +444,19 @@ pub fn block_tile(
         Block::Sand => (2, 1),
         Block::Gravel => (3, 1),
         Block::Wood if face == 0 || face == 1 => (5, 1),
-        Block::Wood => (4, 1),
-        Block::SpruceWood if face == 0 || face == 1 => (5, 1),
-        Block::SpruceWood => (4, 7),
-        Block::BirchWood if face == 0 || face == 1 => (5, 1),
-        Block::BirchWood => (5, 7),
+        Block::Wood => match metadata & 3 {
+            species::SPRUCE => (4, 7),
+            species::BIRCH => (5, 7),
+            _ => (4, 1),
+        },
         // Fancy leaves use the cutout tile; Fast uses the solid tile one column over.
-        Block::Leaves | Block::BirchLeaves => {
-            if fancy_graphics {
-                (4, 3)
-            } else {
-                (5, 3)
-            }
-        }
-        Block::SpruceLeaves => {
-            if fancy_graphics {
-                (4, 8)
-            } else {
-                (5, 8)
+        Block::Leaves => {
+            let spruce = metadata & 3 == species::SPRUCE;
+            match (spruce, fancy_graphics) {
+                (false, true) => (4, 3),
+                (false, false) => (5, 3),
+                (true, true) => (4, 8),
+                (true, false) => (5, 8),
             }
         }
         Block::Sponge => (0, 3),
@@ -525,22 +489,10 @@ pub fn block_tile(
         Block::Clay => (8, 4),
         Block::MobSpawner => (1, 4),
         Block::Fire => (15, 1),
-        Block::ChestNorth
-        | Block::ChestEast
-        | Block::ChestSouth
-        | Block::ChestWest
-        | Block::Chest
-            if face == 0 || face == 1 =>
-        {
-            (9, 1)
-        }
-        Block::ChestNorth
-        | Block::ChestEast
-        | Block::ChestSouth
-        | Block::ChestWest
-        | Block::Chest => {
+        Block::Chest if face == 0 || face == 1 => (9, 1),
+        Block::Chest => {
             if block
-                .chest_facing()
+                .facing(metadata)
                 .is_some_and(|facing| facing.face_index() == face)
             {
                 (11, 1)
@@ -551,18 +503,14 @@ pub fn block_tile(
         Block::Lava | Block::FlowingLava => (13, 14),
         Block::Netherrack => (7, 6),
         Block::Glowstone => (9, 6),
-        Block::Torch
-        | Block::TorchWest
-        | Block::TorchEast
-        | Block::TorchNorth
-        | Block::TorchSouth => (0, 5),
+        Block::Torch => (0, 5),
         Block::Dandelion => (13, 0),
         Block::Rose => (12, 0),
         Block::DeadBush => (7, 3),
         Block::RedMushroom => (12, 1),
         Block::BrownMushroom => (13, 1),
+        Block::TallGrass if metadata & 3 == species::FERN => (8, 3),
         Block::TallGrass => (7, 2),
-        Block::Fern => (8, 3),
         Block::Water | Block::FlowingWater => water::WATER_STILL_TILE,
         Block::Crops => crop_tile(7),
         Block::Ice => (3, 4),

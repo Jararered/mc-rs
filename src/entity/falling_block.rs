@@ -233,8 +233,13 @@ pub(crate) fn sync_falling_block_rendering(
     };
     let fancy = settings.is_some_and(|settings| settings.graphics.fancy_leaves());
     for (entity, falling) in &new_blocks {
-        let built =
-            dropped_block_meshes(falling.block, fancy, [0.55, 0.8, 0.4], [0.28, 0.71, 0.09]);
+        let built = dropped_block_meshes(
+            falling.block,
+            0,
+            fancy,
+            [0.55, 0.8, 0.4],
+            [0.28, 0.71, 0.09],
+        );
         let child = commands
             .spawn((
                 Mesh3d(meshes.add(built.body.into_mesh())),

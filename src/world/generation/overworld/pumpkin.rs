@@ -18,7 +18,7 @@ pub(super) fn pumpkin_patch(
         let y = y + rand.next_int(4) as i32 - rand.next_int(4) as i32;
         let z = z + rand.next_int(8) as i32 - rand.next_int(8) as i32;
         if world.is_air(x, y, z) && world.get(x, y - 1, z) == Block::Grass {
-            world.set(x, y, z, Block::pumpkin_from_metadata(rand.next_int(4)));
+            world.set_with_metadata(x, y, z, Block::Pumpkin, rand.next_int(4) as u8);
         }
     }
 }

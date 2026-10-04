@@ -229,7 +229,7 @@ fn successful_hoe_use_spends_durability_without_charging_failed_attempts() {
 #[test]
 fn farmland_has_beta_properties_tiles_and_dirt_drop() {
     assert!(Block::Farmland.in_world());
-    assert_eq!(Block::Farmland.placed(0), Some(Block::Farmland));
+    assert_eq!(Block::Farmland.placed(0), Some((Block::Farmland, 0)));
     assert!(!Block::Farmland.is_opaque_cube());
     assert_eq!(Block::Farmland.hardness(), 0.6);
     assert_eq!(light_opacity(Block::Farmland), 15);
@@ -243,9 +243,9 @@ fn farmland_has_beta_properties_tiles_and_dirt_drop() {
     );
     assert_eq!(farmland_top_tile(false), (7, 5));
     assert_eq!(farmland_top_tile(true), (6, 5));
-    assert_eq!(block_tile(Block::Farmland, 0, false), (7, 5));
+    assert_eq!(block_tile(Block::Farmland, 0, 0, false), (7, 5));
     for face in [1, 2, 3, 4, 5] {
-        assert_eq!(block_tile(Block::Farmland, face, false), (2, 0));
+        assert_eq!(block_tile(Block::Farmland, 0, face, false), (2, 0));
     }
     let shovel = ItemStack::new(Item::WoodenShovel, 1).unwrap();
     assert_eq!(str_vs_block(Some(shovel), Block::Farmland), 2.0);

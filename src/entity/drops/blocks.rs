@@ -69,7 +69,7 @@ fn push_harvest(
 ) {
     // `BlockLeaves.harvestBlock`: shears drop the leaf, metadata kept in the low 2 bits.
     if block.is_leaves() && tool.is_some_and(|tool| tool.item() == Item::Shears) {
-        push_block(drops, block, 1);
+        push_block_state(drops, block, metadata, 1);
         return;
     }
     // `BlockSnow.harvestBlock` drops one snowball. `quantityDropped` is 0, so a
@@ -137,7 +137,7 @@ fn push_natural(drops: &mut Vec<ItemStack>, block: Block, metadata: u8, rolls: &
         Block::SugarCane => push_item(drops, Item::SugarCane, 0, 1),
         Block::Bed => push_item(drops, Item::Bed, 0, 1),
         Block::Repeater | Block::PoweredRepeater => push_item(drops, Item::Repeater, 0, 1),
-        Block::TallGrass | Block::Fern => {
+        Block::TallGrass => {
             if rolls.next_int(8) == 0 {
                 push_item(drops, Item::Seeds, 0, 1);
             }
@@ -156,10 +156,10 @@ fn push_natural(drops: &mut Vec<ItemStack>, block: Block, metadata: u8, rolls: &
                 }
             }
         }
-        Block::Leaves | Block::SpruceLeaves | Block::BirchLeaves => {
+        Block::Leaves => {
             // `quantityDropped`: one sapling on `nextInt(20) == 0`, species in `damageDropped`.
             if rolls.next_int(20) == 0 {
-                let species = block.item_form().1 as u16;
+                let species = u16::from(metadata & 3);
                 push_item(
                     drops,
                     Item::from_block(Block::Sapling).expect("sapling has an item form"),
@@ -168,12 +168,17 @@ fn push_natural(drops: &mut Vec<ItemStack>, block: Block, metadata: u8, rolls: &
                 );
             }
         }
-        other => push_block(drops, other, 1),
+        other => push_block_state(drops, other, metadata, 1),
     }
 }
 
 fn push_block(drops: &mut Vec<ItemStack>, block: Block, count: u32) {
-    let Ok(stack) = ItemStack::from_block(block, 1) else {
+    push_block_state(drops, block, 0, count);
+}
+
+/// Drop `count` of the item a block with `metadata` stacks as, keeping species.
+fn push_block_state(drops: &mut Vec<ItemStack>, block: Block, metadata: u8, count: u32) {
+    let Ok(stack) = ItemStack::from_block_state(block, metadata, 1) else {
         return;
     };
     for _ in 0..count {

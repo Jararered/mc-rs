@@ -1,117 +1,111 @@
-use crate::block::blocks::Block;
-use crate::block::definition::BlockDefinition;
-use crate::block::definition::BlockProperties;
+//! Horizontal orientation stored in block metadata, using Beta's encodings.
 
-pub(super) struct DirectionDefinition;
-pub(super) static DIRECTION_DEFINITION: DirectionDefinition = DirectionDefinition;
+use super::blocks::Block;
 
-impl BlockDefinition for DirectionDefinition {
-    fn in_world(&self, block: Block) -> bool {
-        matches!(
-            block,
-            Block::Chest
-                | Block::ChestNorth
-                | Block::ChestEast
-                | Block::ChestSouth
-                | Block::ChestWest
-                | Block::Ladder
-                | Block::LadderNorth
-                | Block::LadderEast
-                | Block::LadderSouth
-                | Block::LadderWest
-                | Block::Furnace
-                | Block::LitFurnace
-                | Block::FurnaceNorth
-                | Block::FurnaceEast
-                | Block::FurnaceSouth
-                | Block::FurnaceWest
-                | Block::LitFurnaceNorth
-                | Block::LitFurnaceEast
-                | Block::LitFurnaceSouth
-                | Block::LitFurnaceWest
-                | Block::Pumpkin
-                | Block::PumpkinNorth
-                | Block::PumpkinEast
-                | Block::PumpkinSouth
-                | Block::PumpkinWest
-        )
-    }
+/// A horizontal side of a block. Depending on the block it names the face
+/// presented as the front (furnace, chest, pumpkin) or the side holding the
+/// block up (torch, ladder).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum HorizontalFacing {
+    #[default]
+    North,
+    East,
+    South,
+    West,
+}
 
-    fn properties(&self, block: Block) -> BlockProperties {
-        match block {
-            Block::Chest
-            | Block::ChestNorth
-            | Block::ChestEast
-            | Block::ChestSouth
-            | Block::ChestWest => BlockProperties {
-                opaque_cube: false,
-                ..BlockProperties::solid(2.5)
-            },
-            Block::Ladder
-            | Block::LadderNorth
-            | Block::LadderEast
-            | Block::LadderSouth
-            | Block::LadderWest => {
-                let bounds = match block.ladder_support_offset() {
-                    Some([0, 0, -1]) => ([0.0, 0.0, 0.0], [1.0, 1.0, 0.125]),
-                    Some([0, 0, 1]) => ([0.0, 0.0, 0.875], [1.0, 1.0, 1.0]),
-                    Some([1, 0, 0]) => ([0.875, 0.0, 0.0], [1.0, 1.0, 1.0]),
-                    Some([-1, 0, 0]) => ([0.0, 0.0, 0.0], [0.125, 1.0, 1.0]),
-                    _ => BlockProperties::FULL_BOUNDS,
-                };
-                BlockProperties {
-                    opaque_cube: false,
-                    light_opacity: 0,
-                    collision_bounds: Some(bounds),
-                    selection_bounds: bounds,
-                    ..BlockProperties::solid(0.4)
-                }
-            }
-            Block::Furnace
-            | Block::LitFurnace
-            | Block::FurnaceNorth
-            | Block::FurnaceEast
-            | Block::FurnaceSouth
-            | Block::FurnaceWest
-            | Block::LitFurnaceNorth
-            | Block::LitFurnaceEast
-            | Block::LitFurnaceSouth
-            | Block::LitFurnaceWest => BlockProperties {
-                harvestable_by_hand: false,
-                light_emission: if block.is_lit_furnace() { 13 } else { 0 },
-                ..BlockProperties::solid(3.5)
-            },
-            Block::Pumpkin
-            | Block::PumpkinNorth
-            | Block::PumpkinEast
-            | Block::PumpkinSouth
-            | Block::PumpkinWest => BlockProperties::solid(1.0),
-            Block::Unknown(_) => BlockProperties::unknown(),
-            _ => BlockProperties::unknown(),
+impl HorizontalFacing {
+    pub const ALL: [Self; 4] = [Self::North, Self::East, Self::South, Self::West];
+
+    /// The offset from a cell to its neighbor on this side.
+    pub const fn offset(self) -> [i32; 3] {
+        match self {
+            Self::North => [0, 0, -1],
+            Self::East => [1, 0, 0],
+            Self::South => [0, 0, 1],
+            Self::West => [-1, 0, 0],
         }
     }
 
-    fn opaque_cube(&self, block: Block) -> bool {
-        !matches!(
-            block,
-            Block::Chest
-                | Block::ChestNorth
-                | Block::ChestEast
-                | Block::ChestSouth
-                | Block::ChestWest
-                | Block::Ladder
-                | Block::LadderNorth
-                | Block::LadderEast
-                | Block::LadderSouth
-                | Block::LadderWest
-        )
+    /// Mesh face index that points outwards on this side.
+    pub const fn face_index(self) -> usize {
+        match self {
+            Self::East => 2,
+            Self::West => 3,
+            Self::South => 4,
+            Self::North => 5,
+        }
+    }
+}
+
+impl Block {
+    /// The orientation held in `metadata`, for blocks that have one. `None`
+    /// for other blocks, a torch standing on the floor, and an unattached
+    /// ladder. Furnaces, chests, and pumpkins always face somewhere.
+    pub const fn facing(self, metadata: u8) -> Option<HorizontalFacing> {
+        use HorizontalFacing::*;
+        match (self, metadata & 15) {
+            // Beta's front-face values: 2 north, 3 south, 4 west, 5 east.
+            (Self::Furnace | Self::LitFurnace | Self::Chest, 3) => Some(South),
+            (Self::Furnace | Self::LitFurnace | Self::Chest, 4) => Some(West),
+            (Self::Furnace | Self::LitFurnace | Self::Chest, 5) => Some(East),
+            (Self::Furnace | Self::LitFurnace | Self::Chest, _) => Some(North),
+            // Beta's wall values name the side holding the torch up.
+            (Self::Torch, 1) => Some(West),
+            (Self::Torch, 2) => Some(East),
+            (Self::Torch, 3) => Some(North),
+            (Self::Torch, 4) => Some(South),
+            // Beta's ladder values name the side of the supporting wall.
+            (Self::Ladder, 2) => Some(South),
+            (Self::Ladder, 3) => Some(North),
+            (Self::Ladder, 4) => Some(East),
+            (Self::Ladder, 5) => Some(West),
+            // The pumpkin carving faces outward: 0 west, 1 south, 2 east, 3 north.
+            (Self::Pumpkin, 1) => Some(South),
+            (Self::Pumpkin, 2) => Some(East),
+            (Self::Pumpkin, 3) => Some(North),
+            (Self::Pumpkin, _) => Some(West),
+            _ => None,
+        }
     }
 
-    fn light_opacity(&self, block: Block) -> u8 {
-        if block.is_ladder() { 0 } else { 15 }
+    /// The metadata that makes this block face `facing`; the inverse of
+    /// [`Self::facing`]. Blocks without an orientation return 0.
+    pub const fn facing_metadata(self, facing: HorizontalFacing) -> u8 {
+        use HorizontalFacing::*;
+        match (self, facing) {
+            (Self::Furnace | Self::LitFurnace | Self::Chest, North) => 2,
+            (Self::Furnace | Self::LitFurnace | Self::Chest, South) => 3,
+            (Self::Furnace | Self::LitFurnace | Self::Chest, West) => 4,
+            (Self::Furnace | Self::LitFurnace | Self::Chest, East) => 5,
+            (Self::Torch, West) => 1,
+            (Self::Torch, East) => 2,
+            (Self::Torch, North) => 3,
+            (Self::Torch, South) => 4,
+            (Self::Ladder, South) => 2,
+            (Self::Ladder, North) => 3,
+            (Self::Ladder, East) => 4,
+            (Self::Ladder, West) => 5,
+            (Self::Pumpkin, West) => 0,
+            (Self::Pumpkin, South) => 1,
+            (Self::Pumpkin, East) => 2,
+            (Self::Pumpkin, North) => 3,
+            _ => 0,
+        }
     }
 
-    fn light_emission(&self, block: Block) -> u8 {
-        if block.is_lit_furnace() { 13 } else { 0 }
+    /// The offset from a torch or ladder to the block it hangs on.
+    pub const fn support_offset(self, metadata: u8) -> Option<[i32; 3]> {
+        match self {
+            Self::Torch | Self::Ladder => match self.facing(metadata) {
+                Some(facing) => Some(facing.offset()),
+                None => None,
+            },
+            _ => None,
+        }
+    }
+
+    pub const fn is_furnace(self) -> bool {
+        matches!(self, Self::Furnace | Self::LitFurnace)
     }
 }

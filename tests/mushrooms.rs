@@ -13,8 +13,8 @@ fn mushrooms_use_crossed_sprite_meshes_and_beta_atlas_tiles() {
     let meshes = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true);
     let positions = meshes.masked.positions();
     assert_eq!(positions.len(), 16, "two crossed quads per mushroom");
-    assert_eq!(block_tile(Block::BrownMushroom, 0, false), (13, 1));
-    assert_eq!(block_tile(Block::RedMushroom, 0, false), (12, 1));
+    assert_eq!(block_tile(Block::BrownMushroom, 0, 0, false), (13, 1));
+    assert_eq!(block_tile(Block::RedMushroom, 0, 0, false), (12, 1));
 }
 
 #[test]

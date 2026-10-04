@@ -67,8 +67,8 @@ Every hook has a no-op default. Implement only what the block reacts to.
 | `entity_walked(world, pos)` | `onEntityWalking` | An entity took a step on it |
 
 Behaviors are stateless unit structs with a `static` instance. One behavior
-can serve several compact values (every torch facing, every leaf species);
-read which one with `world.block(pos)`. As in Beta, random and scheduled
+serves every torch facing and every leaf species, since those live in metadata;
+read which one with `world.metadata(pos)`. As in Beta, random and scheduled
 ticks call the same `update_tick`.
 
 ## `TickWorld`: the world a behavior sees
@@ -113,8 +113,9 @@ grass's `> 2` transcribe directly.
 Chunks store Beta's 4-bit per-block metadata (`Chunk::metadata`,
 `WorldChunks::metadata_at`), allocated only once a chunk holds a nonzero
 value, and saved in chunk files. Writing a different block resets it to 0,
-as `setBlockID` does. Species, torch facing, and similar states stay in the
-compact `Id` value; metadata is for state that changes while simulating.
+as `setBlockID` does. Species and facing live there too, as in Beta, so a
+block id never encodes state. `Block::facing` and `Block::facing_metadata`
+convert facings, and `blocks::species` names the species values.
 
 | Block | Metadata |
 |-------|----------|
@@ -122,7 +123,13 @@ compact `Id` value; metadata is for state that changes while simulating.
 | Crops | Growth stage 0–7 |
 | Farmland | Moisture 0–7 (wet texture when > 0) |
 | Cactus, sugar cane | Growth counter 0–15 |
-| Leaves | Bit 8 (`CHECK_DECAY`): look for a log on the next random tick |
+| Leaves | Bits 0-1 species (oak, spruce, birch); bit 8 (`CHECK_DECAY`): look for a log on the next random tick |
+| Wood, planks | Bits 0-1 species |
+| Tall grass | 2 is the fern |
+| Torch | 0 floor; 1 west, 2 east, 3 north, 4 south wall |
+| Ladder | 2 south, 3 north, 4 east, 5 west wall |
+| Furnace, lit furnace, chest | 2 north, 3 south, 4 west, 5 east front |
+| Pumpkin | 0 west, 1 south, 2 east, 3 north front |
 
 ## Adding update behavior to a block
 

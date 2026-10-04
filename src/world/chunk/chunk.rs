@@ -101,7 +101,7 @@ impl Chunk {
         let furnaces = blocks
             .iter()
             .enumerate()
-            .filter(|(_, block)| is_furnace(**block))
+            .filter(|(_, block)| Block::is_furnace(**block))
             .map(|(index, _)| (index, Furnace::default()))
             .collect();
         let chests = blocks
@@ -142,7 +142,7 @@ impl Chunk {
                 .filter(move |(_, raw)| matches(Block::from(**raw)))
                 .map(|(index, _)| index)
         };
-        let furnaces = indices(is_furnace)
+        let furnaces = indices(Block::is_furnace)
             .map(|index| (index, Furnace::default()))
             .collect();
         let chests = indices(Block::is_chest)
@@ -311,9 +311,9 @@ impl Chunk {
             self.spawners.entry(index).or_insert_with(Default::default);
         }
         let previous = Block::from(self.blocks[index]);
-        if is_furnace(previous) && !is_furnace(block) {
+        if Block::is_furnace(previous) && !Block::is_furnace(block) {
             self.furnaces.remove(&index);
-        } else if !is_furnace(previous) && is_furnace(block) {
+        } else if !Block::is_furnace(previous) && Block::is_furnace(block) {
             self.furnaces.entry(index).or_default();
         }
         if previous.is_chest() && !block.is_chest() {
@@ -361,10 +361,6 @@ impl Chunk {
     pub const fn index(x: usize, y: usize, z: usize) -> usize {
         (y * CHUNK_SIZE + z) * CHUNK_SIZE + x
     }
-}
-
-fn is_furnace(block: Block) -> bool {
-    block.is_furnace()
 }
 
 impl Default for Chunk {

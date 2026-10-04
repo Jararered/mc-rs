@@ -1,63 +1,9 @@
-//! Water and lava: block definitions, and the level math Beta's
+//! Water and lava: the level math Beta's
 //! `BlockFluid` and `RenderBlocks` share. Metadata is a fluid's decay: `0`
 //! for a source, `1..=7` for how far it has spread, and `8` and up for fluid
 //! falling from above.
 
 use crate::block::blocks::Block;
-use crate::block::definition::BlockDefinition;
-use crate::block::definition::BlockProperties;
-
-pub(super) struct FluidDefinition;
-pub(super) static FLUID_DEFINITION: FluidDefinition = FluidDefinition;
-
-impl BlockDefinition for FluidDefinition {
-    fn in_world(&self, block: Block) -> bool {
-        matches!(
-            block,
-            Block::FlowingWater | Block::Water | Block::FlowingLava | Block::Lava
-        )
-    }
-
-    fn properties(&self, block: Block) -> BlockProperties {
-        properties(block)
-    }
-
-    fn opaque_cube(&self, _block: Block) -> bool {
-        false
-    }
-
-    fn light_opacity(&self, block: Block) -> u8 {
-        if matches!(block, Block::Water | Block::FlowingWater) {
-            3
-        } else {
-            15
-        }
-    }
-
-    fn light_emission(&self, block: Block) -> u8 {
-        if matches!(block, Block::FlowingLava | Block::Lava) {
-            15
-        } else {
-            0
-        }
-    }
-}
-
-fn properties(block: Block) -> BlockProperties {
-    match block {
-        Block::FlowingWater | Block::Water => BlockProperties {
-            light_opacity: 3,
-            ..BlockProperties::fluid(100.0)
-        },
-        Block::FlowingLava | Block::Lava => BlockProperties {
-            light_opacity: 15,
-            light_emission: 15,
-            ..BlockProperties::fluid(0.0)
-        },
-        Block::Unknown(_) => BlockProperties::unknown(),
-        _ => BlockProperties::unknown(),
-    }
-}
 
 /// A fluid material, Beta's `Material.water` or `Material.lava`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

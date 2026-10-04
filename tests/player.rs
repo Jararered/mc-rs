@@ -3,7 +3,7 @@ use bevy::prelude::Mesh;
 use bevy::prelude::Vec3;
 use game::block::blocks::Block;
 use game::block::blocks::FurnaceFacing;
-use game::block::fluids::Fluid;
+use game::block::fluids::FluidType;
 use game::block::properties::hand_mine_progress_per_tick;
 use game::entity::EntitySize;
 use game::item::Item;
@@ -283,7 +283,7 @@ fn empty_bucket_picks_up_a_water_source_and_leaves_air() {
             .expect("a water source should be picked up");
     assert_eq!((x, y, z), (8, 64, 8));
     assert_eq!(previous, Block::Water);
-    assert_eq!(fluid, Fluid::Water);
+    assert_eq!(fluid, FluidType::Water);
     assert_eq!(chunks.block_at(8, 64, 8), Some(Block::Air));
 }
 
@@ -295,7 +295,7 @@ fn empty_bucket_picks_up_a_lava_source() {
 
     let (.., fluid) = pick_up_fluid(&mut chunks, Vec3::new(8.5, 66.0, 8.5), Vec3::NEG_Y)
         .expect("a lava source should be picked up");
-    assert_eq!(fluid, Fluid::Lava);
+    assert_eq!(fluid, FluidType::Lava);
     assert_eq!(chunks.block_at(8, 64, 8), Some(Block::Air));
 }
 
@@ -329,7 +329,7 @@ fn water_bucket_fills_the_non_solid_cell_beside_the_hit_face() {
     let (x, y, z, previous, metadata) = place_fluid(
         &mut chunks,
         hit(8, 64, 8, BlockFace::Up, Block::Stone),
-        Fluid::Water,
+        FluidType::Water,
     )
     .expect("air above a solid block accepts the fluid");
     assert_eq!((x, y, z), (8, 65, 8));
@@ -348,7 +348,7 @@ fn lava_bucket_places_flowing_lava() {
     place_fluid(
         &mut chunks,
         hit(8, 64, 8, BlockFace::Up, Block::Stone),
-        Fluid::Lava,
+        FluidType::Lava,
     )
     .expect("air above a solid block accepts the fluid");
     assert_eq!(chunks.block_at(8, 65, 8), Some(Block::FlowingLava));
@@ -365,7 +365,7 @@ fn water_bucket_overwrites_non_solid_blocks_without_dropping_them() {
     let (x, y, z, previous, _) = place_fluid(
         &mut chunks,
         hit(8, 64, 8, BlockFace::Up, Block::Grass),
-        Fluid::Water,
+        FluidType::Water,
     )
     .expect("tall grass is not a solid material");
     assert_eq!((x, y, z), (8, 65, 8));
@@ -384,7 +384,7 @@ fn lava_bucket_cannot_fill_a_solid_block() {
         place_fluid(
             &mut chunks,
             hit(8, 64, 8, BlockFace::East, Block::Stone),
-            Fluid::Lava,
+            FluidType::Lava,
         )
         .is_none()
     );

@@ -61,12 +61,12 @@ fn properties(block: Block) -> BlockProperties {
 
 /// A fluid material, Beta's `Material.water` or `Material.lava`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Fluid {
+pub enum FluidType {
     Water,
     Lava,
 }
 
-impl Fluid {
+impl FluidType {
     /// The material of `block`, if it is a fluid.
     pub const fn of(block: Block) -> Option<Self> {
         match block {
@@ -110,15 +110,15 @@ impl Fluid {
 
 /// Beta `Material.getIsLiquid`.
 pub const fn is_liquid(block: Block) -> bool {
-    Fluid::of(block).is_some()
+    FluidType::of(block).is_some()
 }
 
 pub const fn is_water(block: Block) -> bool {
-    matches!(Fluid::of(block), Some(Fluid::Water))
+    matches!(FluidType::of(block), Some(FluidType::Water))
 }
 
 pub const fn is_lava(block: Block) -> bool {
-    matches!(Fluid::of(block), Some(Fluid::Lava))
+    matches!(FluidType::of(block), Some(FluidType::Lava))
 }
 
 /// `BlockFluid.getPercentAir`: how far below the top of its cell a fluid's
@@ -131,8 +131,8 @@ pub fn percent_air(metadata: u8) -> f32 {
 
 /// `BlockFluid.getEffectiveFlowDecay`: `-1` unless the cell holds `fluid`;
 /// falling fluid reads as a source.
-pub fn effective_decay(fluid: Fluid, block: Block, metadata: u8) -> i32 {
-    if Fluid::of(block) != Some(fluid) {
+pub fn effective_decay(fluid: FluidType, block: Block, metadata: u8) -> i32 {
+    if FluidType::of(block) != Some(fluid) {
         return -1;
     }
     if metadata >= 8 {
@@ -148,7 +148,7 @@ pub fn effective_decay(fluid: Fluid, block: Block, metadata: u8) -> i32 {
 /// falling fluid weigh ten times more than spread fluid, and open non-solid
 /// neighbors pull the corner down.
 pub fn corner_height(
-    fluid: Fluid,
+    fluid: FluidType,
     x: i32,
     y: i32,
     z: i32,
@@ -158,11 +158,11 @@ pub fn corner_height(
     let mut air = 0.0;
     for (dx, dz) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
         let (cx, cz) = (x - dx, z - dz);
-        if Fluid::of(cell(cx, y + 1, cz).0) == Some(fluid) {
+        if FluidType::of(cell(cx, y + 1, cz).0) == Some(fluid) {
             return 1.0;
         }
         let (block, metadata) = cell(cx, y, cz);
-        if Fluid::of(block) == Some(fluid) {
+        if FluidType::of(block) == Some(fluid) {
             if metadata >= 8 || metadata == 0 {
                 air += percent_air(metadata) * 10.0;
                 weight += 10;
@@ -180,7 +180,7 @@ pub fn corner_height(
 /// The horizontal part of `BlockFluid.getFlowVector`, before normalizing:
 /// the direction fluid at `(x, y, z)` runs toward lower levels or drops.
 pub fn flow_vector(
-    fluid: Fluid,
+    fluid: FluidType,
     x: i32,
     y: i32,
     z: i32,

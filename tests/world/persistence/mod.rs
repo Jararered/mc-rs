@@ -633,6 +633,40 @@ fn an_autosave_drain_reaches_disk_over_several_frames() {
 }
 
 #[test]
+fn a_save_request_drains_without_waiting_for_the_autosave_timer() {
+    let saves = temp_saves("request");
+    // The default timer is a minute, so only the request can save in time.
+    let mut app = persistence_app(&saves);
+    app.world_mut()
+        .spawn((Player, Transform::from_xyz(8.0, 72.0, 8.0)));
+    run_until_spawn_chunk(&mut app);
+
+    {
+        let mut chunks = app.world_mut().resource_mut::<WorldChunks>();
+        let edited = chunks
+            .get_mut(ChunkPosition::ZERO)
+            .expect("spawn chunk should be loaded");
+        edited.chunk.set(4, 120, 4, Block::GoldBlock);
+    }
+    let mut persistence = app.world_mut().resource_mut::<WorldPersistence>();
+    persistence.mark_dirty(ChunkPosition::ZERO);
+    persistence.request_save();
+    let storage = persistence
+        .storage()
+        .expect("persistence should be enabled")
+        .clone();
+
+    assert!(
+        run_until(&mut app, Duration::from_secs(20), |_| {
+            storage
+                .load_chunk(ChunkPosition::ZERO)
+                .is_some_and(|chunk| chunk.chunk.get(4, 120, 4) == Some(Block::GoldBlock))
+        }),
+        "the requested save never wrote the edited chunk"
+    );
+}
+
+#[test]
 fn a_drain_spreads_more_chunks_than_one_frame_can_hold() {
     let saves = temp_saves("spread");
     let mut app = draining_app(&saves);

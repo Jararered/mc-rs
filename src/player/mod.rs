@@ -7,6 +7,7 @@ use bevy::window::PrimaryWindow;
 
 use crate::app::settings::GameSettings;
 use crate::app::state::AppScreen;
+use crate::app::state::PauseMenu;
 use crate::entity::CollisionState;
 use crate::entity::EntitySize;
 use crate::entity::Flying;
@@ -66,7 +67,8 @@ impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         interaction::overlay::overlay_plugin(app);
         model::arm::plugin(app);
-        app.init_resource::<crate::inventory::session::InventorySession>()
+        app.init_resource::<PauseMenu>()
+            .init_resource::<crate::inventory::session::InventorySession>()
             .init_resource::<crate::inventory::session::ActiveWorkbench>()
             .add_systems(PostStartup, spawn_player)
             .add_systems(OnEnter(AppScreen::Playing), capture_mouse)
@@ -517,11 +519,20 @@ fn default_spawn_transform(chunks: &WorldChunks) -> Transform {
     Transform::from_xyz(8.5, eye, 8.5).looking_at(Vec3::new(8.5, eye, 16.5), Vec3::Y)
 }
 
-fn chat_controls_active(chat: Option<Res<crate::chat::ChatFocus>>) -> bool {
-    chat.is_none_or(|chat| !chat.suppress_controls)
+fn chat_controls_active(
+    chat: Option<Res<crate::chat::ChatFocus>>,
+    pause: Option<Res<PauseMenu>>,
+) -> bool {
+    chat.is_none_or(|chat| !chat.suppress_controls) && pause.is_none_or(|pause| !pause.open)
 }
 
-fn capture_mouse(mut windows: Query<(&Window, &mut CursorOptions), With<PrimaryWindow>>) {
+fn capture_mouse(
+    pause: Res<PauseMenu>,
+    mut windows: Query<(&Window, &mut CursorOptions), With<PrimaryWindow>>,
+) {
+    if pause.open {
+        return;
+    }
     if let Ok((window, mut cursor)) = windows.single_mut()
         && window.focused
     {
@@ -538,24 +549,20 @@ fn release_mouse(mut windows: Query<&mut CursorOptions, With<PrimaryWindow>>) {
 }
 
 fn update_mouse_capture(
-    keys: Res<ButtonInput<KeyCode>>,
     mouse_buttons: Res<ButtonInput<MouseButton>>,
     mut windows: Query<(&Window, &mut CursorOptions), With<PrimaryWindow>>,
-    mut next_screen: ResMut<NextState<AppScreen>>,
     inventory_screen: Res<crate::inventory::session::InventorySession>,
+    pause: Res<PauseMenu>,
 ) {
-    if inventory_screen.open {
+    // The pause menu owns the cursor; Escape is handled by its own toggle.
+    if inventory_screen.open || pause.open {
         return;
     }
     let Ok((window, mut cursor)) = windows.single_mut() else {
         return;
     };
 
-    if keys.just_pressed(KeyCode::Escape) && cursor.grab_mode == CursorGrabMode::Locked {
-        next_screen.set(AppScreen::Menu);
-        cursor.grab_mode = CursorGrabMode::None;
-        cursor.visible = true;
-    } else if !window.focused {
+    if !window.focused {
         cursor.grab_mode = CursorGrabMode::None;
         cursor.visible = true;
     } else if cursor.grab_mode != CursorGrabMode::Locked
@@ -628,6 +635,7 @@ fn look_player(
 
 fn apply_player_input(
     chat: Option<Res<crate::chat::ChatFocus>>,
+    pause: Option<Res<PauseMenu>>,
     keys: Res<ButtonInput<KeyCode>>,
     windows: Query<(&Window, &CursorOptions), With<PrimaryWindow>>,
     mut player: Query<
@@ -650,7 +658,7 @@ fn apply_player_input(
     let locked = windows
         .single()
         .is_ok_and(|(window, cursor)| window.focused && cursor.grab_mode == CursorGrabMode::Locked)
-        && chat_controls_active(chat);
+        && chat_controls_active(chat, pause);
 
     if flying.is_some() {
         // Flying mode: full 3D movement along the camera axes

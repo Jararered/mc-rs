@@ -7,3 +7,21 @@ pub enum AppScreen {
     Settings,
     Playing,
 }
+
+/// The in-game pause menu. It is a flag inside [`AppScreen::Playing`], like the
+/// inventory, so the world keeps running behind it.
+#[derive(bevy::prelude::Resource, Default, Debug)]
+pub struct PauseMenu {
+    pub open: bool,
+}
+
+/// The screen the settings screen returns to: the title menu, or the game when
+/// it was opened from the pause menu.
+#[derive(bevy::prelude::Resource, Debug, Clone, Copy)]
+pub struct SettingsReturn(pub AppScreen);
+
+impl Default for SettingsReturn {
+    fn default() -> Self {
+        Self(AppScreen::Menu)
+    }
+}

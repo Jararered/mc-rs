@@ -12,6 +12,7 @@ use crate::ui::ChatUiPlugin;
 use crate::ui::HudPlugin;
 use crate::ui::InventoryGuiPlugin;
 use crate::ui::MenuPlugin;
+use crate::ui::PauseMenuPlugin;
 use crate::ui::UiCameraPlugin;
 use crate::world::persistence::PersistencePlugin;
 use crate::world::plugin::WorldPlugin;
@@ -50,7 +51,7 @@ impl Plugin for GamePlugin {
                 ParticleRegistryPlugin,
                 PhysicsPlugin,
                 UiCameraPlugin,
-                MenuPlugin,
+                (MenuPlugin, PauseMenuPlugin),
                 HudPlugin,
                 InventoryGuiPlugin,
                 (ScreenshotPlugin, FullscreenPlugin),

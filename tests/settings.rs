@@ -1252,3 +1252,127 @@ fn slider_drag_respects_clipping_release_focus_and_cancellation() {
     app.update();
     assert!(app.world().resource::<SliderDrag>().0.is_none());
 }
+
+/// An app in `Playing` with the menu and pause plugins. Keyboard input is a
+/// bare resource so a test can press Escape without the input plugin clearing
+/// it first.
+fn pause_app() -> App {
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        AssetPlugin {
+            file_path: format!("{}/assets", env!("CARGO_MANIFEST_DIR")),
+            ..default()
+        },
+        bevy::image::ImagePlugin::default_nearest(),
+        StatesPlugin,
+    ))
+    .register_asset_loader(bevy::image::ImageLoader::new(
+        bevy::image::CompressedImageFormats::NONE,
+    ))
+    .init_asset::<Font>()
+    .init_state::<AppScreen>()
+    .init_resource::<GameSettings>()
+    .init_resource::<ButtonInput<KeyCode>>()
+    .init_resource::<ButtonInput<MouseButton>>()
+    .add_message::<bevy::input::mouse::MouseWheel>()
+    .add_message::<AppExit>()
+    .add_plugins((game::ui::MenuPlugin, game::ui::PauseMenuPlugin));
+    app.world_mut()
+        .resource_mut::<NextState<AppScreen>>()
+        .set(AppScreen::Playing);
+    app.update();
+    app
+}
+
+fn press_escape(app: &mut App) {
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .press(KeyCode::Escape);
+    app.update();
+    let mut keys = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+    keys.release(KeyCode::Escape);
+    keys.clear();
+    app.update();
+}
+
+fn pause_open(app: &App) -> bool {
+    app.world().resource::<game::app::state::PauseMenu>().open
+}
+
+fn screen(app: &App) -> AppScreen {
+    *app.world().resource::<State<AppScreen>>().get()
+}
+
+#[test]
+fn escape_opens_and_closes_the_pause_menu() {
+    let mut app = pause_app();
+    assert!(!pause_open(&app));
+
+    press_escape(&mut app);
+    assert!(pause_open(&app));
+    assert_eq!(screen(&app), AppScreen::Playing);
+    for title in ["Resume", "Settings", "Quit to title"] {
+        button_named(&mut app, title);
+    }
+
+    press_escape(&mut app);
+    assert!(!pause_open(&app));
+    let mut roots = app.world_mut().query::<&Button>();
+    assert_eq!(roots.iter(app.world()).count(), 0);
+}
+
+#[test]
+fn escape_does_not_open_the_pause_menu_over_the_inventory_or_chat() {
+    let mut app = pause_app();
+    app.world_mut()
+        .resource_mut::<game::inventory::session::InventorySession>()
+        .open = true;
+    press_escape(&mut app);
+    assert!(!pause_open(&app));
+
+    app.world_mut()
+        .resource_mut::<game::inventory::session::InventorySession>()
+        .open = false;
+    app.insert_resource(game::chat::ChatFocus {
+        open: true,
+        suppress_controls: true,
+    });
+    press_escape(&mut app);
+    assert!(!pause_open(&app));
+}
+
+#[test]
+fn resume_closes_the_pause_menu() {
+    let mut app = pause_app();
+    press_escape(&mut app);
+    click_menu_button(&mut app, "Resume");
+    assert!(!pause_open(&app));
+    assert_eq!(screen(&app), AppScreen::Playing);
+}
+
+#[test]
+fn settings_from_the_pause_menu_returns_to_the_game_with_it_still_open() {
+    let mut app = pause_app();
+    press_escape(&mut app);
+    click_menu_button(&mut app, "Settings");
+    app.update();
+    assert_eq!(screen(&app), AppScreen::Settings);
+
+    click_menu_button(&mut app, "Back");
+    app.update();
+    assert_eq!(screen(&app), AppScreen::Playing);
+    assert!(pause_open(&app));
+    button_named(&mut app, "Resume");
+}
+
+#[test]
+fn quit_to_title_leaves_the_game_and_closes_the_pause_menu() {
+    let mut app = pause_app();
+    press_escape(&mut app);
+    click_menu_button(&mut app, "Quit to title");
+    app.update();
+    assert_eq!(screen(&app), AppScreen::Menu);
+    assert!(!pause_open(&app));
+    button_named(&mut app, "Play");
+}

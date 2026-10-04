@@ -17,6 +17,8 @@ use crate::ui::slider::update_sliders;
 use bevy::ui::FocusPolicy;
 
 use crate::app::state::AppScreen;
+use crate::app::state::PauseMenu;
+use crate::app::state::SettingsReturn;
 
 use super::panorama;
 use super::panorama::MenuPanoramaRoot;
@@ -26,7 +28,9 @@ pub struct MenuPlugin;
 impl Plugin for MenuPlugin {
     fn build(&self, app: &mut App) {
         panorama::plugin(app);
-        app.init_resource::<SliderDrag>();
+        app.init_resource::<SliderDrag>()
+            .init_resource::<PauseMenu>()
+            .init_resource::<SettingsReturn>();
         app.add_systems(PreStartup, load_menu_textures)
             .add_systems(OnExit(AppScreen::Menu), despawn_menu)
             .add_systems(OnExit(AppScreen::Settings), despawn_menu)
@@ -54,11 +58,11 @@ impl Plugin for MenuPlugin {
 }
 
 #[derive(Resource)]
-struct MenuTextures {
+pub(super) struct MenuTextures {
     background: Handle<Image>,
-    buttons: Handle<Image>,
+    pub(super) buttons: Handle<Image>,
     logo: Handle<Image>,
-    font: Handle<Font>,
+    pub(super) font: Handle<Font>,
 }
 
 #[derive(Component)]
@@ -217,7 +221,7 @@ fn menu_asset_fallback(
     }
 }
 
-fn menu_font(textures: &MenuTextures, size: f32) -> TextFont {
+pub(super) fn menu_font(textures: &MenuTextures, size: f32) -> TextFont {
     TextFont::from_font_size(size)
         .with_font(textures.font.clone())
         .with_font_smoothing(FontSmoothing::None)
@@ -721,7 +725,7 @@ fn spawn_button(
         .id()
 }
 
-fn button_rect(hovered: bool) -> Rect {
+pub(super) fn button_rect(hovered: bool) -> Rect {
     let top = if hovered { 86.0 } else { 66.0 };
     Rect::new(0.0, top, 200.0, top + 20.0)
 }
@@ -753,6 +757,8 @@ fn handle_buttons(
     mut next_screen: ResMut<NextState<AppScreen>>,
     mut exit: MessageWriter<AppExit>,
     mut drag: ResMut<SliderDrag>,
+    mut pause: ResMut<PauseMenu>,
+    mut settings_return: ResMut<SettingsReturn>,
 ) {
     for (interaction, action, image, mut background) in &mut buttons {
         if let Some(mut image) = image {
@@ -767,12 +773,18 @@ fn handle_buttons(
             continue;
         }
         match action {
-            MenuAction::Play => next_screen.set(AppScreen::Playing),
-            MenuAction::Settings => next_screen.set(AppScreen::Settings),
+            MenuAction::Play => {
+                pause.open = false;
+                next_screen.set(AppScreen::Playing);
+            }
+            MenuAction::Settings => {
+                settings_return.0 = AppScreen::Menu;
+                next_screen.set(AppScreen::Settings);
+            }
             MenuAction::Quit => {
                 exit.write(AppExit::Success);
             }
-            MenuAction::Back => next_screen.set(AppScreen::Menu),
+            MenuAction::Back => next_screen.set(settings_return.0),
             MenuAction::OldLighting => settings.old_lighting = !settings.old_lighting,
             MenuAction::SmoothLighting => settings.smooth_lighting = !settings.smooth_lighting,
             MenuAction::DirectionalLighting => {
@@ -913,9 +925,13 @@ fn wiggle_leaves_text(settings: &GameSettings) -> String {
     )
 }
 
-fn settings_escape(keys: Res<ButtonInput<KeyCode>>, mut next_screen: ResMut<NextState<AppScreen>>) {
+fn settings_escape(
+    keys: Res<ButtonInput<KeyCode>>,
+    settings_return: Res<SettingsReturn>,
+    mut next_screen: ResMut<NextState<AppScreen>>,
+) {
     if keys.just_pressed(KeyCode::Escape) {
-        next_screen.set(AppScreen::Menu);
+        next_screen.set(settings_return.0);
     }
 }
 

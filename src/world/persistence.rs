@@ -90,7 +90,7 @@ pub const CHUNK_FORMAT_VERSION: u32 = 2;
 
 const MANIFEST_FILE: &str = "level.json";
 const PLAYER_FILE: &str = "player.json";
-const AUTOSAVE_SECONDS: f32 = 30.0;
+const AUTOSAVE_SECONDS: f32 = 60.0;
 /// Most chunks one frame may turn into save snapshots. Each one walks its 4096
 /// blocks, so this bounds the main-thread cost of a save; the encoding and the
 /// file writes happen on a background task.
@@ -1010,6 +1010,8 @@ pub struct WorldPersistence {
     player_pending: bool,
     /// When set, the next generation pass ignores chunks already on disk.
     regenerating: bool,
+    /// A save was asked for outside the timer, such as by the pause menu.
+    save_requested: bool,
     timer: Timer,
 }
 
@@ -1025,6 +1027,7 @@ impl WorldPersistence {
             draining: false,
             player_pending: false,
             regenerating: false,
+            save_requested: false,
             timer: Timer::from_seconds(autosave_seconds, TimerMode::Repeating),
         }
     }
@@ -1040,6 +1043,7 @@ impl WorldPersistence {
             draining: false,
             player_pending: false,
             regenerating: false,
+            save_requested: false,
             timer: Timer::from_seconds(AUTOSAVE_SECONDS, TimerMode::Repeating),
         }
     }
@@ -1068,6 +1072,13 @@ impl WorldPersistence {
         if changed {
             self.pending.push((position, chunk));
         }
+    }
+
+    /// Start a save on the next frame instead of waiting for the autosave
+    /// timer, which then restarts. The save drains like an autosave, so it
+    /// never blocks a frame.
+    pub fn request_save(&mut self) {
+        self.save_requested = true;
     }
 
     /// Regenerate from the world generator instead of loading from disk.
@@ -1423,7 +1434,11 @@ fn flush_persistence(
 ) {
     let exiting = exit.read().next().is_some();
     persistence.timer.tick(time.delta());
-    let autosave_due = persistence.timer.just_finished();
+    let requested = std::mem::take(&mut persistence.save_requested);
+    if requested {
+        persistence.timer.reset();
+    }
+    let autosave_due = requested || persistence.timer.just_finished();
     if autosave_due {
         persistence.start_drain();
         persistence.player_pending = true;

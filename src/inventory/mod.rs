@@ -11,6 +11,7 @@ pub use sorting::sort_container_slots;
 pub use sorting::sort_main_inventory;
 pub use transfer::DragPlace;
 pub use transfer::SlotId;
+pub use transfer::armor_slot_accepts;
 pub use transfer::chest_drag_place;
 pub use transfer::chest_slot_accepts_drag;
 pub use transfer::collect_matching_stacks;
@@ -78,23 +79,33 @@ impl Inventory {
             }
             Some(_) => return false,
         }
+        // Only a pickup pops a hotbar slot; a returned container item does not.
+        let pop = hotbar.pop;
         *self = simulated_inventory;
         *hotbar = simulated_hotbar;
+        hotbar.pop = pop;
         true
     }
 
-    pub fn insert(&mut self, hotbar: &mut Hotbar, stack: ItemStack) -> Option<ItemStack> {
-        let mut remainder = hotbar.insert(stack)?;
-        for slot in self.main.iter_mut().flatten() {
-            remainder = slot.merge(remainder)?;
-        }
-        for slot in &mut self.main {
-            if slot.is_none() {
-                *slot = Some(remainder);
-                return None;
+    /// `InventoryPlayer.addItemStackToInventory`: top up matching stacks
+    /// anywhere, hotbar first, before taking the first empty slot. Returns
+    /// what did not fit.
+    pub fn insert(&mut self, hotbar: &mut Hotbar, mut stack: ItemStack) -> Option<ItemStack> {
+        let before = hotbar.counts();
+        let remainder = (|| {
+            for slot in hotbar.slots.iter_mut().chain(&mut self.main).flatten() {
+                stack = slot.merge(stack)?;
             }
-        }
-        Some(remainder)
+            for slot in hotbar.slots.iter_mut().chain(&mut self.main) {
+                if slot.is_none() {
+                    *slot = Some(stack);
+                    return None;
+                }
+            }
+            Some(stack)
+        })();
+        hotbar.note_gains(&before);
+        remainder
     }
 }
 

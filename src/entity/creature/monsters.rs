@@ -17,7 +17,7 @@ use crate::entity::mobs::MobType;
 use crate::entity::projectiles::Shooter;
 use crate::entity::projectiles::spawn_arrow;
 use crate::entity::projectiles::spawn_fireball;
-use crate::physics::colliding_aabbs;
+use crate::physics::collides;
 use crate::random::JavaRandom;
 
 /// `EntityCreeper`'s fuse. `Mob::fuse` holds `timeSinceIgnited`.
@@ -404,7 +404,7 @@ impl Body<'_> {
         let mut i = 1.0;
         while i < distance {
             aabb = aabb.offset(step);
-            if !colliding_aabbs(world.chunks, aabb).is_empty() {
+            if collides(world.chunks, aabb) {
                 return false;
             }
             i += 1.0;

@@ -80,65 +80,55 @@ pub fn shift_click_furnace_slot(
             if remainder.is_some_and(|rest| rest.count() == stack.count()) {
                 return false;
             }
+            // Only a pickup pops a hotbar slot; a container transfer does not.
+            let pop = hotbar.pop;
             *inventory = simulated_inventory;
             *hotbar = simulated_hotbar;
+            hotbar.pop = pop;
             furnace[index] = remainder;
             true
         }
-        SlotId::Main(index) => {
-            let Some(stack) = inventory.main.get(index).copied().flatten() else {
-                return false;
-            };
-            let target = if crate::world::furnace::smelting_result(stack).is_some() {
-                0
-            } else if crate::world::furnace::fuel_ticks(stack).is_some() {
-                1
-            } else {
-                return false;
-            };
-            let Some(destination) = furnace.get_mut(target) else {
-                return false;
-            };
-            let remainder = if let Some(existing) = destination.as_mut() {
-                existing.merge(stack)
-            } else {
-                *destination = Some(stack);
-                None
-            };
-            if remainder.is_some_and(|rest| rest.count() == stack.count()) {
-                return false;
-            }
-            inventory.main[index] = remainder;
-            true
-        }
-        SlotId::Hotbar(index) => {
-            let Some(stack) = hotbar.slots.get(index).copied().flatten() else {
-                return false;
-            };
-            let target = if crate::world::furnace::smelting_result(stack).is_some() {
-                0
-            } else if crate::world::furnace::fuel_ticks(stack).is_some() {
-                1
-            } else {
-                return false;
-            };
-            let Some(destination) = furnace.get_mut(target) else {
-                return false;
-            };
-            let remainder = if let Some(existing) = destination.as_mut() {
-                existing.merge(stack)
-            } else {
-                *destination = Some(stack);
-                None
-            };
-            if remainder.is_some_and(|rest| rest.count() == stack.count()) {
-                return false;
-            }
-            hotbar.slots[index] = remainder;
-            true
-        }
+        SlotId::Main(index) => inventory
+            .main
+            .get_mut(index)
+            .is_some_and(|source| move_into_furnace(furnace, source)),
+        SlotId::Hotbar(index) => hotbar
+            .slots
+            .get_mut(index)
+            .is_some_and(|source| move_into_furnace(furnace, source)),
         _ => false,
     }
+}
+
+/// Move `source` into the furnace's input slot if it smelts, then its fuel
+/// slot if it burns, leaving what does not fit. Returns whether any moved.
+fn move_into_furnace(furnace: &mut [Option<ItemStack>], source: &mut Option<ItemStack>) -> bool {
+    const INPUT: usize = 0;
+    const FUEL: usize = 1;
+    let Some(stack) = *source else {
+        return false;
+    };
+    let targets = [
+        crate::world::furnace::smelting_result(stack).map(|_| INPUT),
+        crate::world::furnace::fuel_ticks(stack).map(|_| FUEL),
+    ];
+    for target in targets.into_iter().flatten() {
+        let Some(destination) = furnace.get_mut(target) else {
+            continue;
+        };
+        let remainder = match destination {
+            Some(existing) => existing.merge(stack),
+            None => {
+                *destination = Some(stack);
+                None
+            }
+        };
+        if remainder.is_none_or(|rest| rest.count() != stack.count()) {
+            *source = remainder;
+            return true;
+        }
+    }
+    false
 }
 
 /// Collect compatible stacks from a container into the carried stack.
@@ -251,7 +241,6 @@ pub fn chest_slot_accepts_drag(
         SlotId::Chest(index) => chest.get(index).copied().flatten(),
         SlotId::Main(index) => inventory.main.get(index).copied().flatten(),
         SlotId::Hotbar(index) => hotbar.slots.get(index).copied().flatten(),
-        SlotId::Furnace(_) => None,
         _ => return false,
     };
     accepts_stack(existing, carried)
@@ -333,15 +322,10 @@ pub fn chest_drag_place(
     true
 }
 
+/// An empty slot takes the carried stack, and a matching stack with room
+/// takes more of it.
 fn accepts_stack(existing: Option<ItemStack>, carried: ItemStack) -> bool {
-    match existing {
-        None => true,
-        Some(existing) => {
-            existing.item() == carried.item()
-                && existing.data() == carried.data()
-                && existing.count() < existing.definition().max_stack_size
-        }
-    }
+    existing.is_none_or(|existing| existing.can_merge(carried))
 }
 
 fn read_chest_slot(
@@ -484,6 +468,19 @@ pub fn hotbar_key_swap(
     if matches!(slot, SlotId::Hotbar(index) if index == hotbar_index) {
         return false;
     }
+    // A slot this function cannot write would swallow the hotbar stack.
+    let addressable = match slot {
+        SlotId::Hotbar(index) => index < HOTBAR_SLOTS,
+        SlotId::Main(index) => index < MAIN_SLOTS,
+        SlotId::Craft(index) => index < inventory.crafting.len(),
+        SlotId::Armor(index) => index < inventory.armor.len(),
+        SlotId::Workbench(index) => index < 9 && workbench.is_some(),
+        SlotId::CraftResult => true,
+        SlotId::Chest(_) | SlotId::Furnace(_) => false,
+    };
+    if !addressable {
+        return false;
+    }
     if matches!(slot, SlotId::CraftResult) {
         if hotbar.slots[hotbar_index].is_some() {
             return false;
@@ -499,6 +496,11 @@ pub fn hotbar_key_swap(
     let source = read_slot(inventory, hotbar, workbench.as_deref(), false, slot);
     let destination = hotbar.slots[hotbar_index];
     if source.is_none() && destination.is_none() {
+        return false;
+    }
+    if let SlotId::Armor(index) = slot
+        && destination.is_some_and(|stack| !armor_slot_accepts(index, stack))
+    {
         return false;
     }
     write_slot(inventory, hotbar, workbench, slot, destination);
@@ -590,7 +592,8 @@ pub fn preview_drag_place(
 }
 
 /// Empty slots accept the carried stack. A partial matching stack accepts more.
-/// Crafting results and full or different stacks do not.
+/// Crafting results and full or different stacks do not, and neither do armor
+/// slots, which hold a single piece each and are filled by a click.
 pub fn slot_accepts_drag(
     inventory: &Inventory,
     hotbar: &Hotbar,
@@ -598,20 +601,21 @@ pub fn slot_accepts_drag(
     slot: SlotId,
     carried: ItemStack,
 ) -> bool {
-    if matches!(slot, SlotId::CraftResult) {
+    if matches!(
+        slot,
+        SlotId::CraftResult | SlotId::Furnace(_) | SlotId::Armor(_)
+    ) {
         return false;
     }
-    if matches!(slot, SlotId::Furnace(_)) {
-        return false;
-    }
-    match read_slot(inventory, hotbar, workbench, false, slot) {
-        None => true,
-        Some(existing) => {
-            existing.item() == carried.item()
-                && existing.data() == carried.data()
-                && existing.count() < existing.definition().max_stack_size
-        }
-    }
+    accepts_stack(
+        read_slot(inventory, hotbar, workbench, false, slot),
+        carried,
+    )
+}
+
+/// `SlotArmor.isItemValid`: armor slot `index` takes the piece worn there.
+pub fn armor_slot_accepts(index: usize, stack: ItemStack) -> bool {
+    stack.item().armor_slot() == Some(index)
 }
 
 fn shift_craft(

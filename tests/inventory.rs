@@ -939,3 +939,117 @@ fn closing_crafting_session_returns_inputs_or_drops_overflow_without_ui() {
         }
     }
 }
+
+#[test]
+fn pickup_tops_up_a_main_stack_before_taking_an_empty_hotbar_slot() {
+    let mut inventory = game::inventory::Inventory::default();
+    let mut hotbar = Hotbar::default();
+    inventory.main[5] = Some(stack(Item::Coal, 60));
+
+    assert_eq!(inventory.insert(&mut hotbar, stack(Item::Coal, 10)), None);
+
+    assert_eq!(inventory.main[5], Some(stack(Item::Coal, 64)));
+    assert_eq!(hotbar.slots[0], Some(stack(Item::Coal, 6)));
+    assert_eq!(hotbar.pop[0], 5);
+}
+
+#[test]
+fn armor_slots_take_only_their_own_piece() {
+    use game::inventory::DragPlace;
+    use game::inventory::SlotId;
+    use game::inventory::armor_slot_accepts;
+    use game::inventory::drag_place;
+    use game::inventory::hotbar_key_swap;
+    let mut inventory = game::inventory::Inventory::default();
+    let mut hotbar = Hotbar::default();
+    let dirt = stack(block(Block::Dirt), 32);
+    let helmet = stack(Item::IronHelmet, 1);
+    assert!(armor_slot_accepts(0, helmet));
+    assert!(!armor_slot_accepts(1, helmet));
+    assert!(!armor_slot_accepts(0, dirt));
+
+    hotbar.slots[0] = Some(dirt);
+    hotbar.slots[1] = Some(helmet);
+    let armor = SlotId::Armor(0);
+    assert!(!hotbar_key_swap(
+        &mut inventory,
+        &mut hotbar,
+        None,
+        false,
+        armor,
+        0
+    ));
+    assert_eq!(hotbar.slots[0], Some(dirt));
+    assert!(!hotbar_key_swap(
+        &mut inventory,
+        &mut hotbar,
+        None,
+        false,
+        SlotId::Armor(2),
+        1
+    ));
+    assert!(hotbar_key_swap(
+        &mut inventory,
+        &mut hotbar,
+        None,
+        false,
+        armor,
+        1
+    ));
+    assert_eq!(inventory.armor[0], Some(helmet));
+    assert_eq!(hotbar.slots[1], None);
+
+    inventory.carried = Some(dirt);
+    let painted = [SlotId::Armor(1), SlotId::Armor(2), SlotId::Armor(3)];
+    assert!(!drag_place(
+        &mut inventory,
+        &mut hotbar,
+        None,
+        &painted,
+        DragPlace::Split
+    ));
+    assert_eq!(inventory.carried, Some(dirt));
+    assert_eq!(inventory.armor[1..], [None; 3]);
+}
+
+#[test]
+fn hotbar_number_key_leaves_the_stack_alone_over_a_slot_it_cannot_reach() {
+    use game::inventory::SlotId;
+    use game::inventory::hotbar_key_swap;
+    let mut inventory = game::inventory::Inventory::default();
+    let mut hotbar = Hotbar::default();
+    hotbar.slots[3] = Some(stack(Item::Diamond, 7));
+    for slot in [SlotId::Chest(0), SlotId::Workbench(0), SlotId::Furnace(0)] {
+        assert!(!hotbar_key_swap(
+            &mut inventory,
+            &mut hotbar,
+            None,
+            false,
+            slot,
+            3
+        ));
+        assert_eq!(hotbar.slots[3], Some(stack(Item::Diamond, 7)));
+    }
+}
+
+#[test]
+fn shift_click_falls_back_to_the_fuel_slot_when_the_input_is_taken() {
+    use game::inventory::SlotId;
+    use game::inventory::shift_click_furnace_slot;
+    let mut inventory = game::inventory::Inventory::default();
+    let mut hotbar = Hotbar::default();
+    let ore = stack(block(Block::IronOre), 4);
+    let logs = stack(block(Block::Wood), 8);
+    let mut furnace = [Some(ore), None, None];
+    inventory.main[0] = Some(logs);
+
+    assert!(shift_click_furnace_slot(
+        &mut inventory,
+        &mut hotbar,
+        &mut furnace,
+        SlotId::Main(0)
+    ));
+
+    assert_eq!(furnace, [Some(ore), Some(logs), None]);
+    assert_eq!(inventory.main[0], None);
+}

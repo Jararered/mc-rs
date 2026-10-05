@@ -196,6 +196,34 @@ impl Item {
         block.has_item_id().then_some(block)
     }
 
+    /// `SlotArmor.isItemValid`: the armor slot this item is worn in, counting
+    /// helmet, chestplate, leggings, boots. A pumpkin is worn as a helmet.
+    pub fn armor_slot(self) -> Option<usize> {
+        use Item as I;
+        Some(match self {
+            I::LeatherHelmet
+            | I::ChainmailHelmet
+            | I::IronHelmet
+            | I::DiamondHelmet
+            | I::GoldHelmet => 0,
+            I::LeatherChestplate
+            | I::ChainmailChestplate
+            | I::IronChestplate
+            | I::DiamondChestplate
+            | I::GoldChestplate => 1,
+            I::LeatherLeggings
+            | I::ChainmailLeggings
+            | I::IronLeggings
+            | I::DiamondLeggings
+            | I::GoldLeggings => 2,
+            I::LeatherBoots | I::ChainmailBoots | I::IronBoots | I::DiamondBoots | I::GoldBoots => {
+                3
+            }
+            _ if self.block() == Some(Block::Pumpkin) => 0,
+            _ => return None,
+        })
+    }
+
     pub fn properties(self) -> Option<ItemProperties> {
         if let Some(block) = self.block() {
             return Some(ItemProperties {

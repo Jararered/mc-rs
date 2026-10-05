@@ -68,7 +68,7 @@ fn logs_craft_into_matching_species_of_planks() {
 }
 
 #[test]
-fn cake_consumption_returns_empty_buckets_and_repeats_safely() {
+fn cake_consumption_leaves_empty_buckets_in_the_grid() {
     let book = beta_recipe_book();
     let mut grid = CraftingGrid::workbench();
     for x in 0..3 {
@@ -82,6 +82,10 @@ fn cake_consumption_returns_empty_buckets_and_repeats_safely() {
     }
     assert_eq!(book.find(&grid).unwrap().item(), Item::Cake);
     let remainders = book.consume_one(&mut grid).unwrap();
-    assert_eq!(remainders.len(), 3);
-    assert!(grid.slots().all(|slot| slot.is_none()));
+    assert!(remainders.is_empty());
+    for x in 0..3 {
+        assert_eq!(grid.get(x, 0), Some(stack(Item::Bucket, 1)));
+    }
+    assert_eq!(grid.slots().flatten().count(), 3);
+    assert!(book.find(&grid).is_none());
 }

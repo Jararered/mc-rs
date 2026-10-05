@@ -2,7 +2,7 @@
 //!
 //! Bodies are Bevy entities with [`Velocity`] and [`EntitySize`]. The player
 //! and creatures ([`Living`]) run Beta's per-tick movement on [`move_entity`];
-//! `integrate_bodies` moves the remaining bodies, including hostile mobs.
+//! `integrate_bodies` moves the remaining bodies on frame time.
 
 mod raycast;
 
@@ -45,9 +45,11 @@ use crate::world::tick::WorldTick;
 
 /// Fall speed cap, from Beta's `(v - 0.08) * 0.98` terminal velocity.
 const TERMINAL_VELOCITY: f32 = 78.4;
-/// Clamp a lagged frame so a body cannot tunnel through more than this many
-/// seconds of motion at once.
+/// Longest single integration step, so a body cannot tunnel through more than
+/// this many seconds of motion at once. A longer frame is split into steps.
 const MAX_STEP_SECS: f32 = 0.05;
+/// Frame time integrated at most, so a long hitch does not replay as a burst.
+const MAX_FRAME_SECS: f32 = 0.25;
 /// Covers the f32 error from converting a player's feet to eye height and back.
 const CONTACT_EPSILON: f32 = 1e-4;
 /// `World.handleMaterialAcceleration`: current added to motion each world tick.
@@ -279,7 +281,7 @@ pub fn move_entity_with_sneak(
         (_, delta.z) = clip_sneak_edge(aabb, 0.0, delta.z, chunks);
     }
     let requested = delta;
-    let colliders = colliding_aabbs(chunks, aabb.expand(delta));
+    let mut colliders = colliding_aabbs(chunks, aabb.expand(delta));
 
     for collider in &colliders {
         delta.y = collider.calculate_y_offset(aabb, delta.y);
@@ -299,7 +301,7 @@ pub fn move_entity_with_sneak(
     let blocked_horizontally = requested.x != delta.x || requested.z != delta.z;
     let landed = original.y != delta.y && original.y < 0.0;
     if step_height > 0.0 && (was_on_ground || landed) && blocked_horizontally {
-        let stepped = try_step(before, requested, step_height, chunks);
+        let stepped = try_step(before, requested, step_height, chunks, &mut colliders);
         let stepped_h = stepped.displacement.x.hypot(stepped.displacement.z);
         let current_h = delta.x.hypot(delta.z);
         if stepped_h > current_h {
@@ -321,14 +323,14 @@ pub fn move_entity_with_sneak(
 }
 
 fn clip_sneak_edge(aabb: Aabb, mut x: f32, mut z: f32, chunks: &WorldChunks) -> (f32, f32) {
-    while x != 0.0 && colliding_aabbs(chunks, aabb.offset(Vec3::new(x, -1.0, 0.0))).is_empty() {
+    while x != 0.0 && !collides(chunks, aabb.offset(Vec3::new(x, -1.0, 0.0))) {
         if x.abs() <= 0.05 {
             x = 0.0;
         } else {
             x -= x.signum() * 0.05;
         }
     }
-    while z != 0.0 && colliding_aabbs(chunks, aabb.offset(Vec3::new(0.0, -1.0, z))).is_empty() {
+    while z != 0.0 && !collides(chunks, aabb.offset(Vec3::new(0.0, -1.0, z))) {
         if z.abs() <= 0.05 {
             z = 0.0;
         } else {
@@ -338,28 +340,41 @@ fn clip_sneak_edge(aabb: Aabb, mut x: f32, mut z: f32, chunks: &WorldChunks) -> 
     (x, z)
 }
 
-fn try_step(start: Aabb, original: Vec3, step_height: f32, chunks: &WorldChunks) -> Movement {
+/// The step-up attempt of `Entity.moveEntity`. `colliders` is the caller's
+/// buffer, refilled for the raised sweep.
+fn try_step(
+    start: Aabb,
+    original: Vec3,
+    step_height: f32,
+    chunks: &WorldChunks,
+    colliders: &mut Vec<Aabb>,
+) -> Movement {
     let mut aabb = start;
     let mut delta = Vec3::new(original.x, step_height, original.z);
-    let colliders = colliding_aabbs(chunks, aabb.expand(delta));
+    colliders.clear();
+    visit_colliders(chunks, aabb.expand(delta), |collider| {
+        colliders.push(collider);
+        false
+    });
+    let colliders = &*colliders;
 
-    for collider in &colliders {
+    for collider in colliders {
         delta.y = collider.calculate_y_offset(aabb, delta.y);
     }
     aabb = aabb.offset(Vec3::new(0.0, delta.y, 0.0));
 
-    for collider in &colliders {
+    for collider in colliders {
         delta.x = collider.calculate_x_offset(aabb, delta.x);
     }
     aabb = aabb.offset(Vec3::new(delta.x, 0.0, 0.0));
 
-    for collider in &colliders {
+    for collider in colliders {
         delta.z = collider.calculate_z_offset(aabb, delta.z);
     }
     aabb = aabb.offset(Vec3::new(0.0, 0.0, delta.z));
 
     let mut down = -step_height;
-    for collider in &colliders {
+    for collider in colliders {
         down = collider.calculate_y_offset(aabb, down);
     }
     aabb = aabb.offset(Vec3::new(0.0, down, 0.0));
@@ -374,6 +389,22 @@ fn try_step(start: Aabb, original: Vec3, step_height: f32, chunks: &WorldChunks)
 
 /// Solid boxes overlapping `area`, including a full-cube floor below y = 0.
 pub fn colliding_aabbs(chunks: &WorldChunks, area: Aabb) -> Vec<Aabb> {
+    let mut boxes = Vec::new();
+    visit_colliders(chunks, area, |collider| {
+        boxes.push(collider);
+        false
+    });
+    boxes
+}
+
+/// Whether any solid box overlaps `area`: `colliding_aabbs` without the list.
+pub fn collides(chunks: &WorldChunks, area: Aabb) -> bool {
+    visit_colliders(chunks, area, |_| true)
+}
+
+/// Visit the solid boxes overlapping `area` until `visit` returns true, and
+/// report whether it did.
+fn visit_colliders(chunks: &WorldChunks, area: Aabb, mut visit: impl FnMut(Aabb) -> bool) -> bool {
     let min_x = area.min.x.floor() as i32;
     let max_x = (area.max.x + 1.0).floor() as i32;
     let min_y = area.min.y.floor() as i32;
@@ -381,7 +412,6 @@ pub fn colliding_aabbs(chunks: &WorldChunks, area: Aabb) -> Vec<Aabb> {
     let min_z = area.min.z.floor() as i32;
     let max_z = (area.max.z + 1.0).floor() as i32;
 
-    let mut boxes = Vec::new();
     for x in min_x..max_x {
         for z in min_z..max_z {
             for y in (min_y - 1)..max_y {
@@ -395,27 +425,20 @@ pub fn colliding_aabbs(chunks: &WorldChunks, area: Aabb) -> Vec<Aabb> {
                 } else {
                     continue;
                 };
-                if area.intersects(block) {
-                    boxes.push(block);
+                if area.intersects(block) && visit(block) {
+                    return true;
                 }
             }
         }
     }
-    boxes
+    false
 }
 
 /// `Block.getCollisionBoundingBoxFromPool` for a world cell, in world space.
 /// Deep snow layers collide as a half slab.
 pub(crate) fn block_collision_box(chunks: &WorldChunks, x: i32, y: i32, z: i32) -> Option<Aabb> {
     let block = chunks.block_at(x, y, z)?;
-    let (min, max) =
-        if block == crate::block::blocks::Block::SnowLayer && chunks.metadata_at(x, y, z) >= 3 {
-            ([0.0; 3], [1.0, 0.5, 1.0])
-        } else if block == crate::block::blocks::Block::Ladder {
-            block.collision_bounds_for(chunks.metadata_at(x, y, z))?
-        } else {
-            block.collision_bounds()?
-        };
+    let (min, max) = block.collision_bounds_for(chunks.metadata_at(x, y, z))?;
     let origin = Vec3::new(x as f32, y as f32, z as f32);
     Some(Aabb::new(
         origin + Vec3::from_array(min),
@@ -474,7 +497,8 @@ fn integrate_player(
         }
 
         if flying.is_some() {
-            transform.translation += velocity.0 * time.delta_secs().min(MAX_STEP_SECS);
+            // Noclip flight cannot tunnel, so it needs no step limit.
+            transform.translation += velocity.0 * time.delta_secs().min(MAX_FRAME_SECS);
             interpolation.previous_position = transform.translation;
             *collision = CollisionState::default();
             continue;
@@ -550,9 +574,7 @@ fn integrate_player(
                         motion.z,
                     );
                     let escape_box = movement.aabb.offset(escape_offset);
-                    if colliding_aabbs(&chunks, escape_box).is_empty()
-                        && !intersects_liquid(escape_box, &chunks)
-                    {
+                    if !collides(&chunks, escape_box) && !intersects_liquid(escape_box, &chunks) {
                         motion.y = 0.3;
                     }
                 }
@@ -627,15 +649,10 @@ fn integrate_player(
 
             motion.y = ((motion.y - GRAVITY_PER_TICK) * VERTICAL_DRAG)
                 .max(-TERMINAL_VELOCITY * TICK_SECONDS);
-            let post_move_drag = if collision.on_ground {
-                block_under_player(&chunks, size.aabb(transform.translation))
-                    .map_or(0.6, |block| block.slipperiness())
-                    * DEFAULT_AIR_DRAG
-            } else {
-                DEFAULT_AIR_DRAG
-            };
-            motion.x *= post_move_drag;
-            motion.z *= post_move_drag;
+            // Beta works its friction out before `moveEntity`, so the tick
+            // that leaves the ground is still slowed by the block it left.
+            motion.x *= drag;
+            motion.z *= drag;
         }
 
         velocity.0 = motion / TICK_SECONDS;
@@ -864,10 +881,13 @@ fn integrate_bodies(
         (Without<DroppedItem>, Without<Player>, Without<Living>),
     >,
 ) {
-    let dt = time.delta_secs().min(MAX_STEP_SECS);
-    if dt <= 0.0 {
+    let frame = time.delta_secs().min(MAX_FRAME_SECS);
+    if frame <= 0.0 {
         return;
     }
+    // A slow frame takes several short steps instead of running slow.
+    let steps = (frame / MAX_STEP_SECS).ceil().max(1.0);
+    let dt = frame / steps;
 
     for (mut transform, mut velocity, size, mut collision, step_height, gravity, flying) in
         &mut bodies
@@ -881,39 +901,42 @@ fn integrate_bodies(
 
         // Flying: noclip, no gravity, no collision resolution
         if flying.is_some() {
-            transform.translation += velocity.0 * dt;
+            transform.translation += velocity.0 * frame;
             *collision = CollisionState::default();
             continue;
         }
 
-        // Generic bodies (hostile mobs included) use blocks/second. Convert
-        // Beta's per-tick current to that unit, once per emitted world tick.
+        // These bodies keep blocks/second. Convert Beta's per-tick current to
+        // that unit, once per emitted world tick.
         if tick.ticks_this_frame() > 0 {
             velocity.0 += water_current(size.aabb(transform.translation), &chunks).1
                 * (WATER_CURRENT_PER_TICK * tick.ticks_this_frame() as f32 / TICK_SECONDS);
         }
-        if let Some(gravity) = gravity {
-            velocity.0.y -= gravity.0 * dt;
-            velocity.0.y = velocity.0.y.max(-TERMINAL_VELOCITY);
-        }
 
-        let movement = move_entity(
-            size.aabb(transform.translation),
-            velocity.0 * dt,
-            step_height.map(|step| step.0).unwrap_or(0.0),
-            collision.on_ground,
-            &chunks,
-        );
-        transform.translation = size.position_from_aabb(movement.aabb);
-        *collision = movement.collision;
-        if collision.collided_x {
-            velocity.0.x = 0.0;
-        }
-        if collision.collided_y {
-            velocity.0.y = 0.0;
-        }
-        if collision.collided_z {
-            velocity.0.z = 0.0;
+        for _ in 0..steps as u32 {
+            if let Some(gravity) = gravity {
+                velocity.0.y -= gravity.0 * dt;
+                velocity.0.y = velocity.0.y.max(-TERMINAL_VELOCITY);
+            }
+
+            let movement = move_entity(
+                size.aabb(transform.translation),
+                velocity.0 * dt,
+                step_height.map(|step| step.0).unwrap_or(0.0),
+                collision.on_ground,
+                &chunks,
+            );
+            transform.translation = size.position_from_aabb(movement.aabb);
+            *collision = movement.collision;
+            if collision.collided_x {
+                velocity.0.x = 0.0;
+            }
+            if collision.collided_y {
+                velocity.0.y = 0.0;
+            }
+            if collision.collided_z {
+                velocity.0.z = 0.0;
+            }
         }
     }
 }

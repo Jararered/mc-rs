@@ -7,13 +7,15 @@ use crate::block::blocks::Block;
 use crate::block::fluids::is_liquid;
 use crate::world::chunk::WorldChunks;
 
-/// Survival-style block reach. Creative in Beta used 5; this matches the default
-/// controller distance so flying and walking both feel usable.
+/// Block reach. This is deliberately Beta's base `PlayerController` distance
+/// of 5 rather than the 4 its survival controller uses, so flying and walking
+/// both feel usable.
 pub const BLOCK_REACH: f32 = 5.0;
 
 const MAX_STEPS: u32 = 200;
 
-/// Face of a block the ray entered, matching Beta's `sideHit` values.
+/// Face of a block's selection box the ray entered, matching Beta's `sideHit`
+/// values.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BlockFace {
     /// −Y
@@ -112,17 +114,13 @@ pub fn block_hit_distance(
     origin: Vec3,
     direction: Vec3,
 ) -> f32 {
-    let metadata = chunks.metadata_at(hit.x, hit.y, hit.z);
-    let (min, mut max) = hit.block.selection_bounds_for(metadata);
-    if hit.block == Block::SnowLayer {
-        max[1] = (f32::from(metadata.min(7)) + 1.0) / 8.0;
-    }
+    let (min, max) = selection_box(chunks, hit.block, hit.x, hit.y, hit.z);
     let cell = Vec3::new(hit.x as f32, hit.y as f32, hit.z as f32);
     segment_entry(
         origin,
         direction.normalize_or_zero(),
-        cell + Vec3::from_array(min),
-        cell + Vec3::from_array(max),
+        cell + min,
+        cell + max,
         f32::INFINITY,
     )
     .unwrap_or(0.0)
@@ -154,8 +152,26 @@ pub fn segment_entry(
     max: Vec3,
     reach: f32,
 ) -> Option<f32> {
+    segment_entry_face(origin, direction, min, max, reach).map(|(enter, _)| enter)
+}
+
+/// [`segment_entry`], with the face of the box the ray came in through. A ray
+/// starting inside the box crosses no face.
+fn segment_entry_face(
+    origin: Vec3,
+    direction: Vec3,
+    min: Vec3,
+    max: Vec3,
+    reach: f32,
+) -> Option<(f32, Option<BlockFace>)> {
+    const FACES: [[BlockFace; 2]; 3] = [
+        [BlockFace::West, BlockFace::East],
+        [BlockFace::Down, BlockFace::Up],
+        [BlockFace::North, BlockFace::South],
+    ];
     let mut enter = 0.0_f32;
     let mut exit = reach;
+    let mut face = None;
     for axis in 0..3 {
         if direction[axis].abs() < f32::EPSILON {
             if origin[axis] < min[axis] || origin[axis] > max[axis] {
@@ -164,14 +180,18 @@ pub fn segment_entry(
         } else {
             let a = (min[axis] - origin[axis]) / direction[axis];
             let b = (max[axis] - origin[axis]) / direction[axis];
-            enter = enter.max(a.min(b));
+            if a.min(b) > enter {
+                enter = a.min(b);
+                // Moving toward +axis the ray meets the low face first.
+                face = Some(FACES[axis][usize::from(direction[axis] < 0.0)]);
+            }
             exit = exit.min(a.max(b));
             if enter > exit {
                 return None;
             }
         }
     }
-    Some(enter)
+    Some((enter, face))
 }
 
 /// Visit each cell a ray crosses within `max_distance`, starting with the
@@ -205,7 +225,7 @@ fn walk<T>(
     let mut t_max_z = t_to_next(origin.z, direction.z, z);
 
     for _ in 0..MAX_STEPS {
-        let (face, t) = if t_max_x <= t_max_y && t_max_x <= t_max_z {
+        let face = if t_max_x <= t_max_y && t_max_x <= t_max_z {
             if t_max_x > max_distance {
                 return None;
             }
@@ -215,9 +235,8 @@ fn walk<T>(
                 BlockFace::East
             };
             x += step_x;
-            let t = t_max_x;
             t_max_x += t_delta_x;
-            (face, t)
+            face
         } else if t_max_y <= t_max_z {
             if t_max_y > max_distance {
                 return None;
@@ -228,9 +247,8 @@ fn walk<T>(
                 BlockFace::Up
             };
             y += step_y;
-            let t = t_max_y;
             t_max_y += t_delta_y;
-            (face, t)
+            face
         } else {
             if t_max_z > max_distance {
                 return None;
@@ -241,13 +259,9 @@ fn walk<T>(
                 BlockFace::South
             };
             z += step_z;
-            let t = t_max_z;
             t_max_z += t_delta_z;
-            (face, t)
+            face
         };
-        if t > max_distance {
-            return None;
-        }
         if let Some(hit) = visit(x, y, z, face) {
             return Some(hit);
         }
@@ -270,23 +284,22 @@ fn hit_at(
     if !block.is_targetable() && !(include_liquid && is_liquid(block)) {
         return None;
     }
-    if block.is_torch() || matches!(block, Block::SnowLayer | Block::Farmland | Block::Crops) {
-        let metadata = chunks.metadata_at(x, y, z);
-        let (min, mut max) = block.selection_bounds_for(metadata);
-        if block == Block::SnowLayer {
-            max[1] = (f32::from(metadata.min(7)) + 1.0) / 8.0;
-        }
+    // A block smaller than its cell is only hit where the ray meets its
+    // selection box, and reports the face of that box rather than of the cell.
+    let (min, max) = selection_box(chunks, block, x, y, z);
+    let face = if (min, max) == (Vec3::ZERO, Vec3::ONE) {
+        face
+    } else {
         let block_origin = Vec3::new(x as f32, y as f32, z as f32);
-        if !ray_intersects_box(
+        let (_, entered) = segment_entry_face(
             origin,
             direction,
-            block_origin + Vec3::from_array(min),
-            block_origin + Vec3::from_array(max),
+            block_origin + min,
+            block_origin + max,
             max_distance,
-        ) {
-            return None;
-        }
-    }
+        )?;
+        entered.unwrap_or(face)
+    };
     Some(BlockHit {
         x,
         y,
@@ -296,8 +309,14 @@ fn hit_at(
     })
 }
 
-fn ray_intersects_box(origin: Vec3, direction: Vec3, min: Vec3, max: Vec3, reach: f32) -> bool {
-    segment_entry(origin, direction, min, max, reach).is_some()
+/// A block's selection box within its cell. Snow layers grow with their level.
+fn selection_box(chunks: &WorldChunks, block: Block, x: i32, y: i32, z: i32) -> (Vec3, Vec3) {
+    let metadata = chunks.metadata_at(x, y, z);
+    let (min, mut max) = block.selection_bounds_for(metadata);
+    if block == Block::SnowLayer {
+        max[1] = (f32::from(metadata.min(7)) + 1.0) / 8.0;
+    }
+    (Vec3::from_array(min), Vec3::from_array(max))
 }
 
 fn entry_face(direction: Vec3) -> BlockFace {

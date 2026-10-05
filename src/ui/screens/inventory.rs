@@ -16,6 +16,7 @@ use crate::inventory::DragPlace;
 use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
 use crate::inventory::SlotId;
+use crate::inventory::armor_slot_accepts;
 use crate::inventory::chest_drag_place;
 use crate::inventory::chest_slot_accepts_drag;
 use crate::inventory::collect_matching_stacks;
@@ -1635,7 +1636,15 @@ fn apply_click(
         Slot::Chest(_) => {}
         Slot::Armor(i) => {
             let Inventory { armor, carried, .. } = &mut *inventory;
-            click_slot(&mut armor[i], carried, right);
+            // `SlotArmor`: one piece, and only the kind worn in this slot.
+            match *carried {
+                None => click_slot(&mut armor[i], carried, false),
+                Some(stack) if !armor_slot_accepts(i, stack) => {}
+                // An empty slot takes one piece off the cursor.
+                Some(_) if armor[i].is_none() => click_slot(&mut armor[i], carried, true),
+                Some(stack) if stack.count() == 1 => click_slot(&mut armor[i], carried, false),
+                Some(_) => {}
+            }
         }
         Slot::Furnace(_) => {}
     }

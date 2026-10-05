@@ -126,6 +126,7 @@ fn pick_effective(block: Block) -> bool {
         block,
         Block::Cobblestone
             | Block::DoubleStoneSlab
+            | Block::StoneSlab
             | Block::Stone
             | Block::Sandstone
             | Block::MossyCobblestone
@@ -151,8 +152,8 @@ fn axe_effective(block: Block) -> bool {
         || matches!(block, Block::WoodenPlanks | Block::Bookshelf)
 }
 
-/// `ItemSpade.blocksEffectiveAgainst`. The snow block is the layered entry
-/// that has a real hardness here. Farmland and the snow layer are catalog blocks.
+/// `ItemSpade.blocksEffectiveAgainst`, which lists both the snow layer and
+/// the snow block.
 fn shovel_effective(block: Block) -> bool {
     matches!(
         block,
@@ -160,6 +161,7 @@ fn shovel_effective(block: Block) -> bool {
             | Block::Dirt
             | Block::Sand
             | Block::Gravel
+            | Block::SnowLayer
             | Block::Snow
             | Block::Farmland
             | Block::Clay

@@ -65,7 +65,7 @@ use crate::inventory::Inventory;
 use crate::item::ItemStack;
 use crate::physics::Aabb;
 use crate::physics::WATER_CURRENT_PER_TICK;
-use crate::physics::colliding_aabbs;
+use crate::physics::collides;
 use crate::physics::intersects_liquid;
 use crate::physics::lava_contains;
 use crate::physics::move_entity;
@@ -1116,7 +1116,7 @@ impl Body<'_> {
     /// the moved box would touch neither a solid block nor any liquid.
     fn offset_position_clear(&self, chunks: &WorldChunks, offset: Vec3) -> bool {
         let moved = self.aabb().offset(offset);
-        colliding_aabbs(chunks, moved).is_empty() && !intersects_liquid(moved, chunks)
+        !collides(chunks, moved) && !intersects_liquid(moved, chunks)
     }
 
     /// `Entity.moveFlying`: accelerate toward the head's yaw.

@@ -134,17 +134,24 @@ impl RecipeBook {
     }
 
     /// Consume one unit from each occupied slot after a successful output
-    /// pickup. The returned stacks are the Beta container-item remainders.
+    /// pickup. As in `SlotCrafting.onPickupFromSlot`, a container item such as
+    /// milk's empty bucket takes the place of the input it came from. The
+    /// returned stacks are container items whose slot still held inputs.
     pub fn consume_one(&self, grid: &mut CraftingGrid) -> Option<Vec<ItemStack>> {
         self.find(grid)?;
         let mut remainders = Vec::new();
         let slot_count = grid.width() * grid.height();
         for slot in &mut grid.slots[..slot_count] {
             let Some(stack) = *slot else { continue };
-            if let Some(item) = stack.container_item() {
-                remainders.push(ItemStack::new(item, 1).ok()?);
-            }
             *slot = stack.with_count(stack.count() - 1).ok();
+            if let Some(item) = stack.container_item() {
+                let container = ItemStack::new(item, 1).ok()?;
+                if slot.is_none() {
+                    *slot = Some(container);
+                } else {
+                    remainders.push(container);
+                }
+            }
         }
         Some(remainders)
     }

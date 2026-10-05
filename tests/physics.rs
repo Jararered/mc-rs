@@ -12,6 +12,7 @@ use game::physics::Aabb;
 use game::physics::BLOCK_REACH;
 use game::physics::BlockFace;
 use game::physics::PhysicsPlugin;
+use game::physics::block_hit_distance;
 use game::physics::move_entity;
 use game::physics::move_entity_with_sneak;
 use game::physics::raycast_blocks;
@@ -723,4 +724,66 @@ fn water_current_pushes_player_and_generic_physics_bodies() {
     app.update();
     let body_velocity = app.world().entity(body).get::<Velocity>().unwrap().0;
     assert!((body_velocity.x - 0.84).abs() < 1e-4);
+}
+
+#[test]
+fn raycast_passes_through_the_empty_part_of_a_partial_block() {
+    let mut chunk = Chunk::new();
+    chunk.set(8, 64, 8, Block::StoneSlab);
+    chunk.set(8, 64, 10, Block::Rose);
+    let mut chunks = WorldChunks::default();
+    chunks.insert(ChunkPosition::ZERO, generated(chunk));
+
+    // Over the slab's upper half, and past the flower beside its stem.
+    assert!(raycast_blocks(&chunks, Vec3::new(8.5, 64.75, 6.0), Vec3::Z, 2.9).is_none());
+    assert!(raycast_blocks(&chunks, Vec3::new(8.1, 64.2, 9.0), Vec3::Z, 2.5).is_none());
+
+    let origin = Vec3::new(8.5, 64.25, 6.0);
+    let hit = raycast_blocks(&chunks, origin, Vec3::Z, BLOCK_REACH).unwrap();
+    assert_eq!((hit.block, hit.face), (Block::StoneSlab, BlockFace::North));
+    assert!((block_hit_distance(&chunks, &hit, origin, Vec3::Z) - 2.0).abs() < 1e-5);
+}
+
+#[test]
+fn raycast_reports_the_face_of_the_box_not_of_the_cell() {
+    let mut chunk = Chunk::new();
+    chunk.set(8, 64, 8, Block::StoneSlab);
+    let mut chunks = WorldChunks::default();
+    chunks.insert(ChunkPosition::ZERO, generated(chunk));
+
+    // Enters the cell through its north side, above the slab, and lands on top.
+    let origin = Vec3::new(8.5, 65.2, 7.5);
+    let direction = Vec3::new(0.0, -1.0, 1.0);
+    let hit = raycast_blocks(&chunks, origin, direction, BLOCK_REACH).unwrap();
+    assert_eq!((hit.block, hit.face), (Block::StoneSlab, BlockFace::Up));
+}
+
+#[test]
+fn the_tick_that_jumps_is_still_slowed_by_the_ground_it_left() {
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins)
+        .insert_resource(floor_world(64))
+        .add_plugins(PhysicsPlugin);
+    app.world_mut().spawn((
+        Player,
+        Transform::from_xyz(8.5, 65.0 + EntitySize::PLAYER.y_offset, 8.5),
+        Velocity(Vec3::new(2.0, 0.0, 0.0)),
+        EntitySize::PLAYER,
+        CollisionState {
+            on_ground: true,
+            ..default()
+        },
+        PlayerMovementInput {
+            jumping: true,
+            ..default()
+        },
+    ));
+
+    app.world_mut().resource_mut::<WorldTick>().advance(0.05);
+    app.update();
+
+    let mut query = app.world_mut().query::<(&Velocity, &CollisionState)>();
+    let (velocity, collision) = query.single(app.world()).unwrap();
+    assert!(!collision.on_ground);
+    assert!((velocity.0.x - 2.0 * 0.6 * 0.91).abs() < 1e-4);
 }

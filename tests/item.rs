@@ -449,3 +449,27 @@ fn block_breaks_spend_beta_durability() {
     hotbar.damage_selected(1);
     assert!(hotbar.selected_stack().is_none());
 }
+
+#[test]
+fn picks_dig_single_slabs_and_shovels_dig_snow_layers_at_tool_speed() {
+    assert_eq!(
+        str_vs_block(held(Item::WoodenPickaxe), Block::StoneSlab),
+        2.0
+    );
+    assert_eq!(str_vs_block(held(Item::IronShovel), Block::SnowLayer), 6.0);
+    assert_eq!(str_vs_block(held(Item::IronShovel), Block::Snow), 6.0);
+}
+
+#[test]
+fn armor_pieces_name_the_slot_they_are_worn_in() {
+    assert_eq!(Item::IronHelmet.armor_slot(), Some(0));
+    assert_eq!(Item::GoldChestplate.armor_slot(), Some(1));
+    assert_eq!(Item::LeatherLeggings.armor_slot(), Some(2));
+    assert_eq!(Item::DiamondBoots.armor_slot(), Some(3));
+    assert_eq!(
+        Item::from_block(Block::Pumpkin).unwrap().armor_slot(),
+        Some(0)
+    );
+    assert_eq!(Item::from_block(Block::Dirt).unwrap().armor_slot(), None);
+    assert_eq!(Item::Stick.armor_slot(), None);
+}

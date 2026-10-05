@@ -17,7 +17,10 @@ use bevy::prelude::*;
 use crate::app::settings::Difficulty;
 use crate::app::settings::GameSettings;
 use crate::block::blocks::Block;
+use crate::entity::CollisionState;
 use crate::entity::EntitySize;
+use crate::entity::Gravity;
+use crate::entity::StepHeight;
 use crate::entity::Velocity;
 use crate::entity::combat::Hit;
 use crate::entity::combat::PlayerCombat;
@@ -28,9 +31,8 @@ use crate::entity::combat::hurt_player;
 use crate::entity::creature::Living;
 use crate::entity::drops::blocks::natural_drops_with_metadata;
 use crate::entity::drops::items::spawn_block_drop;
+use crate::entity::drops::items::spawn_chest_drops;
 use crate::entity::mobs::Mob;
-use crate::entity::mobs::PrimedTnt;
-use crate::entity::mobs::prime_tnt;
 use crate::entity::projectiles::victim;
 use crate::inventory::Inventory;
 use crate::item::ItemStack;
@@ -46,6 +48,7 @@ use crate::world::chunk::WorldChunks;
 use crate::world::persistence::WorldPersistence;
 use crate::world::streaming::WorldStreaming;
 use crate::world::tick::TICK_SECONDS;
+use crate::world::tick::WorldTick;
 
 /// `World.newExplosion`.
 #[derive(Message, Clone, Copy, Debug)]
@@ -57,6 +60,58 @@ pub struct Explosion {
     /// The exploder: a creeper is a monster, so difficulty scales its blast
     /// against the player. TNT and fireballs have none.
     pub source: Source,
+}
+
+/// `EntityTNTPrimed`. Its `Transform` is the bottom center of its box.
+#[derive(Component)]
+pub struct PrimedTnt {
+    pub fuse: u16,
+}
+
+/// `EntityTNTPrimed.setSize(0.98, 0.98)`.
+const TNT_SIZE: EntitySize = EntitySize {
+    width: 0.98,
+    height: 0.98,
+    y_offset: 0.0,
+};
+
+pub fn prime_tnt(commands: &mut Commands, position: Vec3, fuse: u16) -> Entity {
+    commands
+        .spawn((
+            PrimedTnt { fuse },
+            Transform::from_translation(position),
+            TNT_SIZE,
+            Velocity::default(),
+            Gravity::DEFAULT,
+            CollisionState::default(),
+            StepHeight(0.0),
+        ))
+        .id()
+}
+
+pub(crate) fn tick_tnt(
+    mut commands: Commands,
+    tick: Res<WorldTick>,
+    mut tnt: Query<(Entity, &mut PrimedTnt, &Transform)>,
+    mut explosions: MessageWriter<Explosion>,
+) {
+    let ticks = tick.ticks_this_frame();
+    if ticks == 0 {
+        return;
+    }
+    for (entity, mut tnt, transform) in &mut tnt {
+        if u32::from(tnt.fuse) > ticks {
+            tnt.fuse -= ticks as u16;
+        } else {
+            explosions.write(Explosion {
+                center: transform.translation,
+                strength: 4.0,
+                flaming: false,
+                source: Source::Environment,
+            });
+            commands.entity(entity).despawn();
+        }
+    }
 }
 
 /// `World.rand` and `Explosion.ExplosionRNG`.
@@ -241,12 +296,7 @@ pub(crate) fn apply_explosions(
             }
         }
         for (transform, mut velocity) in &mut tnt {
-            let size = EntitySize {
-                width: 0.98,
-                height: 0.98,
-                y_offset: 0.0,
-            };
-            let aabb = size.aabb(transform.translation);
+            let aabb = TNT_SIZE.aabb(transform.translation);
             if within.intersects(aabb)
                 && let Some((_, fling)) =
                     impact(&chunks, center, transform.translation, aabb, reach)
@@ -277,6 +327,17 @@ pub(crate) fn apply_explosions(
                 continue;
             }
             let metadata = chunks.metadata_at(cell.x, cell.y, cell.z);
+            // `onBlockRemoval`: a container spills everything it held. Writing
+            // air discards the slots, so read them first.
+            if let Some(furnace) = chunks.furnace_at(cell.x, cell.y, cell.z) {
+                for stack in furnace.slots.into_iter().flatten() {
+                    spawn_block_drop(&mut commands, &mut loot, cell, stack);
+                }
+            }
+            if let Some(chest) = chunks.chest_at(cell.x, cell.y, cell.z) {
+                let stacks: Vec<_> = chest.slots.into_iter().flatten().collect();
+                spawn_chest_drops(&mut commands, &mut loot, cell, stacks);
+            }
             for stack in natural_drops_with_metadata(block, metadata, &mut *loot) {
                 if rng.0.next_float() <= 0.3 {
                     spawn_block_drop(&mut commands, &mut loot, cell, stack);

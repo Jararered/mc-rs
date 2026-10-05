@@ -18,10 +18,12 @@ use game::entity::combat::pick;
 use game::entity::creature::Living;
 use game::entity::explosion::blast_cells;
 use game::entity::explosion::exposure;
+use game::entity::explosion::prime_tnt;
 use game::entity::mobs::Mob;
 use game::entity::mobs::MobType;
 use game::entity::projectiles::Arrow;
 use game::entity::projectiles::Fireball;
+use game::entity::projectiles::Shooter;
 use game::entity::projectiles::spawn_arrow;
 use game::item::Item;
 use game::item::ItemStack;
@@ -417,4 +419,77 @@ fn slimes_hop_toward_a_nearby_player() {
     }
     assert!(airborne, "the slime never hopped");
     assert!(feet_of(&app, entity).distance(start) > 1.0);
+}
+
+#[test]
+fn a_blast_spills_what_a_chest_held() {
+    let mut chunks = field(4);
+    chunks.set_block(2, 5, 0, Block::Chest);
+    chunks.chest_at_mut(2, 5, 0).unwrap().slots[0] =
+        Some(ItemStack::new(Item::Diamond, 3).unwrap());
+    let mut app = creature_app(chunks, Vec3::new(30.5, 5.0, 30.5));
+    prime_tnt(&mut app.world_mut().commands(), Vec3::new(0.5, 5.0, 0.5), 1);
+    app.world_mut().flush();
+    run_ticks(&mut app, 2);
+    assert_eq!(
+        app.world()
+            .resource::<game::world::chunk::WorldChunks>()
+            .block_at(2, 5, 0),
+        Some(Block::Air)
+    );
+    let diamonds: u32 = app
+        .world_mut()
+        .query::<&DroppedItem>()
+        .iter(app.world())
+        .filter(|dropped| dropped.0.item() == Item::Diamond)
+        .map(|dropped| u32::from(dropped.0.count()))
+        .sum();
+    assert_eq!(diamonds, 3);
+}
+
+#[test]
+fn an_arrow_stays_a_monster_s_after_its_skeleton_is_gone() {
+    let mut app = creature_app(field(4), Vec3::new(4.5, 5.0, 0.5));
+    let skeleton = summon(
+        &mut app,
+        Mob::new(MobType::Skeleton, 3),
+        Vec3::new(-8.5, 5.0, 8.5),
+    );
+    spawn_arrow(
+        &mut app.world_mut().commands(),
+        Vec3::new(0.5, 6.0, 0.5),
+        Vec3::X,
+        1.5,
+        0.0,
+        Some(Shooter {
+            entity: skeleton,
+            position: Vec3::new(-8.5, 5.0, 8.5),
+            source: Source::Monster,
+        }),
+        &mut JavaRandom::new(1),
+    );
+    app.world_mut().despawn(skeleton);
+    app.world_mut().flush();
+    app.world_mut()
+        .insert_resource(game::app::settings::GameSettings {
+            difficulty: Difficulty::Hard,
+            ..Default::default()
+        });
+    run_ticks(&mut app, 10);
+    // Hard scales a monster's 4 to 6; an ownerless arrow would deal 4.
+    assert_eq!(player_health(&mut app), 14);
+}
+
+#[test]
+fn mobs_stop_at_the_edge_of_the_loaded_world() {
+    let mut app = creature_app(field(4), Vec3::new(0.5, 5.0, 0.5));
+    // The field covers chunks -1..=1, so x = 32 is the first unloaded block.
+    let pig = summon(
+        &mut app,
+        Mob::new(MobType::Pig, 9),
+        Vec3::new(31.4, 5.0, 8.5),
+    );
+    app.world_mut().get_mut::<Velocity>(pig).unwrap().0 = Vec3::new(40.0, 0.0, 0.0);
+    run_ticks(&mut app, 5);
+    assert!(feet_of(&app, pig).x < 32.0);
 }

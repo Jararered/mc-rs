@@ -475,13 +475,20 @@ fn cells(feet: Vec3, size: EntitySize, target: Vec3) -> (IVec3, IVec3, IVec3) {
     (start, end, span)
 }
 
+const INLINE_CHUNKS: usize = 25;
+
 /// Beta's `ChunkCache`: the chunks within `radius` blocks of the walker, by
 /// whole chunks. Blocks outside it, above or below the world, or in a chunk
 /// that is not loaded read as air.
 struct Region<'a> {
     min: ChunkPosition,
     width: i32,
-    chunks: Vec<Option<&'a Chunk>>,
+    /// The region's chunks, row by row. A search of up to 16 blocks spans at
+    /// most five chunks a side, so they are kept inline: a creature chasing
+    /// the player builds a region every tick.
+    inline: [Option<&'a Chunk>; INLINE_CHUNKS],
+    /// The same for a region too large for `inline`, which is then unused.
+    spill: Vec<Option<&'a Chunk>>,
     /// `(min.x, min.z, max.x, max.z)` in chunks.
     bounds: [i32; 4],
     /// Which chunks were loaded anywhere, and how many writes the region's
@@ -503,19 +510,32 @@ impl<'a> Region<'a> {
             z: (center.z + radius) >> 4,
         };
         let width = max.x - min.x + 1;
-        let mut cached = Vec::with_capacity((width * (max.z - min.z + 1)) as usize);
+        let count = (width * (max.z - min.z + 1)) as usize;
+        let mut inline = [None; INLINE_CHUNKS];
+        let mut spill = Vec::new();
+        if count > INLINE_CHUNKS {
+            spill.resize(count, None);
+        }
+        let slots = if spill.is_empty() {
+            &mut inline[..]
+        } else {
+            &mut spill[..]
+        };
         let mut edits = 0;
+        let mut slot = 0;
         for z in min.z..=max.z {
             for x in min.x..=max.x {
                 let chunk = chunks.get(ChunkPosition { x, z }).map(|c| &c.chunk);
                 edits += chunk.map_or(0, |chunk| u64::from(chunk.revision()));
-                cached.push(chunk);
+                slots[slot] = chunk;
+                slot += 1;
             }
         }
         Self {
             min,
             width,
-            chunks: cached,
+            inline,
+            spill,
             bounds: [min.x, min.z, max.x, max.z],
             membership: chunks.membership_revision(),
             edits,
@@ -531,7 +551,12 @@ impl<'a> Region<'a> {
         if cx < 0 || cx >= self.width || cz < 0 {
             return None;
         }
-        let chunk = (*self.chunks.get((cz * self.width + cx) as usize)?)?;
+        let slots = if self.spill.is_empty() {
+            &self.inline[..]
+        } else {
+            &self.spill[..]
+        };
+        let chunk = (*slots.get((cz * self.width + cx) as usize)?)?;
         Some((chunk, (x & 15) as usize, y as usize, (z & 15) as usize))
     }
 

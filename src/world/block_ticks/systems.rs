@@ -162,7 +162,7 @@ fn apply_tick_effects(
                 falling_block::spawn_falling_block(&mut commands, position, block);
             }
             TickEffect::PrimedTnt { position, fuse } => {
-                crate::entity::mobs::prime_tnt(
+                crate::entity::explosion::prime_tnt(
                     &mut commands,
                     position.as_vec3() + bevy::math::Vec3::new(0.5, 0.0, 0.5),
                     fuse,

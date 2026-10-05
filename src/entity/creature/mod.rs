@@ -60,6 +60,7 @@ use crate::entity::mobs::MobType;
 use crate::entity::pathfinding::LastSearch;
 use crate::entity::pathfinding::Path;
 use crate::entity::pathfinding::Pathfinder;
+use crate::entity::projectiles::victim;
 use crate::inventory::Inventory;
 use crate::item::ItemStack;
 use crate::physics::Aabb;
@@ -436,22 +437,7 @@ pub(crate) fn tick_creatures(
         player: target,
         crowd: crowd.as_slice(),
     };
-    let victim = player
-        .as_mut()
-        .and_then(|(transform, health, combat, velocity, inventory)| {
-            let (bevy_yaw, _, _) = transform.rotation.to_euler(EulerRot::YXZ);
-            Some(Victim {
-                health: health.as_mut()?.as_mut(),
-                combat: combat.as_mut()?.as_mut(),
-                velocity: velocity.as_mut(),
-                armor: match inventory {
-                    Some(inventory) => &mut inventory.as_mut().armor,
-                    None => &mut *spare_armor,
-                },
-                eye: transform.translation,
-                yaw: (std::f32::consts::PI - bevy_yaw).to_degrees(),
-            })
-        });
+    let victim = victim(&mut player, &mut spare_armor);
     explosions.clear();
     let mut fx = Effects {
         commands: &mut commands,
@@ -1155,13 +1141,31 @@ impl Body<'_> {
         steps: Option<&mut StepDistance>,
         fx: &mut Effects,
     ) {
-        let movement = move_entity(
+        let mut movement = move_entity(
             self.aabb(),
             self.motion,
             self.step_height,
             self.collision.on_ground,
             world.chunks,
         );
+        // The edge of the loaded world is a wall. Unloaded chunks have no
+        // collision, and a mob that walked into one would be dropped without
+        // being saved with any chunk.
+        let moved = self.size.position_from_aabb(movement.aabb);
+        if !world
+            .chunks
+            .contains(ChunkPosition::from_world(moved.x, moved.z))
+        {
+            movement = move_entity(
+                self.aabb(),
+                Vec3::new(0.0, self.motion.y, 0.0),
+                self.step_height,
+                self.collision.on_ground,
+                world.chunks,
+            );
+            movement.collision.collided_x = true;
+            movement.collision.collided_z = true;
+        }
         self.feet = self.size.position_from_aabb(movement.aabb);
         self.collision = movement.collision;
         // `updateFallState`.

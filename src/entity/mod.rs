@@ -4,7 +4,14 @@
 //! position (eyes for the player, because of [`EntitySize::y_offset`]).
 
 use bevy::prelude::*;
+use serde::Deserialize;
+use serde::Serialize;
 
+use crate::block::blocks::Block;
+use crate::entity::explosion::PrimedTnt;
+use crate::entity::explosion::prime_tnt;
+use crate::entity::falling_block::FallingBlock;
+use crate::entity::falling_block::spawn_falling;
 use crate::entity::pathfinding::SearchStats;
 use crate::item::ItemStack;
 use crate::world::streaming::TimingStats;
@@ -42,6 +49,95 @@ impl EntityDiagnostics {
             mobs: self.mobs,
             parts: self.parts,
             ..std::mem::take(self)
+        }
+    }
+}
+
+/// A falling block or primed TNT stored with the chunk it is in. Both have
+/// already taken their block out of the world, so losing the entity would
+/// lose the block. Arrows and fireballs are not saved.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum SavedBody {
+    FallingBlock {
+        /// The raw block id.
+        block: u8,
+        center: [f32; 3],
+        motion: [f32; 3],
+        fall_ticks: u32,
+        on_ground: bool,
+    },
+    PrimedTnt {
+        feet: [f32; 3],
+        velocity: [f32; 3],
+        fuse: u16,
+    },
+}
+
+/// The components [`SavedBody::capture`] reads, for a query filtered by
+/// [`SavedBodyFilter`].
+pub type SavedBodyData = (
+    Entity,
+    &'static Transform,
+    Option<&'static FallingBlock>,
+    Option<&'static PrimedTnt>,
+    Option<&'static Velocity>,
+);
+pub type SavedBodyFilter = Or<(With<FallingBlock>, With<PrimedTnt>)>;
+
+impl SavedBody {
+    pub fn capture(
+        transform: &Transform,
+        falling: Option<&FallingBlock>,
+        tnt: Option<&PrimedTnt>,
+        velocity: Option<&Velocity>,
+    ) -> Option<Self> {
+        let position = transform.translation.to_array();
+        if let Some(falling) = falling {
+            return Some(Self::FallingBlock {
+                block: falling.block.as_u8(),
+                center: position,
+                motion: falling.motion.to_array(),
+                fall_ticks: falling.fall_ticks,
+                on_ground: falling.on_ground,
+            });
+        }
+        tnt.map(|tnt| Self::PrimedTnt {
+            feet: position,
+            velocity: velocity
+                .map_or(Vec3::ZERO, |velocity| velocity.0)
+                .to_array(),
+            fuse: tnt.fuse,
+        })
+    }
+
+    pub fn spawn(self, commands: &mut Commands) {
+        match self {
+            Self::FallingBlock {
+                block,
+                center,
+                motion,
+                fall_ticks,
+                on_ground,
+            } => spawn_falling(
+                commands,
+                Vec3::from_array(center),
+                FallingBlock {
+                    block: Block::from(block),
+                    fall_ticks,
+                    motion: Vec3::from_array(motion),
+                    on_ground,
+                },
+            ),
+            Self::PrimedTnt {
+                feet,
+                velocity,
+                fuse,
+            } => {
+                let entity = prime_tnt(commands, Vec3::from_array(feet), fuse);
+                commands
+                    .entity(entity)
+                    .insert(Velocity(Vec3::from_array(velocity)));
+            }
         }
     }
 }

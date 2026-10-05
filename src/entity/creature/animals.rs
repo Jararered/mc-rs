@@ -295,11 +295,12 @@ impl Body<'_> {
         if !self.collision.on_ground {
             return;
         }
-        let dx = player.eye.x - self.feet.x;
-        let dz = player.eye.z - self.feet.z;
-        let length = (dx * dx + dz * dz).sqrt();
-        self.motion.x = dx / length * 0.5 * 0.8 + self.motion.x * 0.2;
-        self.motion.z = dz / length * 0.5 * 0.8 + self.motion.z * 0.2;
+        // Beta divides by the distance, which is NaN from directly below the
+        // target; leap straight up instead.
+        let toward =
+            Vec2::new(player.eye.x - self.feet.x, player.eye.z - self.feet.z).normalize_or_zero();
+        self.motion.x = toward.x * 0.5 * 0.8 + self.motion.x * 0.2;
+        self.motion.z = toward.y * 0.5 * 0.8 + self.motion.z * 0.2;
         self.motion.y = 0.4;
     }
 

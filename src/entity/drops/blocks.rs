@@ -125,7 +125,8 @@ fn push_natural(drops: &mut Vec<ItemStack>, block: Block, metadata: u8, rolls: &
         | Block::DeadBush
         | Block::Tnt
         | Block::SnowLayer => {}
-        Block::DoubleStoneSlab => push_block(drops, Block::StoneSlab, 2),
+        // `BlockStep.damageDropped` keeps the slab's material.
+        Block::DoubleStoneSlab => push_block_state(drops, Block::StoneSlab, metadata, 2),
         Block::WoodenStairs => push_block(drops, Block::WoodenPlanks, 1),
         Block::CobblestoneStairs => push_block(drops, Block::Cobblestone, 1),
         Block::LitFurnace => push_block(drops, Block::Furnace, 1),

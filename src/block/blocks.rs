@@ -334,7 +334,9 @@ impl Block {
     /// orientation, leaf decay flags, and the lit furnace are dropped.
     pub const fn item_form(self, metadata: u8) -> (Self, u8) {
         match self {
-            Self::Wood | Self::WoodenPlanks | Self::Leaves => (self, metadata & 3),
+            Self::Wood | Self::WoodenPlanks | Self::Leaves | Self::StoneSlab => {
+                (self, metadata & 3)
+            }
             Self::TallGrass if metadata & 3 == 2 => (self, 2),
             Self::LitFurnace => (Self::Furnace, 0),
             block => (block, 0),

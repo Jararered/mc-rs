@@ -72,6 +72,9 @@ pub struct Chunk {
     /// Scheduled ticks saved with the chunk. Empty while the chunk is live.
     pending_ticks: Vec<PendingTick>,
     mob_records: Vec<crate::entity::mobs::MobRecord>,
+    /// Falling blocks and primed TNT saved with the chunk. Empty while the
+    /// chunk is live.
+    saved_bodies: Vec<crate::entity::SavedBody>,
     spawners: HashMap<usize, crate::entity::mobs::MobSpawner>,
     /// Counts block and metadata writes. Not saved.
     revision: u32,
@@ -86,6 +89,7 @@ impl Chunk {
             chests: HashMap::new(),
             pending_ticks: Vec::new(),
             mob_records: Vec::new(),
+            saved_bodies: Vec::new(),
             spawners: HashMap::new(),
             revision: 0,
         }
@@ -123,6 +127,7 @@ impl Chunk {
             chests,
             pending_ticks: Vec::new(),
             mob_records: Vec::new(),
+            saved_bodies: Vec::new(),
             spawners,
             revision: 0,
         }
@@ -158,6 +163,7 @@ impl Chunk {
             chests,
             pending_ticks: Vec::new(),
             mob_records: Vec::new(),
+            saved_bodies: Vec::new(),
             spawners,
             revision: 0,
         }
@@ -184,6 +190,18 @@ impl Chunk {
 
     pub fn set_mob_records(&mut self, records: Vec<crate::entity::mobs::MobRecord>) {
         self.mob_records = records;
+    }
+
+    pub fn saved_bodies(&self) -> &[crate::entity::SavedBody] {
+        &self.saved_bodies
+    }
+
+    pub fn take_saved_bodies(&mut self) -> Vec<crate::entity::SavedBody> {
+        std::mem::take(&mut self.saved_bodies)
+    }
+
+    pub fn set_saved_bodies(&mut self, bodies: Vec<crate::entity::SavedBody>) {
+        self.saved_bodies = bodies;
     }
 
     pub fn spawners(&self) -> impl Iterator<Item = (usize, &crate::entity::mobs::MobSpawner)> {

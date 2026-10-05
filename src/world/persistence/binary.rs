@@ -119,6 +119,9 @@ pub(super) struct StoredChunk {
     items: Vec<StoredDroppedItem>,
     #[serde(default)]
     mobs: Vec<crate::entity::mobs::MobRecord>,
+    /// Absent on chunks saved before falling blocks and primed TNT were stored.
+    #[serde(default)]
+    bodies: Vec<crate::entity::SavedBody>,
     #[serde(default)]
     spawners: Vec<(u16, crate::entity::mobs::MobSpawner)>,
     /// Absent on chunks saved before furnace inventories were added.
@@ -234,6 +237,7 @@ impl StoredChunk {
                 })
                 .collect(),
             mobs: generated.chunk.mob_records().to_vec(),
+            bodies: generated.chunk.saved_bodies().to_vec(),
             spawners: generated
                 .chunk
                 .spawners()
@@ -306,6 +310,7 @@ impl StoredChunk {
 
         let mut chunk = Chunk::from_blocks(blocks);
         chunk.set_mob_records(self.mobs);
+        chunk.set_saved_bodies(self.bodies);
         for (index, spawner) in self.spawners {
             chunk.insert_spawner(usize::from(index), spawner);
         }

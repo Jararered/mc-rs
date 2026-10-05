@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 
 use crate::app::state::AppScreen;
-use crate::entity::mobs::PrimedTnt;
+use crate::entity::explosion::PrimedTnt;
 
 #[derive(Resource)]
 struct TntAssets {

@@ -10,12 +10,10 @@ use crate::block::blocks::Block;
 use crate::entity::CollisionState;
 use crate::entity::EntityDiagnostics;
 use crate::entity::EntitySize;
-use crate::entity::Gravity;
 use crate::entity::PreviousTick;
 use crate::entity::StepDistance;
 use crate::entity::StepHeight;
 use crate::entity::Velocity;
-use crate::entity::combat::Source;
 use crate::entity::combat::tick_player_combat;
 use crate::entity::creature::Bounce;
 use crate::entity::creature::Fuse;
@@ -28,11 +26,13 @@ use crate::entity::drops::items::spawn_entity_drop;
 pub use crate::entity::explosion::Explosion;
 use crate::entity::explosion::ExplosionRandom;
 use crate::entity::explosion::apply_explosions;
+use crate::entity::explosion::tick_tnt;
 use crate::entity::projectiles::tick_projectiles;
 use crate::item::Item;
 use crate::item::ItemStack;
 use crate::physics::PhysicsSet;
 use crate::player::Player;
+use crate::player::default_spawn_feet;
 use crate::random::ItemRng;
 use crate::random::JavaRandom;
 use crate::world::biome::Biome;
@@ -164,7 +164,6 @@ impl MobType {
         match self {
             Self::Wolf if state.tamed => "mob/wolf_tame.png",
             Self::Wolf if state.angry => "mob/wolf_angry.png",
-            Self::Ghast if state.fuse > 10 => "mob/ghast_fire.png",
             Self::Spider => "mob/spider.png",
             Self::Zombie => "mob/zombie.png",
             Self::Skeleton => "mob/skeleton.png",
@@ -306,61 +305,7 @@ pub struct SpawnMob {
     pub kind: MobType,
     /// World coordinates of the mob's feet.
     pub feet: Vec3,
-    /// Explicit summons bypass natural biome/light tests, not unloaded chunks.
-    pub explicit: bool,
     pub variant: u8,
-}
-
-#[derive(Component)]
-pub struct PrimedTnt {
-    pub fuse: u16,
-}
-
-pub fn prime_tnt(commands: &mut Commands, position: Vec3, fuse: u16) {
-    commands.spawn((
-        PrimedTnt { fuse },
-        Transform::from_translation(position),
-        EntitySize {
-            width: 0.98,
-            height: 0.98,
-            y_offset: 0.0,
-        },
-        Velocity::default(),
-        Gravity::DEFAULT,
-        CollisionState::default(),
-        StepHeight(0.0),
-    ));
-}
-
-/// Distance along a ray to a creature's collision box, if it is within reach.
-pub fn ray_hit(
-    origin: Vec3,
-    direction: Vec3,
-    feet: Vec3,
-    size: EntitySize,
-    reach: f32,
-) -> Option<f32> {
-    let aabb = size.aabb(feet);
-    let mut near: f32 = 0.0;
-    let mut far = reach;
-    for axis in 0..3 {
-        let o = origin[axis];
-        let d = direction[axis];
-        if d.abs() < 1e-6 {
-            if o < aabb.min[axis] || o > aabb.max[axis] {
-                return None;
-            }
-        } else {
-            let a = (aabb.min[axis] - o) / d;
-            let b = (aabb.max[axis] - o) / d;
-            near = near.max(a.min(b));
-            far = far.min(a.max(b));
-            if near > far {
-                return None;
-            }
-        }
-    }
-    Some(near)
 }
 
 #[derive(Resource)]
@@ -408,6 +353,7 @@ fn tick_spawners(
     settings: Option<Res<GameSettings>>,
     mut persistence: Option<ResMut<WorldPersistence>>,
     weather: Option<Res<crate::world::weather::WorldWeather>>,
+    mut candidates: Local<Vec<(ChunkPosition, usize, MobSpawner)>>,
 ) {
     if tick.ticks_this_frame() == 0
         || settings
@@ -420,19 +366,24 @@ fn tick_spawners(
         return;
     };
     let center = ChunkPosition::from_world(player.translation.x, player.translation.z);
-    let candidates: Vec<_> = chunks
-        .positions()
-        .filter(|p| (p.x - center.x).abs() <= 2 && (p.z - center.z).abs() <= 2)
-        .flat_map(|p| {
-            chunks.get(p).into_iter().flat_map(move |chunk| {
-                chunk
-                    .chunk
-                    .spawners()
-                    .map(move |(index, spawner)| (p, index, *spawner))
-            })
-        })
-        .collect();
-    for (position, index, mut spawner) in candidates {
+    candidates.clear();
+    for dx in -2..=2 {
+        for dz in -2..=2 {
+            let position = ChunkPosition {
+                x: center.x + dx,
+                z: center.z + dz,
+            };
+            if let Some(chunk) = chunks.get(position) {
+                candidates.extend(
+                    chunk
+                        .chunk
+                        .spawners()
+                        .map(|(index, spawner)| (position, index, *spawner)),
+                );
+            }
+        }
+    }
+    for (position, index, mut spawner) in candidates.drain(..) {
         let x = position.x * 16 + (index % 16) as i32;
         let y = (index / 256) as i32;
         let z = position.z * 16 + (index / 16 % 16) as i32;
@@ -440,13 +391,14 @@ fn tick_spawners(
         if center.distance_squared(player.translation) > 256.0 {
             continue;
         }
+        let before = spawner;
         for _ in 0..tick.ticks_this_frame() {
             if spawner.delay > 0 {
                 spawner.delay -= 1;
                 continue;
             }
             let mut rng = JavaRandom::from_state(spawner.rng_state);
-            if mobs
+            let nearby = mobs
                 .iter()
                 .filter(|(mob, transform)| {
                     mob.kind == spawner.kind
@@ -455,45 +407,52 @@ fn tick_spawners(
                             .cmple(Vec3::new(8.0, 4.0, 8.0))
                             .all()
                 })
-                .count()
-                >= 6
-            {
-                spawner.delay = 200 + rng.next_int(600) as u16;
-            } else {
-                for _ in 0..4 {
-                    let feet = Vec3::new(
-                        x as f32 + (rng.next_double() - rng.next_double()) as f32 * 4.0,
-                        (y + rng.next_int(3) as i32 - 1) as f32,
-                        z as f32 + (rng.next_double() - rng.next_double()) as f32 * 4.0,
-                    );
-                    if can_spawn_at(
-                        spawner.kind,
-                        1,
+                .count();
+            let mut spawned = 0;
+            for _ in 0..4 {
+                // Beta recounts before every attempt, so the mobs this cycle
+                // has already asked for count toward the limit.
+                if nearby + spawned >= 6 {
+                    spawner.delay = 200 + rng.next_int(600) as u16;
+                    break;
+                }
+                let feet = Vec3::new(
+                    x as f32 + (rng.next_double() - rng.next_double()) as f32 * 4.0,
+                    (y + rng.next_int(3) as i32 - 1) as f32,
+                    z as f32 + (rng.next_double() - rng.next_double()) as f32 * 4.0,
+                );
+                if can_spawn_at(
+                    spawner.kind,
+                    1,
+                    feet,
+                    &chunks,
+                    &light,
+                    tick.world_time(),
+                    weather.as_ref().map_or(0, |w| w.skylight_penalty()),
+                    persistence.as_ref().map_or(0, |p| p.seed()),
+                    &mut rng,
+                ) {
+                    requests.write(SpawnMob {
+                        kind: spawner.kind,
                         feet,
-                        &chunks,
-                        &light,
-                        tick.world_time(),
-                        weather.as_ref().map_or(0, |w| w.skylight_penalty()),
-                        persistence.as_ref().map_or(0, |p| p.seed()),
-                        &mut rng,
-                    ) {
-                        requests.write(SpawnMob {
-                            kind: spawner.kind,
-                            feet,
-                            explicit: true,
-                            variant: 0,
-                        });
-                        spawner.delay = 200 + rng.next_int(600) as u16;
-                    }
+                        variant: 0,
+                    });
+                    spawned += 1;
+                    spawner.delay = 200 + rng.next_int(600) as u16;
                 }
             }
             spawner.rng_state = rng.state();
         }
-        if let Some(chunk) = chunks.get_mut(position)
+        if spawner != before
+            && let Some(chunk) = chunks.get_mut(position)
             && let Some(stored) = chunk.chunk.spawner_mut(index)
         {
             *stored = spawner;
-            if let Some(persistence) = persistence.as_deref_mut() {
+            // A countdown alone is not worth rewriting the chunk every
+            // autosave: it is saved once the delay is rolled again.
+            if spawner.delay > before.delay
+                && let Some(persistence) = persistence.as_deref_mut()
+            {
                 persistence.mark_dirty(position);
             }
         }
@@ -710,6 +669,7 @@ fn natural_spawning(
     mut random: ResMut<MobRandom>,
     persistence: Option<Res<crate::world::persistence::WorldPersistence>>,
     mut diagnostics: Option<ResMut<EntityDiagnostics>>,
+    mut eligible: Local<Vec<ChunkPosition>>,
 ) {
     if tick.ticks_this_frame() == 0 {
         return;
@@ -719,6 +679,7 @@ fn natural_spawning(
     };
     let start = std::time::Instant::now();
     spawn_naturally(
+        &mut eligible,
         &tick,
         &chunks,
         &light,
@@ -738,6 +699,7 @@ fn natural_spawning(
 /// `SpawnerAnimals.performSpawning` around one player.
 #[allow(clippy::too_many_arguments)]
 fn spawn_naturally(
+    eligible: &mut Vec<ChunkPosition>,
     tick: &WorldTick,
     chunks: &WorldChunks,
     light: &LightCache,
@@ -754,12 +716,14 @@ fn spawn_naturally(
     let difficulty = settings
         .as_ref()
         .map_or(Difficulty::Normal, |s| s.difficulty);
-    let eligible: Vec<_> = chunks
-        .positions()
-        .filter(|pos| {
-            (pos.x - center.x).abs() <= radius
-                && (pos.z - center.z).abs() <= radius
-                && light.contains(*pos)
+    eligible.clear();
+    for dx in -radius..=radius {
+        for dz in -radius..=radius {
+            let pos = ChunkPosition {
+                x: center.x + dx,
+                z: center.z + dz,
+            };
+            if light.contains(pos)
                 && (-1..=1).all(|dx| {
                     (-1..=1).all(|dz| {
                         chunks
@@ -770,11 +734,18 @@ fn spawn_naturally(
                             .is_some_and(|c| c.populated)
                     })
                 })
-        })
-        .collect();
+            {
+                eligible.push(pos);
+            }
+        }
+    }
     if eligible.is_empty() {
         return;
     }
+    // The chunks are in grid order, so start somewhere new each tick: a
+    // category near its cap would otherwise always fill the same corner.
+    let first = tick.world_time() as usize % eligible.len();
+    let world_spawn = default_spawn_feet(chunks);
     let seed = persistence.as_ref().map_or(0, |p| p.seed());
     for category in [
         SpawnCategory::Monster,
@@ -798,7 +769,8 @@ fn spawn_naturally(
             continue;
         }
         // Keep the 20 Hz Beta spawn lottery, but only inspect loaded chunks.
-        for &pos in &eligible {
+        for offset in 0..eligible.len() {
+            let pos = eligible[(first + offset) % eligible.len()];
             if count > cap {
                 break;
             }
@@ -841,7 +813,7 @@ fn spawn_naturally(
                     0
                 };
                 if feet.distance_squared(player.translation) < 576.0
-                    || feet.length_squared() < 576.0
+                    || feet.distance_squared(world_spawn) < 576.0
                     || !can_spawn_at(
                         kind,
                         variant as u8,
@@ -859,7 +831,6 @@ fn spawn_naturally(
                 requests.write(SpawnMob {
                     kind,
                     feet,
-                    explicit: false,
                     variant: variant as u8,
                 });
                 count += 1;
@@ -868,30 +839,6 @@ fn spawn_naturally(
                     break;
                 }
             }
-        }
-    }
-}
-
-fn tick_tnt(
-    mut commands: Commands,
-    tick: Res<WorldTick>,
-    mut tnt: Query<(Entity, &mut PrimedTnt, &Transform)>,
-    mut explosions: MessageWriter<Explosion>,
-) {
-    for (entity, mut tnt, transform) in &mut tnt {
-        if tick.ticks_this_frame() == 0 {
-            continue;
-        }
-        if tnt.fuse > tick.ticks_this_frame() as u16 {
-            tnt.fuse -= tick.ticks_this_frame() as u16;
-        } else {
-            explosions.write(Explosion {
-                center: transform.translation,
-                strength: 4.0,
-                flaming: false,
-                source: Source::Environment,
-            });
-            commands.entity(entity).despawn();
         }
     }
 }

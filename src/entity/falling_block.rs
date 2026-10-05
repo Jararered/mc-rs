@@ -7,6 +7,7 @@
 //! updates for it on the next frame.
 
 use bevy::camera::visibility::NoFrustumCulling;
+use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 
 use crate::app::settings::GameSettings;
@@ -54,15 +55,23 @@ pub(crate) struct FallingBlockVisual;
 
 /// Spawn a falling block centered in the cell it leaves.
 pub fn spawn_falling_block(commands: &mut Commands, position: IVec3, block: Block) {
-    let center = position.as_vec3() + Vec3::splat(0.5);
-    commands.spawn((
-        Name::new("Falling block"),
+    spawn_falling(
+        commands,
+        position.as_vec3() + Vec3::splat(0.5),
         FallingBlock {
             block,
             fall_ticks: 0,
             motion: Vec3::ZERO,
             on_ground: false,
         },
+    );
+}
+
+/// Spawn a falling block mid-fall, as one saved with its chunk resumes.
+pub fn spawn_falling(commands: &mut Commands, center: Vec3, falling: FallingBlock) {
+    commands.spawn((
+        Name::new("Falling block"),
+        falling,
         PreviousTick(center),
         Transform::from_translation(center),
         Visibility::default(),
@@ -221,6 +230,8 @@ pub(crate) fn sync_falling_block_rendering(
     settings: Option<Res<GameSettings>>,
     terrain: Option<Res<TerrainMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
+    mut cache: Local<HashMap<(Block, bool), Handle<Mesh>>>,
+    falling: Query<(), With<FallingBlock>>,
     new_blocks: Query<(Entity, &FallingBlock), Without<FallingBlockVisual>>,
     mut visuals: Query<
         (&Transform, &PreviousTick, &Children),
@@ -232,17 +243,28 @@ pub(crate) fn sync_falling_block_rendering(
         return;
     };
     let fancy = settings.is_some_and(|settings| settings.graphics.fancy_leaves());
+    // A collapse spawns many blocks of one kind: they share a mesh, which is
+    // let go once nothing is falling.
+    if falling.is_empty() {
+        cache.clear();
+    }
     for (entity, falling) in &new_blocks {
-        let built = dropped_block_meshes(
-            falling.block,
-            0,
-            fancy,
-            [0.55, 0.8, 0.4],
-            [0.28, 0.71, 0.09],
-        );
+        let mesh = cache
+            .entry((falling.block, fancy))
+            .or_insert_with(|| {
+                let built = dropped_block_meshes(
+                    falling.block,
+                    0,
+                    fancy,
+                    [0.55, 0.8, 0.4],
+                    [0.28, 0.71, 0.09],
+                );
+                meshes.add(built.body.into_mesh())
+            })
+            .clone();
         let child = commands
             .spawn((
-                Mesh3d(meshes.add(built.body.into_mesh())),
+                Mesh3d(mesh),
                 MeshMaterial3d(terrain.0.clone()),
                 Transform::default(),
                 NoFrustumCulling,

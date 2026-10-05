@@ -7,6 +7,7 @@
 use bevy::camera::visibility::NoFrustumCulling;
 use bevy::ecs::system::SystemParam;
 use bevy::mesh::Indices;
+use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use bevy::render::render_resource::PrimitiveTopology;
 
@@ -144,6 +145,24 @@ struct ItemPilePiece {
 
 #[derive(Resource)]
 struct ItemDropMaterial(Handle<StandardMaterial>);
+
+/// A block item's meshes and which material its body takes.
+#[derive(Clone)]
+struct BlockPieces {
+    body: Handle<Mesh>,
+    overlay: Option<Handle<Mesh>>,
+    cutout: bool,
+    alpha_masked: bool,
+}
+
+/// Meshes shared by every drop that looks the same: a sprite quad per icon,
+/// and a block mesh per block state, leaf style and climate tint. Emptied
+/// once no item is left in the world.
+#[derive(Default)]
+struct ItemMeshes {
+    quads: HashMap<[u32; 4], Handle<Mesh>>,
+    blocks: HashMap<(Block, u8, bool, [u32; 3], [u32; 3]), BlockPieces>,
+}
 
 /// Break-drop an item inside a block cell. Position and motion match
 /// `Block.dropBlockAsItem_do` plus the `EntityItem` constructor. Pickup waits 10 ticks.
@@ -573,12 +592,7 @@ fn tick_dropped_items(
             motion.0 +=
                 water_current(size.aabb(transform.translation), &chunks).1 * WATER_CURRENT_PER_TICK;
             motion.0 = apply_item_gravity(motion.0);
-            push_out_of_blocks(
-                &chunks,
-                &mut transform.translation,
-                &mut motion.0,
-                &mut state.rng,
-            );
+            push_out_of_blocks(&chunks, &mut transform.translation, &mut motion.0);
             let movement = move_entity(
                 size.aabb(transform.translation),
                 motion.0,
@@ -636,12 +650,7 @@ fn block_under_item(chunks: &WorldChunks, position: Vec3, size: EntitySize) -> O
     chunks.block_at(position.x.floor() as i32, y, position.z.floor() as i32)
 }
 
-fn push_out_of_blocks(
-    chunks: &WorldChunks,
-    position: &mut Vec3,
-    motion: &mut Vec3,
-    _rng: &mut JavaRandom,
-) {
+fn push_out_of_blocks(chunks: &WorldChunks, position: &mut Vec3, motion: &mut Vec3) {
     let x = position.x.floor() as i32;
     let y = position.y.floor() as i32;
     let z = position.z.floor() as i32;
@@ -731,7 +740,16 @@ fn pickup_dropped_items(
             continue;
         }
         let original = dropped.0;
-        if let Some(remainder) = inventory.insert(&mut hotbar, original) {
+        // An item that does not fit changes nothing, so it must not flag the
+        // inventory and hotbar as changed every frame the player stands on it.
+        let remainder = inventory
+            .bypass_change_detection()
+            .insert(hotbar.bypass_change_detection(), original);
+        if remainder.is_none_or(|remainder| remainder.count() != original.count()) {
+            inventory.set_changed();
+            hotbar.set_changed();
+        }
+        if let Some(remainder) = remainder {
             if remainder.count() == original.count() {
                 continue;
             }
@@ -805,7 +823,11 @@ fn sync_item_rendering(
         Option<&PickupAnimation>,
     )>,
     mut pieces: Query<(&ItemPilePiece, &mut Transform), Without<DroppedItem>>,
+    mut cache: Local<ItemMeshes>,
 ) {
+    if items.is_empty() {
+        *cache = ItemMeshes::default();
+    }
     let fancy = world.settings.graphics.fancy_leaves();
     let camera_yaw = camera.single().map_or(0.0, |camera| {
         let (yaw, _, _) = camera.rotation().to_euler(EulerRot::YXZ);
@@ -881,6 +903,7 @@ fn sync_item_rendering(
                 spawn_block_pieces(
                     &mut commands,
                     &mut meshes,
+                    &mut cache,
                     entity,
                     block,
                     metadata,
@@ -915,7 +938,7 @@ fn sync_item_rendering(
                 for offset in offsets {
                     let child = commands
                         .spawn((
-                            item_quad(u0, v0, u1, v1, &mut meshes),
+                            item_quad(u0, v0, u1, v1, &mut meshes, &mut cache),
                             MeshMaterial3d(material.clone()),
                             item_piece_transform(bob, yaw, scale, offset, slide),
                             ItemPilePiece { offset },
@@ -986,6 +1009,7 @@ fn climate_tints(
 fn spawn_block_pieces(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
+    cache: &mut ItemMeshes,
     parent: Entity,
     block: Block,
     metadata: u8,
@@ -1004,9 +1028,28 @@ fn spawn_block_pieces(
     let Some(terrain) = terrain else {
         return;
     };
-    let built = dropped_block_meshes(block, metadata, fancy, tints.0, tints.1);
-    let body = meshes.add(built.body.into_mesh());
-    let overlay = built.overlay.map(|mesh| meshes.add(mesh.into_mesh()));
+    let key = (
+        block,
+        metadata,
+        fancy,
+        tints.0.map(f32::to_bits),
+        tints.1.map(f32::to_bits),
+    );
+    let built = cache
+        .blocks
+        .entry(key)
+        .or_insert_with(|| {
+            let built = dropped_block_meshes(block, metadata, fancy, tints.0, tints.1);
+            BlockPieces {
+                cutout: built.cutout,
+                alpha_masked: built.alpha_masked,
+                overlay: built.overlay.map(|mesh| meshes.add(mesh.into_mesh())),
+                body: meshes.add(built.body.into_mesh()),
+            }
+        })
+        .clone();
+    let body = built.body;
+    let overlay = built.overlay;
     let use_cutout = built.cutout;
     let cutout_handle = cutout.map(|material| material.0.clone());
     let alpha_mask_handle = alpha_mask.map(|material| material.0.clone());
@@ -1065,7 +1108,18 @@ fn spawn_block_pieces(
     }
 }
 
-fn item_quad(u0: f32, v0: f32, u1: f32, v1: f32, meshes: &mut Assets<Mesh>) -> Mesh3d {
+fn item_quad(
+    u0: f32,
+    v0: f32,
+    u1: f32,
+    v1: f32,
+    meshes: &mut Assets<Mesh>,
+    cache: &mut ItemMeshes,
+) -> Mesh3d {
+    let key = [u0, v0, u1, v1].map(f32::to_bits);
+    if let Some(mesh) = cache.quads.get(&key) {
+        return Mesh3d(mesh.clone());
+    }
     let mut mesh = Mesh::new(
         PrimitiveTopology::TriangleList,
         bevy::asset::RenderAssetUsages::RENDER_WORLD,
@@ -1085,5 +1139,7 @@ fn item_quad(u0: f32, v0: f32, u1: f32, v1: f32, meshes: &mut Assets<Mesh>) -> M
         vec![[u0, v1], [u1, v1], [u1, v0], [u0, v0]],
     );
     mesh.insert_indices(Indices::U32(vec![0, 1, 2, 0, 2, 3]));
-    Mesh3d(meshes.add(mesh))
+    let mesh = meshes.add(mesh);
+    cache.quads.insert(key, mesh.clone());
+    Mesh3d(mesh)
 }

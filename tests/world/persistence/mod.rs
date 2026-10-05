@@ -14,6 +14,7 @@ use bevy::mesh::MeshPlugin;
 use bevy::prelude::*;
 use game::block::blocks::Block;
 use game::block::direction::Direction;
+use game::entity::SavedBody;
 use game::entity::mobs::Mob;
 use game::entity::mobs::MobRecord;
 use game::entity::mobs::MobSpawner;
@@ -969,4 +970,30 @@ fn old_region_folders_move_into_the_regions_folder_when_a_world_opens() {
     assert!(!old_dir.exists());
     assert!(new_dir.join(chunk_file_name(position)).exists());
     assert!(reopened.load_chunk(position).is_some());
+}
+
+#[test]
+fn falling_blocks_and_primed_tnt_round_trip_through_a_chunk_file() {
+    let saves = temp_saves("saved-bodies");
+    let storage = WorldStorage::create(&saves, 9, "Bodies").unwrap();
+    let position = ChunkPosition::ZERO;
+    let mut generated = OverworldGenerator::new(9).generate(position);
+    let bodies = vec![
+        SavedBody::FallingBlock {
+            block: Block::Sand.as_u8(),
+            center: [2.5, 80.5, 3.5],
+            motion: [0.0, -0.4, 0.0],
+            fall_ticks: 12,
+            on_ground: false,
+        },
+        SavedBody::PrimedTnt {
+            feet: [4.5, 70.0, 5.5],
+            velocity: [0.0, 1.0, 0.0],
+            fuse: 33,
+        },
+    ];
+    generated.chunk.set_saved_bodies(bodies.clone());
+    storage.save_chunk(position, &generated).unwrap();
+    let loaded = storage.load_chunk(position).unwrap();
+    assert_eq!(loaded.chunk.saved_bodies(), bodies);
 }

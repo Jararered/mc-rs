@@ -8,12 +8,11 @@ use game::entity::creature::Hover;
 use game::entity::creature::Living;
 use game::entity::creature::Swim;
 use game::entity::creature::Wings;
+use game::entity::explosion::PrimedTnt;
+use game::entity::explosion::prime_tnt;
 use game::entity::mobs::Mob;
 use game::entity::mobs::MobType;
-use game::entity::mobs::PrimedTnt;
 use game::entity::mobs::SpawnCategory;
-use game::entity::mobs::prime_tnt;
-use game::entity::mobs::ray_hit;
 use game::entity::mobs::spawn;
 use game::entity::mobs::spawn_table;
 use game::player::Player;
@@ -70,55 +69,6 @@ fn beta_health_values_distinguish_passive_and_hostile_mobs() {
     assert_eq!(MobType::Wolf.health(0), 8);
     assert_eq!(MobType::Zombie.health(0), 20);
     assert_eq!(MobType::Slime.health(4), 16);
-}
-
-#[test]
-fn mob_ray_reaches_boxes_without_targeting_beyond_reach() {
-    let origin = Vec3::new(0.5, 1.6, 0.5);
-    let size = EntitySize::PLAYER;
-    let feet = Vec3::new(0.5, 0.0, -2.5);
-    assert!(
-        (ray_hit(
-            origin,
-            Vec3::NEG_Z,
-            feet,
-            EntitySize {
-                y_offset: 0.0,
-                ..size
-            },
-            3.0
-        )
-        .unwrap()
-            - 2.7)
-            .abs()
-            < 0.01
-    );
-    assert!(
-        ray_hit(
-            origin,
-            Vec3::NEG_Z,
-            feet,
-            EntitySize {
-                y_offset: 0.0,
-                ..size
-            },
-            2.0
-        )
-        .is_none()
-    );
-    assert!(
-        ray_hit(
-            origin,
-            Vec3::X,
-            feet,
-            EntitySize {
-                y_offset: 0.0,
-                ..size
-            },
-            3.0
-        )
-        .is_none()
-    );
 }
 
 fn mob_app() -> App {

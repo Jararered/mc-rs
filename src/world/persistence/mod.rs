@@ -1352,6 +1352,7 @@ fn flush_persistence(
         &crate::entity::mobs::Mob,
         Option<&crate::entity::creature::Living>,
     )>,
+    bodies: Query<crate::entity::SavedBodyData, crate::entity::SavedBodyFilter>,
     time: Res<Time>,
     tick: Option<Res<crate::world::tick::WorldTick>>,
     block_ticks: Option<Res<BlockTicks>>,
@@ -1399,12 +1400,31 @@ fn flush_persistence(
                     living,
                 ));
         }
+        let mut bodies_by_chunk: HashMap<ChunkPosition, Vec<crate::entity::SavedBody>> =
+            HashMap::new();
+        for (_, transform, falling, tnt, velocity) in &bodies {
+            if let Some(body) = crate::entity::SavedBody::capture(transform, falling, tnt, velocity)
+            {
+                bodies_by_chunk
+                    .entry(ChunkPosition::from_world(
+                        transform.translation.x,
+                        transform.translation.z,
+                    ))
+                    .or_default()
+                    .push(body);
+            }
+        }
         let positions: Vec<_> = chunks.positions().collect();
         for position in positions {
             let records = by_chunk.remove(&position).unwrap_or_default();
+            let saved_bodies = bodies_by_chunk.remove(&position).unwrap_or_default();
             if let Some(chunk) = chunks.get_mut(position) {
                 if !records.is_empty() || !chunk.chunk.mob_records().is_empty() {
                     chunk.chunk.set_mob_records(records);
+                    persistence.mark_dirty(position);
+                }
+                if !saved_bodies.is_empty() || !chunk.chunk.saved_bodies().is_empty() {
+                    chunk.chunk.set_saved_bodies(saved_bodies);
                     persistence.mark_dirty(position);
                 }
             }

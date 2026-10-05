@@ -14,6 +14,7 @@ use crate::entity::combat::Hit;
 use crate::entity::combat::Source;
 use crate::entity::mobs::Explosion;
 use crate::entity::mobs::MobType;
+use crate::entity::projectiles::Shooter;
 use crate::entity::projectiles::spawn_arrow;
 use crate::entity::projectiles::spawn_fireball;
 use crate::physics::colliding_aabbs;
@@ -200,7 +201,11 @@ impl Body<'_> {
                 Vec3::new(dx, dy + lift, dz),
                 0.6,
                 12.0,
-                Some(self.entity),
+                Some(Shooter {
+                    entity: self.entity,
+                    position: self.feet,
+                    source: Source::Monster,
+                }),
                 &mut self.mob.rng,
             );
             self.living.attack_time = 30;
@@ -325,7 +330,7 @@ impl Body<'_> {
         if due {
             hover.course_change += self.mob.rng.next_int(5) as i32 + 2;
             if self.course_clear(toward, distance, world) {
-                self.motion += toward / distance * 0.1;
+                self.motion += toward.normalize_or_zero() * 0.1;
             } else {
                 hover.waypoint = self.feet;
             }
@@ -394,7 +399,7 @@ impl Body<'_> {
     /// `EntityGhast.isCourseTraversable`: slide the body toward the waypoint
     /// a block at a time and stop at the first collision.
     fn course_clear(&self, toward: Vec3, distance: f32, world: &Surroundings) -> bool {
-        let step = toward / distance;
+        let step = toward.normalize_or_zero();
         let mut aabb = self.aabb();
         let mut i = 1.0;
         while i < distance {

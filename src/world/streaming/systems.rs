@@ -10,6 +10,9 @@ use bevy::tasks::futures::check_ready;
 use crate::app::settings::GameSettings;
 use crate::app::state::AppScreen;
 use crate::entity::DroppedItem;
+use crate::entity::SavedBody;
+use crate::entity::SavedBodyData;
+use crate::entity::SavedBodyFilter;
 use crate::entity::Velocity;
 use crate::entity::creature::Living;
 use crate::entity::drops::items::DroppedItemState;
@@ -135,6 +138,7 @@ pub(crate) fn setup_streaming(
         }
         let saved_items = std::mem::take(&mut generated.items);
         let saved_mobs = generated.chunk.take_mob_records();
+        let saved_bodies = generated.chunk.take_saved_bodies();
         if let Some(ticks) = ticks.as_deref_mut() {
             ticks.load_chunk(position, &mut generated.chunk);
         }
@@ -144,6 +148,9 @@ pub(crate) fn setup_streaming(
         }
         for mob in saved_mobs {
             spawn_saved(&mut commands, mob);
+        }
+        for body in saved_bodies {
+            body.spawn(&mut commands);
         }
     }
     commands.insert_resource(WorldStreaming {
@@ -192,7 +199,11 @@ pub(crate) fn stream_chunks(
         ),
         Without<PickupAnimation>,
     >,
-    mobs: Query<(Entity, &Transform, &Velocity, &Mob, Option<&Living>)>,
+    // Paired to stay within Bevy's sixteen system parameters.
+    (mobs, bodies): (
+        Query<(Entity, &Transform, &Velocity, &Mob, Option<&Living>)>,
+        Query<SavedBodyData, SavedBodyFilter>,
+    ),
     mut last_unload_sweep: Local<Option<(ChunkPosition, i32)>>,
     mut ticks: Option<ResMut<BlockTicks>>,
     mut light: Option<ResMut<LightCache>>,
@@ -321,6 +332,22 @@ pub(crate) fn stream_chunks(
                         persistence.mark_dirty(position);
                     }
                 }
+                let mut saved_bodies = Vec::new();
+                for (entity, transform, falling, tnt, velocity) in &bodies {
+                    if ChunkPosition::from_world(transform.translation.x, transform.translation.z)
+                        == position
+                        && let Some(body) = SavedBody::capture(transform, falling, tnt, velocity)
+                    {
+                        saved_bodies.push(body);
+                        commands.entity(entity).despawn();
+                    }
+                }
+                if !saved_bodies.is_empty() || !chunk.chunk.saved_bodies().is_empty() {
+                    chunk.chunk.set_saved_bodies(saved_bodies);
+                    if let Some(persistence) = persistence.as_deref_mut() {
+                        persistence.mark_dirty(position);
+                    }
+                }
                 if let Some(persistence) = persistence.as_deref_mut() {
                     persistence.queue_unload(position, chunk);
                 }
@@ -376,6 +403,7 @@ pub(crate) fn stream_chunks(
             }
             let saved_items = std::mem::take(&mut job.chunk.items);
             let saved_mobs = job.chunk.chunk.take_mob_records();
+            let saved_bodies = job.chunk.chunk.take_saved_bodies();
             if let Some(ticks) = ticks.as_deref_mut() {
                 ticks.load_chunk(position, &mut job.chunk.chunk);
             }
@@ -386,6 +414,9 @@ pub(crate) fn stream_chunks(
                 }
                 for mob in saved_mobs {
                     spawn_saved(&mut commands, mob);
+                }
+                for body in saved_bodies {
+                    body.spawn(&mut commands);
                 }
             }
         }

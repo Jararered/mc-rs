@@ -235,7 +235,6 @@ fn apply_lightning(
                 spawn.write(SpawnMob {
                     kind: MobType::PigZombie,
                     feet,
-                    explicit: true,
                     variant: 0,
                 });
                 continue;

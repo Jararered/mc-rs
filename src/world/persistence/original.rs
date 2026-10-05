@@ -16,7 +16,10 @@
 //! ticks from the world, and mob timers from defaults. Blocks this game does not
 //! simulate (glass, cake, redstone wire and the like) load as air. Tile entities
 //! other than chests, furnaces and spawners (signs, note blocks, dispensers) are
-//! dropped, which is also what Beta does with ids it does not know. The format
+//! dropped, which is also what Beta does with ids it does not know. Falling
+//! blocks and primed TNT in flight are not written, so one caught mid-fall or
+//! mid-fuse by a save is lost with its block; the native format keeps them.
+//! Neither format keeps arrows or fireballs. The format
 //! is described by `ChunkLoader`, `McRegionChunkLoader`, `RegionFile`, `WorldInfo`
 //! and `NBTBase` in the reference source.
 

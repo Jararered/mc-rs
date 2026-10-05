@@ -670,3 +670,18 @@ fn zero_hotbar_pop_does_not_signal_a_change_and_active_pop_still_finishes() {
     app.update();
     assert_eq!(app.world().get::<Hotbar>(entity).unwrap().pop[1], 0);
 }
+
+#[test]
+fn a_double_slab_drops_two_slabs_of_its_own_material() {
+    let drops = natural_drops_with_metadata(
+        Block::DoubleStoneSlab,
+        2,
+        &mut Rolls {
+            values: &[],
+            index: 0,
+        },
+    );
+    let wooden = ItemStack::from_block_state(Block::StoneSlab, 2, 1).unwrap();
+    assert_eq!(drops, vec![wooden; 2]);
+    assert_eq!(wooden.data(), 2);
+}

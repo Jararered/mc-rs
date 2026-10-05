@@ -54,11 +54,22 @@ pub const FIREBALL_SIZE: EntitySize = EntitySize {
     y_offset: 0.0,
 };
 
+/// Who loosed an arrow. Beta's arrow keeps a reference to its shooter even
+/// after the shooter dies, so what the hit needs is copied here.
+#[derive(Clone, Copy, Debug)]
+pub struct Shooter {
+    pub entity: Entity,
+    /// Where it stood when it shot, used once it is gone.
+    pub position: Vec3,
+    /// What kind of attacker it is: a skeleton is [`Source::Monster`].
+    pub source: Source,
+}
+
 /// `EntityArrow`. Its `Transform` is the bottom center of its box.
 #[derive(Component, Clone, Debug)]
 pub struct Arrow {
     /// The mob that shot it, which it cannot hit for its first 5 ticks.
-    pub owner: Option<Entity>,
+    pub shooter: Option<Shooter>,
     /// `motionX/Y/Z`, in blocks per tick.
     pub motion: Vec3,
     /// Degrees, for the renderer. Yaw 0 points along +Z.
@@ -128,7 +139,7 @@ pub fn spawn_arrow(
     heading: Vec3,
     speed: f32,
     spread: f32,
-    owner: Option<Entity>,
+    shooter: Option<Shooter>,
     rng: &mut JavaRandom,
 ) -> Entity {
     let motion = (heading.normalize_or_zero() + gaussian_vec(rng) * 0.0075 * spread) * speed;
@@ -137,7 +148,7 @@ pub fn spawn_arrow(
         .spawn((
             Name::new("Arrow"),
             Arrow {
-                owner,
+                shooter,
                 motion,
                 yaw,
                 prev_yaw: yaw,
@@ -363,7 +374,10 @@ pub(crate) fn tick_projectiles(
             if let Some((_, point)) = block_hit {
                 to = point;
             }
-            let ignore = arrow.owner.filter(|_| arrow.ticks_in_air < 5);
+            let ignore = arrow
+                .shooter
+                .filter(|_| arrow.ticks_in_air < 5)
+                .map(|shooter| shooter.entity);
             let player_box = player
                 .as_ref()
                 .map(|(transform, ..)| EntitySize::PLAYER.aabb(transform.translation));
@@ -376,18 +390,15 @@ pub(crate) fn tick_projectiles(
                 ),
                 ignore,
             );
-            let shooter = arrow
-                .owner
-                .and_then(|owner| mobs.get(owner).ok())
-                .map(|(_, mob, _, _, transform, _)| (transform.translation, mob.kind));
             let hit = Hit {
                 amount: 4,
-                from: shooter.map(|(at, _)| at),
-                source: match shooter {
-                    Some((_, kind)) if kind.is_monster() => Source::Monster,
-                    Some(_) => Source::Creature,
-                    None => Source::Environment,
-                },
+                from: arrow.shooter.map(|shooter| {
+                    mobs.get(shooter.entity)
+                        .map_or(shooter.position, |(.., transform, _)| transform.translation)
+                }),
+                source: arrow
+                    .shooter
+                    .map_or(Source::Environment, |shooter| shooter.source),
             };
             if let Some(struck) = struck {
                 let landed = match struck {

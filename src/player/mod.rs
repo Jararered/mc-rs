@@ -518,11 +518,16 @@ fn camera_bob_pose(bob: &CameraBobbing) -> Mat4 {
         * Mat4::from_rotation_x(pitch.to_radians())
 }
 
-fn default_spawn_transform(chunks: &WorldChunks) -> Transform {
+/// The world spawn point: on the surface of the origin chunk's middle column.
+pub(crate) fn default_spawn_feet(chunks: &WorldChunks) -> Vec3 {
     let surface = chunks
         .get(ChunkPosition::ZERO)
         .map_or(64.0, |generated| generated.heightmap.get(8, 8) as f32);
-    let eye = surface + EntitySize::PLAYER.y_offset;
+    Vec3::new(8.5, surface, 8.5)
+}
+
+fn default_spawn_transform(chunks: &WorldChunks) -> Transform {
+    let eye = default_spawn_feet(chunks).y + EntitySize::PLAYER.y_offset;
     Transform::from_xyz(8.5, eye, 8.5).looking_at(Vec3::new(8.5, eye, 16.5), Vec3::Y)
 }
 

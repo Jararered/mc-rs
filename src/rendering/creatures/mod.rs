@@ -24,7 +24,6 @@ use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use bevy::transform::TransformSystems;
 
-use crate::app::settings::GameSettings;
 use crate::app::state::AppScreen;
 use crate::entity::EntityDiagnostics;
 use crate::entity::EntitySize;
@@ -164,7 +163,6 @@ pub(super) fn plugin(app: &mut App) {
                 pose_creatures,
                 projectiles::add_projectile_models,
                 projectiles::pose_projectiles,
-                apply_creature_lighting,
             )
                 .chain()
                 .before(TransformSystems::Propagate)
@@ -202,7 +200,6 @@ fn prepare_creature_assets(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<CreatureMaterial>>,
     server: Res<AssetServer>,
-    settings: Res<GameSettings>,
 ) {
     // Legs and mirrored parts share boxes, so build each distinct box once.
     let mut built: Vec<(Cuboid, Handle<Mesh>)> = Vec::new();
@@ -232,7 +229,7 @@ fn prepare_creature_assets(
             Some((kind, meshes.add(sprite_mesh(tile, [255; 3], false))))
         })
         .collect();
-    let unlit = settings.old_lighting;
+    let unlit = true;
     let available = |texture: &str| std::path::Path::new("assets").join(texture).exists();
     let load = |texture: &'static str| available(texture).then(|| server.load(texture));
     let skins = SKINS
@@ -399,7 +396,6 @@ fn add_creature_models(
 #[allow(clippy::too_many_arguments)]
 fn pose_creatures(
     tick: Res<WorldTick>,
-    settings: Res<GameSettings>,
     chunks: Res<WorldChunks>,
     light: Option<Res<LightCache>>,
     weather: Option<Res<WorldWeather>>,
@@ -537,12 +533,7 @@ fn pose_creatures(
             size.height,
             subtracted,
         );
-        // Ambient light shades lit mode; old lighting applies Beta's brightness.
-        let brightness = if settings.old_lighting {
-            world_brightness
-        } else {
-            1.0
-        };
+        let brightness = world_brightness;
         let hurt = living.hurt_time > 0 || living.death_time > 0;
         for child in children.iter() {
             let Ok((part, mut pose, mut shown, mut tag, mut material, grandchildren)) =
@@ -601,28 +592,4 @@ fn entity_brightness(
         |(sky, block)| combined_light(sky, block, subtracted),
     );
     beta_brightness(level)
-}
-
-fn apply_creature_lighting(
-    settings: Res<GameSettings>,
-    assets: Res<CreatureAssets>,
-    mut materials: ResMut<Assets<CreatureMaterial>>,
-) {
-    if !settings.is_changed() {
-        return;
-    }
-    let charge = assets.charge.id();
-    let handles = assets
-        .skins
-        .values()
-        .chain(&assets.fleece)
-        .chain([&assets.eyes, &assets.slime_outer]);
-    for handle in handles {
-        if handle.id() != charge
-            && let Some(mut material) = materials.get_mut(handle)
-            && material.base.unlit != settings.old_lighting
-        {
-            material.base.unlit = settings.old_lighting;
-        }
-    }
 }

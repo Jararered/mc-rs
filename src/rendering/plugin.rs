@@ -1,10 +1,5 @@
-use bevy::camera::Hdr;
-use bevy::core_pipeline::prepass::DeferredPrepass;
-use bevy::core_pipeline::prepass::DepthPrepass;
 use bevy::light::DirectionalLightShadowMap;
 use bevy::light::PointLightShadowMap;
-use bevy::pbr::DefaultOpaqueRendererMethod;
-use bevy::pbr::ScreenSpaceReflections;
 use bevy::prelude::*;
 use bevy::render::render_resource::WgpuFeatures;
 use bevy::render::renderer::RenderAdapterInfo;
@@ -15,8 +10,6 @@ use crate::app::state::AppScreen;
 use crate::physics::PhysicsSet;
 use crate::ui::screens::panorama::MenuPanoramaCamera;
 
-use super::sky::CelestialCamera;
-use super::sky::SkyCamera;
 use super::textures::TerrainTexturePlugin;
 use crate::world::block_ticks::BlockTickSet;
 use crate::world::streaming::ChunkCulling;
@@ -28,7 +21,7 @@ use crate::world::streaming::stream_chunks;
 /// [`ChunkCulling`].
 const CHUNK_CULLING_ENV: &str = "MC_CHUNK_CULLING";
 
-/// Bevy's `LightPlugin` allocates a point-light cube array and a directional
+/// Bevy's PBR renderer allocates a point-light cube array and a directional
 /// cascade array at these resources' sizes even when no such light exists
 /// (24 MiB and 16 MiB per cascade at Bevy's defaults). Nothing in the game is
 /// a directional or point light, so both stay at this unused size.
@@ -47,7 +40,10 @@ impl Plugin for WorldRenderingPlugin {
         app.add_plugins(TerrainTexturePlugin)
             .insert_resource(ClearColor(Color::srgb(0.53, 0.73, 0.95)))
             .init_resource::<GameSettings>()
-            .init_resource::<GlobalAmbientLight>()
+            .insert_resource(GlobalAmbientLight {
+                brightness: 0.0,
+                ..default()
+            })
             .insert_resource(PointLightShadowMap {
                 size: UNUSED_SHADOW_MAP_SIZE,
             })
@@ -55,6 +51,7 @@ impl Plugin for WorldRenderingPlugin {
                 size: UNUSED_SHADOW_MAP_SIZE,
             })
             .init_resource::<StreamingDiagnostics>()
+            .add_systems(PreStartup, disable_gpu_light_clustering)
             .add_systems(
                 Startup,
                 setup_streaming.run_if(crate::world::persistence::starts_with_world),
@@ -67,7 +64,6 @@ impl Plugin for WorldRenderingPlugin {
                 Update,
                 (
                     choose_chunk_culling.run_if(resource_added::<RenderDevice>),
-                    apply_lighting_settings,
                     apply_graphics_pipeline,
                     crate::entity::falling_block::sync_falling_block_rendering.after(BlockTickSet),
                     stream_chunks
@@ -78,20 +74,6 @@ impl Plugin for WorldRenderingPlugin {
                 ),
             );
     }
-}
-
-pub(super) fn apply_lighting_settings(
-    settings: Res<GameSettings>,
-    mut ambient: ResMut<GlobalAmbientLight>,
-) {
-    if !settings.is_changed() {
-        return;
-    }
-    ambient.brightness = if settings.old_lighting {
-        0.0
-    } else {
-        settings.ambient_light_brightness()
-    };
 }
 
 /// Decide how chunk layers are culled once the GPU's features are known, and
@@ -123,67 +105,38 @@ fn choose_chunk_culling(
     commands.insert_resource(culling);
 }
 
-/// Ultra water uses Bevy screen-space reflections, which need deferred rendering
-/// and MSAA off. Fast/Fancy stay on the forward path.
-///
-/// Every camera on the window gets the same [`Msaa`], the UI and title
-/// cameras included: Bevy keeps one set of window-sized targets per sample
-/// count in use, so a single 4x camera keeps the multisampled ones alive.
+/// `ClusterConfig::None` needs the CPU light path: Bevy 0.19's GPU light
+/// path otherwise creates a zero-sized dummy texture. Mesh GPU preprocessing
+/// and culling are independent and remain enabled.
+fn disable_gpu_light_clustering(
+    settings: Option<ResMut<bevy::light::cluster::GlobalClusterSettings>>,
+) {
+    if let Some(mut settings) = settings {
+        settings.gpu_clustering = None;
+    }
+}
+
+/// Keep all window cameras on one sample count and disable unused light clusters.
 fn apply_graphics_pipeline(
     mut commands: Commands,
     settings: Res<GameSettings>,
-    cameras: Query<
-        (Entity, Option<&ScreenSpaceReflections>),
-        (
-            With<Camera3d>,
-            Without<SkyCamera>,
-            Without<CelestialCamera>,
-            Without<MenuPanoramaCamera>,
-        ),
-    >,
-    sky_cameras: Query<Entity, Or<(With<SkyCamera>, With<CelestialCamera>)>>,
     all_cameras: Query<(Entity, Option<&Msaa>), With<Camera>>,
     new_cameras: Query<(), Added<Camera>>,
-    renderer_method: Option<ResMut<DefaultOpaqueRendererMethod>>,
+    new_3d_cameras: Query<Entity, Added<Camera3d>>,
 ) {
-    // A world's cameras can spawn after the settings change that loading it
-    // caused was already seen here.
+    for entity in &new_3d_cameras {
+        commands.entity(entity).insert((
+            bevy::light::cluster::ClusterConfig::None,
+            bevy::core_pipeline::tonemapping::Tonemapping::None,
+        ));
+    }
     if !settings.is_changed() && new_cameras.is_empty() {
         return;
-    }
-    let ultra = settings.graphics.realistic_water();
-    for (entity, ssr) in &cameras {
-        if ultra && ssr.is_none() {
-            commands
-                .entity(entity)
-                .insert((ScreenSpaceReflections::default(), Hdr));
-        } else if !ultra && ssr.is_some() {
-            commands
-                .entity(entity)
-                .remove::<ScreenSpaceReflections>()
-                .remove::<DepthPrepass>()
-                .remove::<DeferredPrepass>()
-                .remove::<Hdr>();
-        }
-    }
-    for entity in &sky_cameras {
-        if ultra {
-            commands.entity(entity).insert(Hdr);
-        } else {
-            commands.entity(entity).remove::<Hdr>();
-        }
     }
     let msaa = settings.msaa();
     for (entity, current) in &all_cameras {
         if current != Some(&msaa) {
             commands.entity(entity).insert(msaa);
-        }
-    }
-    if let Some(mut method) = renderer_method {
-        if ultra {
-            method.set_to_deferred();
-        } else {
-            method.set_to_forward();
         }
     }
 }

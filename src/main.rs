@@ -11,6 +11,10 @@ fn main() {
     App::new()
         .add_plugins(
             DefaultPlugins
+                .set(bevy::pbr::PbrPlugin {
+                    add_default_deferred_lighting_plugin: false,
+                    ..default()
+                })
                 .set(ImagePlugin {
                     // Pixel art: nearest sampling and no mip chain. A per-image sampler
                     // replaces this, so loaders should leave `ImageSampler::Default` alone

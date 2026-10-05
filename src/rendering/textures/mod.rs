@@ -1,13 +1,11 @@
 use bevy::image::ImageLoaderSettings;
 use bevy::image::ImageSampler;
 use bevy::image::ImageSamplerDescriptor;
-use bevy::material::OpaqueRendererMethod;
 use bevy::prelude::*;
 use bevy::render::renderer::RenderDevice;
 use bevy::render::storage::ShaderBuffer;
 
 use crate::app::settings::GameSettings;
-use crate::app::settings::GraphicsQuality;
 use crate::block::blocks::species;
 use crate::rendering::chunk_quads::ChunkQuads;
 use crate::rendering::meshing::BlockLighting;
@@ -115,7 +113,6 @@ fn nearest_atlas_sampler() -> ImageSampler {
 
 fn block_lighting(settings: &GameSettings, skylight_subtracted: u8) -> BlockLighting {
     BlockLighting {
-        old_lighting: settings.old_lighting,
         smooth_lighting: settings.smooth_lighting,
         skylight_subtracted,
     }
@@ -165,7 +162,7 @@ fn load_terrain_atlas(
         StandardMaterial {
             perceptual_roughness: 1.0,
             alpha_mode: AlphaMode::Opaque,
-            unlit: settings.old_lighting,
+            unlit: true,
             ..default()
         },
         lighting,
@@ -176,7 +173,7 @@ fn load_terrain_atlas(
         StandardMaterial {
             perceptual_roughness: 1.0,
             alpha_mode: AlphaMode::Mask(0.5),
-            unlit: settings.old_lighting,
+            unlit: true,
             ..default()
         },
         lighting,
@@ -186,7 +183,7 @@ fn load_terrain_atlas(
     let cutout = materials.add(block_material(
         StandardMaterial {
             perceptual_roughness: 1.0,
-            unlit: settings.old_lighting,
+            unlit: true,
             // Fancy leaf tiles have punched holes. Mask discards those texels
             // without sorting the whole chunk as transparent.
             alpha_mode: AlphaMode::Mask(0.5),
@@ -196,20 +193,20 @@ fn load_terrain_atlas(
         leaf_wiggle_amplitude(&settings),
         quads,
     ));
-    let mut water = StandardMaterial {
+    let water = StandardMaterial {
         base_color: Color::WHITE.with_alpha(WATER_ALPHA),
         double_sided: true,
         cull_mode: None,
-        unlit: settings.old_lighting,
+        unlit: true,
+        alpha_mode: AlphaMode::Blend,
         ..default()
     };
-    apply_water_quality(&mut water, settings.graphics);
     let water = materials.add(block_material(water, lighting, 0.0, quads));
     let plants = materials.add(block_material(
         StandardMaterial {
             perceptual_roughness: 1.0,
             alpha_mode: AlphaMode::Mask(0.5),
-            unlit: settings.old_lighting,
+            unlit: true,
             ..default()
         },
         lighting,
@@ -286,7 +283,6 @@ fn apply_graphics_materials(
         let Some(mut material) = materials.get_mut(handle) else {
             continue;
         };
-        material.base.unlit = settings.old_lighting;
         let subtracted = material.extension.settings.lighting().skylight_subtracted;
         let amplitude = if *handle == handles.cutout.0 {
             wiggle
@@ -295,9 +291,6 @@ fn apply_graphics_materials(
         };
         material.extension.settings =
             BlockShadingSettings::new(block_lighting(&settings, subtracted), amplitude);
-        if *handle == handles.water.0 {
-            apply_water_quality(&mut material.base, settings.graphics);
-        }
     }
 }
 
@@ -405,24 +398,6 @@ pub fn pad_atlas_tiles(image: &mut Image) {
     image.texture_descriptor.size.width = padded;
     image.texture_descriptor.size.height = padded;
     image.data = Some(dst);
-}
-
-/// Glossy enough for Bevy screen-space reflections, matching the SSR water demo.
-const ULTRA_WATER_ROUGHNESS: f32 = 0.09;
-
-fn apply_water_quality(material: &mut StandardMaterial, graphics: GraphicsQuality) {
-    if graphics.realistic_water() {
-        // Opaque so the surface writes the deferred G-buffer SSR reads.
-        material.perceptual_roughness = ULTRA_WATER_ROUGHNESS;
-        material.alpha_mode = AlphaMode::Opaque;
-        material.opaque_render_method = OpaqueRendererMethod::Deferred;
-        material.reflectance = 0.5;
-    } else {
-        material.perceptual_roughness = 1.0;
-        material.alpha_mode = AlphaMode::Blend;
-        material.opaque_render_method = OpaqueRendererMethod::Auto;
-        material.reflectance = 0.5;
-    }
 }
 
 // The original terrain.png is a 16 by 16 grid of 16-pixel tiles.

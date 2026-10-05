@@ -99,6 +99,20 @@ chunk blocks, light, and quad records together are under 30 MB.
 - Bevy creates a point light cube array (24 MiB at its default size) and a
   directional array (16 MiB per cascade) even with no shadow caster.
   `rendering/plugin.rs` keeps both at 16 pixels; the game spawns neither light.
+  PBR remains for mesh batching, instancing, and drawing; its lighting
+  dependency and fallback bindings cannot be removed independently.
+- Beta lighting is permanent. Every 3D camera disables light clustering, and
+  GPU light clustering is explicitly disabled independently of mesh GPU
+  preprocessing/culling: Bevy 0.19.1 otherwise creates a zero-sized clustering
+  dummy texture for `ClusterConfig::None`. Block, creature, and tinted
+  materials disable shadow/prepass participation.
+  The game and render harness disable the deferred lighting plugin. Fast and
+  Fancy retain transparent Beta water; Ultra/SSR and their HDR camera path
+  have been removed. Smooth lighting still updates a uniform without remeshing.
+- Tonemapping LUTs and KTX2/Zstandard support are disabled; all window cameras
+  use `Tonemapping::None`, and the game loads PNG textures. Legacy Ultra
+  settings load as Fancy; obsolete lighting and ambient-brightness fields
+  are ignored and omitted on the next settings save.
 - 4x MSAA is a multisampled colour and depth target at window size, about
   105 MB here and proportional to the window's pixels. `Msaa` must match on
   every camera, UI included, or the targets stay allocated.
@@ -127,3 +141,33 @@ camera is the next thing to measure.
 A release build of the last two rows measured 586 MB with 4x MSAA (GPU 354
 MB) and 527 MB without (GPU 316 MB), so the dev profile is not what makes
 the footprint large, and the MSAA saving was smaller there, about 40 MB.
+
+## Permanent Beta lighting cleanup
+
+Paired dev-profile runs on Metal at 960x540, MSAA off, seed 0, smooth lighting
+on, leaf wiggle off, measured after settling with `footprint`. Both builds used
+`Tonemapping::None` and the trimmed texture feature list to isolate renderer
+changes. The baseline retained the original clustering and deferred plugin;
+the optimized build disabled GPU light clustering, all per-camera clusters,
+deferred lighting, and custom-material shadow/prepass participation.
+
+| View / distance | Baseline total / GPU | Optimized total / GPU | Baseline / optimized frame time |
+| --- | --- | --- | --- |
+| View 0 / 4 (81 chunks) | 420 / 246 MB | 386 / 223 MB | 5.63 / 5.42 ms |
+| View 1 / 8 (289 chunks) | 484 / 274 MB | 441 / 241 MB | 5.70 / 5.44 ms |
+
+GPU is the sum of the dirty graphics rows, rounded to MB. These runs saved
+23–33 MB of GPU memory. Total footprint saved 34–43 MB, but the heap portion
+is noisy; these figures are observations, not a guaranteed budget. macOS
+presentation pacing also limits the frame-time comparison; neither scene
+showed a regression. The distance-8 screenshots matched exactly; distance 4
+had one differing pixel out of 518,400. A handful of off-screen section layers
+varied between runs without affecting either captured view.
+
+The packed-vertex and quad-record paths were also rendered with smooth lighting
+both on and off. Their screenshots differed by 0.029% and 0.028% respectively,
+consistent with the existing quantized geometry path. A separate GPU smoke
+scene exercised creature skin/hurt/flash, glow, charge, instance tint, and
+multiply blending without shader or render validation errors. The normal
+application also started without rendering errors; this did not include a
+full interactive gameplay session.

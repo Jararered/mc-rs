@@ -3,14 +3,13 @@
 //!
 //! The vertex shaders decode positions, atlas UVs, normals, and tints, and
 //! evaluate Beta's light curve from raw sky and block samples with the
-//! uniform below. Changing the time of day, old lighting, or smooth lighting
+//! uniform below. Changing the time of day or smooth lighting
 //! updates this uniform instead of rebuilding meshes. Leaf wiggle reads
 //! Bevy's time uniform, so nothing here changes every frame.
 //!
 //! A greedy rectangle stores an unwrapped block position as its UV and the
 //! atlas tile in vertex alpha. The fragment shaders wrap that back into one
-//! tile before sampling. Forward, deferred, and the mask prepass all do it,
-//! because each of those paths samples the atlas.
+//! tile before sampling in the unlit forward pass.
 
 use bevy::asset::load_internal_asset;
 use bevy::asset::uuid_handle;
@@ -44,12 +43,8 @@ const BLOCK_VERTEX_IMPORT_HANDLE: Handle<Shader> =
     uuid_handle!("7e3c1a90-4b2d-4f86-9c51-a8d0e4b17c22");
 const BLOCK_VERTEX_SHADER_HANDLE: Handle<Shader> =
     uuid_handle!("c41f8e2b-6a70-4d13-b9e5-2f7c90d4a6b1");
-const BLOCK_PREPASS_SHADER_HANDLE: Handle<Shader> =
-    uuid_handle!("5d9a2c14-8e6f-4b07-a3c8-1e5d7f90b4a6");
 const BLOCK_FRAGMENT_SHADER_HANDLE: Handle<Shader> =
     uuid_handle!("9c4e2a71-3b58-4d0e-8f16-6a2d91c0e4b7");
-const BLOCK_PREPASS_FRAGMENT_SHADER_HANDLE: Handle<Shader> =
-    uuid_handle!("2f6b8d04-7c19-4a55-b3e2-8d1f0a6c47e9");
 
 /// Atlas-textured block shading shared by terrain layers and dropped blocks.
 pub type BlockMaterial = ExtendedMaterial<StandardMaterial, BlockShading>;
@@ -65,14 +60,10 @@ pub struct BlockShadingSettings {
 }
 
 impl BlockShadingSettings {
-    pub const OLD_LIGHTING: u32 = 1;
     pub const SMOOTH_LIGHTING: u32 = 2;
 
     pub fn new(lighting: BlockLighting, wiggle_amplitude: f32) -> Self {
         let mut flags = 0;
-        if lighting.old_lighting {
-            flags |= Self::OLD_LIGHTING;
-        }
         if lighting.smooth_lighting {
             flags |= Self::SMOOTH_LIGHTING;
         }
@@ -86,7 +77,6 @@ impl BlockShadingSettings {
 
     pub fn lighting(&self) -> BlockLighting {
         BlockLighting {
-            old_lighting: self.flags & Self::OLD_LIGHTING != 0,
             smooth_lighting: self.flags & Self::SMOOTH_LIGHTING != 0,
             skylight_subtracted: self.skylight_subtracted as u8,
         }
@@ -129,27 +119,18 @@ pub struct BlockShading {
 }
 
 impl MaterialExtension for BlockShading {
+    fn enable_prepass() -> bool {
+        false
+    }
+    fn enable_shadows() -> bool {
+        false
+    }
+
     fn vertex_shader() -> ShaderRef {
         BLOCK_VERTEX_SHADER_HANDLE.into()
     }
 
-    fn prepass_vertex_shader() -> ShaderRef {
-        BLOCK_PREPASS_SHADER_HANDLE.into()
-    }
-
-    fn deferred_vertex_shader() -> ShaderRef {
-        BLOCK_PREPASS_SHADER_HANDLE.into()
-    }
-
     fn fragment_shader() -> ShaderRef {
-        BLOCK_FRAGMENT_SHADER_HANDLE.into()
-    }
-
-    fn prepass_fragment_shader() -> ShaderRef {
-        BLOCK_PREPASS_FRAGMENT_SHADER_HANDLE.into()
-    }
-
-    fn deferred_fragment_shader() -> ShaderRef {
         BLOCK_FRAGMENT_SHADER_HANDLE.into()
     }
 
@@ -171,8 +152,7 @@ impl MaterialExtension for BlockShading {
             // A face between dirt and water points at the water. Draw it from
             // the shore as well as from inside the liquid.
             descriptor.primitive.cull_mode = None;
-            // The depth prepass rasterizes the same edges. A slope bias keeps
-            // the color pass from losing the depth test to that prepass.
+            // Keep overlapping wireframe edges from fighting at equal depth.
             if let Some(depth_stencil) = descriptor.depth_stencil.as_mut() {
                 depth_stencil.bias.slope_scale = 1.0;
             }
@@ -227,20 +207,8 @@ pub(super) fn plugin(app: &mut App) {
     );
     load_internal_asset!(
         app,
-        BLOCK_PREPASS_SHADER_HANDLE,
-        "block_vertex_prepass.wgsl",
-        Shader::from_wgsl
-    );
-    load_internal_asset!(
-        app,
         BLOCK_FRAGMENT_SHADER_HANDLE,
         "block_fragment.wgsl",
-        Shader::from_wgsl
-    );
-    load_internal_asset!(
-        app,
-        BLOCK_PREPASS_FRAGMENT_SHADER_HANDLE,
-        "block_prepass_fragment.wgsl",
         Shader::from_wgsl
     );
 }

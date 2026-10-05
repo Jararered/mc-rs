@@ -77,7 +77,6 @@ enum MenuAction {
     Settings,
     Quit,
     Back,
-    OldLighting,
     SmoothLighting,
     WiggleLeaves,
     Graphics,
@@ -91,10 +90,8 @@ enum MenuAction {
 #[derive(Component, Clone, Copy)]
 pub(super) enum SettingLabel {
     RenderDistance,
-    Brightness,
     Fov,
     CloudHeight,
-    OldLighting,
     SmoothLighting,
     WiggleLeaves,
     Graphics,
@@ -428,23 +425,9 @@ fn spawn_settings_menu(commands: &mut Commands, textures: &MenuTextures, setting
                             spawn_setting_slider(
                                 parent,
                                 &textures,
-                                SettingLabel::Brightness,
-                                brightness_text(&settings),
-                                settings,
-                            );
-                            spawn_setting_slider(
-                                parent,
-                                &textures,
                                 SettingLabel::CloudHeight,
                                 cloud_height_text(&settings),
                                 settings,
-                            );
-                            spawn_setting_button(
-                                parent,
-                                &textures,
-                                old_lighting_text(&settings),
-                                MenuAction::OldLighting,
-                                SettingLabel::OldLighting,
                             );
                             spawn_setting_button(
                                 parent,
@@ -550,7 +533,6 @@ fn spawn_settings_menu(commands: &mut Commands, textures: &MenuTextures, setting
 pub enum SettingsSlider {
     RenderDistance,
     Fov,
-    Brightness,
     CloudHeight,
     MouseSensitivity,
     MaxFps,
@@ -566,9 +548,6 @@ impl SettingsSlider {
                 settings.render_distance as f32,
             ),
             Self::Fov => Slider::new(MIN_FOV, MAX_FOV, 1.0, settings.fov),
-            Self::Brightness => {
-                Slider::new(MIN_BRIGHTNESS, MAX_BRIGHTNESS, 1.0, settings.brightness)
-            }
             Self::CloudHeight => Slider::new(
                 MIN_CLOUD_HEIGHT,
                 MAX_CLOUD_HEIGHT,
@@ -605,7 +584,6 @@ fn spawn_setting_slider(
     let binding = match label {
         SettingLabel::RenderDistance => SettingsSlider::RenderDistance,
         SettingLabel::Fov => SettingsSlider::Fov,
-        SettingLabel::Brightness => SettingsSlider::Brightness,
         SettingLabel::CloudHeight => SettingsSlider::CloudHeight,
         SettingLabel::MouseSensitivity => SettingsSlider::MouseSensitivity,
         SettingLabel::MaxFps => SettingsSlider::MaxFps,
@@ -652,7 +630,6 @@ impl SettingsSlider {
         match self {
             Self::RenderDistance => next.render_distance = value as i32,
             Self::Fov => next.fov = value,
-            Self::Brightness => next.brightness = value,
             Self::CloudHeight => next.cloud_height = value,
             Self::MouseSensitivity => next.mouse_sensitivity = value / 100.0,
             Self::MaxFps => {
@@ -799,7 +776,6 @@ fn handle_buttons(
                 exit.write(AppExit::Success);
             }
             MenuAction::Back => next_screen.set(settings_return.0),
-            MenuAction::OldLighting => settings.old_lighting = !settings.old_lighting,
             MenuAction::SmoothLighting => settings.smooth_lighting = !settings.smooth_lighting,
             MenuAction::WiggleLeaves => settings.wiggle_leaves = !settings.wiggle_leaves,
             MenuAction::Graphics => settings.cycle_graphics(),
@@ -835,10 +811,8 @@ fn refresh_settings_labels(
     for (label, entity, children) in &labels {
         let value = match label {
             SettingLabel::RenderDistance => render_distance_text(&settings),
-            SettingLabel::Brightness => brightness_text(&settings),
             SettingLabel::Fov => fov_text(&settings),
             SettingLabel::CloudHeight => cloud_height_text(&settings),
-            SettingLabel::OldLighting => old_lighting_text(&settings),
             SettingLabel::SmoothLighting => smooth_lighting_text(&settings),
             SettingLabel::WiggleLeaves => wiggle_leaves_text(&settings),
             SettingLabel::Graphics => graphics_text(&settings),
@@ -866,23 +840,12 @@ fn render_distance_text(settings: &GameSettings) -> String {
     format!("Render distance: {} chunks", settings.render_distance)
 }
 
-fn brightness_text(settings: &GameSettings) -> String {
-    format!("Ambient brightness: {:.0}", settings.brightness)
-}
-
 fn fov_text(settings: &GameSettings) -> String {
     format!("FOV: {:.0}", settings.fov)
 }
 
 fn cloud_height_text(settings: &GameSettings) -> String {
     format!("Cloud height: {:.0}", settings.cloud_height)
-}
-
-fn old_lighting_text(settings: &GameSettings) -> String {
-    format!(
-        "Old lighting: {}",
-        if settings.old_lighting { "ON" } else { "OFF" }
-    )
 }
 
 fn smooth_lighting_text(settings: &GameSettings) -> String {
@@ -914,7 +877,6 @@ fn graphics_text(settings: &GameSettings) -> String {
         match settings.graphics {
             GraphicsQuality::Fast => "Fast",
             GraphicsQuality::Fancy => "Fancy",
-            GraphicsQuality::Ultra => "Ultra",
         }
     )
 }

@@ -642,7 +642,6 @@ fn night_dims_sunlight_and_leaves_torches() {
     // Dusk changes a material uniform; the same mesh serves day and night.
     let meshes = mesh_chunk_with_settings(&chunk, &light, false);
     let flat_at = |skylight_subtracted| BlockLighting {
-        old_lighting: true,
         smooth_lighting: false,
         skylight_subtracted,
     };

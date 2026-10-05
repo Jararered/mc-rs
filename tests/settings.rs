@@ -10,17 +10,14 @@ use bevy::mesh::MeshPlugin;
 use bevy::pbr::ScreenSpaceReflections;
 use bevy::prelude::*;
 use bevy::state::app::StatesPlugin;
-use game::app::settings::AMBIENT_ONLY_SCALE;
 use game::app::settings::DEFAULT_CLOUD_HEIGHT;
 use game::app::settings::DEFAULT_FOV;
 use game::app::settings::Difficulty;
 use game::app::settings::GameSettings;
 use game::app::settings::GraphicsQuality;
-use game::app::settings::MAX_BRIGHTNESS;
 use game::app::settings::MAX_CLOUD_HEIGHT;
 use game::app::settings::MAX_FOV;
 use game::app::settings::MAX_RENDER_DISTANCE;
-use game::app::settings::MIN_BRIGHTNESS;
 use game::app::settings::MIN_CLOUD_HEIGHT;
 use game::app::settings::MIN_FOV;
 use game::app::settings::MIN_RENDER_DISTANCE;
@@ -56,17 +53,6 @@ fn settings_controls_stay_within_their_ranges() {
     settings.change_render_distance(-100);
     assert_eq!(settings.render_distance, MIN_RENDER_DISTANCE);
 
-    settings.change_brightness(10_000.0);
-    assert_eq!(settings.brightness, MAX_BRIGHTNESS);
-    settings.change_brightness(-10_000.0);
-    assert_eq!(settings.brightness, MIN_BRIGHTNESS);
-
-    settings.brightness = MAX_BRIGHTNESS;
-    assert_eq!(
-        settings.ambient_light_brightness(),
-        MAX_BRIGHTNESS * AMBIENT_ONLY_SCALE
-    );
-
     assert_eq!(settings.fov, DEFAULT_FOV);
     settings.change_fov(1_000.0);
     assert_eq!(settings.fov, MAX_FOV);
@@ -83,19 +69,11 @@ fn settings_controls_stay_within_their_ranges() {
 
     assert_eq!(settings.graphics, GraphicsQuality::Fancy);
     assert!(settings.graphics.fancy_leaves());
-    assert!(!settings.graphics.realistic_water());
-    assert!(settings.graphics.entity_shadows());
-
-    settings.cycle_graphics();
-    assert_eq!(settings.graphics, GraphicsQuality::Ultra);
-    assert!(settings.graphics.fancy_leaves());
-    assert!(settings.graphics.realistic_water());
     assert!(settings.graphics.entity_shadows());
 
     settings.cycle_graphics();
     assert_eq!(settings.graphics, GraphicsQuality::Fast);
     assert!(!settings.graphics.fancy_leaves());
-    assert!(!settings.graphics.realistic_water());
     assert!(!settings.graphics.entity_shadows());
 
     settings.cycle_graphics();
@@ -103,7 +81,7 @@ fn settings_controls_stay_within_their_ranges() {
 }
 
 #[test]
-fn brightness_updates_ambient_and_spawns_no_analytic_light() {
+fn beta_lighting_keeps_ambient_zero_and_spawns_no_analytic_light() {
     let mut app = App::new();
     app.add_plugins((MinimalPlugins, AssetPlugin::default(), MeshPlugin))
         .init_asset::<Image>()
@@ -111,17 +89,9 @@ fn brightness_updates_ambient_and_spawns_no_analytic_light() {
         .add_plugins((WorldPlugin, game::rendering::WorldRenderingPlugin));
     app.update();
 
-    {
-        let mut settings = app.world_mut().resource_mut::<GameSettings>();
-        settings.old_lighting = false;
-        settings.brightness = 500.0;
-    }
     app.update();
 
-    assert_eq!(
-        app.world().resource::<GlobalAmbientLight>().brightness,
-        500.0 * AMBIENT_ONLY_SCALE
-    );
+    assert_eq!(app.world().resource::<GlobalAmbientLight>().brightness, 0.0);
     let mut directional = app.world_mut().query::<&DirectionalLight>();
     assert!(directional.iter(app.world()).next().is_none());
     let mut points = app.world_mut().query::<&PointLight>();
@@ -229,48 +199,29 @@ fn first_person_arm_has_separate_camera_and_skin_mesh() {
 }
 
 #[test]
-fn ultra_graphics_uses_ssr_water_without_changing_blend_on_fancy() {
+fn both_graphics_modes_keep_beta_water_and_disable_clusters() {
     let mut app = App::new();
     app.add_plugins((MinimalPlugins, AssetPlugin::default(), MeshPlugin))
         .init_asset::<Image>()
         .init_asset::<StandardMaterial>()
         .add_plugins((WorldPlugin, game::rendering::WorldRenderingPlugin));
-    app.world_mut().spawn(Camera3d::default());
-    app.update();
-
-    let fancy_water = water_material(&app);
-    assert_eq!(fancy_water.alpha_mode, AlphaMode::Blend);
-    assert!((fancy_water.perceptual_roughness - 1.0).abs() < f32::EPSILON);
-    assert_eq!(fancy_water.opaque_render_method, OpaqueRendererMethod::Auto);
-    let mut ssr = app.world_mut().query::<&ScreenSpaceReflections>();
-    assert!(ssr.iter(app.world()).next().is_none());
-
-    {
-        let mut settings = app.world_mut().resource_mut::<GameSettings>();
-        settings.graphics = GraphicsQuality::Ultra;
+    let camera = app.world_mut().spawn(Camera3d::default()).id();
+    for graphics in [GraphicsQuality::Fancy, GraphicsQuality::Fast] {
+        app.world_mut().resource_mut::<GameSettings>().graphics = graphics;
+        app.update();
+        app.update();
+        let water = water_material(&app);
+        assert_eq!(water.alpha_mode, AlphaMode::Blend);
+        assert!(water.unlit);
+        assert_eq!(water.opaque_render_method, OpaqueRendererMethod::Auto);
+        assert!(matches!(
+            app.world()
+                .get::<bevy::light::cluster::ClusterConfig>(camera),
+            Some(bevy::light::cluster::ClusterConfig::None)
+        ));
+        assert!(app.world().get::<ScreenSpaceReflections>(camera).is_none());
+        assert!(app.world().get::<bevy::camera::Hdr>(camera).is_none());
     }
-    app.update();
-
-    let ultra_water = water_material(&app);
-    assert_eq!(ultra_water.alpha_mode, AlphaMode::Opaque);
-    assert!((ultra_water.perceptual_roughness - 0.09).abs() < f32::EPSILON);
-    assert_eq!(
-        ultra_water.opaque_render_method,
-        OpaqueRendererMethod::Deferred
-    );
-    let mut ssr = app.world_mut().query::<&ScreenSpaceReflections>();
-    assert!(ssr.single(app.world()).is_ok());
-
-    {
-        let mut settings = app.world_mut().resource_mut::<GameSettings>();
-        settings.graphics = GraphicsQuality::Fancy;
-    }
-    app.update();
-
-    let fancy_again = water_material(&app);
-    assert_eq!(fancy_again.alpha_mode, AlphaMode::Blend);
-    let mut ssr = app.world_mut().query::<&ScreenSpaceReflections>();
-    assert!(ssr.iter(app.world()).next().is_none());
 }
 
 #[test]
@@ -307,23 +258,25 @@ fn anti_aliasing_and_shadow_map_sizes_follow_the_settings() {
     app.update();
     app.update();
     assert_eq!(samples(&mut app), [Msaa::Off; 3]);
+    let mut cameras = app
+        .world_mut()
+        .query_filtered::<&bevy::light::cluster::ClusterConfig, With<Camera3d>>();
+    assert_eq!(cameras.iter(app.world()).count(), 2);
+    assert!(
+        cameras
+            .iter(app.world())
+            .all(|config| matches!(config, bevy::light::cluster::ClusterConfig::None))
+    );
 
     {
         let mut settings = app.world_mut().resource_mut::<GameSettings>();
         settings.anti_aliasing = true;
-        settings.old_lighting = false;
     }
     app.update();
     app.update();
     assert_eq!(samples(&mut app), [Msaa::Sample4; 3]);
     assert!(app.world().resource::<DirectionalLightShadowMap>().size < 64);
     assert!(app.world().resource::<PointLightShadowMap>().size < 64);
-
-    // Deferred rendering cannot be multisampled.
-    app.world_mut().resource_mut::<GameSettings>().graphics = GraphicsQuality::Ultra;
-    app.update();
-    app.update();
-    assert_eq!(samples(&mut app), [Msaa::Off; 3]);
 }
 
 #[test]
@@ -370,13 +323,12 @@ fn lighting_settings_and_dusk_update_block_uniforms_without_remeshing() {
     app.update();
     for material in block_materials(&app) {
         let lighting = material.extension.settings.lighting();
-        assert!(lighting.old_lighting && lighting.smooth_lighting);
+        assert!(lighting.smooth_lighting);
         assert_eq!(lighting.skylight_subtracted, 0);
     }
 
     {
         let mut settings = app.world_mut().resource_mut::<GameSettings>();
-        settings.old_lighting = false;
         settings.smooth_lighting = false;
     }
     let dusk = 13_700;
@@ -389,8 +341,8 @@ fn lighting_settings_and_dusk_update_block_uniforms_without_remeshing() {
     assert!(expected > 0);
     for material in block_materials(&app) {
         let lighting = material.extension.settings.lighting();
-        assert!(!lighting.old_lighting && !lighting.smooth_lighting);
-        assert!(material.base.unlit == lighting.old_lighting);
+        assert!(!lighting.smooth_lighting);
+        assert!(material.base.unlit);
         assert_eq!(lighting.skylight_subtracted, expected);
     }
     // Lighting is a material uniform, so nothing was queued for rebuilding.
@@ -429,13 +381,12 @@ fn settings_round_trip_through_json() {
     let settings = GameSettings {
         render_distance: 12,
         max_fps: 120,
-        brightness: 450.0,
         fov: 90.0,
         cloud_height: 192.0,
-        old_lighting: true,
+
         smooth_lighting: true,
         wiggle_leaves: false,
-        graphics: GraphicsQuality::Ultra,
+        graphics: GraphicsQuality::Fancy,
         anti_aliasing: false,
         mouse_sensitivity: 1.5,
         view_bobbing: false,
@@ -454,10 +405,8 @@ fn settings_json_fills_in_missing_menu_fields() {
     let loaded = load_settings(&path);
     assert_eq!(loaded.render_distance, 16);
     assert_eq!(loaded.difficulty, Difficulty::Normal);
-    assert_eq!(loaded.brightness, GameSettings::default().brightness);
     assert_eq!(loaded.fov, DEFAULT_FOV);
     assert_eq!(loaded.cloud_height, DEFAULT_CLOUD_HEIGHT);
-    assert_eq!(loaded.old_lighting, true);
     assert_eq!(loaded.graphics, GraphicsQuality::Fancy);
     let _ = fs::remove_file(path);
 }
@@ -479,10 +428,8 @@ fn settings_json_clamps_out_of_range_values() {
     .unwrap();
     let loaded = load_settings(&path);
     assert_eq!(loaded.render_distance, MAX_RENDER_DISTANCE);
-    assert_eq!(loaded.brightness, MIN_BRIGHTNESS);
     assert_eq!(loaded.fov, MAX_FOV);
     assert_eq!(loaded.cloud_height, MAX_CLOUD_HEIGHT);
-    assert!(loaded.old_lighting);
     assert_eq!(loaded.graphics, GraphicsQuality::Fast);
     let _ = fs::remove_file(path);
 }
@@ -501,10 +448,9 @@ fn settings_plugin_loads_and_saves_menu_changes() {
     let initial = GameSettings {
         render_distance: 8,
         max_fps: 90,
-        brightness: 200.0,
         fov: 55.0,
         cloud_height: 64.0,
-        old_lighting: true,
+
         smooth_lighting: true,
         wiggle_leaves: true,
         graphics: GraphicsQuality::Fast,
@@ -525,7 +471,6 @@ fn settings_plugin_loads_and_saves_menu_changes() {
         settings.change_fov(10.0);
         settings.change_cloud_height(8.0);
         settings.cycle_graphics();
-        settings.old_lighting = false;
     }
     app.update();
     // The write waits for the options to settle, so a dragged slider is one
@@ -537,8 +482,6 @@ fn settings_plugin_loads_and_saves_menu_changes() {
     let saved = load_settings(&path);
     assert_eq!(saved.render_distance, 9);
     assert_eq!(saved.graphics, GraphicsQuality::Fancy);
-    assert!(!saved.old_lighting);
-    assert_eq!(saved.brightness, 200.0);
     assert_eq!(saved.fov, 65.0);
     assert_eq!(saved.cloud_height, 72.0);
     let _ = fs::remove_file(path);
@@ -998,9 +941,15 @@ fn missing_panorama_preserves_main_menu_background() {
 #[test]
 fn settings_tabs_buttons_and_live_labels() {
     let mut app = settings_menu_app();
+    let mut texts = app.world_mut().query::<&Text>();
+    assert!(
+        texts
+            .iter(app.world())
+            .all(|text| !text.0.starts_with("Old lighting:")
+                && !text.0.starts_with("Ambient brightness:"))
+    );
     for title in [
         "Graphics: Fancy",
-        "Old lighting: ON",
         "Smooth lighting: ON",
         "Wiggle leaves: ON",
         "Anti-aliasing: 4x",
@@ -1235,7 +1184,6 @@ fn setting_sliders_cover_ranges_and_fps_vsync_endpoint() {
     for binding in [
         SettingsSlider::RenderDistance,
         SettingsSlider::Fov,
-        SettingsSlider::Brightness,
         SettingsSlider::CloudHeight,
         SettingsSlider::MouseSensitivity,
         SettingsSlider::MaxFps,
@@ -1675,4 +1623,66 @@ fn right_clicking_a_world_offers_delete_with_a_confirmation() {
     assert!(texts.iter(app.world()).all(|text| text.0 != "Doomed"));
     assert!(texts.iter(app.world()).any(|text| text.0 == "Keep Me"));
     let _ = std::fs::remove_dir_all(&saves);
+}
+
+#[test]
+fn legacy_lighting_and_ultra_settings_migrate_without_losing_other_options() {
+    let path = temp_settings_path("legacy-lighting");
+    fs::write(&path, r#"{"old_lighting":false,"brightness":500,"graphics":"Ultra","smooth_lighting":false,"render_distance":12,"anti_aliasing":true}"#).unwrap();
+    let settings = load_settings(&path);
+    assert_eq!(settings.graphics, GraphicsQuality::Fancy);
+    assert!(!settings.smooth_lighting);
+    assert_eq!(settings.render_distance, 12);
+    assert_eq!(settings.msaa(), Msaa::Sample4);
+    save_settings(&path, &settings).unwrap();
+    let saved = fs::read_to_string(&path).unwrap();
+    assert!(!saved.contains("old_lighting"));
+    assert!(!saved.contains("brightness"));
+    assert!(!saved.contains("Ultra"));
+    assert_eq!(load_settings(&path), settings);
+    fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn beta_material_extensions_do_not_use_shadows_or_prepasses() {
+    use bevy::pbr::Material;
+    use game::rendering::creatures::CreatureMaterial;
+    use game::rendering::textures::TintedMaterial;
+    assert!(!BlockMaterial::enable_prepass());
+    assert!(!BlockMaterial::enable_shadows());
+    assert!(!CreatureMaterial::enable_prepass());
+    assert!(!CreatureMaterial::enable_shadows());
+    assert!(!TintedMaterial::enable_prepass());
+    assert!(!TintedMaterial::enable_shadows());
+}
+
+#[test]
+fn renderer_disables_gpu_light_clustering_without_changing_capabilities() {
+    use bevy::light::cluster::GlobalClusterGpuSettings;
+    use bevy::light::cluster::GlobalClusterSettings;
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, AssetPlugin::default(), MeshPlugin))
+        .init_asset::<Image>()
+        .init_asset::<StandardMaterial>()
+        .insert_resource(GlobalClusterSettings {
+            supports_storage_buffers: true,
+            clustered_decals_are_usable: false,
+            gpu_clustering: Some(GlobalClusterGpuSettings {
+                initial_z_slice_list_capacity: 64,
+                initial_index_list_capacity: 64,
+            }),
+            max_uniform_buffer_clusterable_objects: 256,
+            view_cluster_bindings_max_indices: 16384,
+        })
+        .add_plugins((WorldPlugin, game::rendering::WorldRenderingPlugin));
+    let camera = app.world_mut().spawn(Camera3d::default()).id();
+    app.update();
+    let config = app.world().resource::<GlobalClusterSettings>();
+    assert!(config.gpu_clustering.is_none());
+    assert!(config.supports_storage_buffers);
+    assert_eq!(
+        app.world()
+            .get::<bevy::core_pipeline::tonemapping::Tonemapping>(camera),
+        Some(&bevy::core_pipeline::tonemapping::Tonemapping::None)
+    );
 }

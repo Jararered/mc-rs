@@ -9,12 +9,6 @@ use serde::Serialize;
 
 pub const MIN_RENDER_DISTANCE: i32 = 4;
 pub const MAX_RENDER_DISTANCE: i32 = 32;
-pub const MIN_BRIGHTNESS: f32 = 0.0;
-pub const MAX_BRIGHTNESS: f32 = 1000.0;
-/// The 0..=1000 brightness slider is scaled into nits for Bevy's default
-/// exposure. 1000 nits of ambient looks dim at that exposure, so the value
-/// written to [`GlobalAmbientLight`] uses this extra scale.
-pub const AMBIENT_ONLY_SCALE: f32 = 10.0;
 pub const MIN_FOV: f32 = 30.0;
 pub const MAX_FOV: f32 = 110.0;
 pub const DEFAULT_FOV: f32 = 80.0;
@@ -37,22 +31,20 @@ pub const SETTINGS_FILE: &str = "settings.json";
 
 const FORMAT_VERSION: u32 = 1;
 
-/// Player-facing graphics quality. Fast and Fancy match Beta leaves; Ultra keeps
-/// Fancy leaves and switches water to Bevy screen-space reflections.
+/// Player-facing graphics quality, matching Beta leaves and entity shadows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum GraphicsQuality {
     Fast,
     #[default]
+    #[serde(alias = "Ultra")]
     Fancy,
-    Ultra,
 }
 
 impl GraphicsQuality {
     pub fn cycle(self) -> Self {
         match self {
             Self::Fast => Self::Fancy,
-            Self::Fancy => Self::Ultra,
-            Self::Ultra => Self::Fast,
+            Self::Fancy => Self::Fast,
         }
     }
 
@@ -65,11 +57,6 @@ impl GraphicsQuality {
     /// `gameSettings.fancyGraphics`, the same flag Fast disables here.
     pub fn entity_shadows(self) -> bool {
         !matches!(self, Self::Fast)
-    }
-
-    /// Glossy water with screen-space reflections. Mesh positions stay the same.
-    pub fn realistic_water(self) -> bool {
-        matches!(self, Self::Ultra)
     }
 }
 
@@ -116,10 +103,8 @@ pub struct GameSettings {
     pub difficulty: Difficulty,
     /// Zero follows VSync without an additional application frame cap.
     pub max_fps: u32,
-    pub brightness: f32,
     pub fov: f32,
     pub cloud_height: f32,
-    pub old_lighting: bool,
     pub smooth_lighting: bool,
     pub wiggle_leaves: bool,
     pub graphics: GraphicsQuality,
@@ -137,10 +122,8 @@ impl Default for GameSettings {
             render_distance: MIN_RENDER_DISTANCE,
             difficulty: Difficulty::Normal,
             max_fps: DEFAULT_MAX_FPS,
-            brightness: 300.0,
             fov: DEFAULT_FOV,
             cloud_height: DEFAULT_CLOUD_HEIGHT,
-            old_lighting: true,
             smooth_lighting: true,
             wiggle_leaves: DEFAULT_WIGGLE_LEAVES,
             graphics: GraphicsQuality::Fancy,
@@ -175,20 +158,9 @@ impl GameSettings {
             (self.render_distance + change).clamp(MIN_RENDER_DISTANCE, MAX_RENDER_DISTANCE);
     }
 
-    pub fn change_brightness(&mut self, change: f32) {
-        self.brightness = (self.brightness + change).clamp(MIN_BRIGHTNESS, MAX_BRIGHTNESS);
-    }
-
-    /// Value written to Bevy's [`GlobalAmbientLight`]. Old lighting draws
-    /// unlit materials, so the slider is not applied then.
-    pub fn ambient_light_brightness(&self) -> f32 {
-        self.brightness * AMBIENT_ONLY_SCALE
-    }
-
-    /// Sample count for every camera. Ultra's screen-space reflections run on
-    /// the deferred path, which cannot be multisampled.
+    /// Sample count shared by every window camera.
     pub fn msaa(&self) -> Msaa {
-        if self.anti_aliasing && !self.graphics.realistic_water() {
+        if self.anti_aliasing {
             Msaa::Sample4
         } else {
             Msaa::Off
@@ -226,11 +198,6 @@ impl GameSettings {
         self.render_distance = self
             .render_distance
             .clamp(MIN_RENDER_DISTANCE, MAX_RENDER_DISTANCE);
-        self.brightness = if self.brightness.is_finite() {
-            self.brightness.clamp(MIN_BRIGHTNESS, MAX_BRIGHTNESS)
-        } else {
-            Self::default().brightness
-        };
         self.fov = if self.fov.is_finite() {
             self.fov.clamp(MIN_FOV, MAX_FOV)
         } else {
@@ -295,10 +262,8 @@ struct StoredSettings {
     render_distance: i32,
     difficulty: Difficulty,
     max_fps: u32,
-    brightness: f32,
     fov: f32,
     cloud_height: f32,
-    old_lighting: bool,
     smooth_lighting: bool,
     wiggle_leaves: bool,
     graphics: GraphicsQuality,
@@ -321,10 +286,8 @@ impl From<&GameSettings> for StoredSettings {
             render_distance: settings.render_distance,
             difficulty: settings.difficulty,
             max_fps: settings.max_fps,
-            brightness: settings.brightness,
             fov: settings.fov,
             cloud_height: settings.cloud_height,
-            old_lighting: settings.old_lighting,
             smooth_lighting: settings.smooth_lighting,
             wiggle_leaves: settings.wiggle_leaves,
             graphics: settings.graphics,
@@ -342,10 +305,8 @@ impl From<StoredSettings> for GameSettings {
             render_distance: stored.render_distance,
             difficulty: stored.difficulty,
             max_fps: stored.max_fps,
-            brightness: stored.brightness,
             fov: stored.fov,
             cloud_height: stored.cloud_height,
-            old_lighting: stored.old_lighting,
             smooth_lighting: stored.smooth_lighting,
             wiggle_leaves: stored.wiggle_leaves,
             graphics: stored.graphics,

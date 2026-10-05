@@ -27,6 +27,13 @@ pub type TintedMaterial = ExtendedMaterial<StandardMaterial, InstanceTint>;
 pub struct InstanceTint {}
 
 impl MaterialExtension for InstanceTint {
+    fn enable_prepass() -> bool {
+        false
+    }
+    fn enable_shadows() -> bool {
+        false
+    }
+
     fn fragment_shader() -> ShaderRef {
         INSTANCE_TINT_SHADER_HANDLE.into()
     }

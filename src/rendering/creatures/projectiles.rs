@@ -15,7 +15,6 @@ use super::CreatureAssets;
 use super::CreatureMaterial;
 use super::creature_tag;
 use super::entity_brightness;
-use crate::app::settings::GameSettings;
 use crate::entity::PreviousTick;
 use crate::entity::projectiles::Arrow;
 use crate::entity::projectiles::Fireball;
@@ -183,7 +182,6 @@ pub(super) fn add_projectile_models(
 #[allow(clippy::too_many_arguments)]
 pub(super) fn pose_projectiles(
     tick: Res<WorldTick>,
-    settings: Res<GameSettings>,
     chunks: Res<WorldChunks>,
     light: Option<Res<LightCache>>,
     weather: Option<Res<WorldWeather>>,
@@ -232,11 +230,8 @@ pub(super) fn pose_projectiles(
             continue;
         };
         let slide = previous.0.lerp(body.translation, partial) - body.translation;
-        let brightness = if settings.old_lighting {
-            entity_brightness(&chunks, light.as_deref(), body.translation, 0.5, subtracted)
-        } else {
-            1.0
-        };
+        let brightness =
+            entity_brightness(&chunks, light.as_deref(), body.translation, 0.5, subtracted);
         for child in children.iter() {
             if let Ok((mut pose, mut tag)) = models.get_mut(child) {
                 pose.set_if_neq(Transform::from_translation(slide).with_rotation(rotation));

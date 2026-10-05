@@ -114,7 +114,7 @@ pub struct BlockVertex {
     pub light: [u8; 4],
     /// Ambient occlusion level, 0 (open) to 3 (enclosed).
     pub ao: u8,
-    /// Apply Beta's per-face shade under old lighting.
+    /// Apply Beta's per-face shade.
     pub shade: bool,
     /// Tile the atlas from this face's position instead of the stored texels.
     /// Set on greedy rectangles wider than one block. The tile index still
@@ -125,7 +125,6 @@ pub struct BlockVertex {
 /// How the block shader turns vertex data into a color.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BlockLighting {
-    pub old_lighting: bool,
     pub smooth_lighting: bool,
     pub skylight_subtracted: u8,
 }
@@ -133,7 +132,6 @@ pub struct BlockLighting {
 impl Default for BlockLighting {
     fn default() -> Self {
         Self {
-            old_lighting: true,
             smooth_lighting: true,
             skylight_subtracted: 0,
         }
@@ -144,7 +142,7 @@ impl BlockVertex {
     /// The color `block_vertex.wgsl` computes for this vertex, before 8-bit
     /// tint quantization. Alpha comes from the material.
     pub fn color(&self, lighting: BlockLighting) -> [f32; 4] {
-        let light = if lighting.old_lighting {
+        let light = {
             let brightness = |sample: u8| {
                 let (sky, block) = unpack(sample);
                 beta_brightness(combined_light(sky, block, lighting.skylight_subtracted))
@@ -159,8 +157,6 @@ impl BlockVertex {
             } else {
                 level
             }
-        } else {
-            1.0
         };
         // Beta has no occlusion term beyond the averaged samples. Its factor is
         // gamma-encoded, so linearize it as `block_vertex.wgsl` does.

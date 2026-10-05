@@ -46,9 +46,9 @@ bevy = { version = "0.19.1", default-features = false, features = [
     "bevy_mesh",
     "bevy_shader",
     "bevy_material",
-    "bevy_light",
     "bevy_render",
     "bevy_core_pipeline",
+    # PBR provides mesh batching/drawing and transitively enables bevy_light.
     "bevy_pbr",
     "bevy_gizmos",
     "bevy_gizmos_render",
@@ -59,9 +59,6 @@ bevy = { version = "0.19.1", default-features = false, features = [
     "bevy_picking",
     "ui_picking",
     "png",
-    "ktx2",
-    "zstd_rust",
-    "tonemapping_luts",
 ] }
 flate2 = "1.1"
 num_enum = "0.7.6"

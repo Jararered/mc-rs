@@ -8,7 +8,6 @@ struct BlockShadingSettings {
     _padding: f32,
 }
 
-const OLD_LIGHTING: u32 = 1u;
 const SMOOTH_LIGHTING: u32 = 2u;
 // Mirrors the packing constants in `meshing/vertex.rs`.
 const POSITION_MIN: f32 = -8.0;
@@ -193,7 +192,7 @@ fn block_color(
 
     let smooth_lighting = (settings.flags & SMOOTH_LIGHTING) != 0u;
     var light = 1.0;
-    if (settings.flags & OLD_LIGHTING) != 0u {
+    {
         let subtracted = settings.skylight_subtracted;
         if smooth_lighting {
             light = 0.25 * (sample_brightness(light_samples & 0xffu, subtracted)

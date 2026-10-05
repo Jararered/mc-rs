@@ -2,8 +2,7 @@
     pbr_functions::alpha_discard,
     pbr_fragment::pbr_input_from_standard_material,
     forward_io::{VertexOutput, FragmentOutput},
-    pbr_functions::{apply_pbr_lighting, main_pass_post_lighting_processing},
-    pbr_types::STANDARD_MATERIAL_FLAGS_UNLIT_BIT,
+    pbr_functions::main_pass_post_lighting_processing,
     mesh_functions,
     mesh_view_bindings::globals,
 }
@@ -71,12 +70,7 @@ fn fragment(vertex: VertexOutput, @builtin(front_facing) is_front: bool) -> Frag
     var color: vec3<f32>;
     var hurt_tone: vec3<f32>;
     var flash_tone: vec3<f32>;
-    if (pbr_input.material.flags & STANDARD_MATERIAL_FLAGS_UNLIT_BIT) == 0u {
-        color = apply_pbr_lighting(pbr_input).rgb;
-        let level = max(color.r, max(color.g, color.b));
-        hurt_tone = vec3(level, 0.0, 0.0);
-        flash_tone = vec3(level);
-    } else {
+    {
         // Fixed-function lighting clamps the lit vertex color before it
         // modulates the texture. Both overlays are lit the same way.
         // The factor is gamma-encoded in Beta, so convert it before it

@@ -2,8 +2,7 @@
 //!
 //! `RenderManager` colors each entity by the world brightness at its body,
 //! and `RenderHelper.enableStandardItemLighting` shades its faces with two
-//! fixed lights. Under old lighting the fragment extension reproduces both;
-//! otherwise the skin is lit by Bevy's ambient light only. `RenderLiving`'s
+//! fixed lights. The fragment extension reproduces both. `RenderLiving`'s
 //! red hurt pass and a creeper's white flash are mixed over the result. All
 //! of this per-entity state rides in [`MeshTag`], so none of it rewrites a
 //! material.
@@ -56,6 +55,13 @@ impl CreatureShading {
 }
 
 impl MaterialExtension for CreatureShading {
+    fn enable_prepass() -> bool {
+        false
+    }
+    fn enable_shadows() -> bool {
+        false
+    }
+
     fn fragment_shader() -> ShaderRef {
         CREATURE_SHADER_HANDLE.into()
     }

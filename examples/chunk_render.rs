@@ -7,8 +7,7 @@
 //! cargo run --features render_harness --example chunk_render -- --diff quads.png vertices.png
 //! ```
 //!
-//! `VIEW=1` and up pick other camera positions, `LIGHTING=new` turns old
-//! lighting off, and `SMOOTH=off` turns smooth lighting off. `DISTANCE` sets the
+//! `VIEW=1` and up pick other camera positions, and `SMOOTH=off` turns smooth lighting off. `DISTANCE` sets the
 //! render distance (8), `SIZE=2560x1440` the window's physical size, and
 //! `MSAA=off` turns anti-aliasing off, and
 //! `HOLD=30` keeps the window open that many seconds after the timings so
@@ -77,6 +76,10 @@ fn main() {
     App::new()
         .add_plugins(
             DefaultPlugins
+                .set(bevy::pbr::PbrPlugin {
+                    add_default_deferred_lighting_plugin: false,
+                    ..default()
+                })
                 .set(ImagePlugin {
                     default_sampler: ImageSamplerDescriptor {
                         lod_max_clamp: 0.0,
@@ -102,9 +105,6 @@ fn main() {
             wiggle_leaves: false,
             anti_aliasing: std::env::var("MSAA")
                 .is_ok_and(|value| value == "off")
-                .not(),
-            old_lighting: std::env::var("LIGHTING")
-                .is_ok_and(|value| value == "new")
                 .not(),
             smooth_lighting: std::env::var("SMOOTH")
                 .is_ok_and(|value| value == "off")

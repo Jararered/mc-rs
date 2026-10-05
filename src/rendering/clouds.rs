@@ -1,7 +1,7 @@
 //! Clouds from `environment/clouds.png`, anchored in the world.
 //!
 //! Fast graphics draws the flat sheet from `RenderGlobal.renderClouds`. Fancy
-//! and Ultra draw the 4-block columns from `renderCloudsFancy`, including the
+//! draws the 4-block columns from `renderCloudsFancy`, including the
 //! sides of each column. Empty texels are cut out and the clouds themselves
 //! are opaque. Both sit at `GameSettings::cloud_height + 0.33`, the client's
 //! stand-in for Beta's `WorldProvider.getCloudHeight()`, and drift on X by
@@ -21,7 +21,6 @@ use bevy::image::ImageAddressMode;
 use bevy::image::ImageLoaderSettings;
 use bevy::image::ImageSampler;
 use bevy::image::ImageSamplerDescriptor;
-use bevy::light::NotShadowCaster;
 use bevy::material::OpaqueRendererMethod;
 use bevy::math::Affine2;
 use bevy::mesh::Indices;
@@ -353,7 +352,7 @@ fn cloud_material(texture: Handle<Image>) -> TintedMaterial {
             // column sides read as solid blocks rather than a glassy sheet.
             alpha_mode: AlphaMode::Mask(0.5),
             // The tint is applied by a forward fragment shader, so clouds stay
-            // out of the Ultra deferred G-buffer.
+            // on the forward rendering path.
             opaque_render_method: OpaqueRendererMethod::Forward,
             cull_mode: None,
             double_sided: true,
@@ -407,7 +406,6 @@ fn ensure_clouds(
         tint_tag(Color::WHITE),
         Transform::from_xyz(0.0, cloud_y, 0.0),
         Visibility::default(),
-        NotShadowCaster,
         NoFrustumCulling,
     ));
     commands.spawn((
@@ -418,7 +416,6 @@ fn ensure_clouds(
         tint_tag(Color::WHITE),
         Transform::from_xyz(0.0, cloud_y, 0.0),
         Visibility::Hidden,
-        NotShadowCaster,
         NoFrustumCulling,
     ));
 }

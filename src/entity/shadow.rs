@@ -13,7 +13,6 @@
 
 use bevy::asset::RenderAssetUsages;
 use bevy::camera::visibility::NoFrustumCulling;
-use bevy::light::NotShadowCaster;
 use bevy::mesh::Indices;
 use bevy::mesh::MeshTag;
 use bevy::prelude::*;
@@ -177,7 +176,6 @@ fn spawn_shadow_quads(
                 Transform::default(),
                 Visibility::Hidden,
                 ShadowOwner(owner),
-                NotShadowCaster,
                 NoFrustumCulling,
             ))
             .id();

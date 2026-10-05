@@ -5,7 +5,6 @@ use std::collections::VecDeque;
 
 use bevy::asset::RenderAssetUsages;
 use bevy::camera::visibility::NoFrustumCulling;
-use bevy::light::NotShadowCaster;
 use bevy::mesh::Indices;
 use bevy::prelude::*;
 use bevy::render::render_resource::PrimitiveTopology;
@@ -332,7 +331,6 @@ fn setup_renderer(
             MeshMaterial3d(material.clone()),
             Visibility::Hidden,
             NoFrustumCulling,
-            NotShadowCaster,
         ))
         .id();
     commands.insert_resource(ParticleRenderer {

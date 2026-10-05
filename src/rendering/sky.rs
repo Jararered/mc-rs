@@ -17,7 +17,6 @@ use bevy::camera::visibility::NoFrustumCulling;
 use bevy::camera::visibility::RenderLayers;
 use bevy::ecs::hierarchy::ChildSpawnerCommands;
 use bevy::ecs::system::SystemParam;
-use bevy::light::NotShadowCaster;
 use bevy::mesh::Indices;
 use bevy::mesh::MeshTag;
 use bevy::pbr::DistanceFog;
@@ -37,7 +36,6 @@ use crate::world::chunk::WorldChunks;
 use crate::world::lighting::beta_brightness;
 use crate::world::lighting::light_level_at;
 
-use super::plugin::apply_lighting_settings;
 use crate::world::tick::WorldTick;
 
 const SKY_LAYER: usize = 2;
@@ -50,8 +48,7 @@ const MOON_SIZE: f32 = 20.0;
 const SKY_PLANE_HEIGHT: f32 = 16.0;
 const CELESTIAL_LAYER: usize = 3;
 
-/// Marker so the world camera keeps its own fog range and the Ultra water pass
-/// does not put screen-space reflections on the sky.
+/// Marker for the backdrop camera, which has its own fog range.
 #[derive(Component)]
 pub(crate) struct SkyCamera;
 
@@ -186,12 +183,8 @@ struct SkyViews<'w, 's> {
 }
 
 pub(super) fn plugin(app: &mut App) {
-    app.init_resource::<EyeFog>().add_systems(
-        Update,
-        (ensure_sky, update_atmosphere)
-            .chain()
-            .after(apply_lighting_settings),
-    );
+    app.init_resource::<EyeFog>()
+        .add_systems(Update, (ensure_sky, update_atmosphere).chain());
 }
 
 use crate::world::environment::celestial_angle;
@@ -478,7 +471,6 @@ fn ensure_sky(
                 Transform::default(),
                 Visibility::Hidden,
                 RenderLayers::layer(CELESTIAL_LAYER),
-                NotShadowCaster,
                 NoFrustumCulling,
             ));
             sky.spawn((
@@ -513,7 +505,6 @@ fn ensure_sky(
                     Transform::default(),
                     Visibility::default(),
                     RenderLayers::layer(CELESTIAL_LAYER),
-                    NotShadowCaster,
                     NoFrustumCulling,
                 ));
             });
@@ -535,7 +526,6 @@ fn spawn_layer(
         transform,
         Visibility::default(),
         RenderLayers::layer(layer),
-        NotShadowCaster,
         NoFrustumCulling,
     ));
 }

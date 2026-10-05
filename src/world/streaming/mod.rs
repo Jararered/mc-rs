@@ -15,6 +15,7 @@ use super::chunk::SECTION_HEIGHT;
 use super::chunk::SECTIONS_PER_CHUNK;
 use super::generation::ChunkGenerator;
 use super::generation::population_footprint;
+use crate::rendering::chunk_quads::ChunkQuads;
 use crate::rendering::textures::FoliageColors;
 use crate::rendering::textures::GrassColors;
 
@@ -135,6 +136,8 @@ pub struct WorldStreaming {
     materials: ChunkMaterials,
     culling: ChunkCulling,
     fancy_graphics: bool,
+    /// Store layers as quad records in the shared buffer instead of meshes.
+    quad_layers: bool,
     /// Chunk meshes include only this block while it is set.
     wireframe_block: Option<Block>,
     remesh_queue: VecDeque<ChunkPosition>,
@@ -164,9 +167,15 @@ impl WorldStreaming {
     /// Despawn every chunk mesh and free its mesh assets. Call before dropping
     /// the resource when a world is unloaded, since the entities are only
     /// tracked here.
-    pub(crate) fn despawn_rendered(&mut self, commands: &mut Commands, meshes: &mut Assets<Mesh>) {
+    pub(crate) fn despawn_rendered(
+        &mut self,
+        commands: &mut Commands,
+        meshes: &mut Assets<Mesh>,
+        quads: Option<&mut ChunkQuads>,
+    ) {
+        let mut store = render::LayerStore { meshes, quads };
         for (_, rendered) in self.rendered.drain() {
-            render::despawn_rendered_chunk(commands, meshes, rendered);
+            render::despawn_rendered_chunk(commands, &mut store, rendered);
         }
     }
 
@@ -179,7 +188,13 @@ impl WorldStreaming {
         self.rendered.values().map(RenderedChunk::layer_count).sum()
     }
 
-    /// GPU vertex and index bytes of every rendered chunk mesh.
+    /// Whether layers are stored as quad records rather than meshes.
+    pub fn quad_layers(&self) -> bool {
+        self.quad_layers
+    }
+
+    /// GPU bytes of every rendered chunk layer: quad records, or vertex and
+    /// index data in the packed vertex format.
     pub fn mesh_bytes(&self) -> usize {
         self.rendered.values().map(RenderedChunk::mesh_bytes).sum()
     }

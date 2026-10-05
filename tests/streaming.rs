@@ -11,6 +11,9 @@ use bevy::mesh::MeshPlugin;
 use bevy::prelude::*;
 use game::block::blocks::Block;
 use game::player::Player;
+use game::rendering::chunk_quads::FreeRanges;
+use game::rendering::meshing::proxy_capacity;
+use game::rendering::meshing::proxy_mesh;
 use game::world::chunk::CHUNK_HEIGHT;
 use game::world::chunk::CHUNK_SIZE;
 use game::world::chunk::Chunk;
@@ -523,4 +526,60 @@ fn streaming_uses_selected_backend_for_spawn_and_background_jobs() {
     assert_eq!(block_at(&app, center, 1, 40, 1), Some(Block::GoldBlock));
     assert!(generator.bases.load(Ordering::Relaxed) > 9);
     assert!(generator.populations.load(Ordering::Relaxed) > 4);
+}
+
+#[test]
+fn free_quad_ranges_fit_best_and_merge_when_released() {
+    let mut free = FreeRanges::default();
+    free.release(0, 100);
+    let a = free.allocate(10).unwrap();
+    let b = free.allocate(20).unwrap();
+    let c = free.allocate(30).unwrap();
+    assert_eq!((a, b, c), (0, 10, 30));
+    assert_eq!(free.free(), 40);
+    assert_eq!(free.allocate(41), None);
+
+    // The 20-record hole is the tightest fit for 15, ahead of the tail.
+    free.release(b, 20);
+    assert_eq!(free.allocate(15), Some(10));
+    assert_eq!(free.allocate(5), Some(25));
+
+    // Neighbors join on release, in either order, back into one range.
+    free.release(a, 10);
+    free.release(c, 30);
+    free.release(10, 15);
+    free.release(25, 5);
+    assert_eq!(free.free(), 100);
+    assert_eq!(free.allocate(100), Some(0));
+    assert_eq!(free.allocate(1), None);
+
+    // Growing the buffer is a release past the old end.
+    free.release(100, 50);
+    assert_eq!(free.allocate(50), Some(100));
+}
+
+#[test]
+fn proxy_meshes_come_in_few_sizes_that_waste_little() {
+    assert_eq!(proxy_capacity(0), 8);
+    assert_eq!(proxy_capacity(8), 8);
+    assert_eq!(proxy_capacity(9), 12);
+    assert_eq!(proxy_capacity(13), 16);
+    assert_eq!(proxy_capacity(4096), 4096);
+    assert_eq!(proxy_capacity(4097), 6144);
+    for quads in 9..40_000 {
+        let capacity = proxy_capacity(quads);
+        assert!(capacity >= quads);
+        assert!(f64::from(capacity) < f64::from(quads) * 1.5);
+    }
+    // Sixteen-bit indices while every vertex index fits.
+    let small = proxy_mesh(16_384);
+    assert_eq!(small.count_vertices(), 65_536);
+    assert!(matches!(
+        small.indices(),
+        Some(bevy::mesh::Indices::U16(indices)) if indices.len() == 16_384 * 6
+    ));
+    assert!(matches!(
+        proxy_mesh(24_576).indices(),
+        Some(bevy::mesh::Indices::U32(_))
+    ));
 }

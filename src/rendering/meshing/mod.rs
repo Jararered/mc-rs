@@ -30,8 +30,18 @@ use crate::world::lighting::Skylight;
 
 pub(crate) mod geometry;
 mod greedy;
+mod quads;
 mod vertex;
 
+pub use self::quads::ATTRIBUTE_QUAD_CORNER;
+pub use self::quads::QUAD_STEPS;
+pub use self::quads::QUAD_WORDS;
+pub use self::quads::QuadCorner;
+pub use self::quads::QuadRecord;
+pub use self::quads::layer_bytes;
+pub use self::quads::pack_quad;
+pub use self::quads::proxy_capacity;
+pub use self::quads::proxy_mesh;
 pub use self::vertex::ATTRIBUTE_BLOCK_VERTEX;
 pub use self::vertex::AtlasTexel;
 pub use self::vertex::BRIGHT_TINT;

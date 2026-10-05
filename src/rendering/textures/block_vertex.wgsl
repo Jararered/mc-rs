@@ -16,11 +16,22 @@ const HORIZONTAL_STEPS: f32 = 256.0;
 const VERTICAL_STEPS: f32 = 128.0;
 const BRIGHT_TINT: f32 = 1.12;
 
+// Mirrors the record layout in `meshing/quads.rs`.
+const QUAD_STEPS: f32 = 64.0;
+const QUAD_WORDS: u32 = 8u;
+const QUAD_SHADE: u32 = 0x02000000u;
+const QUAD_REPEAT: u32 = 0x04000000u;
+const QUAD_SNOW_SIDE: u32 = 0x08000000u;
+const QUAD_TRIANGLE: u32 = 0x10000000u;
+const QUAD_BRIGHT: u32 = 0x20000000u;
+
 struct DecodedBlockVertex {
     position: vec3<f32>,
     normal: vec3<f32>,
     uv: vec2<f32>,
     color: vec4<f32>,
+    /// False for a proxy vertex past the layer's last quad.
+    visible: bool,
 }
 
 struct RepeatUv {
@@ -150,9 +161,33 @@ fn decode_block_vertex(packed: vec4<u32>, settings: BlockShadingSettings) -> Dec
         out.uv = atlas_uv(tile, texel);
     }
 
-    let srgb = vec3<f32>(vec3(packed.z & 0xffu, (packed.z >> 8u) & 0xffu, (packed.z >> 16u) & 0xffu));
+    out.color = block_color(
+        packed.z & 0xffffffu,
+        (packed.z >> 31u) == 1u,
+        packed.w,
+        ((packed.z >> 30u) & 1u) == 1u,
+        out.normal,
+        alpha,
+        settings,
+    );
+    out.visible = true;
+    return out;
+}
+
+/// Tint times Beta's light for one vertex. `light` holds four `sky << 4 |
+/// block` samples, the flat one in the low byte.
+fn block_color(
+    srgb_bits: u32,
+    bright: bool,
+    light_samples: u32,
+    shade: bool,
+    normal: vec3<f32>,
+    alpha: f32,
+    settings: BlockShadingSettings,
+) -> vec4<f32> {
+    let srgb = vec3<f32>(vec3(srgb_bits & 0xffu, (srgb_bits >> 8u) & 0xffu, (srgb_bits >> 16u) & 0xffu));
     var tint = srgb_to_linear(srgb / 255.0);
-    if (packed.z >> 31u) == 1u {
+    if bright {
         tint *= BRIGHT_TINT;
     }
 
@@ -161,15 +196,15 @@ fn decode_block_vertex(packed: vec4<u32>, settings: BlockShadingSettings) -> Dec
     if (settings.flags & OLD_LIGHTING) != 0u {
         let subtracted = settings.skylight_subtracted;
         if smooth_lighting {
-            light = 0.25 * (sample_brightness(packed.w & 0xffu, subtracted)
-                + sample_brightness((packed.w >> 8u) & 0xffu, subtracted)
-                + sample_brightness((packed.w >> 16u) & 0xffu, subtracted)
-                + sample_brightness(packed.w >> 24u, subtracted));
+            light = 0.25 * (sample_brightness(light_samples & 0xffu, subtracted)
+                + sample_brightness((light_samples >> 8u) & 0xffu, subtracted)
+                + sample_brightness((light_samples >> 16u) & 0xffu, subtracted)
+                + sample_brightness(light_samples >> 24u, subtracted));
         } else {
-            light = sample_brightness(packed.w & 0xffu, subtracted);
+            light = sample_brightness(light_samples & 0xffu, subtracted);
         }
-        if ((packed.z >> 30u) & 1u) == 1u {
-            light *= face_shade(out.normal);
+        if shade {
+            light *= face_shade(normal);
         }
     }
     // Beta's smooth lighting is only the average of the four neighbor
@@ -177,7 +212,98 @@ fn decode_block_vertex(packed: vec4<u32>, settings: BlockShadingSettings) -> Dec
     // left unused. Beta multiplies brightness into gamma-encoded texels, and
     // the atlas is sampled as linear, so encode the factor the same way.
     let factor = srgb_to_linear(vec3(light)).x;
-    out.color = vec4(tint * factor, alpha);
+    return vec4(tint * factor, alpha);
+}
+
+/// Sign-extend the low `bits` of `value`.
+fn sign_extend(value: u32, bits: u32) -> f32 {
+    let shift = 32u - bits;
+    return f32(i32(value << shift) >> shift);
+}
+
+/// One corner of a quad record (`meshing/quads.rs`). `low` and `high` are the
+/// record's eight words; `corner` counts around the quad from its origin.
+fn decode_block_quad(
+    low: vec4<u32>,
+    high: vec4<u32>,
+    corner_index: u32,
+    settings: BlockShadingSettings,
+) -> DecodedBlockVertex {
+    var out: DecodedBlockVertex;
+    let flags = low.y;
+    // A triangle draws corners 0, 1, 2; its second triangle collapses.
+    let corner = select(corner_index, 0u, (flags & QUAD_TRIANGLE) != 0u && corner_index == 3u);
+    let along1 = f32(corner == 1u || corner == 2u);
+    let along2 = f32(corner >= 2u);
+
+    let origin = vec3<f32>(vec3(
+        low.x & 0x7ffu,
+        (low.x >> 11u) & 0x7ffu,
+        (low.x >> 22u) | ((low.y & 1u) << 10u),
+    ));
+    let edge1 = vec3(
+        sign_extend(low.y >> 1u, 12u),
+        sign_extend(low.y >> 13u, 12u),
+        sign_extend(low.z, 12u),
+    );
+    let edge2 = vec3(
+        sign_extend(low.z >> 12u, 12u),
+        sign_extend(low.w, 12u),
+        sign_extend(low.w >> 12u, 12u),
+    );
+    out.position = (origin + edge1 * along1 + edge2 * along2) / QUAD_STEPS + POSITION_MIN;
+
+    let normal_mode = (low.w >> 24u) & 7u;
+    if normal_mode == 0u {
+        out.normal = normalize(cross(edge1, edge2));
+    } else {
+        out.normal = face_normal(normal_mode - 1u);
+    }
+
+    let tile = vec2<f32>(f32((low.z >> 24u) & 15u), f32(low.z >> 28u));
+    var alpha = 1.0;
+    if (flags & QUAD_REPEAT) != 0u {
+        let face = normal_mode - 1u;
+        out.uv = face_block_uv(out.position, face);
+        if (flags & QUAD_SNOW_SIDE) != 0u && face >= 2u && face <= 5u {
+            // Snow sides are 1/8 high, but still show the whole tile.
+            out.uv.y *= 8.0;
+        }
+        alpha = (tile.x + tile.y * 16.0 + 0.5) / 256.0;
+    } else {
+        let texel = vec2<f32>(f32(low.w >> 27u), f32(high.x & 31u));
+        let texel1 = vec2(sign_extend(high.x >> 5u, 6u), sign_extend(high.x >> 11u, 6u));
+        let texel2 = vec2(sign_extend(high.x >> 17u, 6u), sign_extend(high.x >> 23u, 6u));
+        out.uv = atlas_uv(tile, texel + texel1 * along1 + texel2 * along2);
+    }
+
+    // The centre, the mids on either side of this corner, and its diagonal.
+    var mids = array<u32, 4>(
+        (high.z >> 8u) & 0xffu,
+        (high.z >> 16u) & 0xffu,
+        high.z >> 24u,
+        high.w & 0xffu,
+    );
+    var diagonals = array<u32, 4>(
+        (high.w >> 8u) & 0xffu,
+        (high.w >> 16u) & 0xffu,
+        high.w >> 24u,
+        high.y >> 24u,
+    );
+    let light = (high.z & 0xffu)
+        | (mids[(corner + 3u) & 3u] << 8u)
+        | (mids[corner] << 16u)
+        | (diagonals[corner] << 24u);
+    out.color = block_color(
+        high.y & 0xffffffu,
+        (flags & QUAD_BRIGHT) != 0u,
+        light,
+        (flags & QUAD_SHADE) != 0u,
+        out.normal,
+        alpha,
+        settings,
+    );
+    out.visible = true;
     return out;
 }
 

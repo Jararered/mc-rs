@@ -203,6 +203,7 @@ fn drive_session(
     mut persistence: Option<ResMut<WorldPersistence>>,
     mut streaming: Option<ResMut<WorldStreaming>>,
     mut meshes: ResMut<Assets<Mesh>>,
+    mut quads: Option<ResMut<crate::rendering::chunk_quads::ChunkQuads>>,
     mut state: WorldState,
 ) {
     // A leave or a different world asked for while one is being played. A
@@ -270,7 +271,7 @@ fn drive_session(
             session.retry_in = 0.0;
         }
         if let Some(streaming) = streaming.as_deref_mut() {
-            streaming.despawn_rendered(&mut commands, &mut meshes);
+            streaming.despawn_rendered(&mut commands, &mut meshes, quads.as_deref_mut());
         }
         commands.remove_resource::<WorldStreaming>();
         commands.remove_resource::<WorldPersistence>();

@@ -40,10 +40,12 @@ use super::mesh_jobs::spawn_mesh_job;
 use super::population_footprint;
 use super::positions_in_radius;
 use super::render::ChunkMaterials;
+use super::render::LayerStore;
 use super::render::apply_sections;
 use super::render::despawn_rendered_chunk;
 use super::render::spawn_chunk;
 use super::within_radius;
+use crate::rendering::chunk_quads::ChunkQuads;
 use crate::rendering::textures::AlphaMaskMaterial;
 use crate::rendering::textures::CutoutMaterial;
 use crate::rendering::textures::FoliageColors;
@@ -61,6 +63,9 @@ use crate::world::generation::overworld::OverworldGenerator;
 /// finishes mid-frame waits for the next streaming pass to be replaced, so a
 /// second queued job keeps the thread busy meanwhile.
 const JOBS_PER_THREAD: usize = 2;
+/// Set to `off` to keep chunk layers as packed vertex meshes instead of quad
+/// records, for comparing the two.
+const CHUNK_QUADS_ENV: &str = "MC_CHUNK_QUADS";
 /// Limit snapshot work on the main thread when many chunks need rebuilding.
 const MAX_REMESH_PER_FRAME: usize = 16;
 
@@ -75,7 +80,7 @@ pub(crate) fn setup_streaming(
         Res<WaterMaterial>,
         Res<AlphaMaskMaterial>,
     ),
-    culling: Option<Res<ChunkCulling>>,
+    (culling, quads): (Option<Res<ChunkCulling>>, Option<Res<ChunkQuads>>),
     grass_colors: Res<GrassColors>,
     foliage_colors: Res<FoliageColors>,
     settings: Res<GameSettings>,
@@ -86,6 +91,8 @@ pub(crate) fn setup_streaming(
     mut ticks: Option<ResMut<BlockTicks>>,
     mut light: Option<ResMut<LightCache>>,
 ) {
+    let quad_layers =
+        quads.is_some() && !std::env::var(CHUNK_QUADS_ENV).is_ok_and(|value| value == "off");
     // Mesh jobs light chunks from here on, so block ticks must not.
     if let Some(light) = light.as_deref_mut() {
         light.set_streamed(true);
@@ -178,6 +185,7 @@ pub(crate) fn setup_streaming(
         // has no renderer and keeps the default.
         culling: culling.map_or_else(ChunkCulling::default, |culling| *culling),
         fancy_graphics: settings.graphics.fancy_leaves(),
+        quad_layers,
         wireframe_block: wireframe.block,
         remesh_queue: VecDeque::new(),
         remesh_sections: HashMap::new(),
@@ -196,7 +204,8 @@ pub(crate) fn stream_chunks(
     player: Query<&Transform, With<Player>>,
     mut streaming: ResMut<WorldStreaming>,
     mut chunks: ResMut<WorldChunks>,
-    mut meshes: ResMut<Assets<Mesh>>,
+    // Paired to stay within Bevy's sixteen system parameters.
+    (mut meshes, mut quads): (ResMut<Assets<Mesh>>, Option<ResMut<ChunkQuads>>),
     settings: Res<GameSettings>,
     wireframe: Res<MeshWireframe>,
     screen: Option<Res<State<AppScreen>>>,
@@ -276,7 +285,11 @@ pub(crate) fn stream_chunks(
             // Its cached light stays until the chunk unloads: block ticks at
             // the render edge read it, and a Beta world saves it.
             if let Some(rendered) = streaming.rendered.remove(&position) {
-                despawn_rendered_chunk(&mut commands, &mut meshes, rendered);
+                let mut store = LayerStore {
+                    meshes: &mut meshes,
+                    quads: quads.as_deref_mut(),
+                };
+                despawn_rendered_chunk(&mut commands, &mut store, rendered);
             }
         }
         {
@@ -463,14 +476,27 @@ pub(crate) fn stream_chunks(
         if let Some(light) = light.as_deref_mut() {
             light.insert(position, job.light);
         }
-        apply_sections(
+        let mut store = LayerStore {
+            meshes: &mut meshes,
+            quads: quads.as_deref_mut(),
+        };
+        let stored = apply_sections(
             &mut commands,
-            &mut meshes,
+            &mut store,
             rendered,
             job.sections,
             &materials,
             culling,
         );
+        if !stored {
+            // The device cannot hold a larger quad buffer. Mesh this chunk
+            // again, and every later one, in the vertex format.
+            if streaming.quad_layers {
+                warn!("the chunk quad buffer is full; new chunk layers use vertex meshes");
+                streaming.quad_layers = false;
+            }
+            streaming.request_remesh(position);
+        }
     }
 
     // Edits take priority over first meshes. Only snapshot chunk data here;

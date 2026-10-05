@@ -9,6 +9,7 @@ use bevy::prelude::*;
 use bevy::render::diagnostic::MeshAllocatorDiagnosticPlugin;
 
 use crate::entity::EntityDiagnostics;
+use crate::rendering::chunk_quads::ChunkQuads;
 use crate::world::chunk::WorldChunks;
 use crate::world::streaming::StreamingDiagnostics;
 use crate::world::streaming::TimingStats;
@@ -70,6 +71,7 @@ fn print_perf_stats(
     streaming: Option<Res<WorldStreaming>>,
     perf: Option<ResMut<StreamingDiagnostics>>,
     entity_perf: Option<ResMut<EntityDiagnostics>>,
+    quads: Option<Res<ChunkQuads>>,
     mut spikes: ResMut<FrameSpikes>,
 ) {
     timer.0.tick(time.delta());
@@ -100,6 +102,22 @@ fn print_perf_stats(
             )
         });
     let mesh_mib = mesh_bytes as f64 / (1024.0 * 1024.0);
+    let layer_format = if streaming.as_ref().is_some_and(|s| s.quad_layers()) {
+        "quad records"
+    } else {
+        "vertex and index data"
+    };
+    let quad_buffer = quads.map_or_else(
+        || "n/a".into(),
+        |quads| {
+            let (reserved, used) = quads.memory();
+            format!(
+                "{:.1} MiB reserved, {:.1} MiB in use",
+                reserved as f64 / (1024.0 * 1024.0),
+                used as f64 / (1024.0 * 1024.0),
+            )
+        },
+    );
     let slabs = fmt_latest(
         &diagnostics,
         MeshAllocatorDiagnosticPlugin::slabs_diagnostic_path(),
@@ -152,7 +170,8 @@ fn print_perf_stats(
          entities        {entities}\n  \
          chunks          {loaded_chunks} loaded, {generating} generating, {populating} populating\n  \
          meshes          {rendered} chunks, {layers} section layers, {meshing} meshing\n  \
-         mesh memory     {mesh_mib:.1} MiB vertex and index data\n  \
+         mesh memory     {mesh_mib:.1} MiB {layer_format}\n  \
+         quad buffer     {quad_buffer}\n  \
          mesh slabs      {slabs} slabs, {slab_mib} MiB reserved, {allocations} allocations\n  \
          streaming scans {discovery_passes} candidate-discovery passes\n  \
          chunk generate  {}\n  \

@@ -28,13 +28,24 @@ behavior; they do not establish a measured power or GPU bandwidth reduction.
 
 # Render-side numbers
 
-Chunk section layers are plain Bevy meshes, so their GPU memory is held by
-Bevy's mesh allocator. The performance report's `mesh slabs` line shows how
-many shared vertex and index buffers it holds, their reserved size, and how
-many meshes live in them. Compare the reserved size with `mesh memory`, the
-bytes chunk layers actually use. A large gap, or slowest-frame spikes while
-streaming in a new area, points at `MeshAllocatorSettings` (`min_slab_size`,
-`growth_factor`).
+Chunk section layers are quad records in one storage buffer
+(`rendering/chunk_quads.rs`). The report's `mesh memory` line is the bytes
+layers hold in it and `quad buffer` is its reserved size; the buffer grows by
+a quarter (at least 16 MiB) at a time, so the gap stays small. `mesh slabs`
+now only covers the shared proxy meshes, entity models, and dropped blocks.
+
+`MC_CHUNK_QUADS=off` stores layers as packed vertex meshes instead, as they
+were before. Measured with `examples/chunk_render.rs` on an Apple M5 Pro
+(Metal), dev profile, render distance 8, Fancy, 289 chunks and about 2,780
+section layers of seed-0 terrain:
+
+- Vertex meshes: 73.3 MiB of layer geometry (76 bytes per quad).
+- Quad records: 31.0 MiB (32 bytes per quad, plus one header per layer and a
+  second record for each sloped fluid top), 58% less.
+- Screenshots of the two differ in 0.03% to 0.2% of pixels under old
+  lighting, all on crossed plants, whose 0.05-block inset is not on the
+  1/64-block grid; 0.8% with new lighting and sun shadows, in the same places.
+- Frame time was not separable: macOS paced most runs to the display.
 
 At startup the log states the backend, whether `MULTI_DRAW_INDIRECT_COUNT` is
 available, and the chunk culling mode chosen from it. Bevy also logs whether

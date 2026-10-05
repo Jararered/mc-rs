@@ -271,7 +271,7 @@ pub fn unpack_vertex(words: [u32; 4]) -> PackedFields {
 }
 
 /// Face index stored beside [`REPEAT_NORMAL`], matching `geometry::FACE_*`.
-fn face_index(normal: [f32; 3]) -> u32 {
+pub(super) fn face_index(normal: [f32; 3]) -> u32 {
     if normal[1] > 0.5 {
         0
     } else if normal[1] < -0.5 {
@@ -287,7 +287,7 @@ fn face_index(normal: [f32; 3]) -> u32 {
     }
 }
 
-fn face_normal(index: u32) -> [f32; 3] {
+pub(super) fn face_normal(index: u32) -> [f32; 3] {
     match index {
         0 => [0.0, 1.0, 0.0],
         1 => [0.0, -1.0, 0.0],

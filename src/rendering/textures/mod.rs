@@ -3,10 +3,13 @@ use bevy::image::ImageSampler;
 use bevy::image::ImageSamplerDescriptor;
 use bevy::material::OpaqueRendererMethod;
 use bevy::prelude::*;
+use bevy::render::renderer::RenderDevice;
+use bevy::render::storage::ShaderBuffer;
 
 use crate::app::settings::GameSettings;
 use crate::app::settings::GraphicsQuality;
 use crate::block::blocks::species;
+use crate::rendering::chunk_quads::ChunkQuads;
 use crate::rendering::meshing::BlockLighting;
 use crate::rendering::meshing::WATER_ALPHA;
 use crate::world::environment::celestial_angle;
@@ -55,6 +58,7 @@ pub struct TerrainTexturePlugin;
 impl Plugin for TerrainTexturePlugin {
     fn build(&self, app: &mut App) {
         block_material::plugin(app);
+        crate::rendering::chunk_quads::plugin(app);
         instance_tint::plugin(app);
         water::render_plugin(app);
         app.init_resource::<GameSettings>()
@@ -68,6 +72,12 @@ impl Plugin for TerrainTexturePlugin {
                     update_block_lighting.after(apply_graphics_materials),
                     water::animate_fluid_textures.after(apply_terrain_atlas),
                 ),
+            )
+            // After streaming asked for room, and before this frame's asset
+            // changes are sent to the renderer.
+            .add_systems(
+                PostUpdate,
+                sync_quad_buffer.before(bevy::asset::AssetEventSystems),
             );
     }
 
@@ -119,11 +129,17 @@ fn leaf_wiggle_amplitude(settings: &GameSettings) -> f32 {
     }
 }
 
-fn block_material(base: StandardMaterial, lighting: BlockLighting, wiggle: f32) -> BlockMaterial {
+fn block_material(
+    base: StandardMaterial,
+    lighting: BlockLighting,
+    wiggle: f32,
+    quads: &Handle<ShaderBuffer>,
+) -> BlockMaterial {
     BlockMaterial {
         base,
         extension: BlockShading {
             settings: BlockShadingSettings::new(lighting, wiggle),
+            quads: quads.clone(),
             wireframe: false,
         },
     }
@@ -134,7 +150,10 @@ fn load_terrain_atlas(
     asset_server: Res<AssetServer>,
     mut materials: ResMut<Assets<BlockMaterial>>,
     settings: Res<GameSettings>,
+    quads: Option<Res<ChunkQuads>>,
 ) {
+    // Without a renderer there is no quad buffer and nothing draws.
+    let quads = &quads.map_or_else(Handle::default, |quads| quads.buffer());
     let image = asset_server
         .load_builder()
         .with_settings(|settings: &mut ImageLoaderSettings| {
@@ -151,6 +170,7 @@ fn load_terrain_atlas(
         },
         lighting,
         0.0,
+        quads,
     ));
     let grass_overlay = materials.add(block_material(
         StandardMaterial {
@@ -161,6 +181,7 @@ fn load_terrain_atlas(
         },
         lighting,
         0.0,
+        quads,
     ));
     let cutout = materials.add(block_material(
         StandardMaterial {
@@ -173,6 +194,7 @@ fn load_terrain_atlas(
         },
         lighting,
         leaf_wiggle_amplitude(&settings),
+        quads,
     ));
     let mut water = StandardMaterial {
         base_color: Color::WHITE.with_alpha(WATER_ALPHA),
@@ -182,7 +204,7 @@ fn load_terrain_atlas(
         ..default()
     };
     apply_water_quality(&mut water, settings.graphics);
-    let water = materials.add(block_material(water, lighting, 0.0));
+    let water = materials.add(block_material(water, lighting, 0.0, quads));
     let plants = materials.add(block_material(
         StandardMaterial {
             perceptual_roughness: 1.0,
@@ -192,6 +214,7 @@ fn load_terrain_atlas(
         },
         lighting,
         0.0,
+        quads,
     ));
     commands.insert_resource(TerrainMaterial(material));
     commands.insert_resource(GrassOverlayMaterial(grass_overlay));
@@ -274,6 +297,28 @@ fn apply_graphics_materials(
             BlockShadingSettings::new(block_lighting(&settings, subtracted), amplitude);
         if *handle == handles.water.0 {
             apply_water_quality(&mut material.base, settings.graphics);
+        }
+    }
+}
+
+/// Grow the quad buffer to what chunk layers asked for. A replaced buffer is
+/// a new bind group entry, so the materials are marked changed to pick it up.
+fn sync_quad_buffer(
+    quads: Option<ResMut<ChunkQuads>>,
+    buffers: Option<ResMut<Assets<ShaderBuffer>>>,
+    device: Option<Res<RenderDevice>>,
+    handles: BlockMaterials,
+    mut materials: ResMut<Assets<BlockMaterial>>,
+) {
+    let (Some(mut quads), Some(mut buffers), Some(device)) = (quads, buffers, device) else {
+        return;
+    };
+    if quads.sync(&mut buffers, &device) {
+        for handle in handles.handles() {
+            // Writing through the guard is what marks the material changed.
+            if let Some(mut material) = materials.get_mut(handle) {
+                material.extension.quads = quads.buffer();
+            }
         }
     }
 }

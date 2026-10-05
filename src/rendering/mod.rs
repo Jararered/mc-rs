@@ -1,6 +1,7 @@
 //! Client rendering of world data, entity visuals, and shared item assets.
 
 pub mod appearance;
+pub mod chunk_quads;
 pub mod clouds;
 pub mod creatures;
 pub mod icons;

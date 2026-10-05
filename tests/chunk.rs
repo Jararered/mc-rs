@@ -4,12 +4,16 @@ use game::rendering::meshing::BlockGeometry;
 use game::rendering::meshing::BlockLighting;
 use game::rendering::meshing::BlockVertex;
 use game::rendering::meshing::ChunkNeighbors;
+use game::rendering::meshing::SectionMesher;
 use game::rendering::meshing::WATER_ALPHA;
 use game::rendering::meshing::mesh_chunk;
 use game::rendering::meshing::mesh_chunk_filtered;
 use game::rendering::meshing::mesh_chunk_with_neighbors;
 use game::rendering::meshing::mesh_chunk_with_settings;
+use game::rendering::meshing::pack_quad;
 use game::rendering::meshing::unpack_vertex;
+use game::rendering::textures::FoliageColors;
+use game::rendering::textures::GrassColors;
 use game::rendering::textures::atlas_tile_uvs;
 use game::rendering::textures::block_tile;
 use game::world::biome::Biome;
@@ -1193,4 +1197,143 @@ fn spans(quad: &[BlockVertex], axis: usize, min: f32, max: f32) -> bool {
         hi = hi.max(vertex.position[axis]);
     }
     (lo - min).abs() < 1e-4 && (hi - max).abs() < 1e-4
+}
+
+/// Every record corner must decode to what its vertex packed: the same
+/// position to within half a step, and the same light samples, tint, texels,
+/// and flags exactly.
+fn assert_records_match(mesh: &BlockGeometry) -> (usize, usize) {
+    let (mut quads, mut triangles) = (0, 0);
+    for quad in mesh.vertices().chunks_exact(4) {
+        let quad: &[BlockVertex; 4] = quad.try_into().unwrap();
+        let mut records = Vec::new();
+        pack_quad(&mut records, quad);
+        let sources: Vec<[usize; 3]> = if records.len() == 1 {
+            assert!(!records[0].is_triangle());
+            let corners = records[0].corners();
+            assert_corner(&corners[3], &quad[3]);
+            quads += 1;
+            vec![[0, 1, 2]]
+        } else {
+            assert_eq!(records.len(), 2);
+            assert!(records.iter().all(|record| record.is_triangle()));
+            triangles += 1;
+            vec![[0, 1, 2], [2, 3, 0]]
+        };
+        for (record, order) in records.iter().zip(sources) {
+            let corners = record.corners();
+            for (corner, source) in corners.iter().zip(order) {
+                assert_corner(corner, &quad[source]);
+            }
+            if record.is_triangle() {
+                assert_eq!(corners[3].position, corners[0].position);
+            }
+        }
+    }
+    (quads, triangles)
+}
+
+fn assert_corner(corner: &game::rendering::meshing::QuadCorner, vertex: &BlockVertex) {
+    let packed = unpack_vertex(vertex.pack());
+    for axis in 0..3 {
+        assert!(
+            (corner.position[axis] - vertex.position[axis]).abs() <= 1.0 / 128.0 + 1e-5,
+            "position {:?} against {:?}",
+            corner.position,
+            vertex.position
+        );
+        // An axis normal is stored. Any other comes from the quad's edges,
+        // which a wall torch's two-pixel cap only fixes to a few degrees.
+        assert!(
+            (corner.normal[axis] - vertex.normal[axis]).abs() < 0.08,
+            "normal {:?} against {:?}",
+            corner.normal,
+            vertex.normal
+        );
+    }
+    assert_eq!(corner.light[0], vertex.light[0], "flat lighting sample");
+    let sorted = |mut light: [u8; 4]| {
+        light.sort_unstable();
+        light
+    };
+    assert_eq!(sorted(corner.light), sorted(vertex.light));
+    assert_eq!(corner.tint_srgb, packed.tint_srgb);
+    assert_eq!(corner.bright, packed.bright);
+    assert_eq!(corner.shade, vertex.shade);
+    assert_eq!(corner.repeat_uv, vertex.repeat_uv);
+    assert_eq!(corner.tile, vertex.texel.tile);
+    if vertex.repeat_uv {
+        assert_eq!(corner.snow_side, vertex.texel.texel[0] == 1);
+    } else {
+        assert_eq!(corner.texel, vertex.texel.texel.map(i32::from));
+    }
+}
+
+#[test]
+fn quad_records_decode_to_the_vertices_they_replace() {
+    let mut chunk = Chunk::new();
+    for x in 0..8 {
+        for z in 0..8 {
+            chunk.set(x, 0, z, Block::Grass);
+        }
+    }
+    chunk.set(1, 1, 1, Block::Stone);
+    chunk.set(2, 1, 1, Block::Torch);
+    chunk.set_with_metadata(
+        1,
+        1,
+        2,
+        Block::Torch,
+        Block::Torch.facing_metadata(Direction::South),
+    );
+    chunk.set(4, 1, 4, Block::Rose);
+    chunk.set(5, 1, 4, Block::SnowLayer);
+    chunk.set(6, 1, 4, Block::SnowLayer);
+    chunk.set(4, 1, 6, Block::Cactus);
+    chunk.set(6, 1, 6, Block::Leaves);
+    chunk.set_with_metadata(10, 1, 10, Block::Water, 0);
+    chunk.set_with_metadata(11, 1, 10, Block::FlowingWater, 1);
+    chunk.set_with_metadata(12, 1, 10, Block::FlowingWater, 2);
+    chunk.set_with_metadata(11, 1, 11, Block::FlowingWater, 3);
+    chunk.set_with_metadata(12, 3, 3, Block::FlowingLava, 2);
+    let (mut quads, mut triangles) = (0, 0);
+    for fancy in [false, true] {
+        let meshes = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), fancy);
+        for layer in meshes.layers() {
+            let (layer_quads, layer_triangles) = assert_records_match(layer);
+            quads += layer_quads;
+            triangles += layer_triangles;
+        }
+    }
+    assert!(quads > 100);
+    assert!(triangles > 0, "a sloped fluid surface needs two triangles");
+}
+
+#[test]
+fn quad_records_hold_generated_terrain_light_exactly() {
+    let generated = OverworldGenerator::new(0).generate(ChunkPosition::ZERO);
+    let chunk = &generated.chunk;
+    let skylight = Skylight::from_chunk(chunk);
+    let neighbors = ChunkNeighbors::default();
+    let mesher = SectionMesher::new(
+        chunk,
+        &neighbors,
+        &skylight,
+        &generated.biomes,
+        &GrassColors::default(),
+        &FoliageColors::default(),
+        true,
+        ChunkPosition::ZERO,
+        None,
+    );
+    let mut records = 0;
+    for section in 0..CHUNK_HEIGHT / 16 {
+        let meshes = mesher.mesh(section);
+        for layer in meshes.layers() {
+            let (quads, triangles) = assert_records_match(layer);
+            records += quads + triangles * 2;
+            assert_eq!(layer.clone().into_quads().len(), quads + triangles * 2);
+        }
+    }
+    assert!(records > 500);
 }

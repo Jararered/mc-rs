@@ -5,6 +5,7 @@ use bevy::diagnostic::DiagnosticPath;
 use bevy::diagnostic::DiagnosticsStore;
 use bevy::diagnostic::EntityCountDiagnosticsPlugin;
 use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
+use bevy::diagnostic::SystemInformationDiagnosticsPlugin;
 use bevy::prelude::*;
 use bevy::render::diagnostic::MeshAllocatorDiagnosticPlugin;
 
@@ -25,6 +26,8 @@ impl Plugin for DiagnosticsPlugin {
         app.add_plugins((
             FrameTimeDiagnosticsPlugin::default(),
             EntityCountDiagnosticsPlugin::default(),
+            // Resident memory of the process for the report.
+            SystemInformationDiagnosticsPlugin,
             // Chunk meshes live in Bevy's shared mesh slabs.
             MeshAllocatorDiagnosticPlugin,
         ))
@@ -88,6 +91,14 @@ fn print_perf_stats(
         .unwrap_or_else(|| "n/a".into());
     let entities = fmt_diag(&diagnostics, &EntityCountDiagnosticsPlugin::ENTITY_COUNT, 0);
     let (slowest_ms, long) = spikes.take();
+    // Bevy reports GiB. This is resident memory, which on macOS leaves out
+    // most GPU allocations; `footprint` shows those.
+    let process_mib = fmt_latest(
+        &diagnostics,
+        &SystemInformationDiagnosticsPlugin::PROCESS_MEM_USAGE,
+        1.0 / 1024.0,
+        0,
+    );
 
     let loaded_chunks = chunks.as_ref().map_or(0, |chunks| chunks.len());
     let (rendered, layers, mesh_bytes, generating, populating, meshing) =
@@ -168,6 +179,7 @@ fn print_perf_stats(
          slowest frame   {slowest_ms:.2} ms, {long} frames over twice the mean\n  \
          frames          {frames}\n  \
          entities        {entities}\n  \
+         process memory  {process_mib} MiB resident\n  \
          chunks          {loaded_chunks} loaded, {generating} generating, {populating} populating\n  \
          meshes          {rendered} chunks, {layers} section layers, {meshing} meshing\n  \
          mesh memory     {mesh_mib:.1} MiB {layer_format}\n  \

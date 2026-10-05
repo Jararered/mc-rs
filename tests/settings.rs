@@ -292,6 +292,61 @@ fn ultra_graphics_uses_ssr_water_without_changing_blend_on_fancy() {
 }
 
 #[test]
+fn anti_aliasing_and_shadow_map_sizes_follow_the_settings() {
+    use bevy::light::DirectionalLightShadowMap;
+    use bevy::light::PointLightShadowMap;
+
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, AssetPlugin::default(), MeshPlugin))
+        .init_asset::<Image>()
+        .init_asset::<StandardMaterial>()
+        .add_plugins((WorldPlugin, game::rendering::WorldRenderingPlugin));
+    app.world_mut().spawn(Camera3d::default());
+    app.world_mut().spawn(Camera2d);
+    app.update();
+    app.update();
+
+    fn samples(app: &mut App) -> Vec<Msaa> {
+        let mut cameras = app.world_mut().query_filtered::<&Msaa, With<Camera>>();
+        cameras.iter(app.world()).copied().collect()
+    }
+    assert_eq!(samples(&mut app), [Msaa::Sample4; 2]);
+    // Old lighting samples no shadow map, and nothing is a point light.
+    assert!(app.world().resource::<DirectionalLightShadowMap>().size < 64);
+    assert!(app.world().resource::<PointLightShadowMap>().size < 64);
+
+    app.world_mut().resource_mut::<GameSettings>().anti_aliasing = false;
+    app.update();
+    app.update();
+    assert_eq!(samples(&mut app), [Msaa::Off; 2]);
+
+    // A camera that appears later, such as a loaded world's, follows too.
+    app.world_mut().spawn(Camera3d::default());
+    app.update();
+    app.update();
+    assert_eq!(samples(&mut app), [Msaa::Off; 3]);
+
+    {
+        let mut settings = app.world_mut().resource_mut::<GameSettings>();
+        settings.anti_aliasing = true;
+        settings.old_lighting = false;
+    }
+    app.update();
+    app.update();
+    assert_eq!(samples(&mut app), [Msaa::Sample4; 3]);
+    assert_eq!(
+        app.world().resource::<DirectionalLightShadowMap>().size,
+        2048
+    );
+
+    // Deferred rendering cannot be multisampled.
+    app.world_mut().resource_mut::<GameSettings>().graphics = GraphicsQuality::Ultra;
+    app.update();
+    app.update();
+    assert_eq!(samples(&mut app), [Msaa::Off; 3]);
+}
+
+#[test]
 fn fancy_leaves_mask_does_not_apply_to_solid_terrain() {
     let mut app = App::new();
     app.add_plugins((MinimalPlugins, AssetPlugin::default(), MeshPlugin))
@@ -402,6 +457,7 @@ fn settings_round_trip_through_json() {
         directional_lighting: false,
         wiggle_leaves: false,
         graphics: GraphicsQuality::Ultra,
+        anti_aliasing: false,
         mouse_sensitivity: 1.5,
         view_bobbing: false,
         fullscreen: true,
@@ -972,6 +1028,7 @@ fn settings_tabs_buttons_and_live_labels() {
         "Old lighting: ON",
         "Smooth lighting: ON",
         "Wiggle leaves: ON",
+        "Anti-aliasing: 4x",
         "Max FPS: 60",
         "Fullscreen: OFF",
         "View bobbing: ON",

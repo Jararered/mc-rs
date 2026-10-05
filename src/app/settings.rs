@@ -124,6 +124,9 @@ pub struct GameSettings {
     pub directional_lighting: bool,
     pub wiggle_leaves: bool,
     pub graphics: GraphicsQuality,
+    /// 4x MSAA. Beta had none; off drops the window-sized multisampled
+    /// colour and depth targets, the largest textures the renderer holds.
+    pub anti_aliasing: bool,
     pub mouse_sensitivity: f32,
     pub view_bobbing: bool,
     pub fullscreen: bool,
@@ -143,6 +146,7 @@ impl Default for GameSettings {
             directional_lighting: true,
             wiggle_leaves: DEFAULT_WIGGLE_LEAVES,
             graphics: GraphicsQuality::Fancy,
+            anti_aliasing: true,
             mouse_sensitivity: 1.0,
             view_bobbing: true,
             fullscreen: false,
@@ -192,6 +196,16 @@ impl GameSettings {
     /// shadow map; rendering one would only redraw the terrain for no effect.
     pub fn sun_shadows(&self) -> bool {
         self.directional_lighting && !self.old_lighting
+    }
+
+    /// Sample count for every camera. Ultra's screen-space reflections run on
+    /// the deferred path, which cannot be multisampled.
+    pub fn msaa(&self) -> Msaa {
+        if self.anti_aliasing && !self.graphics.realistic_water() {
+            Msaa::Sample4
+        } else {
+            Msaa::Off
+        }
     }
 
     pub fn change_fov(&mut self, change: f32) {
@@ -302,6 +316,7 @@ struct StoredSettings {
     directional_lighting: bool,
     wiggle_leaves: bool,
     graphics: GraphicsQuality,
+    anti_aliasing: bool,
     mouse_sensitivity: f32,
     view_bobbing: bool,
     fullscreen: bool,
@@ -328,6 +343,7 @@ impl From<&GameSettings> for StoredSettings {
             directional_lighting: settings.directional_lighting,
             wiggle_leaves: settings.wiggle_leaves,
             graphics: settings.graphics,
+            anti_aliasing: settings.anti_aliasing,
             mouse_sensitivity: settings.mouse_sensitivity,
             view_bobbing: settings.view_bobbing,
             fullscreen: settings.fullscreen,
@@ -349,6 +365,7 @@ impl From<StoredSettings> for GameSettings {
             directional_lighting: stored.directional_lighting,
             wiggle_leaves: stored.wiggle_leaves,
             graphics: stored.graphics,
+            anti_aliasing: stored.anti_aliasing,
             mouse_sensitivity: stored.mouse_sensitivity,
             view_bobbing: stored.view_bobbing,
             fullscreen: stored.fullscreen,

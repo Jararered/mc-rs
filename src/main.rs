@@ -2,6 +2,9 @@ use bevy::app::TaskPoolThreadAssignmentPolicy;
 use bevy::image::ImagePlugin;
 use bevy::image::ImageSamplerDescriptor;
 use bevy::prelude::*;
+use bevy::render::RenderPlugin;
+use bevy::render::settings::MemoryHints;
+use bevy::render::settings::WgpuSettings;
 use game::app::GamePlugin;
 
 fn main() {
@@ -16,6 +19,18 @@ fn main() {
                         lod_max_clamp: 0.0,
                         ..ImageSamplerDescriptor::nearest()
                     },
+                })
+                .set(RenderPlugin {
+                    render_creation: WgpuSettings {
+                        // wgpu's default reserves large blocks for its Vulkan
+                        // and DX12 allocators; the renderer here holds a few
+                        // big buffers and little else. Metal has no such
+                        // allocator, so this changes nothing on macOS.
+                        memory_hints: MemoryHints::MemoryUsage,
+                        ..default()
+                    }
+                    .into(),
+                    ..default()
                 })
                 .set(TaskPoolPlugin {
                     task_pool_options: TaskPoolOptions {

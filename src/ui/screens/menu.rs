@@ -82,6 +82,7 @@ enum MenuAction {
     DirectionalLighting,
     WiggleLeaves,
     Graphics,
+    AntiAliasing,
     Difficulty,
     ViewBobbing,
     Fullscreen,
@@ -99,6 +100,7 @@ pub(super) enum SettingLabel {
     DirectionalLighting,
     WiggleLeaves,
     Graphics,
+    AntiAliasing,
     Difficulty,
     MaxFps,
     MouseSensitivity,
@@ -483,6 +485,13 @@ fn spawn_settings_menu(commands: &mut Commands, textures: &MenuTextures, setting
                             );
                             spawn_setting_button(
                                 parent,
+                                &textures,
+                                anti_aliasing_text(&settings),
+                                MenuAction::AntiAliasing,
+                                SettingLabel::AntiAliasing,
+                            );
+                            spawn_setting_button(
+                                parent,
                                 textures,
                                 fullscreen_text(settings),
                                 MenuAction::Fullscreen,
@@ -806,6 +815,7 @@ fn handle_buttons(
             }
             MenuAction::WiggleLeaves => settings.wiggle_leaves = !settings.wiggle_leaves,
             MenuAction::Graphics => settings.cycle_graphics(),
+            MenuAction::AntiAliasing => settings.anti_aliasing = !settings.anti_aliasing,
             MenuAction::Difficulty => settings.difficulty = settings.difficulty.cycle(),
             MenuAction::ViewBobbing => settings.view_bobbing = !settings.view_bobbing,
             MenuAction::Fullscreen => settings.fullscreen = !settings.fullscreen,
@@ -845,6 +855,7 @@ fn refresh_settings_labels(
             SettingLabel::DirectionalLighting => directional_lighting_text(&settings),
             SettingLabel::WiggleLeaves => wiggle_leaves_text(&settings),
             SettingLabel::Graphics => graphics_text(&settings),
+            SettingLabel::AntiAliasing => anti_aliasing_text(&settings),
             SettingLabel::Difficulty => difficulty_text(&settings),
             SettingLabel::MaxFps => max_fps_text(&settings),
             SettingLabel::MouseSensitivity => sensitivity_text(&settings),
@@ -929,6 +940,13 @@ fn graphics_text(settings: &GameSettings) -> String {
             GraphicsQuality::Fancy => "Fancy",
             GraphicsQuality::Ultra => "Ultra",
         }
+    )
+}
+
+fn anti_aliasing_text(settings: &GameSettings) -> String {
+    format!(
+        "Anti-aliasing: {}",
+        if settings.anti_aliasing { "4x" } else { "OFF" }
     )
 }
 

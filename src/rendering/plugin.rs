@@ -1,6 +1,8 @@
 use bevy::camera::Hdr;
 use bevy::core_pipeline::prepass::DeferredPrepass;
 use bevy::core_pipeline::prepass::DepthPrepass;
+use bevy::light::DirectionalLightShadowMap;
+use bevy::light::PointLightShadowMap;
 use bevy::pbr::DefaultOpaqueRendererMethod;
 use bevy::pbr::ScreenSpaceReflections;
 use bevy::prelude::*;
@@ -11,7 +13,6 @@ use bevy::render::renderer::RenderDevice;
 use crate::app::settings::GameSettings;
 use crate::app::state::AppScreen;
 use crate::physics::PhysicsSet;
-use crate::player::PlayerCamera;
 use crate::ui::screens::panorama::MenuPanoramaCamera;
 
 use super::sky::CelestialCamera;
@@ -27,6 +28,22 @@ use crate::world::streaming::stream_chunks;
 /// [`ChunkCulling`].
 const CHUNK_CULLING_ENV: &str = "MC_CHUNK_CULLING";
 
+/// Bevy's default cascade resolution, used while the sun casts shadows.
+const SUN_SHADOW_MAP_SIZE: usize = 2048;
+/// Bevy allocates both shadow map arrays even when nothing casts a shadow
+/// (24 MiB of point light cube faces and 16 MiB per sun cascade at its
+/// defaults). Nothing here is a point light, and the sun's maps are only
+/// sampled with [`GameSettings::sun_shadows`].
+const UNUSED_SHADOW_MAP_SIZE: usize = 16;
+
+fn sun_shadow_map_size(settings: &GameSettings) -> usize {
+    if settings.sun_shadows() {
+        SUN_SHADOW_MAP_SIZE
+    } else {
+        UNUSED_SHADOW_MAP_SIZE
+    }
+}
+
 /// Client world presentation and background chunk streaming.
 pub struct WorldRenderingPlugin;
 
@@ -41,6 +58,12 @@ impl Plugin for WorldRenderingPlugin {
             .insert_resource(ClearColor(Color::srgb(0.53, 0.73, 0.95)))
             .init_resource::<GameSettings>()
             .init_resource::<GlobalAmbientLight>()
+            .insert_resource(PointLightShadowMap {
+                size: UNUSED_SHADOW_MAP_SIZE,
+            })
+            .insert_resource(DirectionalLightShadowMap {
+                size: UNUSED_SHADOW_MAP_SIZE,
+            })
             .init_resource::<StreamingDiagnostics>()
             .add_systems(
                 Startup,
@@ -88,10 +111,15 @@ fn spawn_sun(mut commands: Commands, settings: Res<GameSettings>) {
 pub(super) fn apply_lighting_settings(
     settings: Res<GameSettings>,
     mut ambient: ResMut<GlobalAmbientLight>,
+    mut shadow_map: ResMut<DirectionalLightShadowMap>,
     mut sun: Query<&mut DirectionalLight>,
 ) {
     if !settings.is_changed() {
         return;
+    }
+    let size = sun_shadow_map_size(&settings);
+    if shadow_map.size != size {
+        shadow_map.size = size;
     }
     ambient.brightness = if settings.old_lighting {
         0.0
@@ -139,6 +167,10 @@ fn choose_chunk_culling(
 
 /// Ultra water uses Bevy screen-space reflections, which need deferred rendering
 /// and MSAA off. Fast/Fancy stay on the forward path.
+///
+/// Every camera on the window gets the same [`Msaa`], the UI and title
+/// cameras included: Bevy keeps one set of window-sized targets per sample
+/// count in use, so a single 4x camera keeps the multisampled ones alive.
 fn apply_graphics_pipeline(
     mut commands: Commands,
     settings: Res<GameSettings>,
@@ -152,10 +184,11 @@ fn apply_graphics_pipeline(
         ),
     >,
     sky_cameras: Query<Entity, Or<(With<SkyCamera>, With<CelestialCamera>)>>,
-    new_cameras: Query<(), Added<PlayerCamera>>,
+    all_cameras: Query<(Entity, Option<&Msaa>), With<Camera>>,
+    new_cameras: Query<(), Added<Camera>>,
     renderer_method: Option<ResMut<DefaultOpaqueRendererMethod>>,
 ) {
-    // A world's camera can spawn after the settings change that loading it
+    // A world's cameras can spawn after the settings change that loading it
     // caused was already seen here.
     if !settings.is_changed() && new_cameras.is_empty() {
         return;
@@ -165,25 +198,27 @@ fn apply_graphics_pipeline(
         if ultra && ssr.is_none() {
             commands
                 .entity(entity)
-                .insert((ScreenSpaceReflections::default(), Msaa::Off, Hdr));
+                .insert((ScreenSpaceReflections::default(), Hdr));
         } else if !ultra && ssr.is_some() {
             commands
                 .entity(entity)
                 .remove::<ScreenSpaceReflections>()
                 .remove::<DepthPrepass>()
                 .remove::<DeferredPrepass>()
-                .remove::<Hdr>()
-                .insert(Msaa::Sample4);
+                .remove::<Hdr>();
         }
     }
     for entity in &sky_cameras {
         if ultra {
-            commands.entity(entity).insert((Msaa::Off, Hdr));
+            commands.entity(entity).insert(Hdr);
         } else {
-            commands
-                .entity(entity)
-                .remove::<Hdr>()
-                .insert(Msaa::Sample4);
+            commands.entity(entity).remove::<Hdr>();
+        }
+    }
+    let msaa = settings.msaa();
+    for (entity, current) in &all_cameras {
+        if current != Some(&msaa) {
+            commands.entity(entity).insert(msaa);
         }
     }
     if let Some(mut method) = renderer_method {

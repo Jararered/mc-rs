@@ -8,7 +8,11 @@
 //! ```
 //!
 //! `VIEW=1` and up pick other camera positions, `LIGHTING=new` turns old
-//! lighting off, and `SMOOTH=off` turns smooth lighting off. The window presents without
+//! lighting off, and `SMOOTH=off` turns smooth lighting off. `DISTANCE` sets the
+//! render distance (8), `SIZE=2560x1440` the window's physical size, and
+//! `MSAA=off` turns anti-aliasing off, and
+//! `HOLD=30` keeps the window open that many seconds after the timings so
+//! `footprint -p chunk_render` can read its memory. The window presents without
 //! VSync, but macOS can still pace it to the display, so treat the frame time
 //! printed before exit as a hint only.
 
@@ -46,6 +50,12 @@ struct Capture {
     shot: bool,
     timed: u32,
     seconds: f64,
+    /// Seconds left to stay open after the timings are printed.
+    hold: Option<f64>,
+}
+
+fn env_number<T: std::str::FromStr>(name: &str) -> Option<T> {
+    std::env::var(name).ok()?.parse().ok()
 }
 
 fn main() {
@@ -57,6 +67,13 @@ fn main() {
     let path = arguments
         .first()
         .map_or_else(|| PathBuf::from("chunk_render.png"), PathBuf::from);
+    let (width, height) = std::env::var("SIZE")
+        .ok()
+        .and_then(|size| {
+            let (width, height) = size.split_once('x')?;
+            Some((width.parse().ok()?, height.parse().ok()?))
+        })
+        .unwrap_or((960, 540));
     App::new()
         .add_plugins(
             DefaultPlugins
@@ -69,7 +86,8 @@ fn main() {
                 .set(WindowPlugin {
                     primary_window: Some(Window {
                         title: "chunk_render".into(),
-                        resolution: WindowResolution::new(960, 540).with_scale_factor_override(1.0),
+                        resolution: WindowResolution::new(width, height)
+                            .with_scale_factor_override(1.0),
                         present_mode: PresentMode::AutoNoVsync,
                         ..default()
                     }),
@@ -78,10 +96,13 @@ fn main() {
         )
         .add_plugins(FrameTimeDiagnosticsPlugin::default())
         .insert_resource(GameSettings {
-            render_distance: 8,
+            render_distance: env_number("DISTANCE").unwrap_or(8),
             max_fps: 0,
             // Moving leaves would differ between two runs.
             wiggle_leaves: false,
+            anti_aliasing: std::env::var("MSAA")
+                .is_ok_and(|value| value == "off")
+                .not(),
             old_lighting: std::env::var("LIGHTING")
                 .is_ok_and(|value| value == "new")
                 .not(),
@@ -96,6 +117,7 @@ fn main() {
             shot: false,
             timed: 0,
             seconds: 0.0,
+            hold: None,
         })
         .add_plugins((WorldPlugin, WorldRenderingPlugin))
         .add_systems(Startup, spawn_view)
@@ -151,6 +173,13 @@ fn capture(
         }
         return;
     }
+    if let Some(hold) = capture.hold.as_mut() {
+        *hold -= time.delta_secs_f64();
+        if *hold <= 0.0 {
+            exit.write(AppExit::Success);
+        }
+        return;
+    }
     capture.timed += 1;
     capture.seconds += time.delta_secs_f64();
     if capture.timed < TIMED_FRAMES {
@@ -186,7 +215,7 @@ fn capture(
         capture.seconds * 1000.0 / f64::from(capture.timed),
         capture.timed,
     );
-    exit.write(AppExit::Success);
+    capture.hold = Some(env_number("HOLD").unwrap_or(0.0));
 }
 
 /// Print how far two screenshots are apart.

@@ -69,3 +69,62 @@ old lighting, one open-terrain view with 5,864 section layers:
   A cave view was not measured.
 - Bevy's `RenderDiagnosticsPlugin` pass timings read about 0.02 ms per pass
   here and did not reflect draw cost, so they are not in the report.
+
+# Memory
+
+The report's `process memory` line is resident memory from Bevy's
+`SystemInformationDiagnosticsPlugin`. On macOS that leaves out most GPU
+allocations, which are the larger share. `footprint -p game` shows the whole
+figure (what Activity Monitor calls Memory) split by kind: `graphics` rows
+are GPU textures and buffers, `Malloc` rows are the heap.
+
+`examples/chunk_render.rs` takes `DISTANCE`, `SIZE`, `MSAA=off`, and `HOLD`
+for this: `HOLD=30` keeps the settled view open long enough to read it.
+
+Measured on an Apple M5 Pro (Metal), dev profile, render distance 4 (81
+chunks, 828 section layers, 9.6 MiB of quad records), old lighting, a
+2560x1440 window, `footprint`'s `phys_footprint`:
+
+| Build                                         | Total  | GPU    | Heap   |
+| --------------------------------------------- | ------ | ------ | ------ |
+| Bevy defaults, 4x MSAA                        | 694 MB | 472 MB | 174 MB |
+| Small unused shadow maps                      | 672 MB | 435 MB | 172 MB |
+| and only the Bevy features in use             | 613 MB | 433 MB | 134 MB |
+| and Anti-aliasing off                         | 487 MB | 331 MB | 113 MB |
+
+The GPU column repeats within a few MB. The heap column does not: its
+`Malloc Large` part was anywhere from 22 to 73 MB between otherwise equal
+runs, so read heap differences under about 50 MB as noise. The world itself is a small part of any row: the
+chunk blocks, light, and quad records together are under 30 MB.
+
+- Bevy creates a point light cube array (24 MiB at its default size) and a
+  directional array (16 MiB per cascade) even with no shadow caster.
+  `rendering/plugin.rs` shrinks both unless the sun casts shadows.
+- 4x MSAA is a multisampled colour and depth target at window size, about
+  105 MB here and proportional to the window's pixels. `Msaa` must match on
+  every camera, UI included, or the targets stay allocated.
+- Bevy's default features start plugins the game never uses. Dropping them
+  shrank the binary by 17%; the 40 to 60 MB the total fell by is mostly heap
+  and within that noise.
+- wgpu validates indirect draws in dev builds, about 17 MB of buffers that a
+  release build does not create (`WGPU_VALIDATION_INDIRECT_CALL=0` removes
+  them in dev). Its other debug flags made no measurable difference.
+- `MemoryHints::MemoryUsage` in `main.rs` only affects wgpu's Vulkan and DX12
+  allocators. It is not measured; Metal has no such allocator.
+
+What is left is mostly a floor the game does not control. A Bevy 0.19 app
+with the default plugins, one camera, and one cube in a 960x540 window is
+already about 380 MB in a dev build. 176 MB of that is 44 GPU allocations of
+exactly 4 MiB (22 before any camera exists). Their count did not change with
+the UI, anti-aliasing, or post-processing plugins, pipelined rendering, the
+wgpu debug flags, the window size, or the number of cameras, and their owner
+was not identified.
+
+Each additional `Camera3d` added about 30 MB in that test (per-view buffers
+and heap). The game runs four on the window while playing (sky, celestial,
+world, arm) plus the UI camera, so folding the sky passes into the world
+camera is the next thing to measure.
+
+A release build of the last two rows measured 586 MB with 4x MSAA (GPU 354
+MB) and 527 MB without (GPU 316 MB), so the dev profile is not what makes
+the footprint large, and the MSAA saving was smaller there, about 40 MB.

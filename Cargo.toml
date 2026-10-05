@@ -27,7 +27,42 @@ opt-level = 3
 debug = "line-tables-only"
 
 [dependencies]
-bevy = "0.19.1"
+# Only what the game uses. Bevy's defaults also start audio, gamepads, glTF,
+# animation, scenes, sprites, and the post-processing and anti-aliasing
+# pipelines, which cost link time and memory for nothing here. Add `audio`
+# back when sound is implemented.
+bevy = { version = "0.19.1", default-features = false, features = [
+    "default_app",
+    "std",
+    "multi_threaded",
+    "sysinfo_plugin",
+    "bevy_winit",
+    "bevy_window",
+    "x11",
+    "wayland",
+    "bevy_camera",
+    "bevy_color",
+    "bevy_image",
+    "bevy_mesh",
+    "bevy_shader",
+    "bevy_material",
+    "bevy_light",
+    "bevy_render",
+    "bevy_core_pipeline",
+    "bevy_pbr",
+    "bevy_gizmos",
+    "bevy_gizmos_render",
+    "bevy_text",
+    "default_font",
+    "bevy_ui",
+    "bevy_ui_render",
+    "bevy_picking",
+    "ui_picking",
+    "png",
+    "ktx2",
+    "zstd_rust",
+    "tonemapping_luts",
+] }
 flate2 = "1.1"
 num_enum = "0.7.6"
 serde = { version = "1.0.229", features = ["derive"] }

@@ -18,7 +18,7 @@ pub use raycast::segment_entry;
 use bevy::prelude::*;
 
 use crate::app::state::AppScreen;
-use crate::block::fluids::FluidType;
+use crate::block::fluids::Fluid;
 use crate::block::fluids::flow_vector;
 use crate::block::fluids::is_lava;
 use crate::block::fluids::is_water;
@@ -787,7 +787,7 @@ pub fn water_movement(area: Aabb, chunks: &WorldChunks) -> (bool, Vec3) {
 
 /// `BlockFluid.getFlowVector` for water, normalized.
 fn water_flow_vector(x: i32, y: i32, z: i32, chunks: &WorldChunks) -> Vec3 {
-    let [flow_x, flow_z] = flow_vector(FluidType::Water, x, y, z, |x, y, z| {
+    let [flow_x, flow_z] = flow_vector(Fluid::Water, x, y, z, |x, y, z| {
         (
             chunks
                 .block_at(x, y, z)

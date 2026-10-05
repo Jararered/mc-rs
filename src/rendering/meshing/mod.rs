@@ -5,7 +5,7 @@ use bevy::prelude::Color;
 use crate::block::blocks::Block;
 use crate::block::blocks::species;
 use crate::block::direction::Direction;
-use crate::block::fluids::FluidType;
+use crate::block::fluids::Fluid;
 use crate::block::fluids::corner_height;
 use crate::block::fluids::flow_vector;
 use crate::block::properties::torch_normal;
@@ -678,7 +678,7 @@ impl<'a> Mesher<'a> {
         x: usize,
         y: usize,
         z: usize,
-        fluid: FluidType,
+        fluid: Fluid,
     ) {
         let chunk = self.chunk;
         let neighbors = self.neighbors;
@@ -695,7 +695,7 @@ impl<'a> Mesher<'a> {
             match neighbors.get(chunk, xi + dx, yi + dy, zi + dz) {
                 None => true,
                 Some(neighbor) => {
-                    FluidType::of(neighbor) != Some(fluid)
+                    Fluid::of(neighbor) != Some(fluid)
                         && neighbor != Block::Ice
                         && (dy > 0 || !neighbor.is_opaque_cube())
                 }
@@ -713,13 +713,13 @@ impl<'a> Mesher<'a> {
         ];
         let corner_top = |corner: [f32; 3]| heights[corner[0] as usize][corner[2] as usize];
         let (still, flow, tint, layer) = match fluid {
-            FluidType::Water => (
+            Fluid::Water => (
                 WATER_STILL_TILE,
                 WATER_FLOW_TILE,
                 WATER_TINT,
                 &mut meshes.water,
             ),
-            FluidType::Lava => (
+            Fluid::Lava => (
                 LAVA_STILL_TILE,
                 LAVA_FLOW_TILE,
                 [1.0; 3],
@@ -807,7 +807,7 @@ impl<'a> Mesher<'a> {
                         .tints
                         .as_ref()
                         .map_or(DEFAULT_GRASS_TINT, |tints| tints.grass[column]);
-                    if let Some(fluid) = FluidType::of(block) {
+                    if let Some(fluid) = Fluid::of(block) {
                         // A wireframe filter draws the open fluid surface as full
                         // cubes so it can share the greedy planes. Faces against
                         // opaque blocks stay on those blocks. Gameplay water
@@ -995,7 +995,7 @@ impl<'a> Mesher<'a> {
             // A filtered fluid keeps the open surface only. Faces against
             // sand, dirt, and other opaque cubes belong to those blocks.
             let filtered_fluid = (self.only == Some(block))
-                .then(|| FluidType::of(block))
+                .then(|| Fluid::of(block))
                 .flatten();
             if let Some(fluid) = filtered_fluid {
                 if !fluid_shell_face_visible(fluid, neighbor, face.neighbor[1]) {
@@ -1033,7 +1033,7 @@ impl<'a> Mesher<'a> {
             } else {
                 block_tile(block, metadata, face_index, fancy_graphics)
             };
-            let layer = if filtered_fluid == Some(FluidType::Water) {
+            let layer = if filtered_fluid == Some(Fluid::Water) {
                 LAYER_WATER
             } else if fancy_graphics && block.is_leaves() {
                 LAYER_CUTOUT
@@ -1357,7 +1357,7 @@ fn merged_corners(face: usize, w: f32, h: f32) -> [[f32; 3]; 4] {
 /// A fluid's top texture. Still fluid uses the still tile; moving fluid uses
 /// the flowing 2×2 tiles rotated toward `BlockFluid.getFlowDirection`.
 fn fluid_top_texels(
-    fluid: FluidType,
+    fluid: Fluid,
     x: i32,
     y: i32,
     z: i32,
@@ -1388,7 +1388,7 @@ fn fluid_top_texels(
 /// ([`Block::appearance_metadata`]); a flowing fluid and its still block draw
 /// alike.
 pub fn same_appearance(block: Block, metadata: u8, other: Block, other_metadata: u8) -> bool {
-    let key = |block: Block, metadata: u8| match FluidType::of(block) {
+    let key = |block: Block, metadata: u8| match Fluid::of(block) {
         Some(fluid) => (fluid.still(), metadata),
         None => match block {
             Block::Crops => (block, metadata),
@@ -1607,11 +1607,11 @@ fn double_chest_tile(
 /// Same visibility as [`Mesher::push_fluid`]: either id of this fluid and ice
 /// cover a face, and an opaque cube covers the sides and bottom. An open top
 /// stays visible, which is the flat water surface in a filtered wireframe.
-fn fluid_shell_face_visible(fluid: FluidType, neighbor: Option<Block>, dy: i32) -> bool {
+fn fluid_shell_face_visible(fluid: Fluid, neighbor: Option<Block>, dy: i32) -> bool {
     match neighbor {
         None => true,
         Some(neighbor) => {
-            FluidType::of(neighbor) != Some(fluid)
+            Fluid::of(neighbor) != Some(fluid)
                 && neighbor != Block::Ice
                 && (dy > 0 || !neighbor.is_opaque_cube())
         }

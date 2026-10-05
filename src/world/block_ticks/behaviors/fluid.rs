@@ -10,7 +10,7 @@
 use bevy::math::IVec3;
 
 use crate::block::blocks::Block;
-pub use crate::block::fluids::FluidType;
+pub use crate::block::fluids::Fluid;
 pub use crate::block::fluids::is_lava;
 pub use crate::block::fluids::is_liquid;
 pub use crate::block::fluids::is_water;
@@ -19,8 +19,8 @@ use crate::world::block_ticks::TickWorld;
 
 /// `BlockFluid.getFlowDecay`: the cell's metadata if it holds `fluid`,
 /// otherwise `-1`.
-fn flow_decay(world: &TickWorld, position: IVec3, fluid: FluidType) -> i32 {
-    if FluidType::of(world.block(position)) == Some(fluid) {
+fn flow_decay(world: &TickWorld, position: IVec3, fluid: Fluid) -> i32 {
+    if Fluid::of(world.block(position)) == Some(fluid) {
         i32::from(world.metadata(position))
     } else {
         -1
@@ -31,7 +31,7 @@ fn flow_decay(world: &TickWorld, position: IVec3, fluid: FluidType) -> i32 {
 /// becomes obsidian if it is a source, or cobblestone if it spread four or
 /// fewer blocks.
 fn check_for_harden(world: &mut TickWorld, position: IVec3, block: Block) {
-    if world.block(position) != block || FluidType::of(block) != Some(FluidType::Lava) {
+    if world.block(position) != block || Fluid::of(block) != Some(Fluid::Lava) {
         return;
     }
     let touches_water = [IVec3::NEG_Z, IVec3::Z, IVec3::NEG_X, IVec3::X, IVec3::Y]
@@ -64,10 +64,10 @@ fn blocks_flow(world: &TickWorld, position: IVec3) -> bool {
 
 /// `BlockFlowing.liquidCanDisplaceBlock`: neither this fluid, nor lava, nor a
 /// block that holds fluid back.
-fn can_displace(world: &TickWorld, position: IVec3, fluid: FluidType) -> bool {
-    match FluidType::of(world.block(position)) {
+fn can_displace(world: &TickWorld, position: IVec3, fluid: Fluid) -> bool {
+    match Fluid::of(world.block(position)) {
         Some(other) if other == fluid => false,
-        Some(FluidType::Lava) => false,
+        Some(Fluid::Lava) => false,
         _ => !blocks_flow(world, position),
     }
 }
@@ -83,15 +83,15 @@ const fn opposite(direction: usize) -> usize {
 
 /// Whether flow may enter `position` sideways: not blocked, and not already
 /// a source of the same fluid.
-fn open_for_flow(world: &TickWorld, position: IVec3, fluid: FluidType) -> bool {
+fn open_for_flow(world: &TickWorld, position: IVec3, fluid: Fluid) -> bool {
     !blocks_flow(world, position)
-        && (FluidType::of(world.block(position)) != Some(fluid) || world.metadata(position) != 0)
+        && (Fluid::of(world.block(position)) != Some(fluid) || world.metadata(position) != 0)
 }
 
 /// `BlockFlowing.calculateFlowCost`: the fewest steps from `position` to a
 /// cell the fluid could fall from, searching up to four steps out and never
 /// doubling back.
-fn flow_cost(world: &TickWorld, position: IVec3, fluid: FluidType, steps: i32, from: usize) -> i32 {
+fn flow_cost(world: &TickWorld, position: IVec3, fluid: Fluid, steps: i32, from: usize) -> i32 {
     let mut cost = 1000;
     for (direction, offset) in DIRECTIONS.into_iter().enumerate() {
         if direction == opposite(from) {
@@ -113,7 +113,7 @@ fn flow_cost(world: &TickWorld, position: IVec3, fluid: FluidType, steps: i32, f
 
 /// `BlockFlowing.getOptimalFlowDirections`: the directions with the
 /// cheapest path to a drop. With no drop in reach every open side ties.
-fn optimal_flow_directions(world: &TickWorld, position: IVec3, fluid: FluidType) -> [bool; 4] {
+fn optimal_flow_directions(world: &TickWorld, position: IVec3, fluid: Fluid) -> [bool; 4] {
     let costs: [i32; 4] = std::array::from_fn(|direction| {
         let next = position + DIRECTIONS[direction];
         if !open_for_flow(world, next, fluid) {
@@ -133,7 +133,7 @@ fn optimal_flow_directions(world: &TickWorld, position: IVec3, fluid: FluidType)
 fn smallest_flow_decay(
     world: &TickWorld,
     position: IVec3,
-    fluid: FluidType,
+    fluid: Fluid,
     smallest: i32,
     sources: &mut u32,
 ) -> i32 {
@@ -156,12 +156,12 @@ fn smallest_flow_decay(
 
 /// `BlockFlowing.flowIntoBlock`: wash out whatever is in the way, or fizz
 /// against it for lava, then place flowing fluid at `decay`.
-fn flow_into(world: &mut TickWorld, position: IVec3, fluid: FluidType, decay: i32) {
+fn flow_into(world: &mut TickWorld, position: IVec3, fluid: Fluid, decay: i32) {
     if !can_displace(world, position, fluid) {
         return;
     }
     let block = world.block(position);
-    if block != Block::Air && fluid == FluidType::Water {
+    if block != Block::Air && fluid == Fluid::Water {
         let metadata = world.metadata(position);
         world.drop_block_as_item(position, block, metadata);
     }
@@ -169,7 +169,7 @@ fn flow_into(world: &mut TickWorld, position: IVec3, fluid: FluidType, decay: i3
 }
 
 /// `BlockFlowing.updateFlow`: settle into the still block, keeping the decay.
-fn settle(world: &mut TickWorld, position: IVec3, fluid: FluidType) {
+fn settle(world: &mut TickWorld, position: IVec3, fluid: Fluid) {
     let metadata = world.metadata(position);
     world.set_block_and_metadata(position, fluid.still(), metadata);
 }
@@ -186,7 +186,7 @@ impl BlockBehavior for Flowing {
     }
 
     fn tick_rate(&self, block: Block) -> u32 {
-        FluidType::of(block).map_or(10, FluidType::tick_rate)
+        Fluid::of(block).map_or(10, Fluid::tick_rate)
     }
 
     fn on_added(&self, world: &mut TickWorld, position: IVec3) {
@@ -204,7 +204,7 @@ impl BlockBehavior for Flowing {
 
     fn update_tick(&self, world: &mut TickWorld, position: IVec3) {
         let block = world.block(position);
-        let Some(fluid) = FluidType::of(block) else {
+        let Some(fluid) = Fluid::of(block) else {
             return;
         };
         let step = fluid.decay_step();
@@ -227,16 +227,16 @@ impl BlockBehavior for Flowing {
             }
             // Two sources beside water on a floor, or over more water, make
             // a new source.
-            if sources >= 2 && fluid == FluidType::Water {
+            if sources >= 2 && fluid == Fluid::Water {
                 let below = position - IVec3::Y;
                 if world.is_solid(below)
-                    || (FluidType::of(world.block(below)) == Some(fluid)
+                    || (Fluid::of(world.block(below)) == Some(fluid)
                         && world.metadata(position) == 0)
                 {
                     next = 0;
                 }
             }
-            if fluid == FluidType::Lava
+            if fluid == Fluid::Lava
                 && decay < 8
                 && next < 8
                 && next > decay
@@ -291,7 +291,7 @@ impl BlockBehavior for Stationary {
     }
 
     fn tick_rate(&self, block: Block) -> u32 {
-        FluidType::of(block).map_or(10, FluidType::tick_rate)
+        Fluid::of(block).map_or(10, Fluid::tick_rate)
     }
 
     fn on_added(&self, world: &mut TickWorld, position: IVec3) {
@@ -305,7 +305,7 @@ impl BlockBehavior for Stationary {
         if world.block(position) != block {
             return;
         }
-        let Some(fluid) = FluidType::of(block) else {
+        let Some(fluid) = Fluid::of(block) else {
             return;
         };
         // `setNotStationary`: become the flowing block without waking the

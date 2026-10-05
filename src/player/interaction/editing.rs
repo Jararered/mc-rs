@@ -10,7 +10,7 @@ use bevy::window::PrimaryWindow;
 
 use crate::block::blocks::Block;
 use crate::block::direction::Direction;
-use crate::block::fluids::FluidType;
+use crate::block::fluids::Fluid;
 use crate::block::fluids::is_water;
 use crate::block::properties::cactus_can_stay;
 use crate::block::properties::plant_ground_can_hold;
@@ -436,8 +436,8 @@ pub(crate) fn interact_blocks(
                 pick_up_fluid(&mut chunks, view_origin, view_rotation * Vec3::NEG_Z)
         {
             let filled = match fluid {
-                FluidType::Water => Item::WaterBucket,
-                FluidType::Lava => Item::LavaBucket,
+                Fluid::Water => Item::WaterBucket,
+                Fluid::Lava => Item::LavaBucket,
             };
             let selected = hotbar.selected;
             hotbar.slots[selected] = ItemStack::new(filled, 1).ok();
@@ -519,8 +519,8 @@ pub(crate) fn interact_blocks(
                 );
                 notify_edit(&mut streaming, &mut persistence, hit.x, hit.y, hit.z, false);
             } else if let Some(fluid) = match stack.item() {
-                Item::WaterBucket => Some(FluidType::Water),
-                Item::LavaBucket => Some(FluidType::Lava),
+                Item::WaterBucket => Some(Fluid::Water),
+                Item::LavaBucket => Some(Fluid::Lava),
                 _ => None,
             } && let Some((x, y, z, previous, previous_metadata)) =
                 place_fluid(&mut chunks, hit, fluid)
@@ -607,9 +607,9 @@ pub fn pick_up_fluid(
     chunks: &mut WorldChunks,
     origin: Vec3,
     direction: Vec3,
-) -> Option<(i32, i32, i32, Block, FluidType)> {
+) -> Option<(i32, i32, i32, Block, Fluid)> {
     let hit = raycast_blocks_or_liquid(chunks, origin, direction, BLOCK_REACH)?;
-    let fluid = FluidType::of(hit.block)?;
+    let fluid = Fluid::of(hit.block)?;
     if chunks.metadata_at(hit.x, hit.y, hit.z) != 0 {
         return None;
     }
@@ -624,7 +624,7 @@ pub fn pick_up_fluid(
 pub fn place_fluid(
     chunks: &mut WorldChunks,
     hit: BlockHit,
-    fluid: FluidType,
+    fluid: Fluid,
 ) -> Option<(i32, i32, i32, Block, u8)> {
     let (x, y, z) = hit.face.neighbor(hit.x, hit.y, hit.z);
     if y < 0 || y >= CHUNK_HEIGHT as i32 {

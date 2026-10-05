@@ -335,7 +335,7 @@ impl BlockBehavior for Stationary {
                 let flammable = crate::world::block_ticks::NEIGHBORS
                     .into_iter()
                     .any(|offset| is_flammable(world.block(cell + offset)));
-                if flammable && Block::Fire.in_world() {
+                if flammable {
                     world.set_block_notify(cell, Block::Fire);
                     return;
                 }

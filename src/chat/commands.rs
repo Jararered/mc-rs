@@ -279,7 +279,6 @@ fn parse_block_id(raw_text: &str) -> Result<Block, String> {
     (raw <= 96)
         .then(|| Block::from_u8(raw))
         .flatten()
-        .filter(|id| id.in_world())
         .ok_or_else(|| format!("Unsupported in-world block ID: {raw}"))
 }
 

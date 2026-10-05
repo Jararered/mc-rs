@@ -435,9 +435,6 @@ fn decode_blocks(runs: &[(u8, u16)]) -> Option<Vec<Block>> {
     let mut blocks = Vec::with_capacity(total);
     for (value, length) in runs {
         let block = Block::from_u8(*value)?;
-        if !block.in_world() {
-            return None;
-        }
         blocks.resize(blocks.len() + *length as usize, block);
     }
     Some(blocks)

@@ -141,78 +141,6 @@ impl Block {
         }
     }
 
-    /// Blocks the simulation generates, meshes, and saves. Catalog-only values
-    /// such as glass and cake are inventory identities.
-    pub const fn in_world(self) -> bool {
-        matches!(
-            self,
-            Self::Air
-                | Self::Stone
-                | Self::Grass
-                | Self::Dirt
-                | Self::Cobblestone
-                | Self::WoodenPlanks
-                | Self::Bedrock
-                | Self::FlowingWater
-                | Self::Water
-                | Self::FlowingLava
-                | Self::Lava
-                | Self::Sand
-                | Self::Gravel
-                | Self::GoldOre
-                | Self::IronOre
-                | Self::CoalOre
-                | Self::Wood
-                | Self::Leaves
-                | Self::Sponge
-                | Self::LapisOre
-                | Self::LapisBlock
-                | Self::Dispenser
-                | Self::Sandstone
-                | Self::NoteBlock
-                | Self::TallGrass
-                | Self::DeadBush
-                | Self::Wool
-                | Self::Dandelion
-                | Self::Rose
-                | Self::BrownMushroom
-                | Self::RedMushroom
-                | Self::GoldBlock
-                | Self::IronBlock
-                | Self::DoubleStoneSlab
-                | Self::Bricks
-                | Self::Tnt
-                | Self::Bookshelf
-                | Self::MossyCobblestone
-                | Self::Obsidian
-                | Self::Torch
-                | Self::Fire
-                | Self::MobSpawner
-                | Self::Chest
-                | Self::DiamondOre
-                | Self::DiamondBlock
-                | Self::CraftingTable
-                | Self::Crops
-                | Self::Farmland
-                | Self::Furnace
-                | Self::LitFurnace
-                | Self::Ladder
-                | Self::RedstoneOre
-                | Self::LitRedstoneOre
-                | Self::SnowLayer
-                | Self::Ice
-                | Self::Snow
-                | Self::Cactus
-                | Self::Clay
-                | Self::SugarCane
-                | Self::Jukebox
-                | Self::Pumpkin
-                | Self::Netherrack
-                | Self::Glowstone
-                | Self::JackOLantern
-        )
-    }
-
     pub const fn is_torch(self) -> bool {
         matches!(self, Self::Torch)
     }
@@ -419,7 +347,7 @@ impl Block {
             (Self::TallGrass, 0 | 1) => Some((Self::TallGrass, 0)),
             (Self::TallGrass, 2) => Some((Self::TallGrass, 2)),
             (Self::Ladder, 0 | 2) => Some((Self::Ladder, 0)),
-            (block, 0) if block.in_world() => Some((block, 0)),
+            (block, 0) => Some((block, 0)),
             _ => None,
         }
     }

@@ -529,7 +529,7 @@ fn decode_chunk(
     // `removeUnknownBlocks`, widened to the blocks this game simulates.
     let mut known = [false; 256];
     for (id, known) in known.iter_mut().enumerate() {
-        *known = Block::from_u8(id as u8).is_some_and(Block::in_world);
+        *known = Block::from_u8(id as u8).is_some();
     }
 
     let mut blocks = vec![0u8; BLOCKS];

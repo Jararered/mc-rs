@@ -150,9 +150,17 @@ pub struct WorldStreaming {
     /// busy between frames, since finished jobs are only replaced once per
     /// streaming pass.
     max_in_flight: usize,
+    /// The world is unloading: finished jobs still land, but none start.
+    halted: bool,
 }
 
 impl WorldStreaming {
+    /// Stop starting generation, population and first-mesh jobs. Jobs already
+    /// in flight still deliver their chunks.
+    pub fn halt(&mut self) {
+        self.halted = true;
+    }
+
     /// Despawn every chunk mesh and free its mesh assets. Call before dropping
     /// the resource when a world is unloaded, since the entities are only
     /// tracked here.

@@ -497,6 +497,11 @@ fn settings_plugin_loads_and_saves_menu_changes() {
         settings.old_lighting = false;
     }
     app.update();
+    // The write waits for the options to settle, so a dragged slider is one
+    // write; quitting does not wait.
+    assert_eq!(load_settings(&path), initial);
+    app.world_mut().write_message(AppExit::Success);
+    app.update();
 
     let saved = load_settings(&path);
     assert_eq!(saved.render_distance, 9);
@@ -655,6 +660,63 @@ fn opaque_menu_disables_world_cameras_and_playing_restores_them() {
     app.update();
     let mut cameras = app.world_mut().query_filtered::<&Camera, With<Camera3d>>();
     assert!(cameras.iter(app.world()).all(|camera| !camera.is_active));
+}
+
+#[test]
+fn unreadable_settings_json_is_kept_as_a_backup() {
+    let path = temp_settings_path("corrupt-backup");
+    fs::write(&path, "not json").unwrap();
+    load_settings(&path);
+    let backup = game::app::settings::backup_path(&path);
+    assert_eq!(fs::read_to_string(&backup).unwrap(), "not json");
+    let _ = fs::remove_file(path);
+    let _ = fs::remove_file(backup);
+}
+
+#[test]
+fn one_unreadable_field_does_not_reset_the_other_settings() {
+    let path = temp_settings_path("one-bad-field");
+    fs::write(
+        &path,
+        r#"{"graphics":"Cinematic","fov":95,"render_distance":"far","view_bobbing":false,"from_a_newer_build":[1,2]}"#,
+    )
+    .unwrap();
+    let loaded = load_settings(&path);
+    assert_eq!(loaded.graphics, GameSettings::default().graphics);
+    assert_eq!(
+        loaded.render_distance,
+        GameSettings::default().render_distance
+    );
+    assert_eq!(loaded.fov, 95.0);
+    assert!(!loaded.view_bobbing);
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn settings_plugin_saves_after_the_options_settle_and_keeps_the_players_difficulty() {
+    use game::app::settings::ClientDifficulty;
+    use game::app::settings::Difficulty;
+    use game::app::settings::SAVE_DELAY_SECONDS;
+
+    let path = temp_settings_path("debounce");
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins)
+        .add_plugins(SettingsPlugin::new(path.clone()));
+    app.update();
+
+    // A loaded world's difficulty stands in for the player's own option.
+    app.world_mut().resource_mut::<ClientDifficulty>().0 = Some(Difficulty::Easy);
+    app.world_mut().resource_mut::<GameSettings>().difficulty = Difficulty::Peaceful;
+    app.world_mut().resource_mut::<GameSettings>().fov = 100.0;
+    app.update();
+    assert!(!path.exists(), "the write waits for the options to settle");
+
+    std::thread::sleep(std::time::Duration::from_secs_f32(SAVE_DELAY_SECONDS + 0.1));
+    app.update();
+    let saved = load_settings(&path);
+    assert_eq!(saved.fov, 100.0);
+    assert_eq!(saved.difficulty, Difficulty::Easy);
+    let _ = fs::remove_file(path);
 }
 
 #[test]

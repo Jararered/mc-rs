@@ -28,12 +28,25 @@ fn capture_screenshot(
     keys: Res<ButtonInput<KeyCode>>,
     chat: Option<Res<crate::chat::ChatFocus>>,
     mut commands: Commands,
+    mut last: Local<Option<(PathBuf, u32)>>,
 ) {
     if chat.is_some_and(|chat| chat.suppress_controls) || !keys.just_pressed(KeyCode::F2) {
         return;
     }
 
-    let path = screenshot_path(SCREENSHOT_DIR, SystemTime::now());
+    // The name only resolves to a second, and the previous capture may not be
+    // on disk yet, so count the captures that share a name as well.
+    let base = screenshot_path(SCREENSHOT_DIR, SystemTime::now());
+    let mut copy = match last.as_ref() {
+        Some((previous, copy)) if *previous == base => copy + 1,
+        _ => 0,
+    };
+    let mut path = numbered_path(&base, copy);
+    while path.exists() {
+        copy += 1;
+        path = numbered_path(&base, copy);
+    }
+    *last = Some((base, copy));
     if let Some(parent) = path.parent()
         && let Err(error) = fs::create_dir_all(parent)
     {
@@ -56,6 +69,20 @@ pub fn screenshot_path(dir: impl AsRef<Path>, now: SystemTime) -> PathBuf {
         .duration_since(UNIX_EPOCH)
         .map_or(0, |since| since.as_secs());
     dir.as_ref().join(format!("{}.png", timestamp(seconds)))
+}
+
+/// The path for another screenshot in the same second: `copy` 0 is `path`
+/// itself, and later ones gain a `_1`, `_2`, ... suffix before the extension.
+pub fn numbered_path(path: &Path, copy: u32) -> PathBuf {
+    if copy == 0 {
+        return path.to_path_buf();
+    }
+    let stem = path.file_stem().unwrap_or_default().to_string_lossy();
+    let name = match path.extension() {
+        Some(extension) => format!("{stem}_{copy}.{}", extension.to_string_lossy()),
+        None => format!("{stem}_{copy}"),
+    };
+    path.with_file_name(name)
 }
 
 /// Formats Unix seconds as a UTC `YYYY-MM-DD_HH-MM-SS` timestamp.

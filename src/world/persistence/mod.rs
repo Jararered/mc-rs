@@ -472,6 +472,10 @@ impl WorldStorage {
         self.manifest.lock().unwrap().world_time = time;
     }
 
+    pub fn set_difficulty(&self, difficulty: crate::app::settings::Difficulty) {
+        self.manifest.lock().unwrap().difficulty = Some(difficulty);
+    }
+
     pub fn set_weather(&self, weather: &crate::world::weather::WorldWeather) {
         self.manifest.lock().unwrap().weather = weather.clone();
     }
@@ -879,6 +883,8 @@ pub struct WorldPersistence {
     regenerating: bool,
     /// A save was asked for outside the timer, such as by the pause menu.
     save_requested: bool,
+    /// Why the last write failed, until a later write succeeds.
+    save_error: Option<String>,
     timer: Timer,
 }
 
@@ -899,6 +905,7 @@ impl WorldPersistence {
             player_pending: false,
             regenerating: false,
             save_requested: false,
+            save_error: None,
             timer: Timer::from_seconds(autosave_seconds, TimerMode::Repeating),
         }
     }
@@ -919,6 +926,7 @@ impl WorldPersistence {
             player_pending: false,
             regenerating: false,
             save_requested: false,
+            save_error: None,
             timer: Timer::from_seconds(AUTOSAVE_SECONDS, TimerMode::Repeating),
         }
     }
@@ -988,6 +996,12 @@ impl WorldPersistence {
         self.save_requested = true;
     }
 
+    /// Hold the world still ahead of [`Self::request_final_save`], while the
+    /// jobs that still hold chunks finish.
+    pub fn begin_closing(&mut self) {
+        self.closing = true;
+    }
+
     pub fn is_closing(&self) -> bool {
         self.closing
     }
@@ -1007,6 +1021,18 @@ impl WorldPersistence {
             && !self.player_pending
             && self.writer.is_none()
             && !self.has_work()
+    }
+
+    /// True when a chunk is newer in memory than on disk. A drain writes each
+    /// chunk once, so one that changed after its snapshot, or whose write
+    /// failed, is still unsaved when the drain goes idle.
+    pub fn has_unsaved_chunks(&self) -> bool {
+        !self.dirty.is_empty() || !self.pending.is_empty() || !self.retry.is_empty()
+    }
+
+    /// Why the last write failed, if no write has succeeded since.
+    pub fn save_error(&self) -> Option<&str> {
+        self.save_error.as_deref()
     }
 
     /// Regenerate from the world generator instead of loading from disk.
@@ -1075,6 +1101,9 @@ impl WorldPersistence {
             Some(error) => warn!("Failed to save world: {error}"),
             None if outcome.saved > 0 => info!("Saved {} chunks", outcome.saved),
             None => {}
+        }
+        if outcome.error.is_some() || self.retry.is_empty() {
+            self.save_error = outcome.error;
         }
     }
 
@@ -1371,6 +1400,7 @@ fn setup_persistence(
     mut tick: Option<ResMut<crate::world::tick::WorldTick>>,
     mut weather: Option<ResMut<crate::world::weather::WorldWeather>>,
     mut settings: Option<ResMut<crate::app::settings::GameSettings>>,
+    mut client_difficulty: Option<ResMut<crate::app::settings::ClientDifficulty>>,
     mut block_ticks: Option<ResMut<BlockTicks>>,
 ) {
     match WorldStorage::open_latest_or_create(&config.saves_directory, config.seed) {
@@ -1382,6 +1412,7 @@ fn setup_persistence(
             tick.as_deref_mut(),
             weather.as_deref_mut(),
             settings.as_deref_mut(),
+            client_difficulty.as_deref_mut(),
         ),
         Err(error) => {
             warn!("World persistence disabled: {error}");
@@ -1399,6 +1430,7 @@ pub(crate) fn activate_pending_world(
     mut tick: Option<ResMut<crate::world::tick::WorldTick>>,
     mut weather: Option<ResMut<crate::world::weather::WorldWeather>>,
     mut settings: Option<ResMut<crate::app::settings::GameSettings>>,
+    mut client_difficulty: Option<ResMut<crate::app::settings::ClientDifficulty>>,
     mut block_ticks: Option<ResMut<BlockTicks>>,
 ) {
     match pending.0.take() {
@@ -1410,6 +1442,7 @@ pub(crate) fn activate_pending_world(
             tick.as_deref_mut(),
             weather.as_deref_mut(),
             settings.as_deref_mut(),
+            client_difficulty.as_deref_mut(),
         ),
         None => commands.insert_resource(WorldPersistence::disabled()),
     }
@@ -1425,6 +1458,7 @@ fn install_world(
     tick: Option<&mut crate::world::tick::WorldTick>,
     weather: Option<&mut crate::world::weather::WorldWeather>,
     settings: Option<&mut crate::app::settings::GameSettings>,
+    client_difficulty: Option<&mut crate::app::settings::ClientDifficulty>,
 ) {
     let manifest = storage.manifest();
     info!(
@@ -1447,6 +1481,11 @@ fn install_world(
         *weather = manifest.weather;
     }
     if let (Some(settings), Some(difficulty)) = (settings, manifest.difficulty) {
+        // The world's difficulty is the game's while it is loaded; the
+        // player's own option is kept aside for `settings.json`.
+        if let Some(client) = client_difficulty {
+            client.0.get_or_insert(settings.difficulty);
+        }
         settings.difficulty = difficulty;
     }
     commands.insert_resource(WorldPersistence::new(storage, autosave_seconds));
@@ -1497,6 +1536,10 @@ fn flush_persistence(
     mut exit: MessageReader<AppExit>,
     pause: Option<Res<crate::app::state::PauseMenu>>,
     screen: Option<Res<State<crate::app::state::AppScreen>>>,
+    (settings, client_difficulty): (
+        Option<Res<crate::app::settings::GameSettings>>,
+        Option<Res<crate::app::settings::ClientDifficulty>>,
+    ),
 ) {
     let exiting = exit.read().next().is_some();
     persistence.timer.tick(time.delta());
@@ -1515,6 +1558,12 @@ fn flush_persistence(
     {
         if let Some(weather) = weather.as_deref() {
             storage.set_weather(weather);
+        }
+        // A world that records its difficulty follows the settings screen.
+        if let Some(settings) = settings.as_deref()
+            && client_difficulty.is_some_and(|client| client.0.is_some())
+        {
+            storage.set_difficulty(settings.difficulty);
         }
         if let Some(tick) = tick.as_deref() {
             storage.set_world_time(tick.world_time());

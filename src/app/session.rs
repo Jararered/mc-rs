@@ -4,6 +4,12 @@
 //! [`WorldSession::request_load`]; leaving to the title screen calls
 //! [`WorldSession::request_leave`], which saves the world and unloads it.
 //!
+//! Leaving happens in two steps. The world first holds still while the
+//! generation and population jobs in flight hand their chunks back; only then
+//! is the final save requested, so no chunk changes after its snapshot. The
+//! world unloads once nothing is left unsaved, and a save that fails is tried
+//! again rather than thrown away.
+//!
 //! Loading reuses the startup systems that used to run once: the chosen
 //! storage is installed, the spawn area is built, and the player is spawned,
 //! in that order, before the game switches to [`AppScreen::Playing`].
@@ -13,11 +19,14 @@ use std::path::PathBuf;
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 
+use crate::app::settings::ClientDifficulty;
 use crate::app::settings::Difficulty;
+use crate::app::settings::GameSettings;
 use crate::app::state::AppScreen;
 use crate::app::state::PauseMenu;
 use crate::app::state::SettingsReturn;
 use crate::entity::DroppedItem;
+use crate::entity::EntityDiagnostics;
 use crate::entity::explosion::PrimedTnt;
 use crate::entity::falling_block::FallingBlock;
 use crate::entity::mobs::Mob;
@@ -41,6 +50,7 @@ use crate::world::persistence::SaveFormat;
 use crate::world::persistence::WorldPersistence;
 use crate::world::persistence::WorldStorage;
 use crate::world::persistence::activate_pending_world;
+use crate::world::streaming::StreamingDiagnostics;
 use crate::world::streaming::WorldStreaming;
 use crate::world::streaming::setup_streaming;
 use crate::world::weather::WorldWeather;
@@ -66,15 +76,26 @@ enum Phase {
     /// The load chain is installing a world.
     Loading,
     Active,
-    /// Saving before unloading. `true` once the save has been requested.
-    Leaving(bool),
+    /// Unloading: the world holds still while the jobs that own chunks finish.
+    Settling,
+    /// Unloading: the final save is draining.
+    Saving,
 }
+
+/// Seconds between attempts at a final save that could not write everything.
+const SAVE_RETRY_SECONDS: f32 = 2.0;
+
+const SAVING_NOTICE: &str = "Saving world...";
 
 #[derive(Resource, Default)]
 pub struct WorldSession {
     phase: Phase,
     requested: Option<WorldChoice>,
     leave: bool,
+    /// What the world list shows about a save in progress or a failure.
+    notice: Option<String>,
+    /// Seconds until a final save that left chunks unwritten is tried again.
+    retry_in: f32,
 }
 
 impl WorldSession {
@@ -85,7 +106,14 @@ impl WorldSession {
 
     /// A world is loading, saving or unloading, so another cannot start yet.
     pub fn is_busy(&self) -> bool {
-        matches!(self.phase, Phase::Loading | Phase::Leaving(_))
+        matches!(self.phase, Phase::Loading | Phase::Settling | Phase::Saving)
+    }
+
+    /// Why a world cannot be chosen right now, or why the last one did not
+    /// load: a save still running, a save that keeps failing, or a world that
+    /// could not be opened.
+    pub fn notice(&self) -> Option<&str> {
+        self.notice.as_deref()
     }
 
     /// The world waiting to load, if one was requested and has not started.
@@ -96,13 +124,15 @@ impl WorldSession {
     /// Play `choice`, saving and unloading the current world first if needed.
     pub fn request_load(&mut self, choice: WorldChoice) {
         self.requested = Some(choice);
-        self.leave = self.phase == Phase::Active;
+        if !self.is_busy() {
+            self.notice = None;
+        }
     }
 
     /// Save and unload the current world, dropping any pending load.
     pub fn request_leave(&mut self) {
         self.requested = None;
-        self.leave = self.phase == Phase::Active;
+        self.leave = true;
     }
 }
 
@@ -142,6 +172,10 @@ struct WorldState<'w, 's> {
     focus: ResMut<'w, BlockFocus>,
     pause: ResMut<'w, PauseMenu>,
     settings_return: ResMut<'w, SettingsReturn>,
+    settings: Option<ResMut<'w, GameSettings>>,
+    client_difficulty: Option<ResMut<'w, ClientDifficulty>>,
+    streaming_perf: Option<ResMut<'w, StreamingDiagnostics>>,
+    entity_perf: Option<ResMut<'w, EntityDiagnostics>>,
     entities: Query<
         'w,
         's,
@@ -164,35 +198,76 @@ struct WorldState<'w, 's> {
 fn drive_session(
     mut commands: Commands,
     mut session: ResMut<WorldSession>,
+    time: Res<Time<Real>>,
     config: Option<Res<PersistenceConfig>>,
     mut persistence: Option<ResMut<WorldPersistence>>,
     mut streaming: Option<ResMut<WorldStreaming>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut state: WorldState,
 ) {
-    if session.phase == Phase::Active && session.leave {
-        session.leave = false;
-        session.phase = Phase::Leaving(false);
+    // A leave or a different world asked for while one is being played. A
+    // leave asked for with no world loaded has nothing to do.
+    if session.phase == Phase::Active && (session.leave || session.requested.is_some()) {
+        // Nothing may change behind the final save: the clock stops, and no
+        // job starts that would hand a chunk back after its snapshot.
+        if let Some(streaming) = streaming.as_deref_mut() {
+            streaming.halt();
+        }
+        if let Some(persistence) = persistence.as_deref_mut() {
+            persistence.begin_closing();
+        }
+        session.notice = Some(SAVING_NOTICE.to_owned());
+        session.phase = Phase::Settling;
     }
-    if let Phase::Leaving(requested) = session.phase {
-        if !requested {
-            // Write the player, mobs and every dirty chunk before unloading.
-            if let Some(persistence) = persistence.as_deref_mut() {
-                persistence.request_final_save();
-            }
-            session.phase = Phase::Leaving(true);
+    if session.phase != Phase::Loading {
+        session.leave = false;
+    }
+    if session.phase == Phase::Settling {
+        // Generation jobs deliver new chunks and population jobs hold chunks
+        // outside `WorldChunks`, writing into all four when they finish. The
+        // save starts after the last of them so it sees every chunk once.
+        let settled = streaming.as_deref().is_none_or(|streaming| {
+            streaming.generating_job_count() == 0 && streaming.populating_job_count() == 0
+        });
+        if !settled {
             return;
         }
-        let saved = persistence
-            .as_deref()
-            .is_none_or(|persistence| persistence.storage().is_none() || persistence.is_idle());
-        // Population jobs hold chunks outside `WorldChunks`; wait for them so
-        // the save sees every chunk.
-        let settled = streaming
-            .as_deref()
-            .is_none_or(|streaming| streaming.populating_job_count() == 0);
-        if !saved || !settled {
-            return;
+        // Write the player, mobs and every dirty chunk before unloading.
+        if let Some(persistence) = persistence.as_deref_mut() {
+            persistence.request_final_save();
+        }
+        session.retry_in = 0.0;
+        session.phase = Phase::Saving;
+        return;
+    }
+    if session.phase == Phase::Saving {
+        if let Some(persistence) = persistence
+            .as_deref_mut()
+            .filter(|persistence| persistence.storage().is_some())
+        {
+            if !persistence.is_idle() {
+                return;
+            }
+            // A drain writes each chunk once and ends even when a write
+            // failed, so idle alone does not mean the world is on disk.
+            if let Some(error) = persistence.save_error() {
+                // Leave a failing disk alone for a moment between attempts.
+                if session.retry_in <= 0.0 {
+                    session.notice = Some(format!("Could not save the world, retrying: {error}"));
+                    session.retry_in = SAVE_RETRY_SECONDS;
+                } else {
+                    session.retry_in -= time.delta_secs();
+                    if session.retry_in <= 0.0 {
+                        persistence.request_final_save();
+                    }
+                }
+                return;
+            }
+            if persistence.has_unsaved_chunks() {
+                persistence.request_final_save();
+                return;
+            }
+            session.retry_in = 0.0;
         }
         if let Some(streaming) = streaming.as_deref_mut() {
             streaming.despawn_rendered(&mut commands, &mut meshes);
@@ -215,6 +290,21 @@ fn drive_session(
         *state.focus = BlockFocus::default();
         state.pause.open = false;
         *state.settings_return = SettingsReturn::default();
+        // The world's difficulty goes with it.
+        if let Some(client) = state.client_difficulty.as_deref_mut()
+            && let Some(difficulty) = client.0.take()
+            && let Some(settings) = state.settings.as_deref_mut()
+        {
+            settings.difficulty = difficulty;
+        }
+        // The next report should not mix this world's timings into the next.
+        if let Some(perf) = state.streaming_perf.as_deref_mut() {
+            *perf = StreamingDiagnostics::default();
+        }
+        if let Some(perf) = state.entity_perf.as_deref_mut() {
+            *perf = EntityDiagnostics::default();
+        }
+        session.notice = None;
         session.phase = Phase::Empty;
     }
 
@@ -226,6 +316,7 @@ fn drive_session(
     };
     let Some(config) = config else {
         warn!("Cannot load a world without persistence configured");
+        session.notice = Some("Could not open the world: saving is not set up".to_owned());
         return;
     };
     let storage = match choice {
@@ -248,7 +339,10 @@ fn drive_session(
             commands.insert_resource(PendingWorld(Some(storage)));
             session.phase = Phase::Loading;
         }
-        Err(error) => warn!("Could not open the world: {error}"),
+        Err(error) => {
+            warn!("Could not open the world: {error}");
+            session.notice = Some(format!("Could not open the world: {error}"));
+        }
     }
 }
 

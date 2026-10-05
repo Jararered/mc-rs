@@ -104,6 +104,12 @@ impl Difficulty {
     }
 }
 
+/// The player's own difficulty option while a loaded world's recorded
+/// difficulty stands in for it in [`GameSettings`]. `settings.json` keeps this
+/// value, so playing a Peaceful world does not change the option for others.
+#[derive(Resource, Default, Debug)]
+pub struct ClientDifficulty(pub Option<Difficulty>);
+
 #[derive(Resource, Debug, Clone, PartialEq)]
 pub struct GameSettings {
     pub render_distance: i32,
@@ -258,14 +264,26 @@ impl SettingsPlugin {
 
 impl Plugin for SettingsPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(SettingsPath(self.path.clone()))
-            .insert_resource(load_settings(&self.path))
-            .add_systems(Last, save_settings_when_changed);
+        app.insert_resource(SettingsFile {
+            path: self.path.clone(),
+            save_in: None,
+        })
+        .insert_resource(load_settings(&self.path))
+        .init_resource::<ClientDifficulty>()
+        .add_systems(Last, save_settings_when_changed);
     }
 }
 
+/// Seconds the options must stay unchanged before they are written, so a
+/// dragged slider is one write rather than one per frame.
+pub const SAVE_DELAY_SECONDS: f32 = 0.5;
+
 #[derive(Resource)]
-struct SettingsPath(PathBuf);
+struct SettingsFile {
+    path: PathBuf,
+    /// Seconds until unwritten changes are saved.
+    save_in: Option<f32>,
+}
 
 /// On-disk form of the settings menu. Extra JSON fields are ignored so older
 /// clients can still read a newer file, and missing fields use defaults.
@@ -341,22 +359,64 @@ impl From<StoredSettings> for GameSettings {
 }
 
 /// Read `path`, or return defaults when the file is missing or unreadable.
+///
+/// A field this build cannot read, such as an option value a newer build
+/// wrote, falls back to its default without discarding the rest. A file that
+/// is not a JSON object at all is kept beside the original as `.bak`, since the
+/// next change to the options writes over it.
 pub fn load_settings(path: impl AsRef<Path>) -> GameSettings {
     let path = path.as_ref();
-    match fs::read(path) {
-        Ok(bytes) => match serde_json::from_slice::<StoredSettings>(&bytes) {
-            Ok(stored) => GameSettings::from(stored),
-            Err(error) => {
+    let bytes = match fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            if error.kind() != io::ErrorKind::NotFound {
                 warn!("Ignoring unreadable settings {}: {error}", path.display());
-                GameSettings::default()
             }
-        },
-        Err(error) if error.kind() == io::ErrorKind::NotFound => GameSettings::default(),
+            return GameSettings::default();
+        }
+    };
+    match serde_json::from_slice::<serde_json::Map<String, serde_json::Value>>(&bytes) {
+        Ok(fields) => GameSettings::from(read_fields(path, fields)),
         Err(error) => {
             warn!("Ignoring unreadable settings {}: {error}", path.display());
+            let backup = backup_path(path);
+            if let Err(error) = fs::copy(path, &backup) {
+                warn!("Cannot keep a copy at {}: {error}", backup.display());
+            }
             GameSettings::default()
         }
     }
+}
+
+/// Where an unreadable settings file is copied before it is overwritten.
+pub fn backup_path(path: &Path) -> PathBuf {
+    let mut name = path.as_os_str().to_owned();
+    name.push(".bak");
+    PathBuf::from(name)
+}
+
+/// Apply the file's fields one at a time over the defaults, skipping any that
+/// do not decode.
+fn read_fields(path: &Path, fields: serde_json::Map<String, serde_json::Value>) -> StoredSettings {
+    let mut stored = StoredSettings::default();
+    let Ok(serde_json::Value::Object(mut merged)) = serde_json::to_value(&stored) else {
+        return stored;
+    };
+    for (name, value) in fields {
+        // Fields from a newer build have no place here.
+        let Some(previous) = merged.insert(name.clone(), value) else {
+            merged.remove(&name);
+            continue;
+        };
+        match serde_json::from_value(serde_json::Value::Object(merged.clone())) {
+            Ok(read) => stored = read,
+            Err(error) => {
+                warn!("Ignoring `{name}` in {}: {error}", path.display());
+                merged.insert(name, previous);
+            }
+        }
+    }
+    stored
 }
 
 /// Write the current menu options as pretty-printed JSON.
@@ -374,11 +434,31 @@ pub fn save_settings(path: impl AsRef<Path>, settings: &GameSettings) -> io::Res
     fs::rename(&temporary, path)
 }
 
-fn save_settings_when_changed(settings: Res<GameSettings>, path: Res<SettingsPath>) {
-    if !settings.is_changed() || settings.is_added() {
+fn save_settings_when_changed(
+    settings: Res<GameSettings>,
+    client_difficulty: Res<ClientDifficulty>,
+    mut file: ResMut<SettingsFile>,
+    time: Res<Time<Real>>,
+    mut exit: MessageReader<AppExit>,
+) {
+    if settings.is_changed() && !settings.is_added() {
+        file.save_in = Some(SAVE_DELAY_SECONDS);
+    }
+    let exiting = exit.read().next().is_some();
+    let Some(remaining) = file.save_in.as_mut() else {
+        return;
+    };
+    *remaining -= time.delta_secs();
+    if *remaining > 0.0 && !exiting {
         return;
     }
-    if let Err(error) = save_settings(&path.0, &settings) {
-        error!("Cannot save {}: {error}", path.0.display());
+    file.save_in = None;
+    let mut stored = settings.clone();
+    // A loaded world's difficulty belongs to that world.
+    if let Some(difficulty) = client_difficulty.0 {
+        stored.difficulty = difficulty;
+    }
+    if let Err(error) = save_settings(&file.path, &stored) {
+        error!("Cannot save {}: {error}", file.path.display());
     }
 }

@@ -1039,3 +1039,217 @@ fn falling_blocks_and_primed_tnt_round_trip_through_a_chunk_file() {
     let loaded = storage.load_chunk(position).unwrap();
     assert_eq!(loaded.chunk.saved_bodies(), bodies);
 }
+
+/// A headless app that can load and leave worlds the way the title screen
+/// does. The screen is held on the menu, so no player controls run.
+fn session_app(saves: &Path) -> App {
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        AssetPlugin::default(),
+        MeshPlugin,
+        bevy::state::app::StatesPlugin,
+        bevy::input::InputPlugin,
+    ))
+    .init_asset::<Image>()
+    .init_asset::<StandardMaterial>()
+    .init_state::<game::app::state::AppScreen>()
+    .init_resource::<game::app::settings::GameSettings>()
+    .init_resource::<game::app::settings::ClientDifficulty>()
+    .init_resource::<game::entity::particles::block::BlockParticles>()
+    .add_plugins((WorldPlugin, game::rendering::WorldRenderingPlugin))
+    .add_plugins(PersistencePlugin::new(saves.to_path_buf()).deferred())
+    .add_plugins((
+        game::player::PlayerPlugin,
+        game::app::session::SessionPlugin,
+    ));
+    app.update();
+    app
+}
+
+/// Request `choice` and run the load chain, staying on the menu screen.
+fn load_world(app: &mut App, choice: game::app::session::WorldChoice) {
+    use game::app::session::WorldSession;
+    use game::app::state::AppScreen;
+
+    app.world_mut()
+        .resource_mut::<WorldSession>()
+        .request_load(choice);
+    assert!(
+        run_until(app, Duration::from_secs(60), |app| {
+            app.world().resource::<WorldSession>().is_active()
+        }),
+        "the world never finished loading"
+    );
+    app.world_mut()
+        .resource_mut::<NextState<AppScreen>>()
+        .set(AppScreen::Menu);
+}
+
+fn leave_world(app: &mut App) {
+    use game::app::session::WorldSession;
+
+    app.world_mut()
+        .resource_mut::<WorldSession>()
+        .request_leave();
+    assert!(
+        run_until(app, Duration::from_secs(60), |app| {
+            let session = app.world().resource::<WorldSession>();
+            !session.is_active() && !session.is_busy()
+        }),
+        "the world never finished unloading"
+    );
+}
+
+#[test]
+fn leaving_a_world_saves_its_edits_and_unloads_it_before_the_next_load() {
+    use game::app::session::WorldChoice;
+    use game::app::session::WorldSession;
+    use game::app::settings::ClientDifficulty;
+    use game::app::settings::Difficulty;
+    use game::app::settings::GameSettings;
+    use game::world::persistence::SaveFormat;
+
+    let saves = temp_saves("session");
+    let mut app = session_app(&saves);
+    assert!(app.world().get_resource::<WorldPersistence>().is_none());
+
+    load_world(
+        &mut app,
+        WorldChoice::New {
+            name: "Round Trip".to_owned(),
+            seed: 7,
+            difficulty: Difficulty::Peaceful,
+            format: SaveFormat::Binary,
+        },
+    );
+    // The world's difficulty is the game's while it is loaded.
+    assert_eq!(
+        app.world().resource::<GameSettings>().difficulty,
+        Difficulty::Peaceful
+    );
+    assert_eq!(
+        app.world().resource::<ClientDifficulty>().0,
+        Some(Difficulty::Normal)
+    );
+    let root = app
+        .world()
+        .resource::<WorldPersistence>()
+        .storage()
+        .expect("the world should be saved")
+        .root()
+        .to_path_buf();
+
+    app.world_mut()
+        .resource_mut::<WorldChunks>()
+        .get_mut(ChunkPosition::ZERO)
+        .expect("the spawn chunk should be loaded")
+        .chunk
+        .set(4, 120, 4, Block::GoldBlock);
+    app.world_mut()
+        .resource_mut::<WorldPersistence>()
+        .mark_dirty(ChunkPosition::ZERO);
+    // The settings screen changes the loaded world's difficulty.
+    app.world_mut().resource_mut::<GameSettings>().difficulty = Difficulty::Hard;
+
+    leave_world(&mut app);
+    app.update();
+    assert!(app.world().get_resource::<WorldPersistence>().is_none());
+    assert!(
+        app.world()
+            .get_resource::<game::world::streaming::WorldStreaming>()
+            .is_none()
+    );
+    assert_eq!(app.world().resource::<WorldChunks>().len(), 0);
+    assert!(
+        app.world_mut()
+            .query::<&Player>()
+            .iter(app.world())
+            .next()
+            .is_none()
+    );
+    assert_eq!(app.world().resource::<WorldSession>().notice(), None);
+    // The player's own option comes back, and the world kept its own.
+    assert_eq!(
+        app.world().resource::<GameSettings>().difficulty,
+        Difficulty::Normal
+    );
+    assert_eq!(app.world().resource::<ClientDifficulty>().0, None);
+    {
+        let storage = WorldStorage::open(root.clone()).unwrap();
+        assert_eq!(storage.manifest().difficulty, Some(Difficulty::Hard));
+        let saved = storage
+            .load_chunk(ChunkPosition::ZERO)
+            .expect("the edited chunk should be on disk");
+        assert_eq!(saved.chunk.get(4, 120, 4), Some(Block::GoldBlock));
+    }
+
+    load_world(&mut app, WorldChoice::Existing(root));
+    assert_eq!(
+        app.world().resource::<GameSettings>().difficulty,
+        Difficulty::Hard
+    );
+    let chunks = app.world().resource::<WorldChunks>();
+    assert_eq!(
+        chunks
+            .get(ChunkPosition::ZERO)
+            .expect("the spawn chunk should load again")
+            .chunk
+            .get(4, 120, 4),
+        Some(Block::GoldBlock)
+    );
+    leave_world(&mut app);
+}
+
+#[test]
+fn a_world_that_cannot_be_opened_leaves_a_notice_and_no_session() {
+    use game::app::session::WorldChoice;
+    use game::app::session::WorldSession;
+
+    let saves = temp_saves("session-missing");
+    let mut app = session_app(&saves);
+    app.world_mut()
+        .resource_mut::<WorldSession>()
+        .request_load(WorldChoice::Existing(saves.join("no-such-world")));
+    app.update();
+
+    let session = app.world().resource::<WorldSession>();
+    assert!(!session.is_active() && !session.is_busy());
+    assert!(
+        session
+            .notice()
+            .is_some_and(|notice| notice.starts_with("Could not open the world")),
+        "got {:?}",
+        session.notice()
+    );
+    assert!(app.world().get_resource::<WorldPersistence>().is_none());
+}
+
+#[test]
+fn a_chunk_changed_after_its_snapshot_still_counts_as_unsaved() {
+    let saves = temp_saves("unsaved-after-drain");
+    let mut app = app_with(PersistencePlugin::new(saves).with_autosave(60.0));
+    app.insert_resource(game::app::state::PauseMenu { open: true });
+    run_until_spawn_chunk(&mut app);
+
+    app.world_mut()
+        .resource_mut::<WorldPersistence>()
+        .request_save();
+    app.update();
+    // Changed again after this drain already took its snapshot.
+    app.world_mut()
+        .resource_mut::<WorldPersistence>()
+        .mark_dirty(ChunkPosition::ZERO);
+    assert!(
+        run_until(&mut app, Duration::from_secs(30), |app| {
+            app.world().resource::<WorldPersistence>().is_idle()
+        }),
+        "the drain never finished"
+    );
+    assert!(
+        app.world()
+            .resource::<WorldPersistence>()
+            .has_unsaved_chunks(),
+        "a drain writes each chunk once, so the later change is still owed"
+    );
+}

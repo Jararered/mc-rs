@@ -2,6 +2,7 @@ use std::time::Duration;
 use std::time::UNIX_EPOCH;
 
 use game::app::screenshot::SCREENSHOT_DIR;
+use game::app::screenshot::numbered_path;
 use game::app::screenshot::screenshot_path;
 use game::app::screenshot::timestamp;
 
@@ -21,5 +22,19 @@ fn screenshot_path_uses_directory_and_png_extension() {
     assert_eq!(
         path,
         std::path::Path::new("screenshots").join("2001-09-09_01-46-40.png")
+    );
+}
+
+#[test]
+fn screenshots_in_the_same_second_get_numbered_names() {
+    let path = std::path::Path::new("screenshots").join("2001-09-09_01-46-40.png");
+    assert_eq!(numbered_path(&path, 0), path);
+    assert_eq!(
+        numbered_path(&path, 1),
+        std::path::Path::new("screenshots").join("2001-09-09_01-46-40_1.png")
+    );
+    assert_eq!(
+        numbered_path(&path, 12),
+        std::path::Path::new("screenshots").join("2001-09-09_01-46-40_12.png")
     );
 }

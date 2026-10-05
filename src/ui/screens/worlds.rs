@@ -57,7 +57,8 @@ impl Plugin for WorldsPlugin {
                 (right_click_world, rebuild_on_delete_change)
                     .chain()
                     .run_if(in_state(AppScreen::WorldSelect)),
-            );
+            )
+            .add_systems(Update, refresh_session_notice.run_if(on_world_screen));
     }
 }
 
@@ -75,6 +76,44 @@ pub(super) struct WorldList(Vec<WorldSummary>);
 pub(super) struct DeleteWorld {
     target: Option<usize>,
     confirming: bool,
+}
+
+/// The line that says why a world cannot be chosen yet or did not load.
+#[derive(Component)]
+struct SessionNotice;
+
+fn spawn_session_notice(
+    parent: &mut bevy::ecs::hierarchy::ChildSpawnerCommands,
+    textures: &MenuTextures,
+) {
+    parent.spawn((
+        SessionNotice,
+        Text::default(),
+        menu_font(textures, 14.0),
+        TextColor(Color::srgb(1.0, 0.85, 0.45)),
+        Node {
+            flex_shrink: 0.0,
+            display: Display::None,
+            ..default()
+        },
+    ));
+}
+
+fn refresh_session_notice(
+    session: Res<WorldSession>,
+    mut notices: Query<(&mut Text, &mut Node), With<SessionNotice>>,
+) {
+    let notice = session.notice().unwrap_or_default();
+    for (mut text, mut node) in &mut notices {
+        if text.0 != notice {
+            text.0 = notice.to_owned();
+            node.display = if notice.is_empty() {
+                Display::None
+            } else {
+                Display::Flex
+            };
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -206,6 +245,7 @@ pub(super) fn spawn_world_select(
                         }
                     }
                 });
+            spawn_session_notice(parent, textures);
             spawn_button(
                 parent,
                 textures,
@@ -391,6 +431,7 @@ pub(super) fn spawn_new_world(
             height: px(16),
             ..default()
         });
+        spawn_session_notice(parent, textures);
         spawn_button(
             parent,
             textures,

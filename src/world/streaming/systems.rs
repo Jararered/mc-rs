@@ -187,6 +187,7 @@ pub(crate) fn setup_streaming(
         desired_radius: 0,
         discovery_dirty: true,
         max_in_flight,
+        halted: false,
     });
 }
 
@@ -499,7 +500,7 @@ pub(crate) fn stream_chunks(
         }
     }
 
-    if screen.is_some_and(|state| *state.get() != AppScreen::Playing) {
+    if streaming.halted || screen.is_some_and(|state| *state.get() != AppScreen::Playing) {
         return;
     }
 

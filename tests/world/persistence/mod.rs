@@ -13,7 +13,7 @@ use bevy::asset::AssetPlugin;
 use bevy::mesh::MeshPlugin;
 use bevy::prelude::*;
 use game::block::blocks::Block;
-use game::block::direction::HorizontalFacing;
+use game::block::direction::Direction;
 use game::entity::mobs::Mob;
 use game::entity::mobs::MobRecord;
 use game::entity::mobs::MobSpawner;
@@ -189,10 +189,10 @@ fn chunk_round_trips_through_a_chunk_file() {
     let position = ChunkPosition { x: -1, z: 2 };
     let mut generated = OverworldGenerator::new(0).generate(position);
     for (x, facing) in [
-        (1, HorizontalFacing::North),
-        (2, HorizontalFacing::East),
-        (3, HorizontalFacing::South),
-        (4, HorizontalFacing::West),
+        (1, Direction::North),
+        (2, Direction::East),
+        (3, Direction::South),
+        (4, Direction::West),
     ] {
         generated.chunk.set_with_metadata(
             x,
@@ -207,10 +207,10 @@ fn chunk_round_trips_through_a_chunk_file() {
     let loaded = storage.load_chunk(position).expect("chunk should load");
     assert_same_blocks(&loaded.chunk, &generated.chunk);
     for (x, facing) in [
-        (1, HorizontalFacing::North),
-        (2, HorizontalFacing::East),
-        (3, HorizontalFacing::South),
-        (4, HorizontalFacing::West),
+        (1, Direction::North),
+        (2, Direction::East),
+        (3, Direction::South),
+        (4, Direction::West),
     ] {
         assert_eq!(loaded.chunk.get(x, 70, 1), Some(Block::Pumpkin));
         assert_eq!(

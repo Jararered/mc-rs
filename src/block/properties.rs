@@ -1,7 +1,7 @@
 //! Calculations involving neighboring blocks, geometry, or mining context.
 
 use super::blocks::Block;
-use super::direction::HorizontalFacing;
+use super::direction::Direction;
 
 /// `BlockCactus.canBlockStay`: cactus may grow on sand or another cactus,
 /// provided each horizontal neighbour has a non-solid material.
@@ -36,27 +36,27 @@ const TORCH_TILT: f32 = 0.55;
 
 /// Rotate the floor torch's local geometry into its wall pose. `facing` is
 /// the side the torch hangs on; `None` is a torch standing on the floor.
-pub fn torch_point(facing: Option<HorizontalFacing>, point: [f32; 3]) -> [f32; 3] {
+pub fn torch_point(facing: Option<Direction>, point: [f32; 3]) -> [f32; 3] {
     let [x, y, z] = point;
     let sin = TORCH_TILT;
     let cos = (1.0 - sin * sin).sqrt();
     match facing {
-        Some(HorizontalFacing::West) => [
+        Some(Direction::West) => [
             -0.04 + (x - 0.5) * cos + y * sin,
             0.34 - (x - 0.5) * sin + y * cos,
             z,
         ],
-        Some(HorizontalFacing::East) => [
+        Some(Direction::East) => [
             1.04 + (x - 0.5) * cos - y * sin,
             0.34 + (x - 0.5) * sin + y * cos,
             z,
         ],
-        Some(HorizontalFacing::North) => [
+        Some(Direction::North) => [
             x,
             0.34 - (z - 0.5) * sin + y * cos,
             -0.04 + (z - 0.5) * cos + y * sin,
         ],
-        Some(HorizontalFacing::South) => [
+        Some(Direction::South) => [
             x,
             0.34 + (z - 0.5) * sin + y * cos,
             1.04 + (z - 0.5) * cos - y * sin,
@@ -65,20 +65,20 @@ pub fn torch_point(facing: Option<HorizontalFacing>, point: [f32; 3]) -> [f32; 3
     }
 }
 
-pub fn torch_normal(facing: Option<HorizontalFacing>, normal: [f32; 3]) -> [f32; 3] {
+pub fn torch_normal(facing: Option<Direction>, normal: [f32; 3]) -> [f32; 3] {
     let [x, y, z] = normal;
     let sin = TORCH_TILT;
     let cos = (1.0 - sin * sin).sqrt();
     match facing {
-        Some(HorizontalFacing::West) => [x * cos + y * sin, -x * sin + y * cos, z],
-        Some(HorizontalFacing::East) => [x * cos - y * sin, x * sin + y * cos, z],
-        Some(HorizontalFacing::North) => [x, -z * sin + y * cos, z * cos + y * sin],
-        Some(HorizontalFacing::South) => [x, z * sin + y * cos, z * cos - y * sin],
+        Some(Direction::West) => [x * cos + y * sin, -x * sin + y * cos, z],
+        Some(Direction::East) => [x * cos - y * sin, x * sin + y * cos, z],
+        Some(Direction::North) => [x, -z * sin + y * cos, z * cos + y * sin],
+        Some(Direction::South) => [x, z * sin + y * cos, z * cos - y * sin],
         None => normal,
     }
 }
 
-pub(crate) fn torch_selection_bounds(facing: Option<HorizontalFacing>) -> ([f32; 3], [f32; 3]) {
+pub(crate) fn torch_selection_bounds(facing: Option<Direction>) -> ([f32; 3], [f32; 3]) {
     let mut min = [f32::INFINITY; 3];
     let mut max = [f32::NEG_INFINITY; 3];
     for x in [0.4, 0.6] {

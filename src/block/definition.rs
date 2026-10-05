@@ -4,7 +4,7 @@
 //! [`super::direction`]).
 
 use super::blocks::Block;
-use super::direction::HorizontalFacing;
+use super::direction::Direction;
 use super::properties::torch_selection_bounds;
 use std::sync::LazyLock;
 
@@ -225,10 +225,10 @@ pub(crate) fn oriented_bounds(block: Block, metadata: u8) -> BlockBounds {
     let facing = block.facing(metadata);
     match block {
         Block::Ladder => match facing {
-            Some(HorizontalFacing::North) => ([0.0, 0.0, 0.0], [1.0, 1.0, 0.125]),
-            Some(HorizontalFacing::South) => ([0.0, 0.0, 0.875], [1.0, 1.0, 1.0]),
-            Some(HorizontalFacing::East) => ([0.875, 0.0, 0.0], [1.0, 1.0, 1.0]),
-            Some(HorizontalFacing::West) => ([0.0, 0.0, 0.0], [0.125, 1.0, 1.0]),
+            Some(Direction::North) => ([0.0, 0.0, 0.0], [1.0, 1.0, 0.125]),
+            Some(Direction::South) => ([0.0, 0.0, 0.875], [1.0, 1.0, 1.0]),
+            Some(Direction::East) => ([0.875, 0.0, 0.0], [1.0, 1.0, 1.0]),
+            Some(Direction::West) => ([0.0, 0.0, 0.0], [0.125, 1.0, 1.0]),
             None => BlockProperties::FULL_BOUNDS,
         },
         _ => torch_selection_bounds(facing),

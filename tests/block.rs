@@ -12,7 +12,7 @@ use game::block::blocks::Block;
 use game::block::blocks::species;
 use game::block::definition;
 use game::block::definition::BlockProperties;
-use game::block::direction::HorizontalFacing;
+use game::block::direction::Direction;
 
 /// Edge length of a single block, in world units.
 const BLOCK_SIZE: f32 = 1.0;
@@ -160,7 +160,7 @@ fn facing_metadata_round_trips_for_every_oriented_block() {
         Block::Chest,
         Block::Pumpkin,
     ] {
-        for facing in HorizontalFacing::ALL {
+        for facing in Direction::ALL {
             let metadata = block.facing_metadata(facing);
             assert!(metadata <= 5, "{block:?} {facing:?}");
             assert_eq!(block.facing(metadata), Some(facing), "{block:?} {facing:?}");
@@ -172,9 +172,9 @@ fn facing_metadata_round_trips_for_every_oriented_block() {
     assert_eq!(Block::Torch.facing(5), None);
     assert_eq!(Block::Ladder.facing(0), None);
     assert_eq!(Block::Stone.facing(3), None);
-    assert_eq!(Block::Torch.facing_metadata(HorizontalFacing::West), 1);
-    assert_eq!(Block::Ladder.facing_metadata(HorizontalFacing::South), 2);
-    assert_eq!(Block::Furnace.facing_metadata(HorizontalFacing::North), 2);
+    assert_eq!(Block::Torch.facing_metadata(Direction::West), 1);
+    assert_eq!(Block::Ladder.facing_metadata(Direction::South), 2);
+    assert_eq!(Block::Furnace.facing_metadata(Direction::North), 2);
     // A torch or ladder hangs toward the side its metadata names.
     assert_eq!(Block::Torch.support_offset(1), Some([-1, 0, 0]));
     assert_eq!(Block::Ladder.support_offset(3), Some([0, 0, -1]));
@@ -182,7 +182,7 @@ fn facing_metadata_round_trips_for_every_oriented_block() {
 
 #[test]
 fn oriented_bounds_follow_metadata() {
-    let west = Block::Ladder.facing_metadata(HorizontalFacing::West);
+    let west = Block::Ladder.facing_metadata(Direction::West);
     assert_eq!(
         Block::Ladder.collision_bounds_for(west),
         Some(([0.0, 0.0, 0.0], [0.125, 1.0, 1.0]))
@@ -192,8 +192,7 @@ fn oriented_bounds_follow_metadata() {
         Block::Ladder.collision_bounds_for(west).unwrap()
     );
     let floor = Block::Torch.selection_bounds_for(0);
-    let wall =
-        Block::Torch.selection_bounds_for(Block::Torch.facing_metadata(HorizontalFacing::East));
+    let wall = Block::Torch.selection_bounds_for(Block::Torch.facing_metadata(Direction::East));
     assert_ne!(floor, wall);
     assert_eq!(Block::Torch.collision_bounds_for(1), None);
 }

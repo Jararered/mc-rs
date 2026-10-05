@@ -1,6 +1,6 @@
 use bevy::prelude::Vec3;
 use game::block::blocks::Block;
-use game::block::direction::HorizontalFacing;
+use game::block::direction::Direction;
 use game::entity::EntitySize;
 use game::entity::drops::blocks::DropRoll;
 use game::entity::drops::blocks::natural_drops;
@@ -252,7 +252,7 @@ fn break_drops_preserve_wood_species_and_clear_torch_facing() {
     assert_eq!(
         natural_drops_with_metadata(
             Block::Torch,
-            Block::Torch.facing_metadata(HorizontalFacing::West),
+            Block::Torch.facing_metadata(Direction::West),
             &mut Rolls {
                 values: &[],
                 index: 0
@@ -408,7 +408,7 @@ fn dropped_blocks_use_the_world_cube() {
 
 #[test]
 fn dropped_ladder_uses_the_flat_item_sprite() {
-    let west = Block::Ladder.facing_metadata(HorizontalFacing::West);
+    let west = Block::Ladder.facing_metadata(Direction::West);
     let ladder = ItemStack::from_block_state(Block::Ladder, west, 1).unwrap();
     assert_eq!(ladder.runtime_block(), Some((Block::Ladder, 0)));
     assert_eq!(dropped_block_model(ladder), None);

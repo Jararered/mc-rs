@@ -1,5 +1,5 @@
 use game::block::blocks::Block;
-use game::block::direction::HorizontalFacing;
+use game::block::direction::Direction;
 use game::inventory::Hotbar;
 use game::item::Item;
 use game::item::ItemData;
@@ -199,7 +199,7 @@ fn species_survive_stacks_but_orientation_does_not() {
     // A leaf's decay flag is not part of the stack.
     let flagged = ItemStack::from_block_state(Block::Leaves, 1 | 8, 4).unwrap();
     assert_eq!(flagged.data(), 1);
-    let east = Block::Torch.facing_metadata(HorizontalFacing::East);
+    let east = Block::Torch.facing_metadata(Direction::East);
     let torch = ItemStack::from_block_state(Block::Torch, east, 4).unwrap();
     assert_eq!(torch.item(), Item::from_block(Block::Torch).unwrap());
     assert_eq!(torch.data(), 0);

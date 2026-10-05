@@ -9,7 +9,7 @@ use bevy::window::CursorOptions;
 use bevy::window::PrimaryWindow;
 
 use crate::block::blocks::Block;
-use crate::block::direction::HorizontalFacing;
+use crate::block::direction::Direction;
 use crate::block::fluids::FluidType;
 use crate::block::fluids::is_water;
 use crate::block::properties::cactus_can_stay;
@@ -741,7 +741,7 @@ fn apply_break(
 fn attached_blocks(chunks: &WorldChunks, hit: BlockHit) -> Vec<(i32, i32, i32, Block, u8)> {
     // A torch on top has no facing; one beside the block hangs on its side.
     let mut attached = Vec::new();
-    let mut push = |dx: i32, dy: i32, dz: i32, block: Block, facing: Option<HorizontalFacing>| {
+    let mut push = |dx: i32, dy: i32, dz: i32, block: Block, facing: Option<Direction>| {
         let (x, y, z) = (hit.x + dx, hit.y + dy, hit.z + dz);
         if chunks.block_at(x, y, z) != Some(block) {
             return;
@@ -752,15 +752,15 @@ fn attached_blocks(chunks: &WorldChunks, hit: BlockHit) -> Vec<(i32, i32, i32, B
         }
     };
     push(0, 1, 0, Block::Torch, None);
-    for side in HorizontalFacing::ALL {
+    for side in Direction::ALL {
         // The torch or ladder at `side` of the block names the block as its
         // support, which lies on the opposite side of the attached cell.
         let [dx, dy, dz] = side.offset();
         let facing = match side {
-            HorizontalFacing::North => HorizontalFacing::South,
-            HorizontalFacing::South => HorizontalFacing::North,
-            HorizontalFacing::East => HorizontalFacing::West,
-            HorizontalFacing::West => HorizontalFacing::East,
+            Direction::North => Direction::South,
+            Direction::South => Direction::North,
+            Direction::East => Direction::West,
+            Direction::West => Direction::East,
         };
         push(dx, dy, dz, Block::Torch, Some(facing));
         push(dx, dy, dz, Block::Ladder, Some(facing));
@@ -802,7 +802,7 @@ pub fn place_selected_block(
     player: Aabb,
     selected: Block,
 ) -> bool {
-    place_selected_block_facing(chunks, hit, player, selected, 0, HorizontalFacing::South)
+    place_selected_block_facing(chunks, hit, player, selected, 0, Direction::South)
 }
 
 pub fn place_selected_block_facing(
@@ -811,7 +811,7 @@ pub fn place_selected_block_facing(
     player: Aabb,
     selected: Block,
     species: u8,
-    front: HorizontalFacing,
+    front: Direction,
 ) -> bool {
     let (x, y, z) = hit.face.neighbor(hit.x, hit.y, hit.z);
     if y < 0 || y >= CHUNK_HEIGHT as i32 {
@@ -883,10 +883,10 @@ pub fn place_selected_block_facing(
             let support = match hit.face {
                 BlockFace::Up => None,
                 BlockFace::Down => return false,
-                BlockFace::West => Some(HorizontalFacing::East),
-                BlockFace::East => Some(HorizontalFacing::West),
-                BlockFace::North => Some(HorizontalFacing::South),
-                BlockFace::South => Some(HorizontalFacing::North),
+                BlockFace::West => Some(Direction::East),
+                BlockFace::East => Some(Direction::West),
+                BlockFace::North => Some(Direction::South),
+                BlockFace::South => Some(Direction::North),
             };
             (
                 selected,
@@ -924,8 +924,8 @@ fn ladder_facing(
     z: i32,
     hit_face: BlockFace,
     hit_block: Block,
-) -> Option<HorizontalFacing> {
-    let support_at = |facing: HorizontalFacing| {
+) -> Option<Direction> {
+    let support_at = |facing: Direction| {
         let [dx, dy, dz] = facing.offset();
         chunks
             .block_at(x + dx, y + dy, z + dz)
@@ -934,19 +934,19 @@ fn ladder_facing(
     };
 
     let clicked_wall = match hit_face {
-        BlockFace::West if hit_block.is_opaque_cube() => Some(HorizontalFacing::East),
-        BlockFace::East if hit_block.is_opaque_cube() => Some(HorizontalFacing::West),
-        BlockFace::North if hit_block.is_opaque_cube() => Some(HorizontalFacing::South),
-        BlockFace::South if hit_block.is_opaque_cube() => Some(HorizontalFacing::North),
+        BlockFace::West if hit_block.is_opaque_cube() => Some(Direction::East),
+        BlockFace::East if hit_block.is_opaque_cube() => Some(Direction::West),
+        BlockFace::North if hit_block.is_opaque_cube() => Some(Direction::South),
+        BlockFace::South if hit_block.is_opaque_cube() => Some(Direction::North),
         _ => None,
     };
     clicked_wall
         .and_then(support_at)
         // Beta's onBlockPlaced fallback checks +Z, -Z, +X, -X.
-        .or_else(|| support_at(HorizontalFacing::South))
-        .or_else(|| support_at(HorizontalFacing::North))
-        .or_else(|| support_at(HorizontalFacing::East))
-        .or_else(|| support_at(HorizontalFacing::West))
+        .or_else(|| support_at(Direction::South))
+        .or_else(|| support_at(Direction::North))
+        .or_else(|| support_at(Direction::East))
+        .or_else(|| support_at(Direction::West))
 }
 
 fn chest_can_place_at(chunks: &WorldChunks, x: i32, y: i32, z: i32) -> bool {
@@ -964,18 +964,18 @@ fn chest_can_place_at(chunks: &WorldChunks, x: i32, y: i32, z: i32) -> bool {
     }
 }
 
-fn furnace_facing_toward_player(player_forward: Vec3) -> HorizontalFacing {
+fn furnace_facing_toward_player(player_forward: Vec3) -> Direction {
     let toward_player = Vec2::new(-player_forward.x, -player_forward.z);
     if toward_player.x.abs() > toward_player.y.abs() {
         if toward_player.x >= 0.0 {
-            HorizontalFacing::East
+            Direction::East
         } else {
-            HorizontalFacing::West
+            Direction::West
         }
     } else if toward_player.y >= 0.0 {
-        HorizontalFacing::South
+        Direction::South
     } else {
-        HorizontalFacing::North
+        Direction::North
     }
 }
 

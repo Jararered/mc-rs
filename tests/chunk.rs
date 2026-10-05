@@ -1,5 +1,5 @@
 use game::block::blocks::Block;
-use game::block::direction::HorizontalFacing;
+use game::block::direction::Direction;
 use game::rendering::meshing::BlockGeometry;
 use game::rendering::meshing::BlockLighting;
 use game::rendering::meshing::BlockVertex;
@@ -750,7 +750,7 @@ fn ladders_transmit_light_and_do_not_raise_the_surface_heightmap() {
         20,
         4,
         Block::Ladder,
-        Block::Ladder.facing_metadata(HorizontalFacing::West),
+        Block::Ladder.facing_metadata(Direction::West),
     );
     assert_eq!(light_opacity(Block::Ladder), 0);
     assert_eq!(Heightmap::from_chunk(&chunk).get(3, 4), 0);
@@ -829,7 +829,7 @@ fn ladder_mesh_uses_beta_tile_and_a_wall_plane() {
         5,
         7,
         Block::Ladder,
-        Block::Ladder.facing_metadata(HorizontalFacing::West),
+        Block::Ladder.facing_metadata(Direction::West),
     );
     let meshes = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), false);
     let positions = meshes.masked.positions();
@@ -855,10 +855,10 @@ fn wall_torch_rotates_the_floor_post_without_tapering_or_flattening_its_cap() {
         ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
     };
     for (facing, tilted_axis, sign) in [
-        (HorizontalFacing::West, 0, 1.0),
-        (HorizontalFacing::East, 0, -1.0),
-        (HorizontalFacing::North, 2, 1.0),
-        (HorizontalFacing::South, 2, -1.0),
+        (Direction::West, 0, 1.0),
+        (Direction::East, 0, -1.0),
+        (Direction::North, 2, 1.0),
+        (Direction::South, 2, -1.0),
     ] {
         let mut chunk = Chunk::new();
         chunk.set_with_metadata(8, 40, 8, Block::Torch, Block::Torch.facing_metadata(facing));

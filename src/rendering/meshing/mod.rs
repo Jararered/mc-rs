@@ -4,7 +4,7 @@ use bevy::prelude::Color;
 
 use crate::block::blocks::Block;
 use crate::block::blocks::species;
-use crate::block::direction::HorizontalFacing;
+use crate::block::direction::Direction;
 use crate::block::fluids::FluidType;
 use crate::block::fluids::corner_height;
 use crate::block::fluids::flow_vector;
@@ -1597,7 +1597,7 @@ fn double_chest_tile(
     // The atlas stores each long double-chest face as two adjacent tiles.
     // Keep the halves in the same left-to-right order when viewed from front.
     let first_half = pair_direction[0] > 0 || pair_direction[2] > 0;
-    let first_is_left = matches!(facing, HorizontalFacing::North | HorizontalFacing::East);
+    let first_is_left = matches!(facing, Direction::North | Direction::East);
     let left_half = first_half == first_is_left;
     let tile_x = if left_half { 9 } else { 10 };
     let tile_y = if face == front { 2 } else { 3 };

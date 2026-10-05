@@ -12,7 +12,7 @@ use flate2::read::GzDecoder;
 use flate2::read::ZlibDecoder;
 use game::app::settings::Difficulty;
 use game::block::blocks::Block;
-use game::block::direction::HorizontalFacing;
+use game::block::direction::Direction;
 use game::entity::mobs::Mob;
 use game::entity::mobs::MobRecord;
 use game::entity::mobs::MobSpawner;
@@ -111,7 +111,7 @@ fn busy_chunk(position: ChunkPosition) -> GeneratedChunk {
         70,
         1,
         Block::Pumpkin,
-        Block::Pumpkin.facing_metadata(HorizontalFacing::East),
+        Block::Pumpkin.facing_metadata(Direction::East),
     );
 
     chunk.set(5, 71, 5, Block::Chest);

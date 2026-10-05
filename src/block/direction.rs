@@ -6,7 +6,7 @@ use super::blocks::Block;
 /// presented as the front (furnace, chest, pumpkin) or the side holding the
 /// block up (torch, ladder).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-pub enum HorizontalFacing {
+pub enum Direction {
     #[default]
     North,
     East,
@@ -14,7 +14,7 @@ pub enum HorizontalFacing {
     West,
 }
 
-impl HorizontalFacing {
+impl Direction {
     pub const ALL: [Self; 4] = [Self::North, Self::East, Self::South, Self::West];
 
     /// The offset from a cell to its neighbor on this side.
@@ -42,8 +42,8 @@ impl Block {
     /// The orientation held in `metadata`, for blocks that have one. `None`
     /// for other blocks, a torch standing on the floor, and an unattached
     /// ladder. Furnaces, chests, and pumpkins always face somewhere.
-    pub const fn facing(self, metadata: u8) -> Option<HorizontalFacing> {
-        use HorizontalFacing::*;
+    pub const fn facing(self, metadata: u8) -> Option<Direction> {
+        use Direction::*;
         match (self, metadata & 15) {
             // Beta's front-face values: 2 north, 3 south, 4 west, 5 east.
             (Self::Furnace | Self::LitFurnace | Self::Chest, 3) => Some(South),
@@ -71,8 +71,8 @@ impl Block {
 
     /// The metadata that makes this block face `facing`; the inverse of
     /// [`Self::facing`]. Blocks without an orientation return 0.
-    pub const fn facing_metadata(self, facing: HorizontalFacing) -> u8 {
-        use HorizontalFacing::*;
+    pub const fn facing_metadata(self, facing: Direction) -> u8 {
+        use Direction::*;
         match (self, facing) {
             (Self::Furnace | Self::LitFurnace | Self::Chest, North) => 2,
             (Self::Furnace | Self::LitFurnace | Self::Chest, South) => 3,

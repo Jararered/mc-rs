@@ -1,14 +1,14 @@
 use game::block::blocks::Block;
-use game::block::direction::HorizontalFacing;
+use game::block::direction::Direction;
 use game::rendering::textures::block_tile;
 
 #[test]
 fn pumpkin_metadata_preserves_beta_front_directions() {
     let expected = [
-        (HorizontalFacing::West, 3),
-        (HorizontalFacing::South, 4),
-        (HorizontalFacing::East, 2),
-        (HorizontalFacing::North, 5),
+        (Direction::West, 3),
+        (Direction::South, 4),
+        (Direction::East, 2),
+        (Direction::North, 5),
     ];
     let block = Block::Pumpkin;
     assert!(block.in_world());

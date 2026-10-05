@@ -3,7 +3,7 @@ use std::time::Duration;
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
 use game::block::blocks::Block;
-use game::block::direction::HorizontalFacing;
+use game::block::direction::Direction;
 use game::entity::CollisionState;
 use game::entity::EntitySize;
 use game::entity::Gravity;
@@ -111,11 +111,11 @@ fn air_and_water_do_not_block_movement() {
 #[test]
 fn ladder_collision_is_a_thin_plate_on_the_supporting_wall() {
     assert_eq!(
-        Block::Ladder.collision_bounds_for(Block::Ladder.facing_metadata(HorizontalFacing::West)),
+        Block::Ladder.collision_bounds_for(Block::Ladder.facing_metadata(Direction::West)),
         Some(([0.0, 0.0, 0.0], [0.125, 1.0, 1.0]))
     );
     assert_eq!(
-        Block::Ladder.collision_bounds_for(Block::Ladder.facing_metadata(HorizontalFacing::South)),
+        Block::Ladder.collision_bounds_for(Block::Ladder.facing_metadata(Direction::South)),
         Some(([0.0, 0.0, 0.875], [1.0, 1.0, 1.0]))
     );
 }
@@ -130,7 +130,7 @@ fn horizontal_collision_with_a_ladder_starts_a_climb() {
             y,
             8,
             Block::Ladder,
-            Block::Ladder.facing_metadata(HorizontalFacing::West),
+            Block::Ladder.facing_metadata(Direction::West),
         );
     }
     let mut chunks = WorldChunks::default();

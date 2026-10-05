@@ -8,7 +8,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 pub const MIN_RENDER_DISTANCE: i32 = 4;
-pub const MAX_RENDER_DISTANCE: i32 = 32;
+pub const MAX_RENDER_DISTANCE: i32 = 128;
 pub const MIN_FOV: f32 = 30.0;
 pub const MAX_FOV: f32 = 110.0;
 pub const DEFAULT_FOV: f32 = 80.0;

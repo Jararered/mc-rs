@@ -28,6 +28,7 @@ use crate::world::block_ticks::BlockTicks;
 use crate::world::lighting::LightCache;
 use crate::world::persistence::WorldPersistence;
 
+use super::ChunkCulling;
 use super::ChunkJob;
 use super::GENERATE_MARGIN;
 use super::PopulationJob;
@@ -66,11 +67,15 @@ const MAX_REMESH_PER_FRAME: usize = 16;
 pub(crate) fn setup_streaming(
     mut commands: Commands,
     generation: Option<Res<crate::world::generation::WorldGeneration>>,
-    terrain_material: Res<TerrainMaterial>,
-    grass_overlay_material: Res<GrassOverlayMaterial>,
-    cutout_material: Res<CutoutMaterial>,
-    water_material: Res<WaterMaterial>,
-    mask_material: Res<AlphaMaskMaterial>,
+    // Grouped to stay within Bevy's sixteen system parameters.
+    (terrain_material, grass_overlay_material, cutout_material, water_material, mask_material): (
+        Res<TerrainMaterial>,
+        Res<GrassOverlayMaterial>,
+        Res<CutoutMaterial>,
+        Res<WaterMaterial>,
+        Res<AlphaMaskMaterial>,
+    ),
+    culling: Option<Res<ChunkCulling>>,
     grass_colors: Res<GrassColors>,
     foliage_colors: Res<FoliageColors>,
     settings: Res<GameSettings>,
@@ -169,6 +174,9 @@ pub(crate) fn setup_streaming(
         // first mesh waits for all eight neighboring chunks below.
         rendered: HashMap::new(),
         materials,
+        // The renderer picks this from the GPU's features. A headless app
+        // has no renderer and keeps the default.
+        culling: culling.map_or_else(ChunkCulling::default, |culling| *culling),
         fancy_graphics: settings.graphics.fancy_leaves(),
         wireframe_block: wireframe.block,
         remesh_queue: VecDeque::new(),
@@ -445,6 +453,7 @@ pub(crate) fn stream_chunks(
             continue;
         }
         let materials = streaming.materials.clone();
+        let culling = streaming.culling;
         let rendered = streaming
             .rendered
             .entry(position)
@@ -459,6 +468,7 @@ pub(crate) fn stream_chunks(
             rendered,
             job.sections,
             &materials,
+            culling,
         );
     }
 

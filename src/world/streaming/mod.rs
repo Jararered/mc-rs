@@ -26,6 +26,7 @@ use mesh_jobs::MeshTask;
 use render::ChunkMaterials;
 use render::RenderedChunk;
 
+pub use render::ChunkCulling;
 pub(crate) use systems::setup_streaming;
 pub(crate) use systems::stream_chunks;
 
@@ -132,6 +133,7 @@ pub struct WorldStreaming {
     meshing: HashMap<ChunkPosition, MeshTask>,
     rendered: HashMap<ChunkPosition, RenderedChunk>,
     materials: ChunkMaterials,
+    culling: ChunkCulling,
     fancy_graphics: bool,
     /// Chunk meshes include only this block while it is set.
     wireframe_block: Option<Block>,

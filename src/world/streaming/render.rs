@@ -1,5 +1,6 @@
 use bevy::camera::primitives::Aabb;
 use bevy::camera::visibility::NoAutoAabb;
+use bevy::camera::visibility::NoCpuCulling;
 use bevy::prelude::*;
 
 use crate::rendering::meshing::ChunkMeshes;
@@ -19,6 +20,36 @@ const LAYER_NAMES: [&str; LAYER_COUNT] = [
     "Alpha-masked geometry",
 ];
 const CUTOUT_LAYER: usize = 2;
+
+/// How section layers are frustum culled.
+///
+/// Bevy tests every mesh entity against each view's frustum in the main
+/// world, for the camera and every shadow cascade, and its GPU preprocessing
+/// pass then culls again. `Gpu` marks layers [`NoCpuCulling`] so only the GPU
+/// pass runs.
+///
+/// That pays where the driver has `MULTI_DRAW_INDIRECT_COUNT`. Without it
+/// (Metal) Bevy still issues one indirect draw per GPU-culled layer in every
+/// view, with zero instances, so the main-world test stays on there.
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ChunkCulling {
+    #[default]
+    Cpu,
+    Gpu,
+}
+
+impl ChunkCulling {
+    /// `forced` is `gpu` or `cpu` to compare the two on one machine; any
+    /// other value leaves the choice to the driver's features.
+    pub fn choose(multi_draw_indirect_count: bool, forced: Option<&str>) -> Self {
+        match forced {
+            Some("gpu") => Self::Gpu,
+            Some("cpu") => Self::Cpu,
+            _ if multi_draw_indirect_count => Self::Gpu,
+            _ => Self::Cpu,
+        }
+    }
+}
 
 /// Handles for each layer's material, in layer order.
 #[derive(Clone)]
@@ -110,6 +141,7 @@ pub(super) fn apply_sections(
     rendered: &mut RenderedChunk,
     sections: Vec<SectionMeshes>,
     materials: &ChunkMaterials,
+    culling: ChunkCulling,
 ) {
     for section in sections {
         for (layer_index, mesh) in section.layers.into_iter().enumerate() {
@@ -122,6 +154,7 @@ pub(super) fn apply_sections(
                 &materials.0[layer_index],
                 LAYER_NAMES[layer_index],
                 section.index,
+                culling,
             );
         }
     }
@@ -138,6 +171,7 @@ fn apply_layer(
     material: &Handle<BlockMaterial>,
     name: &'static str,
     section: usize,
+    culling: ChunkCulling,
 ) {
     match (layer.take(), mesh) {
         (Some(mut existing), Some(built)) => {
@@ -155,17 +189,20 @@ fn apply_layer(
         (None, Some(built)) => {
             let bytes = mesh_bytes(&built.mesh);
             let handle = meshes.add(built.mesh);
-            let entity = commands
-                .spawn((
-                    Name::new(name),
-                    Mesh3d(handle.clone()),
-                    MeshMaterial3d(material.clone()),
-                    built.aabb,
-                    NoAutoAabb,
-                    Transform::from_xyz(0.0, (section * SECTION_HEIGHT) as f32, 0.0),
-                    ChildOf(parent),
-                ))
-                .id();
+            let mut spawned = commands.spawn((
+                Name::new(name),
+                Mesh3d(handle.clone()),
+                MeshMaterial3d(material.clone()),
+                built.aabb,
+                NoAutoAabb,
+                Transform::from_xyz(0.0, (section * SECTION_HEIGHT) as f32, 0.0),
+                ChildOf(parent),
+            ));
+            if culling == ChunkCulling::Gpu {
+                // The GPU pass culls against the same `Aabb`.
+                spawned.insert(NoCpuCulling);
+            }
+            let entity = spawned.id();
             *layer = Some(MeshLayer {
                 entity,
                 mesh: handle,

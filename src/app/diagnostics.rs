@@ -6,6 +6,7 @@ use bevy::diagnostic::DiagnosticsStore;
 use bevy::diagnostic::EntityCountDiagnosticsPlugin;
 use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
 use bevy::prelude::*;
+use bevy::render::diagnostic::MeshAllocatorDiagnosticPlugin;
 
 use crate::entity::EntityDiagnostics;
 use crate::world::chunk::WorldChunks;
@@ -23,6 +24,8 @@ impl Plugin for DiagnosticsPlugin {
         app.add_plugins((
             FrameTimeDiagnosticsPlugin::default(),
             EntityCountDiagnosticsPlugin::default(),
+            // Chunk meshes live in Bevy's shared mesh slabs.
+            MeshAllocatorDiagnosticPlugin,
         ))
         .insert_resource(DiagnosticsTimer(Timer::from_seconds(
             DIAGNOSTICS_INTERVAL_SECS,
@@ -97,6 +100,24 @@ fn print_perf_stats(
             )
         });
     let mesh_mib = mesh_bytes as f64 / (1024.0 * 1024.0);
+    let slabs = fmt_latest(
+        &diagnostics,
+        MeshAllocatorDiagnosticPlugin::slabs_diagnostic_path(),
+        1.0,
+        0,
+    );
+    let slab_mib = fmt_latest(
+        &diagnostics,
+        MeshAllocatorDiagnosticPlugin::slabs_size_diagnostic_path(),
+        1024.0 * 1024.0,
+        1,
+    );
+    let allocations = fmt_latest(
+        &diagnostics,
+        MeshAllocatorDiagnosticPlugin::allocations_diagnostic_path(),
+        1.0,
+        0,
+    );
 
     let (generate, populate, load, mesh, discovery_passes) = match perf {
         Some(mut perf) => (
@@ -132,6 +153,7 @@ fn print_perf_stats(
          chunks          {loaded_chunks} loaded, {generating} generating, {populating} populating\n  \
          meshes          {rendered} chunks, {layers} section layers, {meshing} meshing\n  \
          mesh memory     {mesh_mib:.1} MiB vertex and index data\n  \
+         mesh slabs      {slabs} slabs, {slab_mib} MiB reserved, {allocations} allocations\n  \
          streaming scans {discovery_passes} candidate-discovery passes\n  \
          chunk generate  {}\n  \
          chunk populate  {}\n  \
@@ -171,6 +193,14 @@ fn fmt_diag(store: &DiagnosticsStore, path: &DiagnosticPath, digits: usize) -> S
         }
         _ => format!("{smoothed:.digits$}"),
     }
+}
+
+/// The newest sample of a count or size, which should not be smoothed.
+fn fmt_latest(store: &DiagnosticsStore, path: &DiagnosticPath, unit: f64, digits: usize) -> String {
+    store.get(path).and_then(Diagnostic::value).map_or_else(
+        || "n/a".into(),
+        |value| format!("{:.digits$}", value / unit),
+    )
 }
 
 fn fmt_timing(stats: &TimingStats) -> String {

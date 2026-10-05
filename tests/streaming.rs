@@ -5,6 +5,7 @@ use std::time::Instant;
 use bevy::asset::AssetPlugin;
 use bevy::camera::primitives::Aabb;
 use bevy::camera::visibility::NoAutoAabb;
+use bevy::camera::visibility::NoCpuCulling;
 use bevy::camera::visibility::NoFrustumCulling;
 use bevy::mesh::MeshPlugin;
 use bevy::prelude::*;
@@ -16,6 +17,7 @@ use game::world::chunk::Chunk;
 use game::world::chunk::ChunkPosition;
 use game::world::chunk::WorldChunks;
 use game::world::plugin::WorldPlugin;
+use game::world::streaming::ChunkCulling;
 use game::world::streaming::GENERATE_MARGIN;
 use game::world::streaming::LOAD_RADIUS;
 use game::world::streaming::WorldStreaming;
@@ -52,6 +54,21 @@ fn run_until(
 fn rendered_positions(app: &mut App) -> Vec<ChunkPosition> {
     let mut query = app.world_mut().query::<&ChunkPosition>();
     query.iter(app.world()).copied().collect()
+}
+
+/// Section layer mesh entities of every rendered chunk.
+fn layer_entities(app: &mut App) -> Vec<Entity> {
+    let mut layers = app.world_mut().query::<(Entity, &Mesh3d, &Name)>();
+    layers
+        .iter(app.world())
+        .filter(|(_, _, name)| {
+            matches!(
+                name.as_str(),
+                "Opaque" | "Grass overlay" | "Cutout" | "Water" | "Alpha-masked geometry"
+            )
+        })
+        .map(|(entity, _, _)| entity)
+        .collect()
 }
 
 fn block_at(app: &App, position: ChunkPosition, x: usize, y: usize, z: usize) -> Option<Block> {
@@ -162,17 +179,7 @@ fn spawn_chunk_waits_for_all_neighbor_block_data_before_its_first_mesh() {
     assert!(run_until(&mut app, Duration::from_secs(5), |app| {
         rendered_positions(app).contains(&ChunkPosition::ZERO)
     }));
-    let mut layers = app.world_mut().query::<(Entity, &Mesh3d, &Name)>();
-    let layer_entities: Vec<_> = layers
-        .iter(app.world())
-        .filter(|(_, _, name)| {
-            matches!(
-                name.as_str(),
-                "Opaque" | "Grass overlay" | "Cutout" | "Water" | "Plants"
-            )
-        })
-        .map(|(entity, _, _)| entity)
-        .collect();
+    let layer_entities = layer_entities(&mut app);
     assert!(
         !layer_entities.is_empty(),
         "rendered chunks need mesh bounds"
@@ -182,6 +189,10 @@ fn spawn_chunk_waits_for_all_neighbor_block_data_before_its_first_mesh() {
         assert!(layer.contains::<Aabb>());
         assert!(layer.contains::<NoAutoAabb>());
         assert!(!layer.contains::<NoFrustumCulling>());
+        assert!(
+            !layer.contains::<NoCpuCulling>(),
+            "without a renderer, layers keep the main-world frustum test"
+        );
     }
     let chunks = app.world().resource::<WorldChunks>();
     for dx in -1..=1 {
@@ -191,6 +202,35 @@ fn spawn_chunk_waits_for_all_neighbor_block_data_before_its_first_mesh() {
                 "missing neighbor ({dx}, {dz}) when the spawn chunk was meshed"
             );
         }
+    }
+}
+
+#[test]
+fn chunk_culling_follows_the_driver_unless_forced() {
+    assert_eq!(ChunkCulling::choose(false, None), ChunkCulling::Cpu);
+    assert_eq!(ChunkCulling::choose(true, None), ChunkCulling::Gpu);
+    assert_eq!(ChunkCulling::choose(false, Some("gpu")), ChunkCulling::Gpu);
+    assert_eq!(ChunkCulling::choose(true, Some("cpu")), ChunkCulling::Cpu);
+    assert_eq!(ChunkCulling::choose(true, Some("other")), ChunkCulling::Gpu);
+}
+
+#[test]
+fn gpu_culled_layers_skip_the_main_world_frustum_test() {
+    let mut app = test_app();
+    app.insert_resource(ChunkCulling::Gpu);
+    app.world_mut()
+        .spawn((Player, Transform::from_xyz(8.0, 80.0, 8.0)));
+
+    assert!(run_until(&mut app, Duration::from_secs(5), |app| {
+        rendered_positions(app).contains(&ChunkPosition::ZERO)
+    }));
+    let layer_entities = layer_entities(&mut app);
+    assert!(!layer_entities.is_empty());
+    for entity in layer_entities {
+        let layer = app.world().entity(entity);
+        assert!(layer.contains::<NoCpuCulling>());
+        // The GPU pass culls against these bounds.
+        assert!(layer.contains::<Aabb>());
     }
 }
 

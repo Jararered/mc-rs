@@ -4,19 +4,28 @@ use bevy::core_pipeline::prepass::DepthPrepass;
 use bevy::pbr::DefaultOpaqueRendererMethod;
 use bevy::pbr::ScreenSpaceReflections;
 use bevy::prelude::*;
+use bevy::render::render_resource::WgpuFeatures;
+use bevy::render::renderer::RenderAdapterInfo;
+use bevy::render::renderer::RenderDevice;
 
 use crate::app::settings::GameSettings;
 use crate::app::state::AppScreen;
 use crate::physics::PhysicsSet;
+use crate::player::PlayerCamera;
 use crate::ui::screens::panorama::MenuPanoramaCamera;
 
 use super::sky::CelestialCamera;
 use super::sky::SkyCamera;
 use super::textures::TerrainTexturePlugin;
 use crate::world::block_ticks::BlockTickSet;
+use crate::world::streaming::ChunkCulling;
 use crate::world::streaming::StreamingDiagnostics;
 use crate::world::streaming::setup_streaming;
 use crate::world::streaming::stream_chunks;
+
+/// Set to `gpu` or `cpu` to force how chunk layers are frustum culled. See
+/// [`ChunkCulling`].
+const CHUNK_CULLING_ENV: &str = "MC_CHUNK_CULLING";
 
 /// Client world presentation and background chunk streaming.
 pub struct WorldRenderingPlugin;
@@ -47,6 +56,7 @@ impl Plugin for WorldRenderingPlugin {
             .add_systems(
                 Update,
                 (
+                    choose_chunk_culling.run_if(resource_added::<RenderDevice>),
                     apply_lighting_settings,
                     apply_graphics_pipeline,
                     crate::entity::falling_block::sync_falling_block_rendering.after(BlockTickSet),
@@ -98,6 +108,35 @@ pub(super) fn apply_lighting_settings(
     }
 }
 
+/// Decide how chunk layers are culled once the GPU's features are known, and
+/// log what Bevy's indirect drawing has to work with on this machine.
+fn choose_chunk_culling(
+    mut commands: Commands,
+    device: Res<RenderDevice>,
+    adapter: Res<RenderAdapterInfo>,
+) {
+    let multi_draw_count = device
+        .features()
+        .contains(WgpuFeatures::MULTI_DRAW_INDIRECT_COUNT);
+    let forced = std::env::var(CHUNK_CULLING_ENV).ok();
+    let culling = ChunkCulling::choose(multi_draw_count, forced.as_deref());
+    info!(
+        "render backend {:?}: multi-draw indirect count {}, chunk culling {culling:?}{}",
+        adapter.backend,
+        if multi_draw_count {
+            "supported"
+        } else {
+            "unsupported"
+        },
+        if forced.is_some() {
+            format!(" ({CHUNK_CULLING_ENV} set)")
+        } else {
+            String::new()
+        },
+    );
+    commands.insert_resource(culling);
+}
+
 /// Ultra water uses Bevy screen-space reflections, which need deferred rendering
 /// and MSAA off. Fast/Fancy stay on the forward path.
 fn apply_graphics_pipeline(
@@ -113,9 +152,12 @@ fn apply_graphics_pipeline(
         ),
     >,
     sky_cameras: Query<Entity, Or<(With<SkyCamera>, With<CelestialCamera>)>>,
+    new_cameras: Query<(), Added<PlayerCamera>>,
     renderer_method: Option<ResMut<DefaultOpaqueRendererMethod>>,
 ) {
-    if !settings.is_changed() {
+    // A world's camera can spawn after the settings change that loading it
+    // caused was already seen here.
+    if !settings.is_changed() && new_cameras.is_empty() {
         return;
     }
     let ultra = settings.graphics.realistic_water();

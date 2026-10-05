@@ -157,6 +157,10 @@ impl Block {
         matches!(self, Self::Leaves)
     }
 
+    pub const fn is_furnace(self) -> bool {
+        matches!(self, Self::Furnace | Self::LitFurnace)
+    }
+
     /// Local bounds used for picking and the hover outline.
     pub fn selection_bounds(self) -> definition::BlockBounds {
         definition::properties(self).selection_bounds
@@ -241,8 +245,6 @@ impl Block {
                 | Self::DetectorRail
                 | Self::Ladder
                 | Self::Lever
-                | Self::StonePressurePlate
-                | Self::WoodenPressurePlate
                 | Self::UnlitRedstoneTorch
                 | Self::RedstoneTorch
                 | Self::StoneButton
@@ -316,10 +318,13 @@ impl Block {
         }
     }
 
-    /// Collision bounds for the block with `metadata`. Only ladders depend on it.
+    /// Collision bounds for the block with `metadata`. Ladders depend on their
+    /// facing, and snow layers collide only from three layers up
+    /// (`BlockSnow.getCollisionBoundingBoxFromPool`).
     pub fn collision_bounds_for(self, metadata: u8) -> Option<definition::BlockBounds> {
         match self {
             Self::Ladder => Some(definition::oriented_bounds(self, metadata)),
+            Self::SnowLayer if metadata & 7 >= 3 => Some(([0.0; 3], [1.0, 0.5, 1.0])),
             _ => self.collision_bounds(),
         }
     }
@@ -342,10 +347,13 @@ impl Block {
     pub fn placed(self, data: u8) -> Option<(Self, u8)> {
         match (self, data) {
             (Self::Wood | Self::WoodenPlanks | Self::Leaves, 0..=2) => Some((self, data)),
+            // Torch data 5 is the floor torch; 1..=4 name a wall side.
             (Self::Torch, 0 | 5) => Some((Self::Torch, 0)),
             (Self::Torch, 1..=4) => Some((Self::Torch, data)),
+            // Tall grass item data 0 and 1 both place the plain shrub.
             (Self::TallGrass, 0 | 1) => Some((Self::TallGrass, 0)),
             (Self::TallGrass, 2) => Some((Self::TallGrass, 2)),
+            // Ladders place unattached; the placement code picks the wall.
             (Self::Ladder, 0 | 2) => Some((Self::Ladder, 0)),
             (block, 0) => Some((block, 0)),
             _ => None,

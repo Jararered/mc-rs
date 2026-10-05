@@ -228,7 +228,6 @@ fn successful_hoe_use_spends_durability_without_charging_failed_attempts() {
 
 #[test]
 fn farmland_has_beta_properties_tiles_and_dirt_drop() {
-    assert!(Block::Farmland.in_world());
     assert_eq!(Block::Farmland.placed(0), Some((Block::Farmland, 0)));
     assert!(!Block::Farmland.is_opaque_cube());
     assert_eq!(Block::Farmland.hardness(), 0.6);

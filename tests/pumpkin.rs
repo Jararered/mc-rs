@@ -11,7 +11,6 @@ fn pumpkin_metadata_preserves_beta_front_directions() {
         (Direction::North, 5),
     ];
     let block = Block::Pumpkin;
-    assert!(block.in_world());
     assert_eq!(block.item_form(0), (Block::Pumpkin, 0));
     for (metadata, (facing, front_face)) in expected.into_iter().enumerate() {
         let metadata = metadata as u8;

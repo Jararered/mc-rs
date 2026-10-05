@@ -1654,6 +1654,9 @@ fn neighbor_hides_face(block: Block, neighbor: Option<Block>, fancy_graphics: bo
     {
         return false;
     }
+    if neighbor == Block::Glass && block != Block::Glass {
+        return false;
+    }
     if fancy_graphics && block.is_leaves() && neighbor.is_leaves() {
         return false;
     }

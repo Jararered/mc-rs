@@ -283,7 +283,7 @@ fn the_light_cache_answers_from_a_relit_chunk() {
     let mut light = LightCache::default();
     assert_eq!(light.channels(8, 64, 9), None);
     light.relight(&world.chunks, ChunkPosition::ZERO);
-    assert_eq!(light.channels(8, 64, 9), Some((15, 14)));
+    assert_eq!(light.channels(8, 64, 9), Some((15, 13)));
     assert_eq!(light.channels(8, -1, 8), Some((0, 0)));
     assert_eq!(light.channels(8, 200, 8), Some((15, 0)));
 }

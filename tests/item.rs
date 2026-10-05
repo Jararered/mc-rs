@@ -114,19 +114,17 @@ fn native_save_values_and_supported_states_round_trip() {
             let placed = item_block.placed(data);
             if block == Block::LitFurnace {
                 assert_eq!(placed, Some((Block::Furnace, 0)));
-            } else if block.in_world() {
+            } else if placed.is_some() {
                 assert_eq!(placed, Some((block, 0)));
             }
         }
     }
     for id in [Block::Cake, Block::Trapdoor, Block::Glass] {
-        assert_eq!(id.placed(0), None);
-        assert!(!id.in_world());
         assert_eq!(
             ItemStack::new(Item::from_block(id).unwrap(), 1)
                 .unwrap()
                 .runtime_block(),
-            None
+            Some((id, 0))
         );
     }
     assert_eq!(Block::Wood.placed(15), None);

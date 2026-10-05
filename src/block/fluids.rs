@@ -120,6 +120,8 @@ pub fn corner_height(
             weight += 1;
         }
     }
+    // The cell at `(x, y, z)` is always sampled, so the weight is positive.
+    debug_assert!(weight > 0);
     1.0 - air / weight as f32
 }
 

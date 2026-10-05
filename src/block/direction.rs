@@ -104,8 +104,4 @@ impl Block {
             _ => None,
         }
     }
-
-    pub const fn is_furnace(self) -> bool {
-        matches!(self, Self::Furnace | Self::LitFurnace)
-    }
 }

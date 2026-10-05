@@ -114,7 +114,6 @@ fn unknown_block_values_use_a_safe_fallback_definition() {
     for unknown in [Block::Unknown(180), Block::Unknown(201)] {
         let properties = definition::properties(unknown);
 
-        assert!(!unknown.in_world());
         assert_eq!(properties.hardness, 0.0);
         assert_eq!(
             properties.collision_bounds,
@@ -225,4 +224,65 @@ fn species_stay_in_metadata_and_stack_by_subtype() {
         Block::Leaves.appearance_metadata(1),
         Block::Leaves.appearance_metadata(1 | 8)
     );
+}
+
+/// Hardness, light opacity, and light emission straight from Beta's
+/// `Block` registry (`setHardness`, `setLightOpacity`, `setLightValue` as
+/// `(int)(15 * brightness)`).
+#[test]
+fn block_properties_match_beta_registry_values() {
+    // (block, hardness, light opacity, light emission)
+    let table = [
+        (Block::Glass, 0.3, 0, 0),
+        (Block::Bed, 0.2, 0, 0),
+        (Block::Cobweb, 4.0, 1, 0),
+        (Block::StoneSlab, 2.0, 15, 0),
+        (Block::CobblestoneStairs, 2.0, 15, 0),
+        (Block::WoodenStairs, 2.0, 15, 0),
+        (Block::MobSpawner, 5.0, 15, 0),
+        (Block::IronDoor, 5.0, 0, 0),
+        (Block::WoodenDoor, 3.0, 0, 0),
+        (Block::Trapdoor, 3.0, 0, 0),
+        (Block::StonePressurePlate, 0.5, 0, 0),
+        (Block::WoodenPressurePlate, 0.5, 0, 0),
+        (Block::Torch, 0.0, 0, 14),
+        (Block::BrownMushroom, 0.0, 0, 1),
+        (Block::RedstoneTorch, 0.0, 0, 7),
+        (Block::PoweredRepeater, 0.0, 0, 9),
+        (Block::NetherPortal, -1.0, 0, 11),
+        (Block::Cake, 0.5, 0, 0),
+        (Block::Fence, 2.0, 0, 0),
+        (Block::Rail, 0.7, 0, 0),
+        (Block::SoulSand, 0.5, 15, 0),
+        (Block::Tnt, 0.0, 15, 0),
+        (Block::Sapling, 0.0, 0, 0),
+        (Block::Lava, 0.0, 15, 15),
+        (Block::LitFurnace, 3.5, 15, 13),
+        (Block::LitRedstoneOre, 3.0, 15, 9),
+    ];
+    for (block, hardness, opacity, emission) in table {
+        assert_eq!(block.hardness(), hardness, "{block:?} hardness");
+        assert_eq!(block.light_opacity(), opacity, "{block:?} opacity");
+        assert_eq!(block.light_emission(), emission, "{block:?} emission");
+    }
+    assert!(!Block::Glass.is_opaque_cube());
+    assert!(Block::Sapling.is_crossed_plant());
+}
+
+#[test]
+fn pressure_plates_are_solid_materials() {
+    assert!(Block::StonePressurePlate.is_solid_material());
+    assert!(Block::WoodenPressurePlate.is_solid_material());
+}
+
+#[test]
+fn snow_layers_collide_from_three_layers_up() {
+    assert_eq!(Block::SnowLayer.collision_bounds_for(0), None);
+    assert_eq!(Block::SnowLayer.collision_bounds_for(2), None);
+    assert_eq!(
+        Block::SnowLayer.collision_bounds_for(3),
+        Some(([0.0; 3], [1.0, 0.5, 1.0]))
+    );
+    // The decay-style high bit is ignored, as in `BlockSnow`.
+    assert_eq!(Block::SnowLayer.collision_bounds_for(8), None);
 }

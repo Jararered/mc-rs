@@ -274,7 +274,6 @@ fn block_metadata_and_pending_ticks_round_trip_through_a_chunk_file() {
 #[test]
 fn chunks_saved_with_block_ids_for_species_and_facing_are_rejected() {
     assert_eq!(Block::Cake.as_u8(), 92);
-    assert!(!Block::Cake.in_world());
     let saves = temp_saves("old-format");
     let storage = WorldStorage::create(&saves, 0, "Old").unwrap();
     let position = ChunkPosition::ZERO;

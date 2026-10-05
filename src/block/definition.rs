@@ -79,7 +79,8 @@ impl BlockProperties {
     }
 }
 
-/// The properties of one block id.
+/// The properties of one block id, from Beta's `Block` registry. Every Beta
+/// id has an arm; [`Block::Unknown`] is the only fallback.
 fn build(block: Block) -> BlockProperties {
     use BlockProperties as P;
     match block {
@@ -92,6 +93,11 @@ fn build(block: Block) -> BlockProperties {
             ..P::solid(0.6)
         },
         Block::Dirt | Block::Sand => P::solid(0.5),
+        // `BlockSoulSand`: the collision box is an eighth short.
+        Block::SoulSand => P {
+            collision_bounds: Some(([0.0; 3], [1.0, 0.875, 1.0])),
+            ..P::solid(0.5)
+        },
         Block::Cobblestone | Block::DoubleStoneSlab | Block::Bricks | Block::MossyCobblestone => {
             P::tool_only(2.0)
         }
@@ -110,16 +116,52 @@ fn build(block: Block) -> BlockProperties {
         Block::IronBlock | Block::DiamondBlock => P::tool_only(5.0),
         Block::Bookshelf => P::solid(1.5),
         Block::Obsidian => P::tool_only(10.0),
+        Block::Tnt => P::solid(0.0),
         Block::MobSpawner => P {
             opaque_cube: false,
-            ..P::solid(0.0)
+            ..P::tool_only(5.0)
         },
-        Block::StoneSlab
-        | Block::CobblestoneStairs
-        | Block::IronDoor
-        | Block::Cobweb
-        | Block::StonePressurePlate => P::tool_only(0.0),
-        Block::CraftingTable => P::solid(2.5),
+        Block::Glass => P {
+            opaque_cube: false,
+            light_opacity: 0,
+            ..P::solid(0.3)
+        },
+        Block::Dispenser => P::tool_only(3.5),
+        Block::Bed => P {
+            opaque_cube: false,
+            light_opacity: 0,
+            selection_bounds: ([0.0; 3], [1.0, 9.0 / 16.0, 1.0]),
+            collision_bounds: Some(([0.0; 3], [1.0, 9.0 / 16.0, 1.0])),
+            ..P::solid(0.2)
+        },
+        Block::Rail | Block::PoweredRail | Block::DetectorRail => P {
+            selection_bounds: ([0.0; 3], [1.0, 0.125, 1.0]),
+            ..P::non_colliding(0.7)
+        },
+        Block::Piston | Block::StickyPiston | Block::PistonHead => P::solid(0.5),
+        Block::MovingPiston => P {
+            targetable: false,
+            ..P::solid(-1.0)
+        },
+        Block::Cobweb => P {
+            harvestable_by_hand: false,
+            light_opacity: 1,
+            ..P::non_colliding(4.0)
+        },
+        Block::StoneSlab => P {
+            opaque_cube: false,
+            collision_bounds: Some(([0.0; 3], [1.0, 0.5, 1.0])),
+            selection_bounds: ([0.0; 3], [1.0, 0.5, 1.0]),
+            ..P::tool_only(2.0)
+        },
+        Block::CobblestoneStairs => P {
+            opaque_cube: false,
+            ..P::tool_only(2.0)
+        },
+        Block::WoodenStairs => P {
+            opaque_cube: false,
+            ..P::solid(2.0)
+        },
         Block::SnowLayer => P {
             opaque_cube: false,
             collision_bounds: None,
@@ -135,7 +177,6 @@ fn build(block: Block) -> BlockProperties {
         },
         Block::Snow => P::tool_only(0.2),
         Block::Netherrack => P::tool_only(0.4),
-        Block::Dispenser => P::tool_only(3.5),
         // Water and lava.
         Block::FlowingWater | Block::Water => P {
             light_opacity: 3,
@@ -152,11 +193,16 @@ fn build(block: Block) -> BlockProperties {
             light_opacity: 1,
             ..P::solid(0.2)
         },
-        Block::TallGrass | Block::DeadBush => crossed_plant(([0.1, 0.0, 0.1], [0.9, 0.8, 0.9])),
-        Block::Dandelion | Block::Rose => crossed_plant(([0.3, 0.0, 0.3], [0.7, 0.6, 0.7])),
-        Block::BrownMushroom | Block::RedMushroom => {
-            crossed_plant(([0.3, 0.0, 0.3], [0.7, 0.4, 0.7]))
+        Block::Sapling | Block::TallGrass | Block::DeadBush => {
+            crossed_plant(([0.1, 0.0, 0.1], [0.9, 0.8, 0.9]))
         }
+        Block::Dandelion | Block::Rose | Block::RedMushroom => {
+            crossed_plant(([0.3, 0.0, 0.3], [0.7, 0.6, 0.7]))
+        }
+        Block::BrownMushroom => BlockProperties {
+            light_emission: 1,
+            ..crossed_plant(([0.3, 0.0, 0.3], [0.7, 0.4, 0.7]))
+        },
         Block::SugarCane => crossed_plant(([0.125, 0.0, 0.125], [0.875, 1.0, 0.875])),
         // `BlockCrops`: a quarter-block selection box and no collision.
         Block::Crops => P {
@@ -170,9 +216,9 @@ fn build(block: Block) -> BlockProperties {
             selection_bounds: ([0.0625, 0.0, 0.0625], [0.9375, 1.0, 0.9375]),
             ..P::solid(0.4)
         },
-        // Light sources.
+        // Light sources. Beta stores `(int)(15 * brightness)`.
         Block::Torch => P {
-            light_emission: 15,
+            light_emission: 14,
             selection_bounds: oriented_bounds(Block::Torch, 0),
             ..P::non_colliding(0.0)
         },
@@ -191,6 +237,20 @@ fn build(block: Block) -> BlockProperties {
             light_emission: 15,
             ..P::solid(1.0)
         },
+        Block::RedstoneTorch => P {
+            light_emission: 7,
+            ..P::non_colliding(0.0)
+        },
+        Block::UnlitRedstoneTorch | Block::RedstoneWire => P::non_colliding(0.0),
+        Block::NetherPortal => P {
+            light_emission: 11,
+            targetable: false,
+            ..P::non_colliding(-1.0)
+        },
+        Block::LockedChest => P {
+            light_emission: 15,
+            ..P::solid(0.0)
+        },
         // Oriented blocks.
         Block::Chest => P {
             opaque_cube: false,
@@ -207,7 +267,49 @@ fn build(block: Block) -> BlockProperties {
             ..P::tool_only(3.5)
         },
         Block::Pumpkin => P::solid(1.0),
-        _ => P::unknown(),
+        Block::CraftingTable => P::solid(2.5),
+        // Wooden and iron fixtures.
+        Block::Fence => P {
+            opaque_cube: false,
+            light_opacity: 0,
+            ..P::solid(2.0)
+        },
+        Block::StandingSign | Block::WallSign => P::non_colliding(1.0),
+        Block::WoodenDoor | Block::Trapdoor => P {
+            opaque_cube: false,
+            light_opacity: 0,
+            ..P::solid(3.0)
+        },
+        Block::IronDoor => P {
+            opaque_cube: false,
+            light_opacity: 0,
+            ..P::tool_only(5.0)
+        },
+        Block::Lever | Block::StoneButton => P::non_colliding(0.5),
+        Block::StonePressurePlate => P {
+            harvestable_by_hand: false,
+            ..P::non_colliding(0.5)
+        },
+        Block::WoodenPressurePlate => P::non_colliding(0.5),
+        Block::Cake => P {
+            opaque_cube: false,
+            light_opacity: 0,
+            collision_bounds: Some(([0.0625, 0.0, 0.0625], [0.9375, 0.5, 0.9375])),
+            selection_bounds: ([0.0625, 0.0, 0.0625], [0.9375, 0.5, 0.9375]),
+            ..P::solid(0.5)
+        },
+        Block::Repeater => P {
+            opaque_cube: false,
+            light_opacity: 0,
+            collision_bounds: Some(([0.0; 3], [1.0, 0.125, 1.0])),
+            selection_bounds: ([0.0; 3], [1.0, 0.125, 1.0]),
+            ..P::solid(0.0)
+        },
+        Block::PoweredRepeater => P {
+            light_emission: 9,
+            ..build(Block::Repeater)
+        },
+        Block::Unknown(_) => P::unknown(),
     }
 }
 
@@ -247,10 +349,12 @@ pub fn properties_table() -> &'static [BlockProperties; 256] {
     &BLOCK_PROPERTIES
 }
 
+static UNKNOWN_PROPERTIES: BlockProperties = BlockProperties::unknown();
+
 #[inline]
-pub fn properties(block: Block) -> BlockProperties {
+pub fn properties(block: Block) -> &'static BlockProperties {
     match block {
-        Block::Unknown(_) => BlockProperties::unknown(),
-        _ => properties_table()[block.as_u8() as usize],
+        Block::Unknown(_) => &UNKNOWN_PROPERTIES,
+        _ => &properties_table()[block.as_u8() as usize],
     }
 }

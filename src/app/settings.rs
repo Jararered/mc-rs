@@ -11,9 +11,9 @@ pub const MIN_RENDER_DISTANCE: i32 = 4;
 pub const MAX_RENDER_DISTANCE: i32 = 32;
 pub const MIN_BRIGHTNESS: f32 = 0.0;
 pub const MAX_BRIGHTNESS: f32 = 1000.0;
-/// Without a directional sun, the 0..=1000 slider has to light the whole
-/// scene. Bevy's default camera exposure makes 1000 nits of ambient look dim
-/// next to the 10_000 lux sun, so ambient-only uses this extra scale.
+/// The 0..=1000 brightness slider is scaled into nits for Bevy's default
+/// exposure. 1000 nits of ambient looks dim at that exposure, so the value
+/// written to [`GlobalAmbientLight`] uses this extra scale.
 pub const AMBIENT_ONLY_SCALE: f32 = 10.0;
 pub const MIN_FOV: f32 = 30.0;
 pub const MAX_FOV: f32 = 110.0;
@@ -121,7 +121,6 @@ pub struct GameSettings {
     pub cloud_height: f32,
     pub old_lighting: bool,
     pub smooth_lighting: bool,
-    pub directional_lighting: bool,
     pub wiggle_leaves: bool,
     pub graphics: GraphicsQuality,
     /// 4x MSAA. Beta had none; off drops the window-sized multisampled
@@ -143,7 +142,6 @@ impl Default for GameSettings {
             cloud_height: DEFAULT_CLOUD_HEIGHT,
             old_lighting: true,
             smooth_lighting: true,
-            directional_lighting: true,
             wiggle_leaves: DEFAULT_WIGGLE_LEAVES,
             graphics: GraphicsQuality::Fancy,
             anti_aliasing: true,
@@ -181,21 +179,10 @@ impl GameSettings {
         self.brightness = (self.brightness + change).clamp(MIN_BRIGHTNESS, MAX_BRIGHTNESS);
     }
 
-    /// Value written to Bevy's [`GlobalAmbientLight`]. Directional lighting
-    /// keeps the slider as nits; without it the same numbers are scaled so
-    /// max brightness can actually light the world.
+    /// Value written to Bevy's [`GlobalAmbientLight`]. Old lighting draws
+    /// unlit materials, so the slider is not applied then.
     pub fn ambient_light_brightness(&self) -> f32 {
-        if self.directional_lighting {
-            self.brightness
-        } else {
-            self.brightness * AMBIENT_ONLY_SCALE
-        }
-    }
-
-    /// Old lighting draws every material unlit, so nothing would sample a
-    /// shadow map; rendering one would only redraw the terrain for no effect.
-    pub fn sun_shadows(&self) -> bool {
-        self.directional_lighting && !self.old_lighting
+        self.brightness * AMBIENT_ONLY_SCALE
     }
 
     /// Sample count for every camera. Ultra's screen-space reflections run on
@@ -313,7 +300,6 @@ struct StoredSettings {
     cloud_height: f32,
     old_lighting: bool,
     smooth_lighting: bool,
-    directional_lighting: bool,
     wiggle_leaves: bool,
     graphics: GraphicsQuality,
     anti_aliasing: bool,
@@ -340,7 +326,6 @@ impl From<&GameSettings> for StoredSettings {
             cloud_height: settings.cloud_height,
             old_lighting: settings.old_lighting,
             smooth_lighting: settings.smooth_lighting,
-            directional_lighting: settings.directional_lighting,
             wiggle_leaves: settings.wiggle_leaves,
             graphics: settings.graphics,
             anti_aliasing: settings.anti_aliasing,
@@ -362,7 +347,6 @@ impl From<StoredSettings> for GameSettings {
             cloud_height: stored.cloud_height,
             old_lighting: stored.old_lighting,
             smooth_lighting: stored.smooth_lighting,
-            directional_lighting: stored.directional_lighting,
             wiggle_leaves: stored.wiggle_leaves,
             graphics: stored.graphics,
             anti_aliasing: stored.anti_aliasing,

@@ -537,7 +537,7 @@ fn pose_creatures(
             size.height,
             subtracted,
         );
-        // Bevy's lights shade lit mode; old lighting applies Beta's brightness.
+        // Ambient light shades lit mode; old lighting applies Beta's brightness.
         let brightness = if settings.old_lighting {
             world_brightness
         } else {

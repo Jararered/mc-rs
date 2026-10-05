@@ -28,21 +28,11 @@ use crate::world::streaming::stream_chunks;
 /// [`ChunkCulling`].
 const CHUNK_CULLING_ENV: &str = "MC_CHUNK_CULLING";
 
-/// Bevy's default cascade resolution, used while the sun casts shadows.
-const SUN_SHADOW_MAP_SIZE: usize = 2048;
-/// Bevy allocates both shadow map arrays even when nothing casts a shadow
-/// (24 MiB of point light cube faces and 16 MiB per sun cascade at its
-/// defaults). Nothing here is a point light, and the sun's maps are only
-/// sampled with [`GameSettings::sun_shadows`].
+/// Bevy's `LightPlugin` allocates a point-light cube array and a directional
+/// cascade array at these resources' sizes even when no such light exists
+/// (24 MiB and 16 MiB per cascade at Bevy's defaults). Nothing in the game is
+/// a directional or point light, so both stay at this unused size.
 const UNUSED_SHADOW_MAP_SIZE: usize = 16;
-
-fn sun_shadow_map_size(settings: &GameSettings) -> usize {
-    if settings.sun_shadows() {
-        SUN_SHADOW_MAP_SIZE
-    } else {
-        UNUSED_SHADOW_MAP_SIZE
-    }
-}
 
 /// Client world presentation and background chunk streaming.
 pub struct WorldRenderingPlugin;
@@ -67,10 +57,7 @@ impl Plugin for WorldRenderingPlugin {
             .init_resource::<StreamingDiagnostics>()
             .add_systems(
                 Startup,
-                (
-                    setup_streaming.run_if(crate::world::persistence::starts_with_world),
-                    spawn_sun,
-                ),
+                setup_streaming.run_if(crate::world::persistence::starts_with_world),
             )
             .add_systems(
                 PostUpdate,
@@ -93,47 +80,18 @@ impl Plugin for WorldRenderingPlugin {
     }
 }
 
-fn spawn_sun(mut commands: Commands, settings: Res<GameSettings>) {
-    commands.spawn((
-        DirectionalLight {
-            illuminance: if settings.directional_lighting {
-                10_000.0
-            } else {
-                0.0
-            },
-            shadow_maps_enabled: settings.sun_shadows(),
-            ..default()
-        },
-        Transform::from_xyz(3.0, 8.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
-    ));
-}
-
 pub(super) fn apply_lighting_settings(
     settings: Res<GameSettings>,
     mut ambient: ResMut<GlobalAmbientLight>,
-    mut shadow_map: ResMut<DirectionalLightShadowMap>,
-    mut sun: Query<&mut DirectionalLight>,
 ) {
     if !settings.is_changed() {
         return;
-    }
-    let size = sun_shadow_map_size(&settings);
-    if shadow_map.size != size {
-        shadow_map.size = size;
     }
     ambient.brightness = if settings.old_lighting {
         0.0
     } else {
         settings.ambient_light_brightness()
     };
-    for mut light in &mut sun {
-        light.illuminance = if settings.directional_lighting {
-            10_000.0
-        } else {
-            0.0
-        };
-        light.shadow_maps_enabled = settings.sun_shadows();
-    }
 }
 
 /// Decide how chunk layers are culled once the GPU's features are known, and

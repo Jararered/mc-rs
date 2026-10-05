@@ -26,7 +26,6 @@ use bevy::prelude::*;
 use bevy::render::render_resource::PrimitiveTopology;
 
 use crate::app::settings::GameSettings;
-use crate::app::state::AppScreen;
 use crate::block::blocks::Block;
 use crate::player::Player;
 use crate::player::PlayerCamera;
@@ -42,8 +41,6 @@ use super::plugin::apply_lighting_settings;
 use crate::world::tick::WorldTick;
 
 const SKY_LAYER: usize = 2;
-/// Full sun used by the directional light at noon.
-const SUN_ILLUMINANCE: f32 = 10_000.0;
 /// `MathHelper` and the fog code use this float, not `std` PI.
 const MC_PI: f32 = 3.141_592_7;
 const SUN_DISTANCE: f32 = 100.0;
@@ -185,17 +182,6 @@ struct SkyViews<'w, 's> {
         's,
         (&'static mut Visibility, &'static mut MeshTag),
         (With<StarField>, Without<SunriseFan>),
-    >,
-    suns: Query<
-        'w,
-        's,
-        (&'static mut DirectionalLight, &'static mut Transform),
-        (
-            Without<SkyAnchor>,
-            Without<CelestialRig>,
-            Without<SunriseFan>,
-            Without<Player>,
-        ),
     >,
 }
 
@@ -559,7 +545,6 @@ fn update_atmosphere(
     weather: Option<Res<crate::world::weather::WorldWeather>>,
     settings: Res<GameSettings>,
     chunks: Res<WorldChunks>,
-    state: Option<Res<State<AppScreen>>>,
     mut eye_fog: ResMut<EyeFog>,
     assets: Option<Res<SkyAssets>>,
     mut views: SkyViews,
@@ -695,32 +680,6 @@ fn update_atmosphere(
         } else {
             visibility.set_if_neq(Visibility::Hidden);
         }
-    }
-
-    let playing = matches!(state.as_deref().map(State::get), Some(AppScreen::Playing));
-    if !playing {
-        return;
-    }
-    let day = daylight_factor(angle);
-    let direction = spin * Vec3::Y;
-    let up = if direction.y.abs() > 0.9 {
-        Vec3::Z
-    } else {
-        Vec3::Y
-    };
-    for (mut light, mut transform) in &mut views.suns {
-        let illuminance = if settings.directional_lighting {
-            SUN_ILLUMINANCE * day
-        } else {
-            0.0
-        };
-        let shadows = settings.sun_shadows();
-        if light.illuminance != illuminance || light.shadow_maps_enabled != shadows {
-            light.illuminance = illuminance;
-            light.shadow_maps_enabled = shadows;
-        }
-        let next = Transform::from_translation(direction * SUN_DISTANCE).looking_at(Vec3::ZERO, up);
-        transform.set_if_neq(next);
     }
 }
 

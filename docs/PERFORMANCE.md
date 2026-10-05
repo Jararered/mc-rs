@@ -55,8 +55,7 @@ indirect path at all.
 `MC_CHUNK_CULLING=gpu` or `cpu` forces how section layers are frustum culled.
 `gpu` skips Bevy's main-world test for the camera and each shadow cascade and
 leaves culling to its GPU pass. It is the default only where the driver can
-skip culled draws (`MULTI_DRAW_INDIRECT_COUNT`). Compare with sun shadows on
-and off, since each cascade is another view.
+skip culled draws (`MULTI_DRAW_INDIRECT_COUNT`).
 
 Measured on an Apple M5 Pro (Metal), dev profile, render distance 12, Fancy,
 old lighting, one open-terrain view with 5,864 section layers:
@@ -99,7 +98,7 @@ chunk blocks, light, and quad records together are under 30 MB.
 
 - Bevy creates a point light cube array (24 MiB at its default size) and a
   directional array (16 MiB per cascade) even with no shadow caster.
-  `rendering/plugin.rs` shrinks both unless the sun casts shadows.
+  `rendering/plugin.rs` keeps both at 16 pixels; the game spawns neither light.
 - 4x MSAA is a multisampled colour and depth target at window size, about
   105 MB here and proportional to the window's pixels. `Msaa` must match on
   every camera, UI included, or the targets stay allocated.

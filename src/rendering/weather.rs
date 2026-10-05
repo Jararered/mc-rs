@@ -208,11 +208,6 @@ fn update_lightning(
             LightningFlash(5),
             Mesh3d(meshes.add(Cuboid::new(0.16, height, 0.16))),
             MeshMaterial3d(assets.bolt.clone()),
-            PointLight {
-                intensity: 20_000.,
-                range: 32.,
-                ..default()
-            },
             Transform::from_xyz(pos.x, pos.y + height / 2.0, pos.z),
         ));
     }

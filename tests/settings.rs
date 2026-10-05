@@ -62,9 +62,6 @@ fn settings_controls_stay_within_their_ranges() {
     assert_eq!(settings.brightness, MIN_BRIGHTNESS);
 
     settings.brightness = MAX_BRIGHTNESS;
-    settings.directional_lighting = true;
-    assert_eq!(settings.ambient_light_brightness(), MAX_BRIGHTNESS);
-    settings.directional_lighting = false;
     assert_eq!(
         settings.ambient_light_brightness(),
         MAX_BRIGHTNESS * AMBIENT_ONLY_SCALE
@@ -106,7 +103,7 @@ fn settings_controls_stay_within_their_ranges() {
 }
 
 #[test]
-fn brightness_and_directional_toggle_update_bevy_lights() {
+fn brightness_updates_ambient_and_spawns_no_analytic_light() {
     let mut app = App::new();
     app.add_plugins((MinimalPlugins, AssetPlugin::default(), MeshPlugin))
         .init_asset::<Image>()
@@ -118,7 +115,6 @@ fn brightness_and_directional_toggle_update_bevy_lights() {
         let mut settings = app.world_mut().resource_mut::<GameSettings>();
         settings.old_lighting = false;
         settings.brightness = 500.0;
-        settings.directional_lighting = false;
     }
     app.update();
 
@@ -126,24 +122,10 @@ fn brightness_and_directional_toggle_update_bevy_lights() {
         app.world().resource::<GlobalAmbientLight>().brightness,
         500.0 * AMBIENT_ONLY_SCALE
     );
-    let mut suns = app.world_mut().query::<&DirectionalLight>();
-    let sun = suns.single(app.world()).unwrap();
-    assert_eq!(sun.illuminance, 0.0);
-    assert!(!sun.shadow_maps_enabled);
-
-    {
-        let mut settings = app.world_mut().resource_mut::<GameSettings>();
-        settings.directional_lighting = true;
-    }
-    app.update();
-
-    assert_eq!(
-        app.world().resource::<GlobalAmbientLight>().brightness,
-        500.0
-    );
-    let sun = suns.single(app.world()).unwrap();
-    assert_eq!(sun.illuminance, 10_000.0);
-    assert!(sun.shadow_maps_enabled);
+    let mut directional = app.world_mut().query::<&DirectionalLight>();
+    assert!(directional.iter(app.world()).next().is_none());
+    let mut points = app.world_mut().query::<&PointLight>();
+    assert!(points.iter(app.world()).next().is_none());
 }
 
 #[test]
@@ -311,7 +293,7 @@ fn anti_aliasing_and_shadow_map_sizes_follow_the_settings() {
         cameras.iter(app.world()).copied().collect()
     }
     assert_eq!(samples(&mut app), [Msaa::Sample4; 2]);
-    // Old lighting samples no shadow map, and nothing is a point light.
+    // Nothing is a directional or point light, so both maps stay unused.
     assert!(app.world().resource::<DirectionalLightShadowMap>().size < 64);
     assert!(app.world().resource::<PointLightShadowMap>().size < 64);
 
@@ -334,10 +316,8 @@ fn anti_aliasing_and_shadow_map_sizes_follow_the_settings() {
     app.update();
     app.update();
     assert_eq!(samples(&mut app), [Msaa::Sample4; 3]);
-    assert_eq!(
-        app.world().resource::<DirectionalLightShadowMap>().size,
-        2048
-    );
+    assert!(app.world().resource::<DirectionalLightShadowMap>().size < 64);
+    assert!(app.world().resource::<PointLightShadowMap>().size < 64);
 
     // Deferred rendering cannot be multisampled.
     app.world_mut().resource_mut::<GameSettings>().graphics = GraphicsQuality::Ultra;
@@ -454,7 +434,6 @@ fn settings_round_trip_through_json() {
         cloud_height: 192.0,
         old_lighting: true,
         smooth_lighting: true,
-        directional_lighting: false,
         wiggle_leaves: false,
         graphics: GraphicsQuality::Ultra,
         anti_aliasing: false,
@@ -479,7 +458,6 @@ fn settings_json_fills_in_missing_menu_fields() {
     assert_eq!(loaded.fov, DEFAULT_FOV);
     assert_eq!(loaded.cloud_height, DEFAULT_CLOUD_HEIGHT);
     assert_eq!(loaded.old_lighting, true);
-    assert_eq!(loaded.directional_lighting, true);
     assert_eq!(loaded.graphics, GraphicsQuality::Fancy);
     let _ = fs::remove_file(path);
 }
@@ -495,7 +473,6 @@ fn settings_json_clamps_out_of_range_values() {
             "fov": 180.0,
             "cloud_height": 9999.0,
             "old_lighting": true,
-            "directional_lighting": false,
             "graphics": "Fast"
         }"#,
     )
@@ -506,7 +483,6 @@ fn settings_json_clamps_out_of_range_values() {
     assert_eq!(loaded.fov, MAX_FOV);
     assert_eq!(loaded.cloud_height, MAX_CLOUD_HEIGHT);
     assert!(loaded.old_lighting);
-    assert!(!loaded.directional_lighting);
     assert_eq!(loaded.graphics, GraphicsQuality::Fast);
     let _ = fs::remove_file(path);
 }
@@ -530,7 +506,6 @@ fn settings_plugin_loads_and_saves_menu_changes() {
         cloud_height: 64.0,
         old_lighting: true,
         smooth_lighting: true,
-        directional_lighting: false,
         wiggle_leaves: true,
         graphics: GraphicsQuality::Fast,
         ..default()

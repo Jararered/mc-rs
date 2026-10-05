@@ -3,9 +3,10 @@
 //! `RenderManager` colors each entity by the world brightness at its body,
 //! and `RenderHelper.enableStandardItemLighting` shades its faces with two
 //! fixed lights. Under old lighting the fragment extension reproduces both;
-//! otherwise Bevy's lights do the shading. `RenderLiving`'s red hurt pass and
-//! a creeper's white flash are mixed over the result. All of this per-entity
-//! state rides in [`MeshTag`], so none of it rewrites a material.
+//! otherwise the skin is lit by Bevy's ambient light only. `RenderLiving`'s
+//! red hurt pass and a creeper's white flash are mixed over the result. All
+//! of this per-entity state rides in [`MeshTag`], so none of it rewrites a
+//! material.
 
 use bevy::asset::load_internal_asset;
 use bevy::asset::uuid_handle;

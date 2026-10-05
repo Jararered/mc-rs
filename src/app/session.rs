@@ -178,7 +178,7 @@ fn drive_session(
         if !requested {
             // Write the player, mobs and every dirty chunk before unloading.
             if let Some(persistence) = persistence.as_deref_mut() {
-                persistence.request_save();
+                persistence.request_final_save();
             }
             session.phase = Phase::Leaving(true);
             return;

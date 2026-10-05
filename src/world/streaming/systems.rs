@@ -32,6 +32,7 @@ use super::ChunkJob;
 use super::GENERATE_MARGIN;
 use super::PopulationJob;
 use super::StreamingDiagnostics;
+use super::UNLOAD_MARGIN;
 use super::WorldStreaming;
 use super::mesh_jobs::mesh_neighborhood_ready;
 use super::mesh_jobs::spawn_mesh_job;
@@ -51,6 +52,7 @@ use crate::rendering::textures::MeshWireframe;
 use crate::rendering::textures::TerrainMaterial;
 use crate::rendering::textures::WaterMaterial;
 use crate::world::chunk::ChunkPosition;
+use crate::world::chunk::GeneratedChunk;
 use crate::world::chunk::WorldChunks;
 use crate::world::generation::overworld::OverworldGenerator;
 
@@ -77,7 +79,12 @@ pub(crate) fn setup_streaming(
     mut chunks: ResMut<WorldChunks>,
     mut perf: ResMut<StreamingDiagnostics>,
     mut ticks: Option<ResMut<BlockTicks>>,
+    mut light: Option<ResMut<LightCache>>,
 ) {
+    // Mesh jobs light chunks from here on, so block ticks must not.
+    if let Some(light) = light.as_deref_mut() {
+        light.set_streamed(true);
+    }
     let seed = persistence
         .as_ref()
         .map_or(0, |persistence| persistence.seed());
@@ -89,31 +96,37 @@ pub(crate) fn setup_streaming(
         |generation| Arc::clone(&generation.0),
     );
     // The player starts in PostStartup and needs this heightmap immediately, so
-    // the spawn chunk is loaded or generated synchronously.
+    // the chunk it will stand in is loaded or generated synchronously: where a
+    // saved player left off, or the origin for a new one.
     let storage = persistence
         .as_ref()
         .and_then(|persistence| persistence.storage())
         .cloned();
+    let spawn_chunk = storage
+        .as_ref()
+        .and_then(|storage| storage.load_player())
+        .map_or(ChunkPosition::ZERO, |player| {
+            ChunkPosition::from_world(player.x, player.z)
+        });
     let load_start = Instant::now();
     let stored = storage
         .as_ref()
-        .and_then(|storage| storage.load_chunk(ChunkPosition::ZERO));
+        .and_then(|storage| storage.load_chunk(spawn_chunk));
     let spawn_area = match stored {
         Some(chunk) => {
             perf.load.record(load_start.elapsed());
-            vec![(ChunkPosition::ZERO, chunk, true)]
+            vec![(spawn_chunk, chunk, true)]
         }
         None => {
             // A new spawn chunk is only finished once its neighbors' population
             // passes have run, so build its whole neighborhood now. Saved
             // neighbors are kept rather than overwritten.
             let generate_start = Instant::now();
-            let area =
-                crate::world::generation::generate_area(generator.as_ref(), ChunkPosition::ZERO, 0);
+            let area = crate::world::generation::generate_area(generator.as_ref(), spawn_chunk, 0);
             perf.generate.record(generate_start.elapsed());
             area.into_iter()
                 .map(|(position, generated)| {
-                    let stored = (position != ChunkPosition::ZERO)
+                    let stored = (position != spawn_chunk)
                         .then(|| storage.as_ref()?.load_chunk(position))
                         .flatten();
                     match stored {
@@ -132,26 +145,17 @@ pub(crate) fn setup_streaming(
         mask_material.0.clone(),
     ]);
     let max_in_flight = (AsyncComputeTaskPool::get().thread_num() * JOBS_PER_THREAD).max(2);
-    for (position, mut generated, loaded) in spawn_area {
+    for (position, generated, loaded) in spawn_area {
         if !loaded && let Some(persistence) = persistence.as_deref_mut() {
             persistence.mark_dirty(position);
         }
-        let saved_items = std::mem::take(&mut generated.items);
-        let saved_mobs = generated.chunk.take_mob_records();
-        let saved_bodies = generated.chunk.take_saved_bodies();
-        if let Some(ticks) = ticks.as_deref_mut() {
-            ticks.load_chunk(position, &mut generated.chunk);
-        }
-        chunks.insert(position, generated);
-        for item in saved_items {
-            spawn_saved_item(&mut commands, item);
-        }
-        for mob in saved_mobs {
-            spawn_saved(&mut commands, mob);
-        }
-        for body in saved_bodies {
-            body.spawn(&mut commands);
-        }
+        admit_chunk(
+            &mut commands,
+            &mut chunks,
+            ticks.as_deref_mut(),
+            position,
+            generated,
+        );
     }
     commands.insert_resource(WorldStreaming {
         generator,
@@ -215,7 +219,9 @@ pub(crate) fn stream_chunks(
     let center = ChunkPosition::from_world(player.translation.x, player.translation.z);
     let load_radius = settings.render_distance;
     let generate_radius = load_radius + GENERATE_MARGIN;
-    let unload_radius = generate_radius;
+    // Chunk data outlives the generation radius by a ring, so pacing over a
+    // chunk border does not unload and reload a row of chunks each way.
+    let unload_radius = generate_radius + UNLOAD_MARGIN;
 
     // Lighting settings and the time of day are block material uniforms.
     // Leaf style and a wireframe block filter change geometry.
@@ -233,9 +239,16 @@ pub(crate) fn stream_chunks(
     streaming
         .generating
         .retain(|position, _| within_radius(*position, center, generate_radius));
-    streaming
-        .meshing
-        .retain(|position, _| within_radius(*position, center, load_radius));
+    // A chunk that is still shown keeps its remeshes after it leaves the
+    // render distance. Its mesh would otherwise stay stale when the player
+    // turns back before it expires.
+    {
+        let streaming = &mut *streaming;
+        let rendered = &streaming.rendered;
+        streaming.meshing.retain(|position, _| {
+            within_radius(*position, center, load_radius) || rendered.contains_key(position)
+        });
+    }
     // Chunks only leave the load/unload/generate radii when the player
     // crosses a chunk boundary or the render distance setting changes, so
     // skip these O(loaded-chunks) sweeps on the many frames in between.
@@ -248,34 +261,37 @@ pub(crate) fn stream_chunks(
             .rendered
             .keys()
             .copied()
-            .filter(|position| !within_radius(*position, center, unload_radius))
+            .filter(|position| !within_radius(*position, center, generate_radius))
             .collect();
         for position in expired {
+            // Its cached light stays until the chunk unloads: block ticks at
+            // the render edge read it, and a Beta world saves it.
             if let Some(rendered) = streaming.rendered.remove(&position) {
                 despawn_rendered_chunk(&mut commands, &mut meshes, rendered);
             }
-            // Nothing relights an unrendered chunk, so its cached light
-            // would go stale.
-            if let Some(light) = light.as_deref_mut() {
-                light.remove(position);
-            }
         }
-        streaming.remesh_queue.retain(|position| {
-            let keep = within_radius(*position, center, load_radius);
-            if !keep {
-                forgotten.push(*position);
-            }
-            keep
-        });
+        {
+            let streaming = &mut *streaming;
+            let rendered = &streaming.rendered;
+            streaming.remesh_queue.retain(|position| {
+                let keep = within_radius(*position, center, load_radius)
+                    || rendered.contains_key(position);
+                if !keep {
+                    forgotten.push(*position);
+                }
+                keep
+            });
+        }
         for position in forgotten {
             streaming.remesh_sections.remove(&position);
         }
 
         // Stored chunks are kept for the whole generation radius, including the
-        // ring that is generated ahead of the render distance.
+        // ring that is generated ahead of the render distance, and one ring
+        // more before they unload.
         let stale: Vec<_> = chunks
             .positions()
-            .filter(|position| !within_radius(*position, center, generate_radius))
+            .filter(|position| !within_radius(*position, center, unload_radius))
             .collect();
         for position in stale {
             if let Some(mut chunk) = chunks.remove(position) {
@@ -288,9 +304,9 @@ pub(crate) fn stream_chunks(
                         persistence.mark_dirty(position);
                     }
                 }
-                if let Some(light) = light.as_deref_mut() {
-                    light.remove(position);
-                }
+                let cells = light
+                    .as_deref_mut()
+                    .and_then(|light| light.remove(position));
                 let mut leaving = Vec::new();
                 for (entity, transform, dropped, motion, state) in &dropped {
                     let item_chunk = ChunkPosition::from_block(
@@ -349,7 +365,7 @@ pub(crate) fn stream_chunks(
                     }
                 }
                 if let Some(persistence) = persistence.as_deref_mut() {
-                    persistence.queue_unload(position, chunk);
+                    persistence.queue_unload_lit(position, chunk, cells);
                 }
             }
         }
@@ -369,7 +385,7 @@ pub(crate) fn stream_chunks(
         perf.populate.record(job.elapsed);
         for (position, generated) in population_footprint(source).into_iter().zip(job.chunks) {
             streaming.held.remove(&position);
-            if !within_radius(position, center, generate_radius) {
+            if !within_radius(position, center, unload_radius) {
                 // A job may return outside the radii after the last sweep.
                 *last_unload_sweep = None;
             }
@@ -387,7 +403,7 @@ pub(crate) fn stream_chunks(
         .iter_mut()
         .filter_map(|(position, task)| check_ready(task).map(|job| (*position, job)))
         .collect();
-    for (position, mut job) in generated {
+    for (position, job) in generated {
         streaming.discovery_dirty = true;
         streaming.generating.remove(&position);
         if job.loaded {
@@ -401,24 +417,13 @@ pub(crate) fn stream_chunks(
             {
                 persistence.mark_dirty(position);
             }
-            let saved_items = std::mem::take(&mut job.chunk.items);
-            let saved_mobs = job.chunk.chunk.take_mob_records();
-            let saved_bodies = job.chunk.chunk.take_saved_bodies();
-            if let Some(ticks) = ticks.as_deref_mut() {
-                ticks.load_chunk(position, &mut job.chunk.chunk);
-            }
-            chunks.insert(position, job.chunk);
-            if job.loaded {
-                for item in saved_items {
-                    spawn_saved_item(&mut commands, item);
-                }
-                for mob in saved_mobs {
-                    spawn_saved(&mut commands, mob);
-                }
-                for body in saved_bodies {
-                    body.spawn(&mut commands);
-                }
-            }
+            admit_chunk(
+                &mut commands,
+                &mut chunks,
+                ticks.as_deref_mut(),
+                position,
+                job.chunk,
+            );
         }
     }
 
@@ -434,7 +439,9 @@ pub(crate) fn stream_chunks(
         streaming.discovery_dirty = true;
         streaming.meshing.remove(&position);
         perf.mesh.record(job.elapsed);
-        if !within_radius(position, center, load_radius) {
+        if !within_radius(position, center, load_radius)
+            && !streaming.rendered.contains_key(&position)
+        {
             continue;
         }
         let materials = streaming.materials.clone();
@@ -512,6 +519,7 @@ pub(crate) fn stream_chunks(
         .is_some_and(WorldPersistence::bypass_load);
     let mut in_flight = streaming.generating.len();
     let mut to_generate = Vec::new();
+    let mut waiting_on_save = false;
     for position in &streaming.desired_generation {
         if in_flight >= max_in_flight {
             break;
@@ -523,11 +531,35 @@ pub(crate) fn stream_chunks(
         {
             continue;
         }
+        // The disk holds this chunk's older state until the write lands.
+        if persistence
+            .as_deref()
+            .is_some_and(|persistence| persistence.is_saving(*position))
+        {
+            waiting_on_save = true;
+            continue;
+        }
         to_generate.push(*position);
         in_flight += 1;
     }
     let spawned = !to_generate.is_empty();
     for position in to_generate {
+        // A chunk that unloaded with unsaved changes is newer in memory than
+        // on disk, where it may not exist at all.
+        if !bypass_load
+            && let Some(chunk) = persistence
+                .as_deref_mut()
+                .and_then(|persistence| persistence.take_pending(position))
+        {
+            admit_chunk(
+                &mut commands,
+                &mut chunks,
+                ticks.as_deref_mut(),
+                position,
+                chunk,
+            );
+            continue;
+        }
         let generator = Arc::clone(&streaming.generator);
         let storage = persistence
             .as_deref()
@@ -618,7 +650,35 @@ pub(crate) fn stream_chunks(
         spawn_mesh_job(&mut streaming, &chunks, position, 0);
     }
     *discovered_revision = Some(chunks.membership_revision());
-    streaming.discovery_dirty = false;
+    // Look again next frame for a chunk that waited on its write.
+    streaming.discovery_dirty = waiting_on_save;
+}
+
+/// Put a chunk into the live world: its pending block ticks go to the
+/// scheduler, and the items, mobs and bodies saved with it become entities.
+fn admit_chunk(
+    commands: &mut Commands,
+    chunks: &mut WorldChunks,
+    ticks: Option<&mut BlockTicks>,
+    position: ChunkPosition,
+    mut generated: GeneratedChunk,
+) {
+    let saved_items = std::mem::take(&mut generated.items);
+    let saved_mobs = generated.chunk.take_mob_records();
+    let saved_bodies = generated.chunk.take_saved_bodies();
+    if let Some(ticks) = ticks {
+        ticks.load_chunk(position, &mut generated.chunk);
+    }
+    chunks.insert(position, generated);
+    for item in saved_items {
+        spawn_saved_item(commands, item);
+    }
+    for mob in saved_mobs {
+        spawn_saved(commands, mob);
+    }
+    for body in saved_bodies {
+        body.spawn(commands);
+    }
 }
 
 pub(super) fn sort_by_distance(positions: &mut [ChunkPosition], center: ChunkPosition) {

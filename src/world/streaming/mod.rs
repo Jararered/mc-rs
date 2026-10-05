@@ -36,7 +36,11 @@ pub const LOAD_RADIUS: i32 = 4;
 /// neighbors. Meshing a chunk needs its eight neighbors finished too, so the
 /// last rendered ring depends on chunks two rings out.
 pub const GENERATE_MARGIN: i32 = 2;
-pub const UNLOAD_RADIUS: i32 = LOAD_RADIUS + GENERATE_MARGIN;
+/// Chunks stay loaded one ring past where they are generated, so stepping
+/// back and forth over a chunk border does not unload and reload a row of
+/// chunks each time.
+pub const UNLOAD_MARGIN: i32 = 1;
+pub const UNLOAD_RADIUS: i32 = LOAD_RADIUS + GENERATE_MARGIN + UNLOAD_MARGIN;
 
 /// One bit per render section of a chunk, bottom section first.
 pub(crate) type SectionMask = u8;

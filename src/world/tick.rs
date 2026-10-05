@@ -8,6 +8,7 @@
 use bevy::prelude::*;
 
 use crate::app::state::AppScreen;
+use crate::world::persistence::WorldPersistence;
 
 /// Beta's `ticksPerSecond`.
 pub const TICKS_PER_SECOND: f32 = 20.0;
@@ -86,9 +87,13 @@ pub fn advance_world_tick(
     mut tick: ResMut<WorldTick>,
     time: Res<Time>,
     state: Option<Res<State<AppScreen>>>,
+    persistence: Option<Res<WorldPersistence>>,
 ) {
     let playing = matches!(state.as_deref().map(State::get), Some(AppScreen::Playing));
-    if playing {
+    // A world being saved to unload holds still, so no chunk changes after
+    // its last snapshot.
+    let closing = persistence.is_some_and(|persistence| persistence.is_closing());
+    if playing && !closing {
         tick.advance(time.delta_secs());
     } else {
         tick.idle();

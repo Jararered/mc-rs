@@ -33,6 +33,7 @@ use std::io::Read;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
@@ -79,6 +80,7 @@ use crate::world::furnace::fuel_ticks;
 use crate::world::generation::overworld::BiomeGenerator;
 use crate::world::lighting::Skylight;
 use crate::world::lighting::light_opacity;
+use crate::world::lighting::unpack;
 use crate::world::weather::WorldWeather;
 
 const LEVEL_FILE: &str = "level.dat";
@@ -399,6 +401,9 @@ pub(super) struct ChunkSnapshot {
     chunk: Chunk,
     items: Vec<ChunkDroppedItem>,
     populated: bool,
+    /// The chunk's light from its last mesh job, in [`Chunk::index`] order,
+    /// when it had one.
+    light: Option<Arc<[u8]>>,
 }
 
 impl ChunkSnapshot {
@@ -406,12 +411,14 @@ impl ChunkSnapshot {
         position: ChunkPosition,
         generated: &GeneratedChunk,
         items: &[ChunkDroppedItem],
+        light: Option<Arc<[u8]>>,
     ) -> Self {
         Self {
             position,
             chunk: generated.chunk.clone(),
             items: items.to_vec(),
             populated: generated.populated,
+            light: light.filter(|cells| cells.len() == BLOCKS),
         }
     }
 
@@ -421,7 +428,13 @@ impl ChunkSnapshot {
         let chunk = &self.chunk;
         let raw = chunk.raw_blocks();
         let metadata = chunk.raw_metadata();
-        let light = Skylight::from_chunk(chunk);
+        // Beta does not relight a chunk it loads, so save the light the chunk
+        // had among its neighbors. A chunk that was never meshed is lit alone,
+        // with dark borders rather than sky leaking in through them.
+        let light = match &self.light {
+            Some(cells) => Arc::clone(cells),
+            None => Skylight::from_chunk_enclosed(chunk).chunk_cells(),
+        };
 
         let mut blocks = vec![0u8; BLOCKS];
         let mut data = vec![0u8; NIBBLES];
@@ -438,8 +451,9 @@ impl ChunkSnapshot {
                     if let Some(metadata) = metadata {
                         set_nibble(&mut data, beta, nibble(metadata, ours));
                     }
-                    set_nibble(&mut sky, beta, light.sky(x, y, z).unwrap_or(15));
-                    set_nibble(&mut block_light, beta, light.block(x, y, z).unwrap_or(0));
+                    let (sky_level, block_level) = unpack(light[ours]);
+                    set_nibble(&mut sky, beta, sky_level);
+                    set_nibble(&mut block_light, beta, block_level);
                     if height.is_none()
                         && Block::from_u8(raw[ours]).is_none_or(|b| light_opacity(b) > 0)
                     {
@@ -1057,9 +1071,9 @@ impl OriginalStore {
 
     /// Encode and write chunks. Returns how many were written; a chunk too big
     /// for a region file is skipped with a warning, as Beta drops it.
-    pub(super) fn write_chunks(
+    pub(super) fn write_chunks<'a>(
         &self,
-        chunks: Vec<(ChunkPosition, ChunkSnapshot)>,
+        chunks: impl IntoIterator<Item = (ChunkPosition, &'a ChunkSnapshot)>,
         world_time: u64,
     ) -> io::Result<usize> {
         let mut saved = 0;

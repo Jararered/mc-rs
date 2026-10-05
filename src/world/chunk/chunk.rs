@@ -447,8 +447,6 @@ impl WorldChunks {
         removed
     }
 
-    /// Block at a world-space integer position, if that chunk is loaded and `y`
-    /// is inside the world height.
     /// Climate stored for the column, when that chunk is loaded.
     pub fn climate_at(&self, x: i32, z: i32) -> Option<Climate> {
         let generated = self.get(ChunkPosition::from_block(x, z))?;
@@ -457,6 +455,8 @@ impl WorldChunks {
         Some(generated.biomes.get(local_x, local_z))
     }
 
+    /// Block at a world-space integer position, if that chunk is loaded and `y`
+    /// is inside the world height.
     pub fn block_at(&self, x: i32, y: i32, z: i32) -> Option<Block> {
         if y < 0 || y >= CHUNK_HEIGHT as i32 {
             return None;

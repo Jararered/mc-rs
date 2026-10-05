@@ -786,6 +786,48 @@ fn a_chunk_unloads_without_the_mobs_that_left_it_since_the_autosave() {
 }
 
 #[test]
+fn a_chunk_that_unloaded_unsaved_is_taken_back_instead_of_read_from_disk() {
+    let saves = temp_saves("pending-reload");
+    let mut app = draining_app(&saves);
+    run_until_spawn_chunk(&mut app);
+
+    // Edit the chunk and unload it before any save reaches it. The disk has
+    // the unedited chunk, or nothing, so a reload must not go there.
+    let mut chunk = app
+        .world_mut()
+        .resource_mut::<WorldChunks>()
+        .remove(ChunkPosition::ZERO)
+        .expect("spawn chunk should be loaded");
+    chunk.chunk.set(4, 120, 4, Block::GoldBlock);
+    let mut persistence = app.world_mut().resource_mut::<WorldPersistence>();
+    persistence.mark_dirty(ChunkPosition::ZERO);
+    persistence.queue_unload(ChunkPosition::ZERO, chunk);
+    assert!(!persistence.is_idle());
+
+    let restored = persistence
+        .take_pending(ChunkPosition::ZERO)
+        .expect("the unsaved chunk should still be held");
+    assert_eq!(restored.chunk.get(4, 120, 4), Some(Block::GoldBlock));
+    assert!(persistence.take_pending(ChunkPosition::ZERO).is_none());
+
+    // Back in the world it is still unsaved, so the exit save writes it.
+    app.world_mut()
+        .resource_mut::<WorldChunks>()
+        .insert(ChunkPosition::ZERO, restored);
+    app.world_mut().write_message(AppExit::Success);
+    app.update();
+    let storage = app
+        .world()
+        .resource::<WorldPersistence>()
+        .storage()
+        .expect("persistence should be enabled");
+    let reloaded = storage
+        .load_chunk(ChunkPosition::ZERO)
+        .expect("the chunk should be on disk");
+    assert_eq!(reloaded.chunk.get(4, 120, 4), Some(Block::GoldBlock));
+}
+
+#[test]
 fn a_chunk_unloaded_while_its_write_is_in_flight_keeps_the_newer_edit() {
     let saves = temp_saves("in-flight");
     let mut app = draining_app(&saves);

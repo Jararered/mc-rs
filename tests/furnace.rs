@@ -165,7 +165,7 @@ fn removing_a_furnace_block_removes_its_block_local_inventory() {
 }
 
 #[test]
-fn furnace_waits_when_output_is_full_and_keeps_progress_without_fuel() {
+fn furnace_waits_when_output_is_full_and_loses_progress_without_fuel() {
     let mut furnace = Furnace::default();
     furnace.slots[0] = Some(block(Block::IronOre));
     furnace.slots[1] = Some(stack(Item::Stick));
@@ -183,10 +183,12 @@ fn furnace_waits_when_output_is_full_and_keeps_progress_without_fuel() {
         furnace.tick();
     }
     assert_eq!(furnace.cook_ticks, 50);
+    // `TileEntityFurnace.updateEntity` zeroes the cook time whenever the
+    // furnace is not both burning and able to smelt.
     furnace.slots[1] = None;
     furnace.burn_ticks = 0;
     furnace.tick();
-    assert_eq!(furnace.cook_ticks, 50);
+    assert_eq!(furnace.cook_ticks, 0);
 }
 
 #[test]

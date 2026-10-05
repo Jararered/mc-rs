@@ -318,8 +318,7 @@ impl BlockBehavior for Stationary {
     }
 
     /// Still lava's random tick walks up to three cells upward and sets fire
-    /// to air beside anything flammable. Fire is not in the world yet, so the
-    /// walk runs (and draws its random numbers) but places nothing.
+    /// to the first air cell it finds beside anything flammable.
     fn update_tick(&self, world: &mut TickWorld, position: IVec3) {
         if world.block(position) != Block::Lava {
             return;

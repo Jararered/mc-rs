@@ -24,6 +24,11 @@ const PADDED_LAYER: usize = PADDED * PADDED;
 const PADDED_CELLS: usize = PADDED_LAYER * CHUNK_HEIGHT;
 /// Full sunlight and no block light, the fallback for a missing neighbor.
 const OPEN_SKY: u8 = pack(MAX_LIGHT, 0);
+const WEST_EDGE: u8 = 1;
+const EAST_EDGE: u8 = 2;
+const NORTH_EDGE: u8 = 4;
+const SOUTH_EDGE: u8 = 8;
+const ALL_EDGES: u8 = WEST_EDGE | EAST_EDGE | NORTH_EDGE | SOUTH_EDGE;
 
 /// The two 4-bit light channels used by Beta: sunlight and emitted block light.
 ///
@@ -79,7 +84,17 @@ impl Skylight {
         southeast: Option<&Chunk>,
     ) -> Self {
         Self::from_chunk_with_neighbors_and_corners_impl(
-            chunk, west, east, north, south, northwest, northeast, southwest, southeast, None,
+            chunk, west, east, north, south, northwest, northeast, southwest, southeast, 0,
+        )
+    }
+
+    /// Light a chunk alone without treating its open borders as sky. Light
+    /// that would spill in from a neighbor is missing, but nothing leaks into
+    /// caves that reach a border, which suits light that is saved rather than
+    /// rebuilt once the neighbors arrive.
+    pub fn from_chunk_enclosed(chunk: &Chunk) -> Self {
+        Self::from_chunk_with_neighbors_and_corners_impl(
+            chunk, None, None, None, None, None, None, None, None, ALL_EDGES,
         )
     }
 
@@ -175,10 +190,12 @@ impl Skylight {
         northeast: Option<&Chunk>,
         southwest: Option<&Chunk>,
         southeast: Option<&Chunk>,
-        suppressed_edge: Option<usize>,
+        // One bit per edge (west, east, north, south) that is not seeded as
+        // open sky even though no neighbor is given for it.
+        suppressed_edges: u8,
     ) -> Self {
         if let (
-            None,
+            0,
             Some(west),
             Some(east),
             Some(north),
@@ -188,7 +205,7 @@ impl Skylight {
             Some(southwest),
             Some(southeast),
         ) = (
-            suppressed_edge,
+            suppressed_edges,
             west,
             east,
             north,
@@ -231,12 +248,12 @@ impl Skylight {
             }
         }
         for y in 0..CHUNK_HEIGHT {
-            if west.is_none() && suppressed_edge != Some(0) {
+            if west.is_none() && suppressed_edges & WEST_EDGE == 0 {
                 for z in 0..CHUNK_SIZE {
                     seed_sky_edge(chunk, light_table, &mut sky, &mut sky_queue, 0, y, z);
                 }
             }
-            if east.is_none() && suppressed_edge != Some(1) {
+            if east.is_none() && suppressed_edges & EAST_EDGE == 0 {
                 for z in 0..CHUNK_SIZE {
                     seed_sky_edge(
                         chunk,
@@ -249,12 +266,12 @@ impl Skylight {
                     );
                 }
             }
-            if north.is_none() && suppressed_edge != Some(2) {
+            if north.is_none() && suppressed_edges & NORTH_EDGE == 0 {
                 for x in 0..CHUNK_SIZE {
                     seed_sky_edge(chunk, light_table, &mut sky, &mut sky_queue, x, y, 0);
                 }
             }
-            if south.is_none() && suppressed_edge != Some(3) {
+            if south.is_none() && suppressed_edges & SOUTH_EDGE == 0 {
                 for x in 0..CHUNK_SIZE {
                     seed_sky_edge(
                         chunk,
@@ -296,59 +313,27 @@ impl Skylight {
             // sky. Otherwise both chunks treat that face as an independent
             // light source, which leaks light through caves and produces a
             // visible seam.
-            let neighbor_light = if suppressed_edge.is_some() {
+            let neighbor_light = if suppressed_edges != 0 {
                 // This is a one-ring neighbor's light. Its diagonal sources are
                 // sampled without recursing into another neighborhood.
                 Self::from_chunk(neighbor)
             } else {
                 match border_index {
                     0 => Self::from_chunk_with_neighbors_and_corners_impl(
-                        neighbor,
-                        None,
-                        None,
-                        northwest,
-                        southwest,
-                        None,
-                        None,
-                        None,
-                        None,
-                        Some(1),
+                        neighbor, None, None, northwest, southwest, None, None, None, None,
+                        EAST_EDGE,
                     ),
                     1 => Self::from_chunk_with_neighbors_and_corners_impl(
-                        neighbor,
-                        None,
-                        None,
-                        northeast,
-                        southeast,
-                        None,
-                        None,
-                        None,
-                        None,
-                        Some(0),
+                        neighbor, None, None, northeast, southeast, None, None, None, None,
+                        WEST_EDGE,
                     ),
                     2 => Self::from_chunk_with_neighbors_and_corners_impl(
-                        neighbor,
-                        northwest,
-                        northeast,
-                        None,
-                        None,
-                        None,
-                        None,
-                        None,
-                        None,
-                        Some(3),
+                        neighbor, northwest, northeast, None, None, None, None, None, None,
+                        SOUTH_EDGE,
                     ),
                     _ => Self::from_chunk_with_neighbors_and_corners_impl(
-                        neighbor,
-                        southwest,
-                        southeast,
-                        None,
-                        None,
-                        None,
-                        None,
-                        None,
-                        None,
-                        Some(2),
+                        neighbor, southwest, southeast, None, None, None, None, None, None,
+                        NORTH_EDGE,
                     ),
                 }
             };
@@ -529,6 +514,9 @@ impl Skylight {
 #[derive(Resource, Default)]
 pub struct LightCache {
     chunks: HashMap<ChunkPosition, Arc<[u8]>>,
+    /// Streaming fills the cache from mesh jobs. A reader that misses then
+    /// estimates the light instead of relighting a chunk on the main thread.
+    streamed: bool,
 }
 
 impl LightCache {
@@ -538,8 +526,23 @@ impl LightCache {
         self.chunks.insert(position, cells);
     }
 
-    pub fn remove(&mut self, position: ChunkPosition) {
-        self.chunks.remove(&position);
+    pub fn remove(&mut self, position: ChunkPosition) -> Option<Arc<[u8]>> {
+        self.chunks.remove(&position)
+    }
+
+    /// The cached cells of `position`, shared rather than copied.
+    pub fn cells(&self, position: ChunkPosition) -> Option<Arc<[u8]>> {
+        self.chunks.get(&position).cloned()
+    }
+
+    /// Say whether streaming's mesh jobs fill this cache. Without streaming,
+    /// as in tests and tools, a miss lights the chunk on the spot.
+    pub fn set_streamed(&mut self, streamed: bool) {
+        self.streamed = streamed;
+    }
+
+    pub fn is_streamed(&self) -> bool {
+        self.streamed
     }
 
     pub fn clear(&mut self) {
@@ -684,13 +687,20 @@ pub fn beta_brightness(level: u8) -> f32 {
 /// snapshot, at the cost of ignoring lateral propagation from a torch just
 /// outside this exact cell.
 pub fn light_level_at(chunks: &WorldChunks, x: i32, y: i32, z: i32, skylight_subtracted: u8) -> u8 {
+    let (sky, block) = column_channels(chunks, x, y, z);
+    combined_light(sky, block, skylight_subtracted)
+}
+
+/// Sky and block light at a cell from its own column alone: full sun under
+/// open sky and none below cover, plus whatever the cell itself emits.
+pub fn column_channels(chunks: &WorldChunks, x: i32, y: i32, z: i32) -> (u8, u8) {
     let sky = if open_to_sky(chunks, x, y, z) {
         MAX_LIGHT
     } else {
         0
     };
     let block = chunks.block_at(x, y, z).map_or(0, light_emission);
-    combined_light(sky, block, skylight_subtracted)
+    (sky, block)
 }
 
 /// Direct sun reaches a position when no opaque block sits in the column

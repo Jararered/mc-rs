@@ -256,9 +256,12 @@ fn apply_lightning(
                     drop_loot(&mut commands, &mut loot, &mut mob, feet);
                 }
             }
-            mob.fire_ticks += 1;
-            if mob.fire_ticks == 0 {
+            // Beta's `++fire; if (fire == 0) fire = 300`, which counts on an
+            // idle mob resting at -1. One that has not ticked yet is still at 0.
+            if mob.fire_ticks <= 0 {
                 mob.fire_ticks = 300;
+            } else {
+                mob.fire_ticks += 1;
             }
         }
         if player

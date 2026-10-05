@@ -56,8 +56,9 @@ fn block_ticks_should_run(screen: Option<Res<State<AppScreen>>>) -> bool {
 
 /// Chunks random ticks reach this frame: loaded and finished chunks within
 /// [`RANDOM_TICK_RADIUS`] of the player, capped by the render distance.
-/// With streaming, a chunk also waits for its first mesh job to light it, so
-/// random ticks never relight chunks on the main thread.
+/// With streaming, a chunk also waits for its first mesh job to light it. A
+/// tick that reads light across the border of an unlit neighbor gets an
+/// estimate, so nothing is relit on the main thread.
 fn random_tick_chunks(
     chunks: &WorldChunks,
     streaming: Option<&WorldStreaming>,

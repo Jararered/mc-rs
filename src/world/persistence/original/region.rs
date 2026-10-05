@@ -140,7 +140,9 @@ impl RegionFile {
         }
         let offset = self.offsets[index];
         let (old_start, old_count) = ((offset >> 8) as usize, (offset & 0xFF) as usize);
-        let in_file = offset != 0 && old_start + old_count <= self.free.len();
+        // An offset into the header tables is corrupt; never write a chunk there.
+        let in_file =
+            offset != 0 && old_start >= HEADER_SECTORS && old_start + old_count <= self.free.len();
 
         let start = if in_file && old_count == needed {
             old_start

@@ -13,6 +13,7 @@ use crate::world::chunk::Chunk;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
 use crate::world::lighting::LightCache;
+use crate::world::lighting::column_channels;
 use crate::world::lighting::combined_light;
 
 use super::BlockChange;
@@ -152,11 +153,16 @@ impl<'a> TickWorld<'a> {
 
     // --- Light and sky --------------------------------------------------
 
-    /// Cached light, lighting the chunk now if streaming has not. Only chunks
-    /// outside the rendered area are ever missing, and only rarely reached.
+    /// Cached light. Under streaming only chunks outside the rendered area are
+    /// ever missing, reached when a tick at the render edge reads across the
+    /// border, and those are estimated from their column: relighting a chunk
+    /// here would stall the frame. Without streaming the chunk is lit now.
     fn light_channels(&mut self, position: IVec3) -> (u8, u8) {
         if let Some(channels) = self.light.channels(position.x, position.y, position.z) {
             return channels;
+        }
+        if self.light.is_streamed() {
+            return column_channels(self.chunks, position.x, position.y, position.z);
         }
         let chunk = ChunkPosition::from_block(position.x, position.z);
         if self.chunks.contains(chunk) {

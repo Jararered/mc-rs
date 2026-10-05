@@ -48,13 +48,13 @@ impl Furnace {
             }
         }
 
-        if self.can_smelt() {
-            if self.is_burning() {
-                self.cook_ticks += 1;
-                if self.cook_ticks >= SMELT_TICKS {
-                    self.cook_ticks = 0;
-                    self.smelt_one();
-                }
+        // Progress is lost as soon as the fire goes out, not only when the
+        // input is taken away.
+        if self.is_burning() && self.can_smelt() {
+            self.cook_ticks += 1;
+            if self.cook_ticks >= SMELT_TICKS {
+                self.cook_ticks = 0;
+                self.smelt_one();
             }
         } else {
             self.cook_ticks = 0;

@@ -41,18 +41,12 @@ pub fn can_stay(world: &TickWorld, pos: IVec3) -> bool {
     world.is_normal_cube(pos - IVec3::Y) || nearby(world, pos)
 }
 
+/// `BlockFire.tryToCatchBlockOnFire`. The roll is made for every neighbor,
+/// burnable or not, and TNT is replaced like any other block before it primes.
 fn catch(world: &mut TickWorld, pos: IVec3, chance: u32, age: u8) {
     let target = world.block(pos);
     let ignition = rates(target).1;
-    if ignition == 0 || world.random().next_int(chance) >= ignition {
-        return;
-    }
-    if target == Block::Tnt {
-        world.set_block_notify(pos, Block::Air);
-        world.emit(TickEffect::PrimedTnt {
-            position: pos,
-            fuse: 80,
-        });
+    if world.random().next_int(chance) >= ignition {
         return;
     }
     if world.random().next_int(u32::from(age) + 10) < 5 && !world.rained_on(pos) {
@@ -62,6 +56,12 @@ fn catch(world: &mut TickWorld, pos: IVec3, chance: u32, age: u8) {
         world.set_block_and_metadata_notify(pos, Block::Fire, age);
     } else {
         world.set_block_notify(pos, Block::Air);
+    }
+    if target == Block::Tnt {
+        world.emit(TickEffect::PrimedTnt {
+            position: pos,
+            fuse: 80,
+        });
     }
 }
 
@@ -128,10 +128,10 @@ impl BlockBehavior for Fire {
         for (offset, chance) in [
             (IVec3::X, 300),
             (IVec3::NEG_X, 300),
-            (IVec3::Y, 250),
             (IVec3::NEG_Y, 250),
-            (IVec3::Z, 300),
+            (IVec3::Y, 250),
             (IVec3::NEG_Z, 300),
+            (IVec3::Z, 300),
         ] {
             catch(world, pos + offset, chance, age);
         }
@@ -159,10 +159,14 @@ impl BlockBehavior for Fire {
                     }
                     let chance = 100 + (dy - 1).max(0) as u32 * 100;
                     let probability = (strength + 40) / (u32::from(age) + 30);
-                    if world.random().next_int(chance) <= probability {
-                        if !world.rained_on(target) {
-                            world.set_block_and_metadata_notify(target, Block::Fire, age);
-                        }
+                    if probability > 0
+                        && world.random().next_int(chance) <= probability
+                        && !world.rained_on(target)
+                    {
+                        let age = age
+                            .saturating_add((world.random().next_int(5) / 4) as u8)
+                            .min(15);
+                        world.set_block_and_metadata_notify(target, Block::Fire, age);
                     }
                 }
             }

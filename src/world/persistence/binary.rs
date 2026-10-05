@@ -491,11 +491,11 @@ pub(super) fn load_chunk(root: &Path, position: ChunkPosition) -> Option<Generat
 
 /// Write chunks that are already in their stored form, creating each region
 /// folder as needed. Returns how many chunks were written.
-pub(super) fn write_chunks(
+pub(super) fn write_chunks<'a>(
     root: &Path,
-    chunks: Vec<(ChunkPosition, StoredChunk)>,
+    chunks: impl IntoIterator<Item = (ChunkPosition, &'a StoredChunk)>,
 ) -> io::Result<usize> {
-    let mut by_region: HashMap<(i32, i32), Vec<(ChunkPosition, StoredChunk)>> = HashMap::new();
+    let mut by_region: HashMap<(i32, i32), Vec<(ChunkPosition, &StoredChunk)>> = HashMap::new();
     for (position, chunk) in chunks {
         by_region
             .entry(region_of(position))
@@ -507,7 +507,7 @@ pub(super) fn write_chunks(
         let directory = region_path(root, region);
         fs::create_dir_all(&directory)?;
         for (position, chunk) in entries {
-            write_chunk_file(&directory.join(chunk_file_name(position)), &chunk)?;
+            write_chunk_file(&directory.join(chunk_file_name(position)), chunk)?;
             saved += 1;
         }
     }

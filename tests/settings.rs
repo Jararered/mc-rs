@@ -630,6 +630,31 @@ fn frame_pacing_changes_with_screen_and_selected_limit() {
 }
 
 #[test]
+fn windowed_frames_are_paced_just_under_the_display() {
+    use game::app::frame_pacing::frame_interval;
+    use std::time::Duration;
+
+    // VSync alone, and a cap, when the display paces the game itself.
+    assert_eq!(frame_interval(0, None), None);
+    assert_eq!(
+        frame_interval(60, None),
+        Some(Duration::from_secs_f64(1.0 / 60.0))
+    );
+    // A slower cap is kept; VSync and faster caps stay under the display.
+    assert_eq!(
+        frame_interval(60, Some(144_000)),
+        Some(Duration::from_secs_f64(1.0 / 60.0))
+    );
+    let under = frame_interval(0, Some(144_000)).unwrap();
+    assert!(under > Duration::from_secs_f64(1.0 / 144.0));
+    assert!(under < Duration::from_secs_f64(1.0 / 143.0));
+    assert_eq!(frame_interval(144, Some(144_000)), Some(under));
+    assert_eq!(frame_interval(240, Some(144_000)), Some(under));
+    // An unknown refresh rate is no limit.
+    assert_eq!(frame_interval(0, Some(0)), None);
+}
+
+#[test]
 fn opaque_menu_disables_world_cameras_and_playing_restores_them() {
     let mut app = App::new();
     app.add_plugins((

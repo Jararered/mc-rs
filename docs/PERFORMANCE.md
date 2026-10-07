@@ -6,6 +6,12 @@ files inherit 60 when the field is absent. Menus use a 30 Hz timer and respond
 to window input; unfocused gameplay uses 20 Hz, and unfocused menus use 5 Hz.
 The world simulation still uses the shared 20 Hz `WorldTick`.
 
+A windowed game on Linux paces itself to 99.5% of its display's refresh rate
+instead of leaving it to VSync, whatever `Max FPS` allows above that. Measured
+on KDE Wayland with an NVIDIA card at 144 Hz, a composited window blocked on
+VSync ran its frames in pairs 1 ms and 13 ms apart; fullscreen, or a timer just
+under the refresh rate, gave an even 7 ms.
+
 The ten-second console performance report includes `streaming scans`. Once
 terrain generation, population, and first meshes settle, candidate-discovery
 passes should fall to zero unless movement, settings, job completion, or a

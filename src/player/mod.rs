@@ -274,6 +274,10 @@ pub(crate) fn spawn_player(
                     fov: settings.fov_radians(),
                     ..default()
                 }),
+                bevy::camera::visibility::RenderLayers::from_layers(&[
+                    0,
+                    interaction::overlay::SELECTION_LAYER,
+                ]),
                 Transform::default(),
             ))
             .with_children(|camera| model::arm::spawn(camera, &arm_assets, settings.fov_radians()));

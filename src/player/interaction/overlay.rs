@@ -1,6 +1,8 @@
 //! Hover outline and punching cracks, matching Beta `RenderGlobal`.
 
 use bevy::asset::RenderAssetUsages;
+use bevy::camera::visibility::RenderLayers;
+use bevy::gizmos::config::GizmoConfigStore;
 use bevy::mesh::Indices;
 use bevy::prelude::*;
 use bevy::render::render_resource::PrimitiveTopology;
@@ -24,6 +26,14 @@ const DESTROY_TILE_Y: u8 = 15;
 /// `glLineWidth(2)`, drawn as `GL_LINE_STRIP`/`GL_LINES` around the block
 /// rather than a filled wireframe.
 const OUTLINE_COLOR: Color = Color::srgba(0.0, 0.0, 0.0, 0.4);
+
+/// Render layer of the selection outline. Only the world camera draws it: on
+/// the default layer the 2D UI camera drew it too, collapsing the 3D lines
+/// into a stray dot above the crosshair.
+pub const SELECTION_LAYER: usize = 5;
+
+#[derive(Default, Reflect, GizmoConfigGroup)]
+pub struct SelectionGizmos;
 
 /// What the crosshair is pointing at, plus punching progress for the overlay.
 #[derive(Resource, Clone, Debug, Default)]
@@ -53,6 +63,8 @@ struct OverlayLayer {
 
 pub(crate) fn overlay_plugin(app: &mut App) {
     app.init_resource::<BlockFocus>()
+        .init_gizmo_group::<SelectionGizmos>()
+        .add_systems(Startup, configure_selection_gizmos)
         .add_systems(PostStartup, spawn_block_overlays)
         .add_systems(
             Update,
@@ -65,6 +77,13 @@ pub(crate) fn overlay_plugin(app: &mut App) {
                 .run_if(in_state(AppScreen::Playing)),
         )
         .add_systems(OnExit(AppScreen::Playing), hide_block_overlays);
+}
+
+fn configure_selection_gizmos(store: Option<ResMut<GizmoConfigStore>>) {
+    if let Some(mut store) = store {
+        store.config_mut::<SelectionGizmos>().0.render_layers =
+            RenderLayers::layer(SELECTION_LAYER);
+    }
 }
 
 fn spawn_block_overlays(
@@ -232,7 +251,7 @@ fn hide_block_overlays(overlays: Option<Res<BlockOverlays>>, mut visible: Query<
 fn draw_selection_outline(
     focus: Res<BlockFocus>,
     chunks: Option<Res<WorldChunks>>,
-    gizmos: Option<Gizmos>,
+    gizmos: Option<Gizmos<SelectionGizmos>>,
 ) {
     let Some(mut gizmos) = gizmos else {
         return;

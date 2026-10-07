@@ -25,11 +25,23 @@ impl From<&str> for CommandParseError {
 
 pub type CommandParser = fn(&CommandRegistry, &[&str]) -> Result<ChatCommand, CommandParseError>;
 
+/// Candidates for the argument after `args`. The registry filters them by what is typed.
+pub type CommandCompleter = fn(&CommandRegistry, &[&str]) -> Vec<String>;
+
 pub struct CommandDefinition {
     name: String,
     description: String,
     usages: Vec<String>,
     parser: CommandParser,
+    completer: Option<CommandCompleter>,
+}
+
+/// Completions for the last word of a chat input. `start` is the byte offset
+/// of that word, so accepting an item replaces `input[start..]`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Suggestions {
+    pub start: usize,
+    pub items: Vec<String>,
 }
 
 impl CommandDefinition {
@@ -72,6 +84,29 @@ impl CommandRegistry {
         usages: impl IntoIterator<Item = impl Into<String>>,
         parser: CommandParser,
     ) -> Result<(), String> {
+        self.insert(name, description, usages, parser, None)
+    }
+
+    /// `register` with argument suggestions for the chat input.
+    pub fn register_with_completions(
+        &mut self,
+        name: impl Into<String>,
+        description: impl Into<String>,
+        usages: impl IntoIterator<Item = impl Into<String>>,
+        parser: CommandParser,
+        completer: CommandCompleter,
+    ) -> Result<(), String> {
+        self.insert(name, description, usages, parser, Some(completer))
+    }
+
+    fn insert(
+        &mut self,
+        name: impl Into<String>,
+        description: impl Into<String>,
+        usages: impl IntoIterator<Item = impl Into<String>>,
+        parser: CommandParser,
+        completer: Option<CommandCompleter>,
+    ) -> Result<(), String> {
         let name = name.into();
         let description = description.into();
         let usages: Vec<String> = usages.into_iter().map(Into::into).collect();
@@ -96,6 +131,7 @@ impl CommandRegistry {
             description,
             usages,
             parser,
+            completer,
         });
         Ok(())
     }
@@ -118,6 +154,45 @@ impl CommandRegistry {
         })
     }
 
+    pub fn names(&self) -> impl Iterator<Item = &str> {
+        self.entries.iter().map(|entry| entry.name.as_str())
+    }
+
+    /// What could complete the word being typed: command names until the first
+    /// space, then the command's next argument. Ordinary chat has none.
+    pub fn suggestions(&self, input: &str) -> Suggestions {
+        let Some(body) = input.strip_prefix('/') else {
+            return Suggestions::default();
+        };
+        let start = input.rfind(char::is_whitespace).map_or(0, |space| {
+            space + input[space..].chars().next().map_or(1, char::len_utf8)
+        });
+        if start == 0 {
+            let mut items: Vec<String> = self
+                .names()
+                .filter(|name| starts_with_ignore_case(name, body))
+                .map(|name| format!("/{name}"))
+                .collect();
+            items.sort();
+            return Suggestions { start, items };
+        }
+        let mut words = input[..start].split_whitespace();
+        let Some(entry) = words
+            .next()
+            .and_then(|name| self.get(name.trim_start_matches('/')))
+        else {
+            return Suggestions::default();
+        };
+        let Some(completer) = entry.completer else {
+            return Suggestions::default();
+        };
+        let args: Vec<_> = words.collect();
+        let partial = &input[start..];
+        let mut items = completer(self, &args);
+        items.retain(|item| starts_with_ignore_case(item, partial));
+        Suggestions { start, items }
+    }
+
     /// General help lists syntax; targeted help also explains the command.
     pub fn help(&self, filter: Option<&str>) -> Vec<String> {
         let mut lines = Vec::new();
@@ -131,4 +206,10 @@ impl CommandRegistry {
         }
         lines
     }
+}
+
+fn starts_with_ignore_case(text: &str, prefix: &str) -> bool {
+    text.len() >= prefix.len()
+        && text.is_char_boundary(prefix.len())
+        && text[..prefix.len()].eq_ignore_ascii_case(prefix)
 }

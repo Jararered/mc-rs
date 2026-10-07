@@ -54,31 +54,34 @@ pub enum TimeQueryType {
 
 pub(super) fn register_builtin_commands(registry: &mut CommandRegistry) {
     registry
-        .register(
+        .register_with_completions(
             "summon",
             "Summon a creature at the player.",
             ["/summon <mob>"],
             parse_summon,
+            complete_summon,
         )
         .expect("valid summon command");
     registry
-        .register(
+        .register_with_completions(
             "weather",
             "Set overworld weather.",
             ["/weather clear|rain|thunder"],
             parse_weather,
+            complete_weather,
         )
         .expect("valid weather command");
     registry
-        .register(
+        .register_with_completions(
             "help",
             "List commands or explain a command.",
             ["/help [command]"],
             parse_help,
+            complete_help,
         )
         .expect("valid help command");
     registry
-        .register(
+        .register_with_completions(
             "time",
             "Set, advance, or query world time.",
             [
@@ -88,6 +91,7 @@ pub(super) fn register_builtin_commands(registry: &mut CommandRegistry) {
                 "/time query [daytime|gametime|day]",
             ],
             parse_time,
+            complete_time,
         )
         .expect("valid time command");
     registry
@@ -115,11 +119,12 @@ pub(super) fn register_builtin_commands(registry: &mut CommandRegistry) {
         )
         .expect("valid setblock command");
     registry
-        .register(
+        .register_with_completions(
             "wireframe",
             "Toggle wireframes or select a block type to outline.",
             ["/wireframe on|off", "/wireframe set <block id>"],
             parse_wireframe,
+            complete_wireframe,
         )
         .expect("valid wireframe command");
 }
@@ -270,6 +275,50 @@ fn parse_wireframe(_: &CommandRegistry, args: &[&str]) -> Result<ChatCommand, Co
             })
         }
         _ => Err(CommandParseError::Usage),
+    }
+}
+
+fn words(words: &[&str]) -> Vec<String> {
+    words.iter().map(|&word| word.to_owned()).collect()
+}
+
+fn complete_summon(_: &CommandRegistry, args: &[&str]) -> Vec<String> {
+    match args {
+        [] => MobType::ALL
+            .iter()
+            .map(|kind| kind.name().to_owned())
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn complete_weather(_: &CommandRegistry, args: &[&str]) -> Vec<String> {
+    match args {
+        [] => words(&["clear", "rain", "thunder"]),
+        _ => Vec::new(),
+    }
+}
+
+fn complete_help(registry: &CommandRegistry, args: &[&str]) -> Vec<String> {
+    match args {
+        [] => registry.names().map(str::to_owned).collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn complete_time(_: &CommandRegistry, args: &[&str]) -> Vec<String> {
+    match args {
+        [] => words(&["set", "add", "query", "day", "night", "noon", "midnight"]),
+        ["set"] => words(&["day", "night", "noon", "midnight"]),
+        ["query"] => words(&["daytime", "gametime", "day"]),
+        _ => Vec::new(),
+    }
+}
+
+fn complete_wireframe(_: &CommandRegistry, args: &[&str]) -> Vec<String> {
+    match args {
+        [] => words(&["on", "off", "set"]),
+        _ => Vec::new(),
     }
 }
 

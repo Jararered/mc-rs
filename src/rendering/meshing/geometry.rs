@@ -135,3 +135,77 @@ impl BlockFaceGeometry {
         &self.faces
     }
 }
+
+/// One axis-aligned box of a shaped block, as `[x0, y0, z0, x1, y1, z1]`
+/// inside its cell.
+pub(crate) type Bounds = [f32; 6];
+
+/// The boxes a shaped block is drawn as. A fence with rails both ways has
+/// five; everything else fewer.
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct BlockBoxes {
+    boxes: [Bounds; 5],
+    len: usize,
+}
+
+impl BlockBoxes {
+    fn push(&mut self, bounds: Bounds) {
+        self.boxes[self.len] = bounds;
+        self.len += 1;
+    }
+
+    pub(crate) fn as_slice(&self) -> &[Bounds] {
+        &self.boxes[..self.len]
+    }
+}
+
+fn flat((min, max): ([f32; 3], [f32; 3])) -> Bounds {
+    [min[0], min[1], min[2], max[0], max[1], max[2]]
+}
+
+/// Whether [`block_boxes`] draws `block`.
+pub(crate) fn is_box_shape(block: Block) -> bool {
+    matches!(block, Block::StoneSlab | Block::Fence | Block::Trapdoor)
+        || block.is_stairs()
+        || block.is_door()
+}
+
+/// Beta's box render types: `BlockStep`'s half block, `renderBlockStairs`,
+/// `renderBlockFence`, and the door and trapdoor panels. `fence_links` says
+/// whether the west, east, north, and south neighbors are fences.
+pub(crate) fn block_boxes(block: Block, metadata: u8, fence_links: [bool; 4]) -> BlockBoxes {
+    let mut boxes = BlockBoxes::default();
+    match block {
+        Block::StoneSlab => boxes.push([0.0, 0.0, 0.0, 1.0, 0.5, 1.0]),
+        Block::WoodenStairs | Block::CobblestoneStairs => {
+            for bounds in block.collision_boxes_for(metadata).into_iter().flatten() {
+                boxes.push(flat(bounds));
+            }
+        }
+        Block::WoodenDoor | Block::IronDoor | Block::Trapdoor => {
+            boxes.push(flat(block.selection_bounds_for(metadata)));
+        }
+        Block::Fence => {
+            let [west, east, north, south] = fence_links;
+            boxes.push([0.375, 0.0, 0.375, 0.625, 1.0, 0.625]);
+            let along_z = north || south;
+            // A lone post still gets stub rails along x.
+            let along_x = west || east || !along_z;
+            let (near, far) = (0.4375, 0.5625);
+            let x0 = if west { 0.0 } else { near };
+            let x1 = if east { 1.0 } else { far };
+            let z0 = if north { 0.0 } else { near };
+            let z1 = if south { 1.0 } else { far };
+            for (y0, y1) in [(0.75, 0.9375), (0.375, 0.5625)] {
+                if along_x {
+                    boxes.push([x0, y0, near, x1, y1, far]);
+                }
+                if along_z {
+                    boxes.push([near, y0, z0, far, y1, z1]);
+                }
+            }
+        }
+        _ => {}
+    }
+    boxes
+}

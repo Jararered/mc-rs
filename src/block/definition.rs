@@ -269,9 +269,12 @@ fn build(block: Block) -> BlockProperties {
         Block::Pumpkin => P::solid(1.0),
         Block::CraftingTable => P::solid(2.5),
         // Wooden and iron fixtures.
+        // `BlockFence.getCollisionBoundingBoxFromPool`: half a block taller
+        // than the cell, so it cannot be jumped.
         Block::Fence => P {
             opaque_cube: false,
             light_opacity: 0,
+            collision_bounds: Some(([0.0; 3], [1.0, 1.5, 1.0])),
             ..P::solid(2.0)
         },
         Block::StandingSign | Block::WallSign => P::non_colliding(1.0),
@@ -334,6 +337,62 @@ pub(crate) fn oriented_bounds(block: Block, metadata: u8) -> BlockBounds {
             None => BlockProperties::FULL_BOUNDS,
         },
         _ => torch_selection_bounds(facing),
+    }
+}
+
+/// Thickness of a door or trapdoor panel.
+const PANEL: f32 = 0.1875;
+
+/// `BlockDoor.setDoorRotation` on `BlockDoor.getState`: the panel hugs one
+/// side of its cell, and an open door swings a quarter turn.
+pub(crate) fn door_bounds(metadata: u8) -> BlockBounds {
+    let state = if metadata & 4 == 0 {
+        metadata.wrapping_sub(1) & 3
+    } else {
+        metadata & 3
+    };
+    match state {
+        0 => ([0.0, 0.0, 0.0], [1.0, 1.0, PANEL]),
+        1 => ([1.0 - PANEL, 0.0, 0.0], [1.0, 1.0, 1.0]),
+        2 => ([0.0, 0.0, 1.0 - PANEL], [1.0, 1.0, 1.0]),
+        _ => ([0.0, 0.0, 0.0], [PANEL, 1.0, 1.0]),
+    }
+}
+
+/// `BlockTrapDoor.setBlockBoundsForBlockRender`: flat on the floor of its
+/// cell when closed, upright against its supporting wall when open.
+pub(crate) fn trapdoor_bounds(metadata: u8) -> BlockBounds {
+    if metadata & 4 == 0 {
+        return ([0.0; 3], [1.0, PANEL, 1.0]);
+    }
+    match metadata & 3 {
+        0 => ([0.0, 0.0, 1.0 - PANEL], [1.0, 1.0, 1.0]),
+        1 => ([0.0, 0.0, 0.0], [1.0, 1.0, PANEL]),
+        2 => ([1.0 - PANEL, 0.0, 0.0], [1.0, 1.0, 1.0]),
+        _ => ([0.0, 0.0, 0.0], [PANEL, 1.0, 1.0]),
+    }
+}
+
+/// `BlockStairs.getCollidingBoundingBoxes`: a half-height step and a
+/// full-height riser, turned by `metadata`.
+pub(crate) fn stairs_boxes(metadata: u8) -> [BlockBounds; 2] {
+    match metadata & 3 {
+        0 => [
+            ([0.0, 0.0, 0.0], [0.5, 0.5, 1.0]),
+            ([0.5, 0.0, 0.0], [1.0, 1.0, 1.0]),
+        ],
+        1 => [
+            ([0.0, 0.0, 0.0], [0.5, 1.0, 1.0]),
+            ([0.5, 0.0, 0.0], [1.0, 0.5, 1.0]),
+        ],
+        2 => [
+            ([0.0, 0.0, 0.0], [1.0, 0.5, 0.5]),
+            ([0.0, 0.0, 0.5], [1.0, 1.0, 1.0]),
+        ],
+        _ => [
+            ([0.0, 0.0, 0.0], [1.0, 1.0, 0.5]),
+            ([0.0, 0.0, 0.5], [1.0, 0.5, 1.0]),
+        ],
     }
 }
 

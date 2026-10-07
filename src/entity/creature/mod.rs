@@ -72,6 +72,7 @@ use crate::physics::move_entity;
 use crate::physics::raycast_blocks;
 use crate::physics::step_on_block;
 use crate::physics::water_movement;
+use crate::physics::web_slowed;
 use crate::player::Player;
 use crate::player::PlayerHealth;
 use crate::random::ItemRng;
@@ -1138,9 +1139,10 @@ impl Body<'_> {
         steps: Option<&mut StepDistance>,
         fx: &mut Effects,
     ) {
+        let step = web_slowed(self.aabb(), world.chunks, &mut self.motion);
         let mut movement = move_entity(
             self.aabb(),
-            self.motion,
+            step,
             self.step_height,
             self.collision.on_ground,
             world.chunks,

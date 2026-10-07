@@ -4,7 +4,6 @@ use bevy::prelude::Color;
 
 use crate::block::blocks::Block;
 use crate::block::blocks::species;
-use crate::block::direction::Direction;
 use crate::block::fluids::Fluid;
 use crate::block::fluids::corner_height;
 use crate::block::fluids::flow_vector;
@@ -19,6 +18,7 @@ use crate::rendering::textures::WATER_FLOW_TILE;
 use crate::rendering::textures::WATER_STILL_TILE;
 use crate::rendering::textures::block_tile;
 use crate::rendering::textures::crop_tile;
+use crate::rendering::textures::door_tile;
 use crate::rendering::textures::farmland_top_tile;
 use crate::world::biome::BiomeMap;
 use crate::world::chunk::CHUNK_HEIGHT;
@@ -61,6 +61,8 @@ use self::geometry::FACE_SOUTH;
 use self::geometry::FACE_TOP;
 use self::geometry::FACE_WEST;
 use self::geometry::FaceGeometry;
+use self::geometry::block_boxes;
+use self::geometry::is_box_shape;
 use self::greedy::PLANE;
 use self::greedy::mesh_binary_plane;
 
@@ -845,7 +847,7 @@ impl<'a> Mesher<'a> {
                             .push_crops(origin, chunk.metadata(x, y, z), light);
                         continue;
                     }
-                    if block.is_crossed_plant() {
+                    if block.is_crossed_plant() || block == Block::Cobweb {
                         let light = skylight.channels_at(x as i32, y as i32, z as i32);
                         meshes.masked.push_crossed_plant(
                             origin,
@@ -855,6 +857,10 @@ impl<'a> Mesher<'a> {
                             grass_tint,
                             light,
                         );
+                        continue;
+                    }
+                    if is_box_shape(block) {
+                        self.emit_boxes(meshes, origin, [x, y, z], block, metadata);
                         continue;
                     }
                     if shaped_block(block) {
@@ -875,6 +881,92 @@ impl<'a> Mesher<'a> {
             }
         }
         flush_planes(meshes, planes, band_start, y_origin);
+    }
+
+    /// Slabs, stairs, fences, doors, and trapdoors: one or more boxes inside
+    /// the cell, textured by position as `renderStandardBlock` does for a
+    /// block with custom bounds. Only a face on the cell boundary can be
+    /// hidden by the neighbor.
+    fn emit_boxes(
+        &self,
+        meshes: &mut ChunkMeshes,
+        origin: [f32; 3],
+        at: [usize; 3],
+        block: Block,
+        metadata: u8,
+    ) {
+        let [x, y, z] = at;
+        let chunk = self.chunk;
+        let neighbors = self.neighbors;
+        let skylight = self.skylight;
+        let neighbor_at = |offset: [i32; 3]| {
+            let ny = y as i32 + offset[1];
+            (ny >= 0)
+                .then(|| neighbors.get(chunk, x as i32 + offset[0], ny, z as i32 + offset[2]))
+                .flatten()
+        };
+        let links = [[-1, 0, 0], [1, 0, 0], [0, 0, -1], [0, 0, 1]]
+            .map(|offset| block == Block::Fence && neighbor_at(offset) == Some(Block::Fence));
+        let layer = if box_shape_masked(block) {
+            &mut meshes.masked
+        } else {
+            &mut meshes.opaque
+        };
+        let tint = block_tint(block, metadata, None);
+        // A block that lets light through lights its inner faces from its
+        // own cell, as `renderBlockDoor` does. Slabs and stairs hold no light.
+        let own_light = (block.light_opacity() == 0)
+            .then(|| [[skylight.channels_at(x as i32, y as i32, z as i32); 4]; 4]);
+        for bounds in block_boxes(block, metadata, links).as_slice() {
+            let geometry = BlockFaceGeometry::from_bounds(*bounds);
+            for (face_index, face) in FACES.iter().enumerate() {
+                let on_boundary = match face_index {
+                    FACE_TOP => bounds[4] >= 1.0,
+                    FACE_BOTTOM => bounds[1] <= 0.0,
+                    FACE_EAST => bounds[3] >= 1.0,
+                    FACE_WEST => bounds[0] <= 0.0,
+                    FACE_SOUTH => bounds[5] >= 1.0,
+                    _ => bounds[2] <= 0.0,
+                };
+                if on_boundary {
+                    if y as i32 + face.neighbor[1] < 0 {
+                        continue;
+                    }
+                    if neighbor_hides_face(block, neighbor_at(face.neighbor), self.fancy_graphics) {
+                        continue;
+                    }
+                }
+                let face_geometry = geometry.face(face_index);
+                let (tile, flip) = if block.is_door() {
+                    door_tile(block, metadata, face_index)
+                } else {
+                    (
+                        block_tile(block, metadata, face_index, self.fancy_graphics),
+                        false,
+                    )
+                };
+                let shading = CornerShading {
+                    light: match own_light {
+                        Some(light) if !on_boundary => light,
+                        _ => face_corner_light(skylight, x, y, z, face, face_geometry),
+                    },
+                    ao: if on_boundary {
+                        face_corner_ao(chunk, neighbors, x, y, z, face, face_geometry)
+                    } else {
+                        [0; 4]
+                    },
+                    shade: true,
+                };
+                layer.push_block_quad(
+                    origin,
+                    face.normal,
+                    face_geometry.corners,
+                    box_texels(tile, face_index, face_geometry.corners, flip),
+                    tint,
+                    shading,
+                );
+            }
+        }
     }
 
     /// Cactus, farmland, and chests keep per-face geometry.
@@ -950,6 +1042,25 @@ impl<'a> Mesher<'a> {
                 shade: true,
             };
             let side_tint = if grass_side { [1.0; 3] } else { base };
+            if block.is_chest() {
+                // The latch and the two halves of a double chest only line
+                // up when each side reads the way Beta draws it.
+                let mut texels = face_texels(tile.0, tile.1, face_index);
+                if face_index == FACE_EAST || face_index == FACE_NORTH {
+                    for texel in &mut texels {
+                        texel.texel[0] = 16 - texel.texel[0];
+                    }
+                }
+                layer.push_block_quad(
+                    origin,
+                    face.normal,
+                    face_geometry.corners,
+                    texels,
+                    side_tint,
+                    shading,
+                );
+                continue;
+            }
             layer.push_face(
                 origin,
                 face,
@@ -1047,6 +1158,8 @@ impl<'a> Mesher<'a> {
                 LAYER_WATER
             } else if fancy_graphics && block.is_leaves() {
                 LAYER_CUTOUT
+            } else if matches!(block, Block::Glass | Block::MobSpawner) {
+                LAYER_MASKED
             } else {
                 LAYER_OPAQUE
             };
@@ -1120,6 +1233,7 @@ const LAYER_OPAQUE: u8 = 0;
 const LAYER_OVERLAY: u8 = 1;
 const LAYER_CUTOUT: u8 = 2;
 const LAYER_WATER: u8 = 3;
+const LAYER_MASKED: u8 = 4;
 const GRASS_OVERLAY_TILE: [u8; 2] = [6, 2];
 
 fn empty_meshes() -> ChunkMeshes {
@@ -1299,6 +1413,7 @@ fn layer_mut(meshes: &mut ChunkMeshes, layer: u8) -> &mut BlockGeometry {
         LAYER_OVERLAY => &mut meshes.grass_overlay,
         LAYER_CUTOUT => &mut meshes.cutout,
         LAYER_WATER => &mut meshes.water,
+        LAYER_MASKED => &mut meshes.masked,
         _ => &mut meshes.opaque,
     }
 }
@@ -1604,11 +1719,13 @@ fn double_chest_tile(
         return (10, 1);
     }
 
-    // The atlas stores each long double-chest face as two adjacent tiles.
-    // Keep the halves in the same left-to-right order when viewed from front.
-    let first_half = pair_direction[0] > 0 || pair_direction[2] > 0;
-    let first_is_left = matches!(facing, Direction::North | Direction::East);
-    let left_half = first_half == first_is_left;
+    // `BlockChest.getBlockTexture`: the atlas stores each long face as two
+    // adjacent tiles, left then right as seen from outside. Seen from the
+    // south or west, the half toward -x or -z is on the left; from the north
+    // or east it is on the right.
+    let partner_ahead = pair_direction[0] > 0 || pair_direction[2] > 0;
+    let behind_is_left = face == FACE_SOUTH || face == FACE_WEST;
+    let left_half = partner_ahead == behind_is_left;
     let tile_x = if left_half { 9 } else { 10 };
     let tile_y = if face == front { 2 } else { 3 };
     (tile_x, tile_y)
@@ -1661,8 +1778,17 @@ fn neighbor_hides_face(block: Block, neighbor: Option<Block>, fancy_graphics: bo
         || neighbor.is_ladder()
         || neighbor.is_torch()
         || neighbor.is_crossed_plant()
+        || neighbor == Block::Cobweb
+        || neighbor == Block::Fence
+        || neighbor == Block::Trapdoor
+        || neighbor.is_stairs()
+        || neighbor.is_door()
     {
         return false;
+    }
+    // `BlockStep.shouldSideBeRendered`: slabs of equal height share a side.
+    if neighbor == Block::StoneSlab {
+        return block == Block::StoneSlab;
     }
     if neighbor == Block::Glass && block != Block::Glass {
         return false;
@@ -1684,6 +1810,37 @@ fn face_texels(tile_x: u8, tile_y: u8, face: usize) -> [AtlasTexel; 4] {
         _ => [[0, 16], [16, 16], [16, 0], [0, 0]],
     };
     tile_texels(tile_x, tile_y, corners)
+}
+
+/// Texels for a face of a box inside the cell: the tile is cropped to the
+/// face's position, as Beta maps a block with custom bounds. `flip` mirrors
+/// the tile, for `RenderBlocks.flipTexture`.
+fn box_texels(tile: (u8, u8), face: usize, corners: [[f32; 3]; 4], flip: bool) -> [AtlasTexel; 4] {
+    corners.map(|[x, y, z]| {
+        let (u, v) = match face {
+            FACE_TOP => (x, z),
+            FACE_BOTTOM => (z, x),
+            // `renderSouthFace` and `renderEastFace` run u against the
+            // axis, so a tile reads the same way round from outside on
+            // every side.
+            FACE_EAST => (1.0 - z, 1.0 - y),
+            FACE_WEST => (z, 1.0 - y),
+            FACE_NORTH => (1.0 - x, 1.0 - y),
+            _ => (x, 1.0 - y),
+        };
+        let u = if flip { 1.0 - u } else { u };
+        AtlasTexel::new(
+            tile.0,
+            tile.1,
+            (u * 16.0).round() as u8,
+            (v * 16.0).round() as u8,
+        )
+    })
+}
+
+/// Box shapes whose tiles have transparent texels.
+fn box_shape_masked(block: Block) -> bool {
+    block == Block::Trapdoor || block.is_door()
 }
 
 fn tile_texels(tile_x: u8, tile_y: u8, corners: [[u8; 2]; 4]) -> [AtlasTexel; 4] {
@@ -1738,8 +1895,32 @@ pub fn dropped_block_meshes(
 ) -> DroppedBlockMeshes {
     let mut body = BlockGeometry::default();
     let mut overlay = BlockGeometry::default();
-    let block_geometry = BlockFaceGeometry::for_block(block);
     let centered = [-0.5; 3];
+    if is_box_shape(block) {
+        for bounds in block_boxes(block, metadata, [false; 4]).as_slice() {
+            let geometry = BlockFaceGeometry::from_bounds(*bounds);
+            for (face_index, face) in FACES.iter().enumerate() {
+                let corners = geometry.face(face_index).corners;
+                let tile = block_tile(block, metadata, face_index, fancy_graphics);
+                let shade = face_shade(face.normal);
+                body.push_block_quad(
+                    centered,
+                    face.normal,
+                    corners,
+                    box_texels(tile, face_index, corners, false),
+                    [shade; 3],
+                    CornerShading::FULL_BRIGHT,
+                );
+            }
+        }
+        return DroppedBlockMeshes {
+            body,
+            overlay: None,
+            cutout: false,
+            alpha_masked: box_shape_masked(block),
+        };
+    }
+    let block_geometry = BlockFaceGeometry::for_block(block);
     for (face_index, face) in FACES.iter().enumerate() {
         let face_geometry = block_geometry.face(face_index);
         let grass_side =
@@ -1777,7 +1958,7 @@ pub fn dropped_block_meshes(
         body,
         overlay: (!overlay.is_empty()).then_some(overlay),
         cutout: fancy_graphics && block.is_leaves(),
-        alpha_masked: block == Block::Cactus,
+        alpha_masked: matches!(block, Block::Cactus | Block::Glass | Block::MobSpawner),
     }
 }
 

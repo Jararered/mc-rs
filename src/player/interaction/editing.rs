@@ -429,7 +429,10 @@ pub(crate) fn interact_blocks(
                 },
             );
         }
-        if hotbar
+        // `Block.blockActivated` returning true keeps the held item unused.
+        let activated = hit.is_some_and(|hit| hit.block.is_door() || hit.block == Block::Trapdoor);
+        if activated {
+        } else if hotbar
             .selected_stack()
             .is_some_and(|stack| stack.item() == Item::Bucket)
             && let Some((x, y, z, previous, fluid)) =
@@ -488,6 +491,36 @@ pub(crate) fn interact_blocks(
                     );
                 }
                 notify_edit(&mut streaming, &mut persistence, x, y, z, true);
+            } else if let Some(door) = match stack.item() {
+                Item::WoodenDoor => Some(Block::WoodenDoor),
+                Item::IronDoor => Some(Block::IronDoor),
+                _ => None,
+            } && let previous = [0, 1].map(|dy| {
+                (
+                    chunks.block_at(hit.x, hit.y + 1 + dy, hit.z),
+                    chunks.metadata_at(hit.x, hit.y + 1 + dy, hit.z),
+                )
+            }) && place_door(
+                &mut chunks,
+                hit,
+                door,
+                furnace_facing_toward_player(transform.rotation * Vec3::NEG_Z),
+            ) {
+                let selected = hotbar.selected;
+                hotbar.slots[selected] =
+                    ItemStack::with_data(stack.item(), stack.count() - 1, stack.data()).ok();
+                for (dy, (previous, metadata)) in previous.into_iter().enumerate() {
+                    let y = hit.y + 1 + dy as i32;
+                    push_event(
+                        &mut block_ticks,
+                        BlockEvent::Changed {
+                            position: IVec3::new(hit.x, y, hit.z),
+                            previous: previous.unwrap_or(Block::Air),
+                            metadata,
+                        },
+                    );
+                    notify_edit(&mut streaming, &mut persistence, hit.x, y, hit.z, false);
+                }
             } else if stack.item() == Item::Seeds && plant_seeds(&mut chunks, hit) {
                 let selected = hotbar.selected;
                 hotbar.slots[selected] =
@@ -878,6 +911,14 @@ pub fn place_selected_block_facing(
     if !hit.block.is_opaque_cube() && selected == Block::Torch {
         return false;
     }
+    // `BlockFence.canPlaceBlockAt`: on another fence or on solid ground.
+    if selected == Block::Fence
+        && !chunks
+            .block_at(x, y - 1, z)
+            .is_some_and(|below| below == Block::Fence || below.is_solid_material())
+    {
+        return false;
+    }
     let (block, metadata) = match selected {
         Block::Torch => {
             let support = match hit.face {
@@ -893,8 +934,33 @@ pub fn place_selected_block_facing(
                 support.map_or(0, |facing| selected.facing_metadata(facing)),
             )
         }
-        Block::Furnace | Block::Pumpkin | Block::Chest => {
+        Block::Furnace | Block::Pumpkin | Block::Chest | Block::Dispenser => {
             (selected, selected.facing_metadata(front))
+        }
+        // `BlockStairs.onBlockPlacedBy`: the steps climb away from the player.
+        Block::WoodenStairs | Block::CobblestoneStairs => (
+            selected,
+            match front {
+                Direction::North => 2,
+                Direction::East => 1,
+                Direction::South => 3,
+                Direction::West => 0,
+            },
+        ),
+        // `BlockTrapDoor.canPlaceBlockOnSide` and `onBlockPlaced`: hinged on
+        // the side of a full cube.
+        Block::Trapdoor => {
+            if !hit.block.is_opaque_cube() {
+                return false;
+            }
+            let metadata = match hit.face {
+                BlockFace::North => 0,
+                BlockFace::South => 1,
+                BlockFace::West => 2,
+                BlockFace::East => 3,
+                BlockFace::Up | BlockFace::Down => return false,
+            };
+            (selected, metadata)
         }
         Block::Ladder => {
             let Some(support) = ladder_facing(chunks, x, y, z, hit.face, hit.block) else {
@@ -915,6 +981,65 @@ pub fn place_selected_block_facing(
     chunks
         .set_block_with_metadata(x, y, z, block, metadata)
         .is_some_and(|(previous, _)| previous != block)
+}
+
+/// `ItemDoor.onItemUse`: stand a two-block door on the top face of a full
+/// cube. `front` is the side facing the player, as furnaces take it. The
+/// hinge goes to the side with more solid blocks, or beside another door so
+/// the pair opens from the middle.
+pub fn place_door(chunks: &mut WorldChunks, hit: BlockHit, door: Block, front: Direction) -> bool {
+    if hit.face != BlockFace::Up {
+        return false;
+    }
+    let (x, y, z) = (hit.x, hit.y + 1, hit.z);
+    // `BlockDoor.canPlaceBlockAt`.
+    let free = |chunks: &WorldChunks, y: i32| {
+        chunks
+            .block_at(x, y, z)
+            .is_some_and(|block| block.is_replaceable())
+    };
+    if y >= CHUNK_HEIGHT as i32 - 1
+        || !hit.block.is_opaque_cube()
+        || !free(chunks, y)
+        || !free(chunks, y + 1)
+    {
+        return false;
+    }
+    // Beta's `(yaw + 180) * 4 / 360 - 0.5` quadrant.
+    let mut facing: u8 = match front {
+        Direction::North => 1,
+        Direction::East => 2,
+        Direction::South => 3,
+        Direction::West => 0,
+    };
+    let (dx, dz) = match facing {
+        0 => (0, 1),
+        1 => (-1, 0),
+        2 => (0, -1),
+        _ => (1, 0),
+    };
+    let cubes = |chunks: &WorldChunks, sx: i32, sz: i32| {
+        (0..2)
+            .filter(|dy| {
+                chunks
+                    .block_at(sx, y + dy, sz)
+                    .is_some_and(Block::is_opaque_cube)
+            })
+            .count()
+    };
+    let has_door = |chunks: &WorldChunks, sx: i32, sz: i32| {
+        (0..2).any(|dy| chunks.block_at(sx, y + dy, sz) == Some(door))
+    };
+    let behind = cubes(chunks, x - dx, z - dz);
+    let ahead = cubes(chunks, x + dx, z + dz);
+    let door_behind = has_door(chunks, x - dx, z - dz);
+    let door_ahead = has_door(chunks, x + dx, z + dz);
+    if (door_behind && !door_ahead) || ahead > behind {
+        facing = (facing.wrapping_sub(1) & 3) + 4;
+    }
+    chunks.set_block_with_metadata(x, y, z, door, facing);
+    chunks.set_block_with_metadata(x, y + 1, z, door, facing + 8);
+    true
 }
 
 fn ladder_facing(

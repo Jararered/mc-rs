@@ -13,8 +13,9 @@
 //!
 //! Beta stores blocks, metadata and light but not biomes, scheduled ticks or the
 //! simulation state of mobs, so those are rebuilt on load: climate from the seed,
-//! ticks from the world, and mob timers from defaults. Blocks this game does not
-//! simulate (glass, cake, redstone wire and the like) load as air. Tile entities
+//! ticks from the world, and mob timers from defaults. Every Beta block id loads;
+//! one with a shape this game does not draw yet (rails, beds, signs, redstone
+//! parts, cake) shows as a stone-textured cube. Tile entities
 //! other than chests, furnaces and spawners (signs, note blocks, dispensers) are
 //! dropped, which is also what Beta does with ids it does not know. Falling
 //! blocks and primed TNT in flight are not written, so one caught mid-fall or

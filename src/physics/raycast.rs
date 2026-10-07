@@ -137,8 +137,13 @@ pub fn raycast_collision(chunks: &WorldChunks, from: Vec3, to: Vec3) -> Option<(
         return None;
     }
     walk(from, direction, length, |x, y, z, _| {
-        let collider = super::block_collision_box(chunks, x, y, z)?;
-        let t = segment_entry(from, direction, collider.min, collider.max, length)?;
+        let t = super::block_collision_boxes(chunks, x, y, z)
+            .into_iter()
+            .flatten()
+            .filter_map(|collider| {
+                segment_entry(from, direction, collider.min, collider.max, length)
+            })
+            .min_by(f32::total_cmp)?;
         Some((IVec3::new(x, y, z), from + direction * t))
     })
 }

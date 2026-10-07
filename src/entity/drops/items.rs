@@ -516,7 +516,7 @@ pub fn item_piece_transform(
 /// flat item sprite path rather than their in-world block render types.
 pub fn dropped_block_model(stack: ItemStack) -> Option<(Block, u8)> {
     let (block, metadata) = stack.runtime_block()?;
-    if block.is_ladder() || block.is_torch() || block.is_crossed_plant() {
+    if block.is_ladder() || block.is_torch() || block.is_crossed_plant() || block == Block::Cobweb {
         None
     } else {
         Some((block, metadata))

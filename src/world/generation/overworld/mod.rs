@@ -22,3 +22,5 @@ use super::world;
 pub use biome::BiomeGenerator;
 pub use dungeon_loot::generate_dungeon_chest;
 pub use generator::OverworldGenerator;
+pub use trees::TreeWorld;
+pub use trees::grow_sapling;

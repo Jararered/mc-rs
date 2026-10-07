@@ -418,15 +418,17 @@ fn visit_colliders(chunks: &WorldChunks, area: Aabb, mut visit: impl FnMut(Aabb)
                 if y >= CHUNK_HEIGHT as i32 {
                     continue;
                 }
-                let block = if y < 0 {
-                    Aabb::from_block(x, y, z)
-                } else if let Some(block) = block_collision_box(chunks, x, y, z) {
-                    block
-                } else {
+                if y < 0 {
+                    let floor = Aabb::from_block(x, y, z);
+                    if area.intersects(floor) && visit(floor) {
+                        return true;
+                    }
                     continue;
-                };
-                if area.intersects(block) && visit(block) {
-                    return true;
+                }
+                for block in block_collision_boxes(chunks, x, y, z).into_iter().flatten() {
+                    if area.intersects(block) && visit(block) {
+                        return true;
+                    }
                 }
             }
         }
@@ -436,14 +438,27 @@ fn visit_colliders(chunks: &WorldChunks, area: Aabb, mut visit: impl FnMut(Aabb)
 
 /// `Block.getCollisionBoundingBoxFromPool` for a world cell, in world space.
 /// Deep snow layers collide as a half slab.
-pub(crate) fn block_collision_box(chunks: &WorldChunks, x: i32, y: i32, z: i32) -> Option<Aabb> {
-    let block = chunks.block_at(x, y, z)?;
-    let (min, max) = block.collision_bounds_for(chunks.metadata_at(x, y, z))?;
+/// Stairs collide as two boxes; every other block has at most one.
+pub(crate) fn block_collision_boxes(
+    chunks: &WorldChunks,
+    x: i32,
+    y: i32,
+    z: i32,
+) -> [Option<Aabb>; 2] {
+    let Some(block) = chunks.block_at(x, y, z) else {
+        return [None; 2];
+    };
     let origin = Vec3::new(x as f32, y as f32, z as f32);
-    Some(Aabb::new(
-        origin + Vec3::from_array(min),
-        origin + Vec3::from_array(max),
-    ))
+    block
+        .collision_boxes_for(chunks.metadata_at(x, y, z))
+        .map(|bounds| {
+            bounds.map(|(min, max)| {
+                Aabb::new(
+                    origin + Vec3::from_array(min),
+                    origin + Vec3::from_array(max),
+                )
+            })
+        })
 }
 
 /// Run Beta's living-entity ground movement for each emitted world tick.
@@ -621,9 +636,10 @@ fn integrate_player(
             }
 
             let sneaking_on_ground = collision.on_ground && input.sneaking;
+            let step = web_slowed(aabb, &chunks, &mut motion);
             let movement = move_entity_with_sneak(
                 aabb,
-                motion,
+                step,
                 step_height.0,
                 collision.on_ground,
                 input.sneaking,
@@ -851,6 +867,26 @@ fn contains_liquid_material(
         }
     }
     false
+}
+
+/// `BlockWeb.onEntityCollidedWithBlock` and the `isInWeb` branch of
+/// `Entity.moveEntity`: a body touching a cobweb moves a fraction of its
+/// motion this tick and loses the motion itself. Returns the displacement to
+/// sweep.
+pub fn web_slowed(aabb: Aabb, chunks: &WorldChunks, motion: &mut Vec3) -> Vec3 {
+    use crate::block::blocks::Block;
+    let inner = Aabb::new(aabb.min + Vec3::splat(0.001), aabb.max - Vec3::splat(0.001));
+    let (min_x, max_x, min_y, max_y, min_z, max_z) = block_range(inner);
+    let in_web = (min_x..max_x).any(|x| {
+        (min_y..max_y)
+            .any(|y| (min_z..max_z).any(|z| chunks.block_at(x, y, z) == Some(Block::Cobweb)))
+    });
+    if !in_web {
+        return *motion;
+    }
+    let step = *motion * Vec3::new(0.25, 0.05, 0.25);
+    *motion = Vec3::ZERO;
+    step
 }
 
 fn block_range(area: Aabb) -> (i32, i32, i32, i32, i32, i32) {

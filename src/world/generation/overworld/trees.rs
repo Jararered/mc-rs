@@ -19,6 +19,54 @@ const HEIGHT: i32 = CHUNK_HEIGHT as i32;
 /// axes in a fixed order, used to walk a line along its longest axis.
 const AXIS_ORDER: [usize; 6] = [2, 0, 0, 1, 2, 1];
 
+/// The world access a tree generator needs. Population grows trees into its
+/// four-chunk window; a sapling grows one into the live world.
+pub trait TreeWorld {
+    /// `World.getBlockId`.
+    fn get(&self, x: i32, y: i32, z: i32) -> Block;
+    /// `World.setBlock`.
+    fn set(&mut self, x: i32, y: i32, z: i32, block: Block);
+    /// `World.setBlockAndMetadata`.
+    fn set_with_metadata(&mut self, x: i32, y: i32, z: i32, block: Block, metadata: u8);
+}
+
+impl TreeWorld for PopulationWorld {
+    fn get(&self, x: i32, y: i32, z: i32) -> Block {
+        PopulationWorld::get(self, x, y, z)
+    }
+
+    fn set(&mut self, x: i32, y: i32, z: i32, block: Block) {
+        PopulationWorld::set(self, x, y, z, block);
+    }
+
+    fn set_with_metadata(&mut self, x: i32, y: i32, z: i32, block: Block, metadata: u8) {
+        PopulationWorld::set_with_metadata(self, x, y, z, block, metadata);
+    }
+}
+
+/// `BlockSapling.growTree`'s choice of generator: a spruce sapling grows
+/// `WorldGenTaiga2`, a birch `WorldGenForest`, and an oak `WorldGenTrees` or,
+/// one time in ten, a `WorldGenBigTree` at its default scales. The caller has
+/// already cleared the sapling's cell. Returns whether a tree grew.
+pub fn grow_sapling(
+    world: &mut impl TreeWorld,
+    rand: &mut JavaRandom,
+    [x, y, z]: [i32; 3],
+    species: u8,
+) -> bool {
+    match species & 3 {
+        SPRUCE => generate_taiga2(world, rand, x, y, z),
+        BIRCH => generate_standard(world, rand, x, y, z, BIRCH, 5),
+        _ => {
+            if rand.next_int(10) == 0 {
+                BigTree::unscaled().generate(world, rand, x, y, z)
+            } else {
+                generate_standard(world, rand, x, y, z, OAK, 4)
+            }
+        }
+    }
+}
+
 /// Which generator a biome rolls for a placement.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum TreeKind {
@@ -67,7 +115,7 @@ pub(super) fn select_tree(biome: Biome, rand: &mut JavaRandom) -> TreeKind {
 
 pub(super) fn generate_tree(
     kind: TreeKind,
-    world: &mut PopulationWorld,
+    world: &mut impl TreeWorld,
     rand: &mut JavaRandom,
     x: i32,
     y: i32,
@@ -87,7 +135,7 @@ pub(super) fn generate_tree(
 /// The space checks shared by every small tree: `radius(level)` blocks
 /// around the trunk must hold only air or leaves, inside the world.
 fn space_is_clear(
-    world: &PopulationWorld,
+    world: &impl TreeWorld,
     x: i32,
     y: i32,
     z: i32,
@@ -114,7 +162,7 @@ fn grows_on(block: Block) -> bool {
 /// `WorldGenTrees` and `WorldGenForest`, which differ only in trunk height and
 /// the wood/leaf species.
 fn generate_standard(
-    world: &mut PopulationWorld,
+    world: &mut impl TreeWorld,
     rand: &mut JavaRandom,
     x: i32,
     y: i32,
@@ -166,7 +214,7 @@ fn generate_standard(
 
 /// `WorldGenTaiga1`: a narrow spruce with a tapering canopy.
 fn generate_taiga1(
-    world: &mut PopulationWorld,
+    world: &mut impl TreeWorld,
     rand: &mut JavaRandom,
     x: i32,
     y: i32,
@@ -217,7 +265,7 @@ fn generate_taiga1(
 
 /// `WorldGenTaiga2`: a wider spruce with a rounded canopy.
 fn generate_taiga2(
-    world: &mut PopulationWorld,
+    world: &mut impl TreeWorld,
     rand: &mut JavaRandom,
     x: i32,
     y: i32,
@@ -316,9 +364,18 @@ impl BigTree {
         }
     }
 
+    /// A generator nobody called `func_517_a` on, as a sapling makes one:
+    /// the same scales, with four-layer leaf clusters.
+    fn unscaled() -> Self {
+        Self {
+            cluster_height: 4,
+            ..Self::new(1.0, 1.0, 1.0)
+        }
+    }
+
     fn generate(
         &mut self,
-        world: &mut PopulationWorld,
+        world: &mut impl TreeWorld,
         rand: &mut JavaRandom,
         x: i32,
         y: i32,
@@ -341,7 +398,7 @@ impl BigTree {
 
     /// `func_519_e`: check the ground and clear trunk space, shrinking the tree
     /// to fit under an obstruction.
-    fn can_grow(&mut self, world: &PopulationWorld) -> bool {
+    fn can_grow(&mut self, world: &impl TreeWorld) -> bool {
         let base = self.base;
         let top = [base[0], base[1] + self.height - 1, base[2]];
         if !grows_on(world.get(base[0], base[1] - 1, base[2])) {
@@ -361,7 +418,7 @@ impl BigTree {
     /// `func_524_a`: how far a line runs before it meets something other than
     /// air or leaves, or -1 when it is clear. Unlike [`Self::draw_line`], the
     /// minor axes are floored without rounding.
-    fn line_clearance(world: &PopulationWorld, from: [i32; 3], to: [i32; 3]) -> i32 {
+    fn line_clearance(world: &impl TreeWorld, from: [i32; 3], to: [i32; 3]) -> i32 {
         let mut delta = [0i32; 3];
         let mut axis = 0usize;
         for i in 0..3 {
@@ -394,7 +451,7 @@ impl BigTree {
     }
 
     /// `func_521_a`: choose branch tips and the leaf clusters they carry.
-    fn make_clusters(&mut self, world: &PopulationWorld) {
+    fn make_clusters(&mut self, world: &impl TreeWorld) {
         self.trunk_height = (f64::from(self.height) * Self::TRUNK_SCALE) as i32;
         if self.trunk_height >= self.height {
             self.trunk_height = self.height - 1;
@@ -482,7 +539,7 @@ impl BigTree {
     }
 
     /// `func_518_b`: place a leaf blob at every cluster.
-    fn place_clusters(&self, world: &mut PopulationWorld) {
+    fn place_clusters(&self, world: &mut impl TreeWorld) {
         for cluster in &self.clusters {
             for level in cluster[1]..cluster[1] + self.cluster_height {
                 let radius = self.blob_radius(level - cluster[1]);
@@ -493,7 +550,7 @@ impl BigTree {
 
     /// `func_523_a`: a horizontal disc of oak leaves. Any existing leaves,
     /// whatever their species, are replaced; everything else is kept.
-    fn place_leaf_disc(world: &mut PopulationWorld, x: i32, y: i32, z: i32, radius: f32) {
+    fn place_leaf_disc(world: &mut impl TreeWorld, x: i32, y: i32, z: i32, radius: f32) {
         let extent = (f64::from(radius) + 0.618) as i32;
         for offset_x in -extent..=extent {
             for offset_z in -extent..=extent {
@@ -512,14 +569,14 @@ impl BigTree {
     }
 
     /// `func_529_c`: draw the trunk.
-    fn place_trunk(&self, world: &mut PopulationWorld) {
+    fn place_trunk(&self, world: &mut impl TreeWorld) {
         let base = self.base;
         let top = [base[0], base[1] + self.trunk_height, base[2]];
         Self::draw_line(world, base, top);
     }
 
     /// `func_525_d`: draw a branch from the trunk to each cluster.
-    fn place_branches(&self, world: &mut PopulationWorld) {
+    fn place_branches(&self, world: &mut impl TreeWorld) {
         let mut from = self.base;
         for cluster in &self.clusters {
             let to = [cluster[0], cluster[1], cluster[2]];
@@ -532,7 +589,7 @@ impl BigTree {
     }
 
     /// `func_522_a`: draw a line of wood between two points.
-    fn draw_line(world: &mut PopulationWorld, from: [i32; 3], to: [i32; 3]) {
+    fn draw_line(world: &mut impl TreeWorld, from: [i32; 3], to: [i32; 3]) {
         let mut delta = [0i32; 3];
         let mut axis = 0usize;
         for i in 0..3 {

@@ -532,8 +532,107 @@ pub fn block_tile(
         Block::Water | Block::FlowingWater => water::WATER_STILL_TILE,
         Block::Crops => crop_tile(7),
         Block::Ice => (3, 4),
+        // `BlockSapling.getBlockTextureFromSideAndMetadata`.
+        Block::Sapling => match metadata & 3 {
+            species::SPRUCE => tile(63),
+            species::BIRCH => tile(79),
+            _ => tile(15),
+        },
+        Block::Glass => tile(49),
+        Block::Wool => tile(wool_tile(metadata)),
+        // `BlockStep`: stone, sandstone, wooden, and cobblestone slabs.
+        Block::StoneSlab | Block::DoubleStoneSlab => match (metadata, face) {
+            (0, 0 | 1) => tile(6),
+            (0, _) => tile(5),
+            (1, 0) => tile(176),
+            (1, 1) => tile(208),
+            (1, _) => tile(192),
+            (2, _) => tile(4),
+            (3, _) => tile(16),
+            _ => tile(6),
+        },
+        Block::WoodenStairs | Block::Fence => tile(4),
+        Block::CobblestoneStairs => tile(16),
+        Block::Cobweb => tile(11),
+        Block::Trapdoor => tile(84),
+        Block::SoulSand => tile(104),
+        Block::NoteBlock => tile(74),
+        Block::Jukebox if face == 0 => tile(75),
+        Block::Jukebox => tile(74),
+        Block::Dispenser if face == 0 || face == 1 => tile(62),
+        Block::Dispenser => {
+            if block
+                .facing(metadata)
+                .is_some_and(|facing| facing.face_index() == face)
+            {
+                tile(46)
+            } else {
+                tile(45)
+            }
+        }
+        // `BlockLockedChest`: a chest whose front always faces south.
+        Block::LockedChest if face == 0 || face == 1 => tile(25),
+        Block::LockedChest if face == 4 => tile(27),
+        Block::LockedChest => tile(26),
+        Block::WoodenDoor | Block::IronDoor => door_tile(block, metadata, face).0,
         _ => (1, 0),
     }
+}
+
+/// A `terrain.png` tile index as its column and row.
+const fn tile(index: u8) -> (u8, u8) {
+    (index % 16, index / 16)
+}
+
+/// `BlockCloth.getBlockTextureFromSideAndMetadata`: white is tile 64 and the
+/// dyed colors fill two columns beside it.
+pub const fn wool_tile(metadata: u8) -> u8 {
+    let metadata = metadata & 15;
+    if metadata == 0 {
+        return 64;
+    }
+    let inverted = !metadata & 15;
+    113 + ((inverted & 8) >> 3) + (inverted & 7) * 16
+}
+
+/// `BlockDoor.getBlockTextureFromSideAndMetadata`: the tile for a door half
+/// and whether `RenderBlocks.renderBlockDoor` mirrors it. The upper half
+/// (`metadata & 8`) is one row above the lower in the atlas. `face` uses the
+/// mesher's order; Beta's side 2 is north and 3 south, 4 west and 5 east.
+pub fn door_tile(
+    block: crate::block::blocks::Block,
+    metadata: u8,
+    face: usize,
+) -> ((u8, u8), bool) {
+    let base: i32 = if block == crate::block::blocks::Block::IronDoor {
+        98
+    } else {
+        97
+    };
+    let side: i32 = match face {
+        0 => 1,
+        1 => 0,
+        2 => 5,
+        3 => 4,
+        4 => 3,
+        _ => 2,
+    };
+    let metadata = i32::from(metadata);
+    if side == 0 || side == 1 {
+        return (tile(base as u8), false);
+    }
+    let state = if metadata & 4 == 0 {
+        (metadata - 1) & 3
+    } else {
+        metadata & 3
+    };
+    if (state == 0 || state == 2) ^ (side <= 3) {
+        return (tile(base as u8), false);
+    }
+    let mut turn = state / 2 + ((side & 1) ^ state);
+    turn += (metadata & 4) / 4;
+    let index = base - (metadata & 8) * 2;
+    (tile(index as u8), turn & 1 != 0)
 }
 
 /// Atlas tile for a crop at growth `stage` (`BlockCrops`: 88 + stage).

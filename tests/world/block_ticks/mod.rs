@@ -4,6 +4,7 @@
 mod engine;
 mod falling;
 mod fire;
+mod fixtures;
 mod fluids;
 mod leaves;
 mod misc;

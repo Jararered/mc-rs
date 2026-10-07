@@ -119,7 +119,11 @@ fn native_save_values_and_supported_states_round_trip() {
             }
         }
     }
-    for id in [Block::Cake, Block::Trapdoor, Block::Glass] {
+    // Shapes the mesher cannot draw yet are not placeable.
+    for id in [Block::Cake, Block::Bed, Block::Rail, Block::WoodenDoor] {
+        assert_eq!(id.placed(0), None);
+    }
+    for id in [Block::Fence, Block::Trapdoor, Block::Glass] {
         assert_eq!(
             ItemStack::new(Item::from_block(id).unwrap(), 1)
                 .unwrap()

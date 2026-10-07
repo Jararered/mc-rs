@@ -298,22 +298,43 @@ impl Block {
     /// species, or the facing. Decay flags and the like are not part of it.
     pub const fn appearance_metadata(self, metadata: u8) -> u8 {
         match self {
-            Self::Wood | Self::WoodenPlanks | Self::Leaves | Self::TallGrass => metadata & 3,
+            Self::Wood | Self::WoodenPlanks | Self::Leaves | Self::TallGrass | Self::Sapling => {
+                metadata & 3
+            }
             Self::Torch
             | Self::Ladder
             | Self::Furnace
             | Self::LitFurnace
             | Self::Chest
-            | Self::Pumpkin => metadata,
+            | Self::Pumpkin
+            | Self::Dispenser
+            | Self::Wool
+            | Self::StoneSlab
+            | Self::DoubleStoneSlab
+            | Self::WoodenStairs
+            | Self::CobblestoneStairs
+            | Self::WoodenDoor
+            | Self::IronDoor
+            | Self::Trapdoor => metadata,
             _ => 0,
         }
     }
 
-    /// Picking bounds for the block with `metadata`. Only torches and ladders
-    /// depend on it.
+    pub const fn is_door(self) -> bool {
+        matches!(self, Self::WoodenDoor | Self::IronDoor)
+    }
+
+    pub const fn is_stairs(self) -> bool {
+        matches!(self, Self::WoodenStairs | Self::CobblestoneStairs)
+    }
+
+    /// Picking bounds for the block with `metadata`. Torches, ladders,
+    /// doors, and trapdoors depend on it.
     pub fn selection_bounds_for(self, metadata: u8) -> definition::BlockBounds {
         match self {
             Self::Torch | Self::Ladder => definition::oriented_bounds(self, metadata),
+            Self::WoodenDoor | Self::IronDoor => definition::door_bounds(metadata),
+            Self::Trapdoor => definition::trapdoor_bounds(metadata),
             _ => self.selection_bounds(),
         }
     }
@@ -325,7 +346,19 @@ impl Block {
         match self {
             Self::Ladder => Some(definition::oriented_bounds(self, metadata)),
             Self::SnowLayer if metadata & 7 >= 3 => Some(([0.0; 3], [1.0, 0.5, 1.0])),
+            Self::WoodenDoor | Self::IronDoor => Some(definition::door_bounds(metadata)),
+            Self::Trapdoor => Some(definition::trapdoor_bounds(metadata)),
             _ => self.collision_bounds(),
+        }
+    }
+
+    /// Every collision box of the block with `metadata`. Stairs are the only
+    /// block with two; the rest wrap [`Self::collision_bounds_for`].
+    pub fn collision_boxes_for(self, metadata: u8) -> [Option<definition::BlockBounds>; 2] {
+        if self.is_stairs() {
+            definition::stairs_boxes(metadata).map(Some)
+        } else {
+            [self.collision_bounds_for(metadata), None]
         }
     }
 
@@ -334,9 +367,10 @@ impl Block {
     /// orientation, leaf decay flags, and the lit furnace are dropped.
     pub const fn item_form(self, metadata: u8) -> (Self, u8) {
         match self {
-            Self::Wood | Self::WoodenPlanks | Self::Leaves | Self::StoneSlab => {
+            Self::Wood | Self::WoodenPlanks | Self::Leaves | Self::StoneSlab | Self::Sapling => {
                 (self, metadata & 3)
             }
+            Self::Wool => (self, metadata),
             Self::TallGrass if metadata & 3 == 2 => (self, 2),
             Self::LitFurnace => (Self::Furnace, 0),
             block => (block, 0),
@@ -344,11 +378,41 @@ impl Block {
     }
 
     /// The block and metadata a placed stack of `self` with item `data`
-    /// starts as. `None` for blocks the world does not simulate, and for
-    /// subtypes it does not implement.
+    /// starts as. `None` for blocks with a shape the mesher cannot draw yet,
+    /// for blocks only a special item places (doors), and for subtypes that
+    /// do not exist.
     pub fn placed(self, data: u8) -> Option<(Self, u8)> {
         match (self, data) {
-            (Self::Wood | Self::WoodenPlanks | Self::Leaves, 0..=2) => Some((self, data)),
+            (
+                Self::Bed
+                | Self::Rail
+                | Self::PoweredRail
+                | Self::DetectorRail
+                | Self::Piston
+                | Self::StickyPiston
+                | Self::PistonHead
+                | Self::MovingPiston
+                | Self::RedstoneWire
+                | Self::StandingSign
+                | Self::WallSign
+                | Self::WoodenDoor
+                | Self::IronDoor
+                | Self::Lever
+                | Self::StonePressurePlate
+                | Self::WoodenPressurePlate
+                | Self::UnlitRedstoneTorch
+                | Self::RedstoneTorch
+                | Self::StoneButton
+                | Self::NetherPortal
+                | Self::Cake
+                | Self::Repeater
+                | Self::PoweredRepeater,
+                _,
+            ) => None,
+            (Self::Wood | Self::WoodenPlanks | Self::Leaves | Self::Sapling, 0..=2) => {
+                Some((self, data))
+            }
+            (Self::Wool, 0..=15) | (Self::StoneSlab, 0..=3) => Some((self, data)),
             // Torch data 5 is the floor torch; 1..=4 name a wall side.
             (Self::Torch, 0 | 5) => Some((Self::Torch, 0)),
             (Self::Torch, 1..=4) => Some((Self::Torch, data)),

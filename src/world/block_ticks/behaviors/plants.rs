@@ -10,6 +10,8 @@ use crate::block::properties::plant_ground_can_hold;
 use crate::block::properties::sugar_cane_can_stay;
 use crate::world::block_ticks::BlockBehavior;
 use crate::world::block_ticks::TickWorld;
+use crate::world::generation::overworld::TreeWorld;
+use crate::world::generation::overworld::grow_sapling;
 
 use super::fluid::is_water;
 
@@ -52,6 +54,76 @@ impl BlockBehavior for Flower {
 
     fn update_tick(&self, world: &mut TickWorld, position: IVec3) {
         check_flower_change(world, position);
+    }
+}
+
+/// `BlockSapling`'s metadata bit for a sapling that has passed its first
+/// growth roll. The low two bits are the species.
+pub const SAPLING_READY: u8 = 8;
+
+impl TreeWorld for TickWorld<'_> {
+    fn get(&self, x: i32, y: i32, z: i32) -> Block {
+        self.block(IVec3::new(x, y, z))
+    }
+
+    fn set(&mut self, x: i32, y: i32, z: i32, block: Block) {
+        self.set_block(IVec3::new(x, y, z), block);
+    }
+
+    fn set_with_metadata(&mut self, x: i32, y: i32, z: i32, block: Block, metadata: u8) {
+        self.set_block_and_metadata(IVec3::new(x, y, z), block, metadata);
+    }
+}
+
+/// Beta `BlockSapling`: a flower that, in light, turns into a tree on its
+/// second successful one-in-thirty random tick.
+pub struct Sapling;
+pub static SAPLING: Sapling = Sapling;
+
+impl Sapling {
+    /// How far a big oak's branches reach from the trunk, in blocks. Beta
+    /// loads the chunks a tree grows into; here it waits for them instead.
+    const REACH: i32 = 8;
+
+    /// `BlockSapling.growTree`: the sapling gives way to the tree, and comes
+    /// back if the tree has no room.
+    fn grow(world: &mut TickWorld, position: IVec3) {
+        if !world.area_loaded(position, Self::REACH) {
+            return;
+        }
+        let species = world.metadata(position) & 3;
+        world.set_block(position, Block::Air);
+        let mut random = world.random().clone();
+        let grew = grow_sapling(world, &mut random, position.to_array(), species);
+        *world.random() = random;
+        if !grew {
+            world.set_block_and_metadata(position, Block::Sapling, species);
+        }
+    }
+}
+
+impl BlockBehavior for Sapling {
+    fn ticks_randomly(&self, _block: Block) -> bool {
+        true
+    }
+
+    fn neighbor_changed(&self, world: &mut TickWorld, position: IVec3, _neighbor: Block) {
+        check_flower_change(world, position);
+    }
+
+    fn update_tick(&self, world: &mut TickWorld, position: IVec3) {
+        check_flower_change(world, position);
+        if world.block(position) != Block::Sapling {
+            return;
+        }
+        if world.light(position + IVec3::Y) >= 9 && world.random().next_int(30) == 0 {
+            let metadata = world.metadata(position);
+            if metadata & SAPLING_READY == 0 {
+                world.set_metadata_notify(position, metadata | SAPLING_READY);
+            } else {
+                Self::grow(world, position);
+            }
+        }
     }
 }
 

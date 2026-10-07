@@ -15,6 +15,7 @@ pub mod attached;
 pub mod crops;
 pub mod falling;
 pub mod fire;
+pub mod fixtures;
 pub mod fluid;
 pub mod leaves;
 pub mod ore;
@@ -78,5 +79,13 @@ pub(super) fn table() -> [&'static dyn BlockBehavior; 256] {
     register(&mut table, &[Block::Torch], &attached::TORCH);
     register(&mut table, &[Block::Ladder], &attached::LADDER);
     register(&mut table, &[Block::Sponge], &sponge::SPONGE);
+    register(&mut table, &[Block::Sapling], &plants::SAPLING);
+    register(
+        &mut table,
+        &[Block::WoodenDoor, Block::IronDoor],
+        &fixtures::DOOR,
+    );
+    register(&mut table, &[Block::Trapdoor], &fixtures::TRAPDOOR);
+    register(&mut table, &[Block::StoneSlab], &fixtures::SLAB);
     table
 }

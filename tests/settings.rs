@@ -621,17 +621,47 @@ fn opaque_menu_disables_world_cameras_and_playing_restores_them() {
         .world_mut()
         .spawn((PlayerCamera, Camera3d::default(), Transform::default()))
         .id();
+    // Chunks hide with the camera: a GPU-culled layer that stayed visible
+    // would not be drawn again by the reactivated camera.
+    let chunk_root = |app: &mut App, x| {
+        app.world_mut()
+            .spawn((
+                game::world::chunk::ChunkPosition { x, z: 0 },
+                Visibility::default(),
+            ))
+            .id()
+    };
+    let chunk = chunk_root(&mut app, 0);
     app.update();
     assert!(!app.world().get::<Camera>(camera).unwrap().is_active);
+    assert_eq!(
+        app.world().get::<Visibility>(chunk),
+        Some(&Visibility::Hidden)
+    );
     app.world_mut()
         .resource_mut::<NextState<AppScreen>>()
         .set(AppScreen::Playing);
     app.update();
     assert!(app.world().get::<Camera>(camera).unwrap().is_active);
+    assert_eq!(
+        app.world().get::<Visibility>(chunk),
+        Some(&Visibility::Inherited)
+    );
     app.world_mut()
         .resource_mut::<NextState<AppScreen>>()
         .set(AppScreen::Settings);
     app.update();
+    assert_eq!(
+        app.world().get::<Visibility>(chunk),
+        Some(&Visibility::Hidden)
+    );
+    // A chunk that finishes behind the menu is hidden too.
+    let late = chunk_root(&mut app, 1);
+    app.update();
+    assert_eq!(
+        app.world().get::<Visibility>(late),
+        Some(&Visibility::Hidden)
+    );
     let mut cameras = app.world_mut().query_filtered::<&Camera, With<Camera3d>>();
     assert!(cameras.iter(app.world()).all(|camera| !camera.is_active));
 }

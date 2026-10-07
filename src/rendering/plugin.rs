@@ -12,6 +12,7 @@ use crate::ui::screens::panorama::MenuPanoramaCamera;
 
 use super::textures::TerrainTexturePlugin;
 use crate::world::block_ticks::BlockTickSet;
+use crate::world::chunk::ChunkPosition;
 use crate::world::streaming::ChunkCulling;
 use crate::world::streaming::StreamingDiagnostics;
 use crate::world::streaming::setup_streaming;
@@ -58,7 +59,9 @@ impl Plugin for WorldRenderingPlugin {
             )
             .add_systems(
                 PostUpdate,
-                apply_world_camera_activity.before(bevy::camera::CameraUpdateSystems),
+                apply_world_camera_activity
+                    .before(bevy::camera::CameraUpdateSystems)
+                    .before(bevy::camera::visibility::VisibilitySystems::VisibilityPropagate),
             )
             .add_systems(
                 Update,
@@ -143,14 +146,35 @@ fn apply_graphics_pipeline(
 
 /// Menu cameras render separately; rendering the world behind the menu is
 /// wasted GPU work. PostUpdate includes cameras created during Update.
+///
+/// Chunks are hidden along with the camera. Bevy removes an inactive camera's
+/// `RenderVisibleEntities`, and a `NoCpuCulling` mesh is only announced to
+/// views when it becomes visible, so a layer that stayed visible would be
+/// missing from the camera's list once it is active again.
 fn apply_world_camera_activity(
     screen: Option<Res<State<AppScreen>>>,
     mut cameras: Query<&mut Camera, (With<Camera3d>, Without<MenuPanoramaCamera>)>,
+    mut chunks: Query<&mut Visibility, With<ChunkPosition>>,
+    mut shown: Local<Option<bool>>,
 ) {
     let playing = screen.is_none_or(|screen| *screen.get() == AppScreen::Playing);
     for mut camera in &mut cameras {
         if camera.is_active != playing {
             camera.is_active = playing;
         }
+    }
+    // Chunks keep arriving behind a menu, so every frame there hides the new
+    // ones; in game only the switch needs a pass.
+    if playing && *shown == Some(true) {
+        return;
+    }
+    *shown = Some(playing);
+    let visibility = if playing {
+        Visibility::Inherited
+    } else {
+        Visibility::Hidden
+    };
+    for mut chunk in &mut chunks {
+        chunk.set_if_neq(visibility);
     }
 }

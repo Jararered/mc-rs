@@ -97,7 +97,8 @@ fn dead_bush_uses_its_beta_sprite_tile_and_crossed_mesh() {
     let meshes = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true);
     assert_eq!(meshes.opaque.vertex_count(), 0);
     let positions = meshes.masked.positions();
-    assert_eq!(positions.len(), 8);
+    // Two crossed planes, one quad per side.
+    assert_eq!(positions.len(), 16);
 
     let uvs = meshes.masked.uvs();
     let (u0, v0, u1, v1) = atlas_tile_uvs(7, 3);

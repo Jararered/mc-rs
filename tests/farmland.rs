@@ -375,7 +375,11 @@ fn crops_render_four_planes_with_their_growth_stage_tile() {
         chunk.set(8, 63, 8, Block::Farmland);
         chunk.set_with_metadata(8, 64, 8, Block::Crops, stage);
         let meshes = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true);
-        assert_eq!(meshes.masked.vertex_count(), 16, "a # of four planes");
+        assert_eq!(
+            meshes.masked.vertex_count(),
+            32,
+            "a # of four planes, one quad per side"
+        );
         let (u0, v0, u1, v1) = atlas_tile_uvs(crop_tile(stage).0, crop_tile(stage).1);
         assert!(
             meshes

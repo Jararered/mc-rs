@@ -319,9 +319,11 @@ fn chunks_saved_with_block_ids_for_species_and_facing_are_rejected() {
     fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
     assert!(storage.load_chunk(position).is_none());
 
-    value["runs"] = serde_json::json!([[20, blocks as u16]]);
+    // Every registered Beta id loads, including blocks with no drawn shape.
+    value["runs"] = serde_json::json!([[92, blocks as u16]]);
     fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
-    assert!(storage.load_chunk(position).is_none());
+    let loaded = storage.load_chunk(position).unwrap();
+    assert_eq!(loaded.chunk.get(0, 0, 0), Some(Block::Cake));
 }
 
 #[test]

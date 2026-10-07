@@ -196,9 +196,8 @@ fn build(block: Block) -> BlockProperties {
         Block::Sapling | Block::TallGrass | Block::DeadBush => {
             crossed_plant(([0.1, 0.0, 0.1], [0.9, 0.8, 0.9]))
         }
-        Block::Dandelion | Block::Rose | Block::RedMushroom => {
-            crossed_plant(([0.3, 0.0, 0.3], [0.7, 0.6, 0.7]))
-        }
+        Block::Dandelion | Block::Rose => crossed_plant(([0.3, 0.0, 0.3], [0.7, 0.6, 0.7])),
+        Block::RedMushroom => crossed_plant(([0.3, 0.0, 0.3], [0.7, 0.4, 0.7])),
         Block::BrownMushroom => BlockProperties {
             light_emission: 1,
             ..crossed_plant(([0.3, 0.0, 0.3], [0.7, 0.4, 0.7]))

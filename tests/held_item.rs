@@ -262,6 +262,8 @@ fn click_swing_moves_the_arm_and_held_item() {
         },
         PrimaryWindow,
     ));
+    // A button already down when the cursor is grabbed does not swing.
+    app.update();
     let arm_rest = visual(&mut app, "Right arm").2;
     app.world_mut()
         .resource_mut::<ButtonInput<MouseButton>>()

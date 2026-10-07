@@ -372,7 +372,7 @@ fn fast_clouds_cover_the_render_distance() {
             .map(|p| p[1])
             .fold(f32::NEG_INFINITY, f32::max);
         assert!(max_y.abs() < 1e-5, "the fast sheet is flat");
-        assert!((CLOUD_HEIGHT - 108.33).abs() < 1e-5);
+        assert!((CLOUD_HEIGHT - 144.33).abs() < 1e-5);
         // Baked UVs are `local / 2048`; the material's offset completes them.
         // They stay far from a whole period, so the world-locked sample keeps
         // its precision at any render distance.

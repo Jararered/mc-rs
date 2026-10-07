@@ -51,9 +51,9 @@ fn temp_settings_path(label: &str) -> PathBuf {
 #[test]
 fn settings_controls_stay_within_their_ranges() {
     let mut settings = GameSettings::default();
-    settings.change_render_distance(100);
+    settings.change_render_distance(1_000);
     assert_eq!(settings.render_distance, MAX_RENDER_DISTANCE);
-    settings.change_render_distance(-100);
+    settings.change_render_distance(-1_000);
     assert_eq!(settings.render_distance, MIN_RENDER_DISTANCE);
 
     assert_eq!(settings.fov, DEFAULT_FOV);
@@ -442,7 +442,7 @@ fn settings_json_clamps_out_of_range_values() {
     fs::write(
         &path,
         r#"{
-            "render_distance": 99,
+            "render_distance": 999,
             "brightness": -50.0,
             "fov": 180.0,
             "cloud_height": 9999.0,
@@ -1208,7 +1208,7 @@ fn slider_thumb_tracks_value_and_leaving_settings_cancels_drag() {
         app.world().get::<ImageNode>(thumb).unwrap().rect,
         Some(Rect::new(0.0, 86.0, 200.0, 106.0))
     );
-    button_named(&mut app, "Render distance: 32 chunks");
+    button_named(&mut app, "Render distance: 128 chunks");
     app.world_mut()
         .resource_mut::<ButtonInput<MouseButton>>()
         .press(MouseButton::Left);

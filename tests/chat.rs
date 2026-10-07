@@ -102,7 +102,6 @@ fn bad_arguments_are_rejected_without_running_a_command() {
         "/setblock 1 128 3 1",
         "/setblock 1.2 10 3 1",
         "/setblock 1 10 3 255",
-        "/setblock 1 10 3 92",
         "/unknown 1",
         "/wireframe",
         "/wireframe set",

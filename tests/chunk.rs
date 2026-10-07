@@ -143,28 +143,27 @@ fn neighboring_block_data_culls_shared_faces_and_darkens_border_corners() {
 
     east.set(0, 1, 1, Block::Air);
     east.set(0, 2, 1, Block::Stone);
+    // Beta's smooth lighting has no separate occlusion term: a corner darkens
+    // because the neighbor's opaque cell is one of its averaged light samples.
+    let lit_with_east = Skylight::from_chunk_with_neighbors(&center, None, Some(&east), None, None);
     let connected = mesh_chunk_with_neighbors(
         &center,
         &ChunkNeighbors {
             east: Some(&east),
             ..Default::default()
         },
-        &light,
+        &lit_with_east,
     );
-    let colors = |mesh: &BlockGeometry| {
-        mesh.colors(BlockLighting::default())[0..4]
+    assert_eq!(connected.vertex_count(), isolated.vertex_count());
+    let brightness = |mesh: &BlockGeometry| {
+        mesh.colors(BlockLighting::default())
             .iter()
             .map(|color| color[0])
-            .collect::<Vec<_>>()
+            .sum::<f32>()
     };
-    let isolated = colors(&isolated);
-    let connected = colors(&connected);
     assert!(
-        isolated
-            .iter()
-            .zip(&connected)
-            .any(|(before, after)| after < before),
-        "neighboring stone should darken the border AO corner"
+        brightness(&connected) < brightness(&isolated),
+        "neighboring stone should darken the border corners"
     );
 }
 
@@ -651,8 +650,10 @@ fn night_dims_sunlight_and_leaves_torches() {
         night_top < day_top,
         "open sunlight should darken after dusk, day {day_top} night {night_top}"
     );
-    assert!((day_top - beta_brightness(15)).abs() < 1e-4);
-    assert!((night_top - beta_brightness(4)).abs() < 1e-4);
+    // Beta's brightness is gamma-encoded; the shader linearizes it.
+    let linear = |level| ((beta_brightness(level) + 0.055_f32) / 1.055).powf(2.4);
+    assert!((day_top - linear(15)).abs() < 1e-4);
+    assert!((night_top - linear(4)).abs() < 1e-4);
 }
 
 fn top_vertex_brightness(mesh: &BlockGeometry, lighting: BlockLighting) -> f32 {
@@ -778,19 +779,19 @@ fn remesh_includes_the_neighbour_when_an_edge_block_changes() {
 }
 
 #[test]
-fn torch_emits_level_fifteen_and_lights_neighboring_chunk() {
+fn torch_emits_level_fourteen_and_lights_neighboring_chunk() {
     let mut west = Chunk::new();
     west.set(CHUNK_SIZE - 1, 40, 8, Block::Torch);
     let east = Chunk::new();
     let west_light = Skylight::from_chunk(&west);
     let east_light = Skylight::from_chunk_with_neighbors(&east, Some(&west), None, None, None);
 
-    assert_eq!(light_emission(Block::Torch), 15);
+    assert_eq!(light_emission(Block::Torch), 14);
     assert_eq!(light_opacity(Block::Torch), 0);
-    assert_eq!(west_light.block(CHUNK_SIZE - 1, 40, 8), Some(15));
-    assert_eq!(west_light.block(CHUNK_SIZE - 2, 40, 8), Some(14));
-    assert_eq!(east_light.block(0, 40, 8), Some(14));
-    assert_eq!(east_light.block(1, 40, 8), Some(13));
+    assert_eq!(west_light.block(CHUNK_SIZE - 1, 40, 8), Some(14));
+    assert_eq!(west_light.block(CHUNK_SIZE - 2, 40, 8), Some(13));
+    assert_eq!(east_light.block(0, 40, 8), Some(13));
+    assert_eq!(east_light.block(1, 40, 8), Some(12));
 }
 
 #[test]

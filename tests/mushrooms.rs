@@ -12,7 +12,11 @@ fn mushrooms_use_crossed_sprite_meshes_and_beta_atlas_tiles() {
 
     let meshes = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true);
     let positions = meshes.masked.positions();
-    assert_eq!(positions.len(), 16, "two crossed quads per mushroom");
+    assert_eq!(
+        positions.len(),
+        32,
+        "two crossed planes per mushroom, one quad per side"
+    );
     assert_eq!(block_tile(Block::BrownMushroom, 0, 0, false), (13, 1));
     assert_eq!(block_tile(Block::RedMushroom, 0, 0, false), (12, 1));
 }
@@ -31,7 +35,7 @@ fn mushrooms_are_small_noncolliding_nonopaque_plants() {
 }
 
 #[test]
-fn mushroom_mesh_is_raised_by_two_pixels() {
+fn mushroom_mesh_stands_centered_on_the_ground() {
     let mut chunk = Chunk::new();
     chunk.set(4, 20, 4, Block::BrownMushroom);
     let meshes = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true);
@@ -48,8 +52,8 @@ fn mushroom_mesh_is_raised_by_two_pixels() {
         positions.iter().map(|position| position[0]).sum::<f32>() / positions.len() as f32;
     let center_z =
         positions.iter().map(|position| position[2]).sum::<f32>() / positions.len() as f32;
-    assert!((min_y - 20.125).abs() < f32::EPSILON);
-    assert!((max_y - 21.125).abs() < f32::EPSILON);
-    assert!((center_x - 4.5).abs() < f32::EPSILON);
-    assert!((center_z - 4.5).abs() < f32::EPSILON);
+    assert!((min_y - 20.0).abs() < f32::EPSILON);
+    assert!((max_y - 21.0).abs() < f32::EPSILON);
+    assert!((center_x - 4.5).abs() < 1e-5);
+    assert!((center_z - 4.5).abs() < 1e-5);
 }

@@ -57,7 +57,8 @@ fn sugar_cane_is_a_centered_crossed_plant_with_beta_appearance() {
     chunk.set(3, 10, 5, Block::SugarCane);
     let meshes = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true);
     assert_eq!(meshes.opaque.vertex_count(), 0);
-    assert_eq!(meshes.masked.vertex_count(), 8);
+    // Two crossed planes, one quad per side.
+    assert_eq!(meshes.masked.vertex_count(), 16);
     let positions = meshes.masked.positions();
     let min_x = positions.iter().map(|p| p[0]).fold(f32::INFINITY, f32::min);
     let max_x = positions

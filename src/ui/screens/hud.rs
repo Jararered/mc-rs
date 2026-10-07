@@ -7,6 +7,7 @@ use bevy::text::FontSource;
 use bevy::text::LineHeight;
 
 use super::inventory::durability_bar;
+use crate::app::settings::GameSettings;
 use crate::app::state::AppScreen;
 use crate::entity::CollisionState;
 use crate::entity::EntitySize;
@@ -22,7 +23,6 @@ use crate::player::Player;
 use crate::player::PlayerCamera;
 use crate::player::PlayerHealth;
 use crate::rendering::icons::BlockIcons;
-use crate::ui::icons::overlay::GUI_SCALE;
 use crate::ui::icons::overlay::UiFont;
 use crate::ui::icons::overlay::count_label;
 use crate::ui::icons::overlay::durability_track;
@@ -33,7 +33,6 @@ use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
 use crate::world::tick::WorldTick;
 
-const HUD_SCALE: f32 = GUI_SCALE;
 const HEART_COUNT: usize = 10;
 const HOTBAR_WIDTH: f32 = 182.0;
 const HOTBAR_HEIGHT: f32 = 22.0;
@@ -50,6 +49,7 @@ pub struct HudPlugin;
 impl Plugin for HudPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<DebugVisible>()
+            .init_resource::<GameSettings>()
             .add_systems(PreStartup, load_hud_textures)
             .add_systems(OnEnter(AppScreen::Playing), spawn_hud)
             .add_systems(OnExit(AppScreen::Playing), despawn_hud)
@@ -110,11 +110,13 @@ fn spawn_hud(
     icons: Res<BlockIcons>,
     font: Res<UiFont>,
     debug_visible: Res<DebugVisible>,
+    settings: Res<GameSettings>,
     player: Query<(&PlayerHealth, &Hotbar), With<Player>>,
 ) {
     let Ok((health, hotbar)) = player.single() else {
         return;
     };
+    let scale = settings.gui_scale;
 
     commands
         .spawn((
@@ -127,8 +129,16 @@ fn spawn_hud(
             },
         ))
         .with_children(|root| {
-            spawn_crosshair(root, &textures);
-            spawn_status(root, &textures, &icons, &font.minecraft, health, hotbar);
+            spawn_crosshair(root, scale, &textures);
+            spawn_status(
+                root,
+                scale,
+                &textures,
+                &icons,
+                &font.minecraft,
+                health,
+                hotbar,
+            );
             root.spawn((
                 DebugOverlay,
                 Pickable::IGNORE,
@@ -232,8 +242,8 @@ fn update_debug_overlay(
     }
 }
 
-fn spawn_crosshair(parent: &mut ChildSpawnerCommands, textures: &HudTextures) {
-    let size = CROSSHAIR_SIZE * HUD_SCALE;
+fn spawn_crosshair(parent: &mut ChildSpawnerCommands, scale: f32, textures: &HudTextures) {
+    let size = CROSSHAIR_SIZE * scale;
     parent.spawn((
         Pickable::IGNORE,
         ImageNode::new(textures.icons.clone()).with_rect(Rect::new(0.0, 0.0, 16.0, 16.0)),
@@ -251,6 +261,7 @@ fn spawn_crosshair(parent: &mut ChildSpawnerCommands, textures: &HudTextures) {
 
 fn spawn_status(
     parent: &mut ChildSpawnerCommands,
+    scale: f32,
     textures: &HudTextures,
     icons: &BlockIcons,
     font: &Handle<Font>,
@@ -266,30 +277,35 @@ fn spawn_status(
                 width: percent(100),
                 flex_direction: FlexDirection::Column,
                 align_items: AlignItems::Center,
-                row_gap: px(HUD_SCALE),
+                row_gap: px(scale),
                 ..default()
             },
         ))
         .with_children(|bottom| {
-            spawn_hearts(bottom, textures, health);
-            spawn_hotbar(bottom, textures, icons, font, hotbar);
+            spawn_hearts(bottom, scale, textures, health);
+            spawn_hotbar(bottom, scale, textures, icons, font, hotbar);
         });
 }
 
-fn spawn_hearts(parent: &mut ChildSpawnerCommands, textures: &HudTextures, health: &PlayerHealth) {
+fn spawn_hearts(
+    parent: &mut ChildSpawnerCommands,
+    scale: f32,
+    textures: &HudTextures,
+    health: &PlayerHealth,
+) {
     parent
         .spawn((
             Pickable::IGNORE,
             Node {
-                width: px(HOTBAR_WIDTH * HUD_SCALE),
-                height: px(HEART_SIZE * HUD_SCALE),
+                width: px(HOTBAR_WIDTH * scale),
+                height: px(HEART_SIZE * scale),
                 ..default()
             },
         ))
         .with_children(|row| {
             for index in 0..HEART_COUNT {
-                let left = px(index as f32 * HEART_STRIDE * HUD_SCALE);
-                let size = px(HEART_SIZE * HUD_SCALE);
+                let left = px(index as f32 * HEART_STRIDE * scale);
+                let size = px(HEART_SIZE * scale);
                 row.spawn((
                     Pickable::IGNORE,
                     ImageNode::new(textures.icons.clone()).with_rect(heart_container_rect()),
@@ -323,6 +339,7 @@ fn spawn_hearts(parent: &mut ChildSpawnerCommands, textures: &HudTextures, healt
 
 fn spawn_hotbar(
     parent: &mut ChildSpawnerCommands,
+    scale: f32,
     textures: &HudTextures,
     icons: &BlockIcons,
     font: &Handle<Font>,
@@ -333,8 +350,8 @@ fn spawn_hotbar(
             Pickable::IGNORE,
             ImageNode::new(textures.widgets.clone()).with_rect(Rect::new(0.0, 0.0, 182.0, 22.0)),
             Node {
-                width: px(HOTBAR_WIDTH * HUD_SCALE),
-                height: px(HOTBAR_HEIGHT * HUD_SCALE),
+                width: px(HOTBAR_WIDTH * scale),
+                height: px(HOTBAR_HEIGHT * scale),
                 ..default()
             },
         ))
@@ -346,35 +363,36 @@ fn spawn_hotbar(
                     .with_rect(Rect::new(0.0, 22.0, 24.0, 44.0)),
                 Node {
                     position_type: PositionType::Absolute,
-                    left: px(hotbar_selector_left(hotbar.selected)),
-                    top: px(-HUD_SCALE),
-                    width: px(SELECTOR_WIDTH * HUD_SCALE),
-                    height: px(SELECTOR_HEIGHT * HUD_SCALE),
+                    left: px(hotbar_selector_left(scale, hotbar.selected)),
+                    top: px(-scale),
+                    width: px(SELECTOR_WIDTH * scale),
+                    height: px(SELECTOR_HEIGHT * scale),
                     ..default()
                 },
             ));
             for (index, stack) in hotbar.slots.iter().copied().enumerate() {
-                spawn_hotbar_item(bar, icons, font, index, stack);
+                spawn_hotbar_item(bar, scale, icons, font, index, stack);
             }
         });
 }
 
 /// Slot position for a 16×16 item icon inside the hotbar texture.
-fn hotbar_item_rect(index: usize) -> (f32, f32) {
+fn hotbar_item_rect(scale: f32, index: usize) -> (f32, f32) {
     (
-        (HOTBAR_ICON_INSET + index as f32 * HOTBAR_SLOT_STEP) * HUD_SCALE,
-        HOTBAR_ICON_INSET * HUD_SCALE,
+        (HOTBAR_ICON_INSET + index as f32 * HOTBAR_SLOT_STEP) * scale,
+        HOTBAR_ICON_INSET * scale,
     )
 }
 
 fn spawn_hotbar_item(
     parent: &mut ChildSpawnerCommands,
+    scale: f32,
     icons: &BlockIcons,
     font: &Handle<Font>,
     index: usize,
     stack: Option<ItemStack>,
 ) {
-    let (left, top) = hotbar_item_rect(index);
+    let (left, top) = hotbar_item_rect(scale, index);
     parent.spawn((
         HotbarBlockIcon(index),
         Pickable::IGNORE,
@@ -384,13 +402,14 @@ fn spawn_hotbar_item(
             position_type: PositionType::Absolute,
             left: px(left),
             top: px(top),
-            width: px(icon_size()),
-            height: px(icon_size()),
+            width: px(icon_size(scale)),
+            height: px(icon_size(scale)),
             ..default()
         },
     ));
     for foreground in [false, true] {
-        let (bar_left, bar_top, bar_width, bar_height) = durability_track(left, top, foreground);
+        let (bar_left, bar_top, bar_width, bar_height) =
+            durability_track(scale, left, top, foreground);
         parent.spawn((
             HotbarDurability(index, foreground),
             Pickable::IGNORE,
@@ -421,6 +440,7 @@ fn spawn_hotbar_item(
     let mut line_height = LineHeight::default();
     let mut shadow = TextShadow::default();
     place_stack_label(
+        scale,
         &mut text,
         &mut node,
         &mut layout,
@@ -487,14 +507,16 @@ fn update_hearts(
 fn update_hotbar_selector(
     hotbar: Query<&Hotbar, (With<Player>, Changed<Hotbar>)>,
     mut selector: Query<&mut Node, With<HotbarSelector>>,
+    settings: Res<GameSettings>,
 ) {
+    let scale = settings.gui_scale;
     let Ok(hotbar) = hotbar.single() else {
         return;
     };
     let Ok(mut node) = selector.single_mut() else {
         return;
     };
-    node.left = px(hotbar_selector_left(hotbar.selected));
+    node.left = px(hotbar_selector_left(scale, hotbar.selected));
 }
 
 fn update_hotbar_items(
@@ -510,7 +532,9 @@ fn update_hotbar_items(
     )>,
     icons: Res<BlockIcons>,
     font: Res<UiFont>,
+    settings: Res<GameSettings>,
 ) {
+    let scale = settings.gui_scale;
     let Ok(hotbar) = hotbar.single() else {
         return;
     };
@@ -529,8 +553,9 @@ fn update_hotbar_items(
         } else {
             hotbar_label(stack)
         };
-        let (left, top) = hotbar_item_rect(item.0);
+        let (left, top) = hotbar_item_rect(scale, item.0);
         sync_stack_label(
+            scale,
             &mut text,
             &mut node,
             &mut layout,
@@ -551,7 +576,9 @@ fn update_hotbar_icons(
     icons: Res<BlockIcons>,
     clock: Option<Res<WorldTick>>,
     mut images: Query<(&HotbarBlockIcon, &mut ImageNode, &mut Visibility, &mut Node)>,
+    settings: Res<GameSettings>,
 ) {
+    let scale = settings.gui_scale;
     let Ok(hotbar) = hotbar.single() else {
         return;
     };
@@ -563,13 +590,13 @@ fn update_hotbar_icons(
                 .map_unchanged(|image| &mut image.rect)
                 .set_if_neq(Some(rect));
             visibility.set_if_neq(Visibility::Inherited);
-            let scale = hotbar_icon_scale(hotbar.pop[slot.0], partial);
-            let width = icon_size() * scale.x;
-            let height = icon_size() * scale.y;
-            let (left, top) = hotbar_item_rect(slot.0);
+            let pop = hotbar_icon_scale(hotbar.pop[slot.0], partial);
+            let width = icon_size(scale) * pop.x;
+            let height = icon_size(scale) * pop.y;
+            let (left, top) = hotbar_item_rect(scale, slot.0);
             let mut next = node.clone();
-            next.left = px(left + (icon_size() - width) * 0.5);
-            next.top = px(top + (icon_size() - height) * 0.5);
+            next.left = px(left + (icon_size(scale) - width) * 0.5);
+            next.top = px(top + (icon_size(scale) - height) * 0.5);
             next.width = px(width);
             next.height = px(height);
             node.set_if_neq(next);
@@ -587,14 +614,18 @@ fn update_hotbar_bars(
         &mut Visibility,
         &mut BackgroundColor,
     )>,
+    settings: Res<GameSettings>,
 ) {
+    let scale = settings.gui_scale;
     let Ok(hotbar) = hotbar.single() else {
         return;
     };
     for (bar, mut node, mut visibility, mut color) in &mut bars {
-        if let Some((width, red, green)) = hotbar.slots[bar.0].and_then(durability_bar) {
+        if let Some((width, red, green)) =
+            hotbar.slots[bar.0].and_then(|stack| durability_bar(scale, stack))
+        {
             visibility.set_if_neq(Visibility::Inherited);
-            let (_, _, track_width, _) = durability_track(0.0, 0.0, bar.1);
+            let (_, _, track_width, _) = durability_track(scale, 0.0, 0.0, bar.1);
             if bar.1 {
                 node.reborrow()
                     .map_unchanged(|node| &mut node.width)
@@ -612,8 +643,8 @@ fn update_hotbar_bars(
     }
 }
 
-fn hotbar_selector_left(selected: usize) -> f32 {
-    (selected.min(HOTBAR_SLOTS - 1) as f32 * HOTBAR_SLOT_STEP - 1.0) * HUD_SCALE
+fn hotbar_selector_left(scale: f32, selected: usize) -> f32 {
+    (selected.min(HOTBAR_SLOTS - 1) as f32 * HOTBAR_SLOT_STEP - 1.0) * scale
 }
 
 fn heart_container_rect() -> Rect {

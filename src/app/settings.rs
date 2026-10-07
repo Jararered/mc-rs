@@ -25,6 +25,11 @@ pub const MIN_CLOUD_HEIGHT: f32 = 16.0;
 pub const MAX_CLOUD_HEIGHT: f32 = 256.0;
 /// `WorldProvider.getCloudHeight()` for the sky provider.
 pub const DEFAULT_CLOUD_HEIGHT: f32 = 144.0;
+/// GUI pixels per screen pixel for the HUD, container screens, and chat. Whole
+/// steps keep the 8px font and 16px icons on the pixel grid.
+pub const MIN_GUI_SCALE: f32 = 1.0;
+pub const MAX_GUI_SCALE: f32 = 4.0;
+pub const DEFAULT_GUI_SCALE: f32 = 2.0;
 
 /// Client options file, relative to the working directory.
 pub const SETTINGS_FILE: &str = "settings.json";
@@ -105,6 +110,9 @@ pub struct GameSettings {
     pub max_fps: u32,
     pub fov: f32,
     pub cloud_height: f32,
+    /// Beta's GUI scale: the 176×166 inventory and 182×22 hotbar are drawn
+    /// at this many screen pixels per GUI pixel.
+    pub gui_scale: f32,
     pub smooth_lighting: bool,
     pub wiggle_leaves: bool,
     pub graphics: GraphicsQuality,
@@ -124,6 +132,7 @@ impl Default for GameSettings {
             max_fps: DEFAULT_MAX_FPS,
             fov: DEFAULT_FOV,
             cloud_height: DEFAULT_CLOUD_HEIGHT,
+            gui_scale: DEFAULT_GUI_SCALE,
             smooth_lighting: true,
             wiggle_leaves: DEFAULT_WIGGLE_LEAVES,
             graphics: GraphicsQuality::Fancy,
@@ -208,6 +217,11 @@ impl GameSettings {
         } else {
             DEFAULT_CLOUD_HEIGHT
         };
+        self.gui_scale = if self.gui_scale.is_finite() {
+            self.gui_scale.round().clamp(MIN_GUI_SCALE, MAX_GUI_SCALE)
+        } else {
+            DEFAULT_GUI_SCALE
+        };
     }
 }
 
@@ -264,6 +278,7 @@ struct StoredSettings {
     max_fps: u32,
     fov: f32,
     cloud_height: f32,
+    gui_scale: f32,
     smooth_lighting: bool,
     wiggle_leaves: bool,
     graphics: GraphicsQuality,
@@ -288,6 +303,7 @@ impl From<&GameSettings> for StoredSettings {
             max_fps: settings.max_fps,
             fov: settings.fov,
             cloud_height: settings.cloud_height,
+            gui_scale: settings.gui_scale,
             smooth_lighting: settings.smooth_lighting,
             wiggle_leaves: settings.wiggle_leaves,
             graphics: settings.graphics,
@@ -307,6 +323,7 @@ impl From<StoredSettings> for GameSettings {
             max_fps: stored.max_fps,
             fov: stored.fov,
             cloud_height: stored.cloud_height,
+            gui_scale: stored.gui_scale,
             smooth_lighting: stored.smooth_lighting,
             wiggle_leaves: stored.wiggle_leaves,
             graphics: stored.graphics,

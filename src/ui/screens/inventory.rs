@@ -8,6 +8,7 @@ use bevy::window::CursorGrabMode;
 use bevy::window::CursorOptions;
 use bevy::window::PrimaryWindow;
 
+use crate::app::settings::GameSettings;
 use crate::app::state::AppScreen;
 use crate::block::blocks::Block;
 use crate::crafting::CraftingGrid;
@@ -40,7 +41,6 @@ use crate::item::ItemStack;
 use crate::player::Player;
 use crate::random::ItemRng;
 use crate::rendering::icons::BlockIcons;
-use crate::ui::icons::overlay::GUI_SCALE;
 use crate::ui::icons::overlay::UiFont;
 use crate::ui::icons::overlay::count_frame;
 use crate::ui::icons::overlay::count_label;
@@ -55,7 +55,6 @@ use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
 use crate::world::persistence::WorldPersistence;
 
-const SCALE: f32 = GUI_SCALE;
 const SLOT_SIZE: f32 = 16.0;
 const SLOT_STEP: f32 = 18.0;
 const CHEST_HALF_SLOTS: usize = 27;
@@ -66,6 +65,7 @@ pub struct InventoryGuiPlugin;
 impl Plugin for InventoryGuiPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<InventorySession>()
+            .init_resource::<GameSettings>()
             .init_resource::<ActiveWorkbench>()
             .init_resource::<SlotDrag>()
             .init_resource::<LastInventoryClick>()
@@ -335,6 +335,7 @@ fn toggle(
     texture: Res<InventoryTexture>,
     icons: Res<BlockIcons>,
     font: Res<UiFont>,
+    settings: Res<GameSettings>,
     roots: Query<Entity, With<InventoryRoot>>,
     mut player: Query<(&Transform, &mut Hotbar, &mut Inventory), With<Player>>,
     mut windows: Query<(&Window, &mut CursorOptions), With<PrimaryWindow>>,
@@ -353,6 +354,7 @@ fn toggle(
         };
         spawn(
             &mut commands,
+            settings.gui_scale,
             background,
             &icons.image,
             &font.minecraft,
@@ -412,6 +414,7 @@ fn toggle(
         };
         spawn(
             &mut commands,
+            settings.gui_scale,
             background,
             &icons.image,
             &font.minecraft,
@@ -462,6 +465,7 @@ fn close(
 
 fn spawn(
     commands: &mut Commands,
+    scale: f32,
     texture: &Handle<Image>,
     icons: &Handle<Image>,
     font: &Handle<Font>,
@@ -493,8 +497,8 @@ fn spawn(
             root.spawn((
                 Node {
                     position_type: PositionType::Relative,
-                    width: px(176.0 * SCALE),
-                    height: px(panel_height * SCALE),
+                    width: px(176.0 * scale),
+                    height: px(panel_height * scale),
                     ..default()
                 },
                 BackgroundColor(Color::NONE),
@@ -516,8 +520,8 @@ fn spawn(
                             position_type: PositionType::Absolute,
                             left: px(0.0),
                             top: px(0.0),
-                            width: px(176.0 * SCALE),
-                            height: px(chest_top_height * SCALE),
+                            width: px(176.0 * scale),
+                            height: px(chest_top_height * scale),
                             ..default()
                         },
                     ));
@@ -528,14 +532,15 @@ fn spawn(
                         Node {
                             position_type: PositionType::Absolute,
                             left: px(0.0),
-                            top: px(chest_top_height * SCALE),
-                            width: px(176.0 * SCALE),
-                            height: px(96.0 * SCALE),
+                            top: px(chest_top_height * scale),
+                            width: px(176.0 * scale),
+                            height: px(96.0 * scale),
                             ..default()
                         },
                     ));
                     chest_panel_label(
                         panel,
+                        scale,
                         font,
                         if chest_rows == 3 {
                             "Chest"
@@ -545,20 +550,28 @@ fn spawn(
                         8.0,
                         6.0,
                     );
-                    chest_panel_label(panel, font, "Inventory", 8.0, chest_top_height + 3.0);
+                    chest_panel_label(panel, scale, font, "Inventory", 8.0, chest_top_height + 3.0);
                     for index in 0..chest_rows * 9 {
                         let x = 8.0 + (index % 9) as f32 * SLOT_STEP;
                         let y = 18.0 + (index / 9) as f32 * SLOT_STEP;
-                        slot(panel, icons, font, Slot::Chest(index), x, y);
+                        slot(panel, scale, icons, font, Slot::Chest(index), x, y);
                     }
                     for index in 0..27 {
                         let x = 8.0 + (index % 9) as f32 * SLOT_STEP;
                         let y = player_top + (index / 9) as f32 * SLOT_STEP;
-                        slot(panel, icons, font, Slot::Main(index), x, y);
+                        slot(panel, scale, icons, font, Slot::Main(index), x, y);
                     }
                     for index in 0..9 {
                         let x = 8.0 + index as f32 * SLOT_STEP;
-                        slot(panel, icons, font, Slot::Hotbar(index), x, hotbar_top);
+                        slot(
+                            panel,
+                            scale,
+                            icons,
+                            font,
+                            Slot::Hotbar(index),
+                            x,
+                            hotbar_top,
+                        );
                     }
                 } else {
                     panel.spawn((
@@ -568,14 +581,15 @@ fn spawn(
                             position_type: PositionType::Absolute,
                             left: px(0.0),
                             top: px(0.0),
-                            width: px(176.0 * SCALE),
-                            height: px(166.0 * SCALE),
+                            width: px(176.0 * scale),
+                            height: px(166.0 * scale),
                             ..default()
                         },
                     ));
                     for index in 0..27 {
                         slot(
                             panel,
+                            scale,
                             icons,
                             font,
                             Slot::Main(index),
@@ -586,6 +600,7 @@ fn spawn(
                     for index in 0..9 {
                         slot(
                             panel,
+                            scale,
                             icons,
                             font,
                             Slot::Hotbar(index),
@@ -594,9 +609,9 @@ fn spawn(
                         );
                     }
                     if furnace {
-                        slot(panel, icons, font, Slot::Furnace(0), 56.0, 17.0);
-                        slot(panel, icons, font, Slot::Furnace(1), 56.0, 53.0);
-                        slot(panel, icons, font, Slot::Furnace(2), 116.0, 35.0);
+                        slot(panel, scale, icons, font, Slot::Furnace(0), 56.0, 17.0);
+                        slot(panel, scale, icons, font, Slot::Furnace(1), 56.0, 53.0);
+                        slot(panel, scale, icons, font, Slot::Furnace(2), 116.0, 35.0);
                         panel.spawn((
                             FurnaceProgress(false),
                             Pickable::IGNORE,
@@ -605,9 +620,9 @@ fn spawn(
                                 .with_rect(Rect::new(176.0, 0.0, 190.0, 14.0)),
                             Node {
                                 position_type: PositionType::Absolute,
-                                left: px(56.0 * SCALE),
-                                top: px(50.0 * SCALE),
-                                width: px(14.0 * SCALE),
+                                left: px(56.0 * scale),
+                                top: px(50.0 * scale),
+                                width: px(14.0 * scale),
                                 height: px(0.0),
                                 ..default()
                             },
@@ -620,10 +635,10 @@ fn spawn(
                                 .with_rect(Rect::new(176.0, 14.0, 176.0, 30.0)),
                             Node {
                                 position_type: PositionType::Absolute,
-                                left: px(79.0 * SCALE),
-                                top: px(34.0 * SCALE),
-                                width: px(24.0 * SCALE),
-                                height: px(16.0 * SCALE),
+                                left: px(79.0 * scale),
+                                top: px(34.0 * scale),
+                                width: px(24.0 * scale),
+                                height: px(16.0 * scale),
                                 ..default()
                             },
                         ));
@@ -631,6 +646,7 @@ fn spawn(
                         for index in 0..9 {
                             slot(
                                 panel,
+                                scale,
                                 icons,
                                 font,
                                 Slot::Workbench(index),
@@ -638,11 +654,12 @@ fn spawn(
                                 17.0 + (index / 3) as f32 * SLOT_STEP,
                             );
                         }
-                        slot(panel, icons, font, Slot::CraftResult, 124.0, 35.0);
+                        slot(panel, scale, icons, font, Slot::CraftResult, 124.0, 35.0);
                     } else {
                         for index in 0..4 {
                             slot(
                                 panel,
+                                scale,
                                 icons,
                                 font,
                                 Slot::Craft(index),
@@ -650,11 +667,12 @@ fn spawn(
                                 26.0 + (index / 2) as f32 * SLOT_STEP,
                             );
                         }
-                        slot(panel, icons, font, Slot::CraftResult, 144.0, 36.0);
+                        slot(panel, scale, icons, font, Slot::CraftResult, 144.0, 36.0);
                     }
                     for index in 0..4 {
                         slot(
                             panel,
+                            scale,
                             icons,
                             font,
                             Slot::Armor(index),
@@ -663,7 +681,7 @@ fn spawn(
                         );
                     }
                 }
-                let carried = count_frame(0.0, 0.0);
+                let carried = count_frame(scale, 0.0, 0.0);
                 panel.spawn((
                     CarriedIcon,
                     Pickable::IGNORE,
@@ -673,8 +691,8 @@ fn spawn(
                         position_type: PositionType::Absolute,
                         left: px(0),
                         top: px(0),
-                        width: px(icon_size()),
-                        height: px(icon_size()),
+                        width: px(icon_size(scale)),
+                        height: px(icon_size(scale)),
                         ..default()
                     },
                 ));
@@ -682,11 +700,11 @@ fn spawn(
                     CarriedLabel,
                     Pickable::IGNORE,
                     Text::new(""),
-                    count_text_font(font),
+                    count_text_font(scale, font),
                     TextLayout::justify(Justify::Right),
-                    count_line_height(),
+                    count_line_height(scale),
                     TextColor(Color::WHITE),
-                    count_shadow(),
+                    count_shadow(scale),
                     Node {
                         position_type: PositionType::Absolute,
                         left: px(carried.left),
@@ -702,6 +720,7 @@ fn spawn(
 
 fn chest_panel_label(
     panel: &mut ChildSpawnerCommands,
+    scale: f32,
     font: &Handle<Font>,
     label: &str,
     x: f32,
@@ -711,15 +730,15 @@ fn chest_panel_label(
         Text::new(label),
         TextFont {
             font: FontSource::Handle(font.clone()),
-            font_size: FontSize::Px(8.0 * SCALE),
+            font_size: FontSize::Px(8.0 * scale),
             ..default()
         },
         TextColor(Color::srgb_u8(64, 64, 64)),
         Pickable::IGNORE,
         Node {
             position_type: PositionType::Absolute,
-            left: px(x * SCALE),
-            top: px(y * SCALE),
+            left: px(x * scale),
+            top: px(y * scale),
             ..default()
         },
     ));
@@ -727,6 +746,7 @@ fn chest_panel_label(
 
 fn slot(
     parent: &mut bevy::ecs::hierarchy::ChildSpawnerCommands,
+    scale: f32,
     icons: &Handle<Image>,
     font: &Handle<Font>,
     id: Slot,
@@ -740,10 +760,10 @@ fn slot(
             RelativeCursorPosition::default(),
             Node {
                 position_type: PositionType::Absolute,
-                left: px(x * SCALE),
-                top: px(y * SCALE),
-                width: px(SLOT_SIZE * SCALE),
-                height: px(SLOT_SIZE * SCALE),
+                left: px(x * scale),
+                top: px(y * scale),
+                width: px(SLOT_SIZE * scale),
+                height: px(SLOT_SIZE * scale),
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
                 ..default()
@@ -759,14 +779,14 @@ fn slot(
                     position_type: PositionType::Absolute,
                     left: px(0.0),
                     top: px(0.0),
-                    width: px(icon_size()),
-                    height: px(icon_size()),
+                    width: px(icon_size(scale)),
+                    height: px(icon_size(scale)),
                     ..default()
                 },
             ));
             for foreground in [false, true] {
                 let (bar_left, bar_top, bar_width, bar_height) =
-                    durability_track(0.0, 0.0, foreground);
+                    durability_track(scale, 0.0, 0.0, foreground);
                 button.spawn((
                     SlotDurability(id, foreground),
                     Pickable::IGNORE,
@@ -782,16 +802,16 @@ fn slot(
                     },
                 ));
             }
-            let frame = count_frame(0.0, 0.0);
+            let frame = count_frame(scale, 0.0, 0.0);
             button.spawn((
                 SlotLabel(id),
                 Pickable::IGNORE,
                 Text::new(""),
-                count_text_font(font),
+                count_text_font(scale, font),
                 TextLayout::justify(Justify::Right),
-                count_line_height(),
+                count_line_height(scale),
                 TextColor(Color::WHITE),
-                count_shadow(),
+                count_shadow(scale),
                 Node {
                     position_type: PositionType::Absolute,
                     left: px(frame.left),
@@ -1771,8 +1791,10 @@ fn refresh(
     windows: Query<&Window, With<PrimaryWindow>>,
     block_icons: Res<BlockIcons>,
     font: Res<UiFont>,
+    settings: Res<GameSettings>,
     mut label_cache: Local<std::collections::HashMap<Entity, (Option<ItemStack>, bool)>>,
 ) {
+    let scale = settings.gui_scale;
     if !screen.open {
         label_cache.clear();
         return;
@@ -1840,6 +1862,7 @@ fn refresh(
             stack_text(stack)
         };
         sync_stack_label(
+            scale,
             &mut text,
             &mut node,
             &mut layout,
@@ -1865,9 +1888,9 @@ fn refresh(
             &chunks,
             &preview,
         );
-        if let Some((width, red, green)) = stack.and_then(durability_bar) {
+        if let Some((width, red, green)) = stack.and_then(|stack| durability_bar(scale, stack)) {
             visibility.set_if_neq(Visibility::Inherited);
-            let (_, _, track_width, _) = durability_track(0.0, 0.0, bar.1);
+            let (_, _, track_width, _) = durability_track(scale, 0.0, 0.0, bar.1);
             if bar.1 {
                 node.reborrow()
                     .map_unchanged(|node| &mut node.width)
@@ -1930,16 +1953,16 @@ fn refresh(
                     .set_if_neq(Some(Rect::new(176.0, 14.0, 176.0 + width, 30.0)));
                 node.reborrow()
                     .map_unchanged(|node| &mut node.width)
-                    .set_if_neq(px(width * SCALE));
+                    .set_if_neq(px(width * scale));
                 node.reborrow()
                     .map_unchanged(|node| &mut node.height)
-                    .set_if_neq(px(16.0 * SCALE));
+                    .set_if_neq(px(16.0 * scale));
                 node.reborrow()
                     .map_unchanged(|node| &mut node.left)
-                    .set_if_neq(px(79.0 * SCALE));
+                    .set_if_neq(px(79.0 * scale));
                 node.reborrow()
                     .map_unchanged(|node| &mut node.top)
-                    .set_if_neq(px(34.0 * SCALE));
+                    .set_if_neq(px(34.0 * scale));
             } else {
                 let height = (14.0 * progress).ceil().clamp(1.0, 14.0);
                 image
@@ -1948,16 +1971,16 @@ fn refresh(
                     .set_if_neq(Some(Rect::new(176.0, 14.0 - height, 190.0, 14.0)));
                 node.reborrow()
                     .map_unchanged(|node| &mut node.height)
-                    .set_if_neq(px(height * SCALE));
+                    .set_if_neq(px(height * scale));
                 node.reborrow()
                     .map_unchanged(|node| &mut node.top)
-                    .set_if_neq(px((50.0 - height) * SCALE));
+                    .set_if_neq(px((50.0 - height) * scale));
                 node.reborrow()
                     .map_unchanged(|node| &mut node.left)
-                    .set_if_neq(px(56.0 * SCALE));
+                    .set_if_neq(px(56.0 * scale));
                 node.reborrow()
                     .map_unchanged(|node| &mut node.width)
-                    .set_if_neq(px(14.0 * SCALE));
+                    .set_if_neq(px(14.0 * scale));
             }
         }
     }
@@ -1965,7 +1988,7 @@ fn refresh(
         window.cursor_position().map(|pos| {
             // GuiContainer draws the carried stack at the cursor minus half an icon.
             (
-                pos.x - (window.width() - 176.0 * SCALE) / 2.0 - 8.0 * SCALE,
+                pos.x - (window.width() - 176.0 * scale) / 2.0 - 8.0 * scale,
                 pos.y
                     - (window.height()
                         - (if screen.chest {
@@ -1975,9 +1998,9 @@ fn refresh(
                                     * 18.0
                         } else {
                             166.0
-                        }) * SCALE)
+                        }) * scale)
                         / 2.0
-                    - 8.0 * SCALE,
+                    - 8.0 * scale,
             )
         })
     });
@@ -2018,6 +2041,7 @@ fn refresh(
         };
         if let Some((left, top)) = cursor_icon {
             sync_stack_label(
+                scale,
                 &mut text,
                 &mut node,
                 &mut layout,
@@ -2093,7 +2117,7 @@ fn slot_stack(
     }
 }
 
-pub(super) fn durability_bar(stack: ItemStack) -> Option<(f32, u8, u8)> {
+pub(super) fn durability_bar(scale: f32, stack: ItemStack) -> Option<(f32, u8, u8)> {
     let ItemData::Durability(max) = stack.definition().data else {
         return None;
     };
@@ -2101,7 +2125,7 @@ pub(super) fn durability_bar(stack: ItemStack) -> Option<(f32, u8, u8)> {
         return None;
     }
     let fraction = stack.data() as f32 / max as f32;
-    let width = (13.0 - fraction * 13.0).round().clamp(0.0, 13.0) * SCALE;
+    let width = (13.0 - fraction * 13.0).round().clamp(0.0, 13.0) * scale;
     let green = (255.0 - fraction * 255.0).round().clamp(0.0, 255.0) as u8;
     Some((width, 255 - green, green))
 }

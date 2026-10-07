@@ -8,13 +8,13 @@ use bevy::window::CursorGrabMode;
 use bevy::window::CursorOptions;
 use bevy::window::PrimaryWindow;
 
+use crate::app::settings::GameSettings;
 use crate::app::state::AppScreen;
 use crate::chat::ChatFocus;
 use crate::chat::ChatHistory;
 use crate::chat::ChatSet;
 use crate::chat::ChatSubmission;
 use crate::inventory::session::InventorySession;
-use crate::ui::icons::overlay::GUI_SCALE;
 use crate::ui::icons::overlay::UiFont;
 use crate::world::tick::WorldTick;
 
@@ -30,6 +30,7 @@ pub struct ChatUiPlugin;
 impl Plugin for ChatUiPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ChatState>()
+            .init_resource::<GameSettings>()
             .init_resource::<ChatFocus>()
             .init_resource::<InventorySession>()
             .add_systems(OnEnter(AppScreen::Playing), spawn_chat)
@@ -88,12 +89,14 @@ struct ChatMessage(usize);
 fn spawn_chat(
     mut commands: Commands,
     font: Res<UiFont>,
+    settings: Res<GameSettings>,
     mut chat: ResMut<ChatState>,
     mut focus: ResMut<ChatFocus>,
 ) {
     *chat = ChatState::default();
     *focus = ChatFocus::default();
-    let font = TextFont::from_font_size(8.0 * GUI_SCALE)
+    let scale = settings.gui_scale;
+    let font = TextFont::from_font_size(8.0 * scale)
         .with_font(font.minecraft.clone())
         .with_font_smoothing(FontSmoothing::None);
     commands
@@ -120,8 +123,8 @@ fn spawn_chat(
                     Node {
                         position_type: PositionType::Absolute,
                         left: px(4.0),
-                        bottom: px((48.0 + index as f32 * 9.0) * GUI_SCALE),
-                        max_width: px(320.0 * GUI_SCALE),
+                        bottom: px((48.0 + index as f32 * 9.0) * scale),
+                        max_width: px(320.0 * scale),
                         ..default()
                     },
                 ));
@@ -136,10 +139,10 @@ fn spawn_chat(
                 Visibility::Hidden,
                 Node {
                     position_type: PositionType::Absolute,
-                    left: px(2.0 * GUI_SCALE),
-                    right: px(2.0 * GUI_SCALE),
-                    bottom: px(2.0 * GUI_SCALE),
-                    height: px(12.0 * GUI_SCALE),
+                    left: px(2.0 * scale),
+                    right: px(2.0 * scale),
+                    bottom: px(2.0 * scale),
+                    height: px(12.0 * scale),
                     overflow: Overflow::clip(),
                     ..default()
                 },

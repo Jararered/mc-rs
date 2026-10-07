@@ -12,14 +12,17 @@ use bevy::prelude::*;
 use bevy::state::app::StatesPlugin;
 use game::app::settings::DEFAULT_CLOUD_HEIGHT;
 use game::app::settings::DEFAULT_FOV;
+use game::app::settings::DEFAULT_GUI_SCALE;
 use game::app::settings::Difficulty;
 use game::app::settings::GameSettings;
 use game::app::settings::GraphicsQuality;
 use game::app::settings::MAX_CLOUD_HEIGHT;
 use game::app::settings::MAX_FOV;
+use game::app::settings::MAX_GUI_SCALE;
 use game::app::settings::MAX_RENDER_DISTANCE;
 use game::app::settings::MIN_CLOUD_HEIGHT;
 use game::app::settings::MIN_FOV;
+use game::app::settings::MIN_GUI_SCALE;
 use game::app::settings::MIN_RENDER_DISTANCE;
 use game::app::settings::SettingsPlugin;
 use game::app::settings::load_settings;
@@ -383,7 +386,7 @@ fn settings_round_trip_through_json() {
         max_fps: 120,
         fov: 90.0,
         cloud_height: 192.0,
-
+        gui_scale: 3.0,
         smooth_lighting: true,
         wiggle_leaves: false,
         graphics: GraphicsQuality::Fancy,
@@ -407,7 +410,29 @@ fn settings_json_fills_in_missing_menu_fields() {
     assert_eq!(loaded.difficulty, Difficulty::Normal);
     assert_eq!(loaded.fov, DEFAULT_FOV);
     assert_eq!(loaded.cloud_height, DEFAULT_CLOUD_HEIGHT);
+    assert_eq!(loaded.gui_scale, DEFAULT_GUI_SCALE);
     assert_eq!(loaded.graphics, GraphicsQuality::Fancy);
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn gui_scale_loads_as_a_whole_step_in_range() {
+    let path = temp_settings_path("gui_scale");
+    for (stored, expected) in [
+        ("0.0", MIN_GUI_SCALE),
+        ("2.4", 2.0),
+        ("3", 3.0),
+        ("99.0", MAX_GUI_SCALE),
+    ] {
+        fs::write(&path, format!(r#"{{ "gui_scale": {stored} }}"#)).unwrap();
+        assert_eq!(load_settings(&path).gui_scale, expected, "{stored}");
+    }
+    let mut settings = GameSettings {
+        gui_scale: f32::NAN,
+        ..default()
+    };
+    settings.clamp();
+    assert_eq!(settings.gui_scale, DEFAULT_GUI_SCALE);
     let _ = fs::remove_file(path);
 }
 

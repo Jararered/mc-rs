@@ -92,6 +92,7 @@ pub(super) enum SettingLabel {
     RenderDistance,
     Fov,
     CloudHeight,
+    GuiScale,
     SmoothLighting,
     WiggleLeaves,
     Graphics,
@@ -429,6 +430,13 @@ fn spawn_settings_menu(commands: &mut Commands, textures: &MenuTextures, setting
                                 cloud_height_text(&settings),
                                 settings,
                             );
+                            spawn_setting_slider(
+                                parent,
+                                &textures,
+                                SettingLabel::GuiScale,
+                                gui_scale_text(&settings),
+                                settings,
+                            );
                             spawn_setting_button(
                                 parent,
                                 &textures,
@@ -534,6 +542,7 @@ pub enum SettingsSlider {
     RenderDistance,
     Fov,
     CloudHeight,
+    GuiScale,
     MouseSensitivity,
     MaxFps,
 }
@@ -554,6 +563,7 @@ impl SettingsSlider {
                 1.0,
                 settings.cloud_height,
             ),
+            Self::GuiScale => Slider::new(MIN_GUI_SCALE, MAX_GUI_SCALE, 1.0, settings.gui_scale),
             Self::MouseSensitivity => Slider::new(
                 MIN_MOUSE_SENSITIVITY * 100.0,
                 MAX_MOUSE_SENSITIVITY * 100.0,
@@ -585,6 +595,7 @@ fn spawn_setting_slider(
         SettingLabel::RenderDistance => SettingsSlider::RenderDistance,
         SettingLabel::Fov => SettingsSlider::Fov,
         SettingLabel::CloudHeight => SettingsSlider::CloudHeight,
+        SettingLabel::GuiScale => SettingsSlider::GuiScale,
         SettingLabel::MouseSensitivity => SettingsSlider::MouseSensitivity,
         SettingLabel::MaxFps => SettingsSlider::MaxFps,
         _ => unreachable!("not a numeric setting"),
@@ -631,6 +642,7 @@ impl SettingsSlider {
             Self::RenderDistance => next.render_distance = value as i32,
             Self::Fov => next.fov = value,
             Self::CloudHeight => next.cloud_height = value,
+            Self::GuiScale => next.gui_scale = value,
             Self::MouseSensitivity => next.mouse_sensitivity = value / 100.0,
             Self::MaxFps => {
                 next.max_fps = if value > MAX_MAX_FPS as f32 {
@@ -813,6 +825,7 @@ fn refresh_settings_labels(
             SettingLabel::RenderDistance => render_distance_text(&settings),
             SettingLabel::Fov => fov_text(&settings),
             SettingLabel::CloudHeight => cloud_height_text(&settings),
+            SettingLabel::GuiScale => gui_scale_text(&settings),
             SettingLabel::SmoothLighting => smooth_lighting_text(&settings),
             SettingLabel::WiggleLeaves => wiggle_leaves_text(&settings),
             SettingLabel::Graphics => graphics_text(&settings),
@@ -846,6 +859,10 @@ fn fov_text(settings: &GameSettings) -> String {
 
 fn cloud_height_text(settings: &GameSettings) -> String {
     format!("Cloud height: {:.0}", settings.cloud_height)
+}
+
+fn gui_scale_text(settings: &GameSettings) -> String {
+    format!("GUI scale: {:.0}", settings.gui_scale)
 }
 
 fn smooth_lighting_text(settings: &GameSettings) -> String {

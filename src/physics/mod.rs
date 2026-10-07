@@ -757,14 +757,16 @@ fn cancel_collided_motion(motion: &mut Vec3, collision: CollisionState) {
     }
 }
 
-/// Water immersion over the player's trimmed central body band. Other
-/// physical entities use their entire AABB in [`water_current`].
+/// Water immersion over the player's trimmed central body band, as Beta's
+/// `Entity.handleWaterMovement` ([`water_movement`]), so shallow flowing water
+/// under the band still counts. Other physical entities use their entire AABB
+/// in [`water_current`].
 fn water_state(aabb: Aabb, chunks: &WorldChunks) -> (bool, Vec3) {
     let band = Aabb::new(
         aabb.min + Vec3::new(0.001, 0.401, 0.001),
         aabb.max - Vec3::new(0.001, 0.401, 0.001),
     );
-    water_current(band, chunks)
+    water_movement(band, chunks)
 }
 
 /// `World.handleMaterialAcceleration` for water: whether the AABB reaches a

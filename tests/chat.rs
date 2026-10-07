@@ -933,3 +933,220 @@ fn backend_history_keeps_whole_unicode_messages_and_ages_on_world_ticks() {
     assert_eq!(history.messages().count(), 50);
     assert_eq!(history.messages().next().unwrap().text, "Message 69");
 }
+
+#[test]
+fn suggestions_complete_command_names_then_their_arguments() {
+    let mut registry = CommandRegistry::default();
+    let items = |registry: &CommandRegistry, input: &str| registry.suggestions(input).items;
+
+    assert_eq!(
+        items(&registry, "/"),
+        [
+            "/give",
+            "/help",
+            "/setblock",
+            "/summon",
+            "/time",
+            "/tp",
+            "/weather",
+            "/wireframe"
+        ]
+    );
+    assert_eq!(registry.suggestions("/").start, 0);
+    assert_eq!(items(&registry, "/we"), ["/weather"]);
+    assert_eq!(items(&registry, "/WE"), ["/weather"]);
+    assert_eq!(items(&registry, "/t"), ["/time", "/tp"]);
+    assert!(items(&registry, "/nope").is_empty());
+
+    let weather = registry.suggestions("/weather ");
+    assert_eq!(weather.start, "/weather ".len());
+    assert_eq!(weather.items, ["clear", "rain", "thunder"]);
+    let partial = registry.suggestions("/weather r");
+    assert_eq!(partial.start, "/weather ".len());
+    assert_eq!(partial.items, ["rain"]);
+    assert!(items(&registry, "/weather rain ").is_empty());
+
+    assert_eq!(
+        items(&registry, "/time "),
+        ["set", "add", "query", "day", "night", "noon", "midnight"]
+    );
+    assert_eq!(
+        items(&registry, "/time set "),
+        ["day", "night", "noon", "midnight"]
+    );
+    assert_eq!(
+        items(&registry, "/time query "),
+        ["daytime", "gametime", "day"]
+    );
+    assert_eq!(items(&registry, "/time query d"), ["daytime", "day"]);
+    assert_eq!(items(&registry, "/help w"), ["weather", "wireframe"]);
+    assert_eq!(items(&registry, "/wireframe "), ["on", "off", "set"]);
+    assert_eq!(items(&registry, "/summon ").len(), MobType::ALL.len());
+    assert_eq!(items(&registry, "/summon pig"), ["pig", "pig_zombie"]);
+
+    // Numeric arguments, unknown commands, and ordinary chat suggest nothing.
+    for input in [
+        "/give ",
+        "/tp 1 ",
+        "/nope ",
+        "",
+        "hello",
+        "hello /we",
+        " /we",
+    ] {
+        assert!(items(&registry, input).is_empty(), "{input:?}");
+    }
+
+    registry
+        .register(
+            "clock",
+            "Read the current daytime.",
+            ["/clock"],
+            parse_clock,
+        )
+        .unwrap();
+    assert_eq!(items(&registry, "/cl"), ["/clock"]);
+    assert!(items(&registry, "/clock ").is_empty());
+    assert!(items(&registry, "/help cl").contains(&"clock".to_owned()));
+}
+
+#[test]
+fn chat_input_lists_suggestions_and_tab_accepts_the_selected_one() {
+    use bevy::input::ButtonState;
+    use bevy::input::keyboard::Key;
+    use bevy::input::keyboard::KeyboardInput;
+    use bevy::state::app::StatesPlugin;
+    use bevy::window::CursorGrabMode;
+    use bevy::window::CursorOptions;
+    use bevy::window::PrimaryWindow;
+    use game::app::state::AppScreen;
+    use game::chat::ChatPlugin;
+    use game::ui::ChatUiPlugin;
+    use game::ui::icons::overlay::UiFont;
+    use game::world::tick::WorldTick;
+
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, StatesPlugin))
+        .init_state::<AppScreen>()
+        .add_message::<KeyboardInput>()
+        .insert_resource(ButtonInput::<KeyCode>::default())
+        .insert_resource(WorldTick::default())
+        .insert_resource(WorldChunks::default())
+        .insert_resource(UiFont {
+            minecraft: Handle::default(),
+        })
+        .add_plugins((ChatPlugin, ChatUiPlugin));
+    let window = app
+        .world_mut()
+        .spawn((
+            Window {
+                focused: true,
+                ..default()
+            },
+            PrimaryWindow,
+            CursorOptions {
+                grab_mode: CursorGrabMode::Locked,
+                ..default()
+            },
+        ))
+        .id();
+    app.update();
+    app.world_mut()
+        .resource_mut::<NextState<AppScreen>>()
+        .set(AppScreen::Playing);
+    app.update();
+
+    let key = |app: &mut App, key_code: KeyCode, logical_key: Key, text: Option<&str>| {
+        app.world_mut().write_message(KeyboardInput {
+            key_code,
+            logical_key,
+            state: ButtonState::Pressed,
+            text: text.map(Into::into),
+            repeat: false,
+            window,
+        });
+        app.update();
+    };
+    // Shown suggestion rows, top to bottom, with whether each is the selected one.
+    let shown = |app: &mut App| -> Vec<(String, bool)> {
+        let selected = Color::srgb_u8(255, 255, 85);
+        let mut query = app
+            .world_mut()
+            .query::<(&Text, &TextColor, &Node, &ChildOf)>();
+        let world = app.world();
+        query
+            .iter(world)
+            .filter(|(_, _, node, parent)| {
+                node.display == Display::Flex
+                    && world.get::<Visibility>(parent.parent()) == Some(&Visibility::Visible)
+                    && world.get::<Node>(parent.parent()).unwrap().flex_direction
+                        == FlexDirection::Column
+            })
+            .map(|(text, color, ..)| (text.0.clone(), color.0 == selected))
+            .collect()
+    };
+    let input = |app: &mut App| -> String {
+        app.world_mut()
+            .query::<&Text>()
+            .iter(app.world())
+            .find(|text| text.0.starts_with("> "))
+            .unwrap()
+            .0
+            .trim_end_matches('_')
+            .to_owned()
+    };
+    let names = |rows: Vec<(String, bool)>| -> Vec<String> {
+        rows.into_iter().map(|(name, _)| name).collect()
+    };
+
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .press(KeyCode::Slash);
+    app.update();
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .clear();
+    // Eight commands scroll through six rows.
+    let rows = shown(&mut app);
+    assert_eq!(rows.len(), 6);
+    assert_eq!(rows[0], ("/give".to_owned(), true));
+    key(&mut app, KeyCode::ArrowUp, Key::ArrowUp, None);
+    let rows = shown(&mut app);
+    assert_eq!(rows.len(), 6);
+    assert_eq!(rows[5], ("/wireframe".to_owned(), true));
+    assert_eq!(rows[0].0, "/setblock");
+    key(&mut app, KeyCode::ArrowDown, Key::ArrowDown, None);
+    assert_eq!(shown(&mut app)[0], ("/give".to_owned(), true));
+
+    key(
+        &mut app,
+        KeyCode::KeyW,
+        Key::Character("w".into()),
+        Some("we"),
+    );
+    assert_eq!(shown(&mut app), [("/weather".to_owned(), true)]);
+    key(&mut app, KeyCode::Tab, Key::Tab, Some("\t"));
+    assert_eq!(input(&mut app), "> /weather ");
+    assert_eq!(names(shown(&mut app)), ["clear", "rain", "thunder"]);
+
+    key(&mut app, KeyCode::ArrowDown, Key::ArrowDown, None);
+    assert_eq!(
+        shown(&mut app),
+        [
+            ("clear".to_owned(), false),
+            ("rain".to_owned(), true),
+            ("thunder".to_owned(), false)
+        ]
+    );
+    key(&mut app, KeyCode::Tab, Key::Tab, Some("\t"));
+    assert_eq!(input(&mut app), "> /weather rain");
+    assert_eq!(names(shown(&mut app)), ["rain"]);
+    // Nothing more to complete: Tab leaves the input alone.
+    key(&mut app, KeyCode::Tab, Key::Tab, Some("\t"));
+    assert_eq!(input(&mut app), "> /weather rain");
+
+    key(&mut app, KeyCode::Backspace, Key::Backspace, None);
+    assert_eq!(names(shown(&mut app)), ["rain"]);
+    key(&mut app, KeyCode::Escape, Key::Escape, None);
+    assert!(shown(&mut app).is_empty());
+}

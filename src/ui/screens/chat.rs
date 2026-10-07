@@ -14,6 +14,8 @@ use crate::chat::ChatFocus;
 use crate::chat::ChatHistory;
 use crate::chat::ChatSet;
 use crate::chat::ChatSubmission;
+use crate::chat::registry::CommandRegistry;
+use crate::chat::registry::Suggestions;
 use crate::inventory::session::InventorySession;
 use crate::ui::icons::overlay::UiFont;
 use crate::world::tick::WorldTick;
@@ -24,6 +26,7 @@ const MESSAGE_LINE_LIMIT: usize = 50;
 const VISIBLE_CLOSED: usize = 10;
 const VISIBLE_OPEN: usize = 20;
 const FADE_TICKS: u32 = 200;
+const SUGGESTION_ROWS: usize = 6;
 
 pub struct ChatUiPlugin;
 
@@ -33,6 +36,7 @@ impl Plugin for ChatUiPlugin {
             .init_resource::<GameSettings>()
             .init_resource::<ChatFocus>()
             .init_resource::<InventorySession>()
+            .init_resource::<CommandRegistry>()
             .add_systems(OnEnter(AppScreen::Playing), spawn_chat)
             .add_systems(OnExit(AppScreen::Playing), despawn_chat)
             .add_systems(
@@ -43,7 +47,7 @@ impl Plugin for ChatUiPlugin {
             )
             .add_systems(
                 Update,
-                render_chat
+                (render_chat, render_suggestions)
                     .in_set(ChatSet::Presentation)
                     .run_if(in_state(AppScreen::Playing)),
             );
@@ -54,6 +58,43 @@ impl Plugin for ChatUiPlugin {
 struct ChatState {
     input: String,
     blink: u32,
+    suggestions: Suggestions,
+    selected: usize,
+    /// First suggestion shown; follows `selected` through the visible rows.
+    scroll: usize,
+}
+
+impl ChatState {
+    fn refresh_suggestions(&mut self, registry: &CommandRegistry) {
+        self.suggestions = registry.suggestions(&self.input);
+        self.selected = 0;
+        self.scroll = 0;
+    }
+
+    fn select(&mut self, index: usize) {
+        self.selected = index;
+        if index < self.scroll {
+            self.scroll = index;
+        } else if index >= self.scroll + SUGGESTION_ROWS {
+            self.scroll = index + 1 - SUGGESTION_ROWS;
+        }
+    }
+
+    /// Replace the word being typed, and add a space when the result takes
+    /// another suggested argument so its list opens straight away.
+    fn accept_suggestion(&mut self, registry: &CommandRegistry) {
+        let Some(item) = self.suggestions.items.get(self.selected) else {
+            return;
+        };
+        let mut input = format!("{}{item}", &self.input[..self.suggestions.start]);
+        if !registry.suggestions(&format!("{input} ")).items.is_empty() {
+            input.push(' ');
+        }
+        if input.chars().count() <= INPUT_LIMIT {
+            self.input = input;
+            self.refresh_suggestions(registry);
+        }
+    }
 }
 
 /// Beta's 320-GUI-pixel column, including Unicode-safe word wrapping.
@@ -85,6 +126,10 @@ struct ChatRoot;
 struct ChatInput;
 #[derive(Component)]
 struct ChatMessage(usize);
+#[derive(Component)]
+struct ChatSuggestions;
+#[derive(Component)]
+struct ChatSuggestion(usize);
 
 fn spawn_chat(
     mut commands: Commands,
@@ -130,6 +175,35 @@ fn spawn_chat(
                 ));
             }
             root.spawn((
+                ChatSuggestions,
+                BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.8)),
+                Visibility::Hidden,
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: px(2.0 * scale),
+                    bottom: px(14.0 * scale),
+                    flex_direction: FlexDirection::Column,
+                    padding: UiRect::axes(px(2.0 * scale), px(1.0 * scale)),
+                    ..default()
+                },
+            ))
+            .with_children(|list| {
+                for index in 0..SUGGESTION_ROWS {
+                    list.spawn((
+                        ChatSuggestion(index),
+                        Text::new(""),
+                        TextLayout::no_wrap(),
+                        font.clone(),
+                        TextColor(Color::NONE),
+                        Node {
+                            height: px(9.0 * scale),
+                            display: Display::None,
+                            ..default()
+                        },
+                    ));
+                }
+            });
+            root.spawn((
                 ChatInput,
                 Text::new(""),
                 TextLayout::no_wrap(),
@@ -170,6 +244,7 @@ fn read_chat_input(
     mut focus: ResMut<ChatFocus>,
     mut chat: ResMut<ChatState>,
     inventory: Res<InventorySession>,
+    registry: Res<CommandRegistry>,
     mut windows: Query<(&Window, &mut CursorOptions), With<PrimaryWindow>>,
     tick: Res<WorldTick>,
 ) {
@@ -193,6 +268,7 @@ fn read_chat_input(
                     String::new()
                 };
                 chat.blink = 0;
+                chat.refresh_suggestions(&registry);
                 cursor.grab_mode = CursorGrabMode::None;
                 cursor.visible = true;
             }
@@ -231,7 +307,21 @@ fn read_chat_input(
             }
             KeyCode::Backspace => {
                 chat.input.pop();
+                chat.refresh_suggestions(&registry);
             }
+            KeyCode::ArrowDown | KeyCode::ArrowUp => {
+                let count = chat.suggestions.items.len();
+                if count > 0 {
+                    let step = if event.key_code == KeyCode::ArrowDown {
+                        1
+                    } else {
+                        count - 1
+                    };
+                    let index = (chat.selected + step) % count;
+                    chat.select(index);
+                }
+            }
+            KeyCode::Tab => chat.accept_suggestion(&registry),
             _ => {
                 if !keys.pressed(KeyCode::ControlLeft)
                     && !keys.pressed(KeyCode::ControlRight)
@@ -245,11 +335,13 @@ fn read_chat_input(
                         }
                         chat.input.push(character);
                     }
+                    chat.refresh_suggestions(&registry);
                 }
             }
         }
     }
     if !focus.open {
+        chat.refresh_suggestions(&registry);
         cursor.visible = false;
         if window.focused {
             cursor.grab_mode = CursorGrabMode::Locked;
@@ -318,5 +410,45 @@ fn render_chat(
         color.0 = Color::srgba(1.0, 1.0, 1.0, opacity);
         background.0 = Color::srgba(0.0, 0.0, 0.0, opacity * 0.5);
         *visibility = Visibility::Visible;
+    }
+}
+
+fn render_suggestions(
+    chat: Res<ChatState>,
+    focus: Res<ChatFocus>,
+    mut list: Query<&mut Visibility, With<ChatSuggestions>>,
+    mut rows: Query<(&ChatSuggestion, &mut Text, &mut TextColor, &mut Node)>,
+) {
+    let items = &chat.suggestions.items;
+    let Ok(mut visibility) = list.single_mut() else {
+        return;
+    };
+    *visibility = if focus.open && !items.is_empty() {
+        Visibility::Visible
+    } else {
+        Visibility::Hidden
+    };
+    for (row, mut text, mut color, mut node) in &mut rows {
+        let index = chat.scroll + row.0;
+        let item = items.get(index).filter(|_| focus.open);
+        let display = if item.is_some() {
+            Display::Flex
+        } else {
+            Display::None
+        };
+        if node.display != display {
+            node.display = display;
+        }
+        let Some(item) = item else {
+            continue;
+        };
+        if **text != *item {
+            **text = item.clone();
+        }
+        color.0 = if index == chat.selected {
+            Color::srgb_u8(255, 255, 85)
+        } else {
+            Color::srgb_u8(170, 170, 170)
+        };
     }
 }

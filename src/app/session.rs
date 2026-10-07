@@ -12,9 +12,12 @@
 //!
 //! Loading reuses the startup systems that used to run once: the chosen
 //! storage is installed, the spawn area is built, and the player is spawned,
-//! in that order, before the game switches to [`AppScreen::Playing`].
+//! in that order, before the game switches to [`AppScreen::Playing`]. The
+//! spawn area is built on the compute pool, so the menu keeps drawing until
+//! it is ready.
 
 use std::path::PathBuf;
+use std::time::Instant;
 
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
@@ -52,9 +55,11 @@ use crate::world::persistence::SaveFormat;
 use crate::world::persistence::WorldPersistence;
 use crate::world::persistence::WorldStorage;
 use crate::world::persistence::activate_pending_world;
+use crate::world::streaming::SpawnAreaTask;
 use crate::world::streaming::StreamingDiagnostics;
 use crate::world::streaming::WorldStreaming;
 use crate::world::streaming::setup_streaming;
+use crate::world::streaming::start_spawn_area;
 use crate::world::weather::WorldWeather;
 
 /// The world to play.
@@ -88,6 +93,7 @@ enum Phase {
 const SAVE_RETRY_SECONDS: f32 = 2.0;
 
 const SAVING_NOTICE: &str = "Saving world...";
+const LOADING_NOTICE: &str = "Loading world...";
 
 #[derive(Resource, Default)]
 pub struct WorldSession {
@@ -98,6 +104,8 @@ pub struct WorldSession {
     notice: Option<String>,
     /// Seconds until a final save that left chunks unwritten is tried again.
     retry_in: f32,
+    /// When the world being loaded was opened, for the load time in the log.
+    load_started: Option<Instant>,
 }
 
 impl WorldSession {
@@ -149,10 +157,16 @@ impl Plugin for SessionPlugin {
             .add_systems(
                 Update,
                 (
-                    activate_pending_world,
+                    // Once only: a second pass would find the storage taken
+                    // and install a world that saves nowhere.
+                    (activate_pending_world, start_spawn_area)
+                        .chain()
+                        .run_if(not(resource_exists::<SpawnAreaTask>)),
                     setup_streaming,
-                    crate::player::spawn_player,
-                    finish_load,
+                    // These wait for the frame the spawn area arrives in.
+                    (crate::player::spawn_player, finish_load)
+                        .chain()
+                        .run_if(resource_exists::<WorldStreaming>),
                 )
                     .chain()
                     .after(drive_session)
@@ -348,6 +362,8 @@ fn drive_session(
     match storage {
         Ok(storage) => {
             commands.insert_resource(PendingWorld(Some(storage)));
+            session.notice = Some(LOADING_NOTICE.to_owned());
+            session.load_started = Some(Instant::now());
             session.phase = Phase::Loading;
         }
         Err(error) => {
@@ -363,6 +379,13 @@ fn finish_load(
     mut next_screen: ResMut<NextState<AppScreen>>,
 ) {
     commands.remove_resource::<PendingWorld>();
+    if let Some(started) = session.load_started.take() {
+        info!(
+            "world opened in {:.0} ms",
+            started.elapsed().as_secs_f64() * 1000.0
+        );
+    }
+    session.notice = None;
     session.phase = Phase::Active;
     next_screen.set(AppScreen::Playing);
 }

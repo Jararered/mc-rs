@@ -1,10 +1,12 @@
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::sync::Arc;
+use std::time::Duration;
 use std::time::Instant;
 
 use bevy::prelude::*;
 use bevy::tasks::AsyncComputeTaskPool;
+use bevy::tasks::Task;
 use bevy::tasks::futures::check_ready;
 
 use crate::app::settings::GameSettings;
@@ -27,6 +29,7 @@ use crate::player::Player;
 use crate::world::block_ticks::BlockTicks;
 use crate::world::lighting::LightCache;
 use crate::world::persistence::WorldPersistence;
+use crate::world::persistence::WorldStorage;
 
 use super::ChunkCulling;
 use super::ChunkJob;
@@ -57,6 +60,8 @@ use crate::rendering::textures::WaterMaterial;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::GeneratedChunk;
 use crate::world::chunk::WorldChunks;
+use crate::world::generation::ChunkGenerator;
+use crate::world::generation::WorldGeneration;
 use crate::world::generation::overworld::OverworldGenerator;
 
 /// Jobs of each kind kept in flight per async compute thread. A job that
@@ -68,10 +73,104 @@ const JOBS_PER_THREAD: usize = 2;
 const CHUNK_QUADS_ENV: &str = "MC_CHUNK_QUADS";
 /// Limit snapshot work on the main thread when many chunks need rebuilding.
 const MAX_REMESH_PER_FRAME: usize = 16;
+/// Main-thread time one frame spends putting finished jobs into the world
+/// while the game is played. Results past it wait for the next frame and keep
+/// their in-flight slot, so the workers slow down instead of piling them up.
+const APPLY_BUDGET: Duration = Duration::from_millis(2);
+
+/// The chunks a world starts with: the one the player stands in and, for a
+/// new world, the neighbors its population passes wrote into.
+pub(crate) struct SpawnArea {
+    /// Each chunk and whether it was read from disk.
+    chunks: Vec<(ChunkPosition, GeneratedChunk, bool)>,
+    load: Option<Duration>,
+    generate: Option<Duration>,
+}
+
+/// A spawn area being built on the compute pool while a world opens.
+#[derive(Resource)]
+pub(crate) struct SpawnAreaTask {
+    task: Task<SpawnArea>,
+    generator: Arc<dyn ChunkGenerator>,
+}
+
+fn world_generator(
+    generation: Option<&WorldGeneration>,
+    persistence: Option<&WorldPersistence>,
+) -> Arc<dyn ChunkGenerator> {
+    let seed = persistence.map_or(0, WorldPersistence::seed);
+    generation.map_or_else(
+        || Arc::new(OverworldGenerator::new(seed)) as Arc<dyn ChunkGenerator>,
+        |generation| Arc::clone(&generation.0),
+    )
+}
+
+/// Load or generate the chunk the player will stand in: where a saved player
+/// left off, or the origin for a new one.
+fn build_spawn_area(generator: &dyn ChunkGenerator, storage: Option<&WorldStorage>) -> SpawnArea {
+    let spawn_chunk = storage
+        .and_then(WorldStorage::load_player)
+        .map_or(ChunkPosition::ZERO, |player| {
+            ChunkPosition::from_world(player.x, player.z)
+        });
+    let load_start = Instant::now();
+    if let Some(chunk) = storage.and_then(|storage| storage.load_chunk(spawn_chunk)) {
+        return SpawnArea {
+            chunks: vec![(spawn_chunk, chunk, true)],
+            load: Some(load_start.elapsed()),
+            generate: None,
+        };
+    }
+    // A new spawn chunk is only finished once its neighbors' population
+    // passes have run, so build its whole neighborhood now. Saved
+    // neighbors are kept rather than overwritten.
+    let generate_start = Instant::now();
+    let area = crate::world::generation::generate_area(generator, spawn_chunk, 0);
+    let generate = generate_start.elapsed();
+    let chunks = area
+        .into_iter()
+        .map(|(position, generated)| {
+            let stored = (position != spawn_chunk)
+                .then(|| storage?.load_chunk(position))
+                .flatten();
+            match stored {
+                Some(stored) => (position, stored, true),
+                None => (position, generated, false),
+            }
+        })
+        .collect();
+    SpawnArea {
+        chunks,
+        load: None,
+        generate: Some(generate),
+    }
+}
+
+/// Start building the spawn area of the world that was just installed.
+/// [`setup_streaming`] picks the result up, so opening a world does not hold
+/// a frame for its generation.
+pub(crate) fn start_spawn_area(
+    mut commands: Commands,
+    generation: Option<Res<WorldGeneration>>,
+    persistence: Option<Res<WorldPersistence>>,
+) {
+    let generator = world_generator(generation.as_deref(), persistence.as_deref());
+    let storage = persistence
+        .as_deref()
+        .and_then(WorldPersistence::storage)
+        .cloned();
+    let task = {
+        let generator = Arc::clone(&generator);
+        AsyncComputeTaskPool::get()
+            .spawn(async move { build_spawn_area(generator.as_ref(), storage.as_deref()) })
+    };
+    commands.insert_resource(SpawnAreaTask { task, generator });
+}
 
 pub(crate) fn setup_streaming(
     mut commands: Commands,
-    generation: Option<Res<crate::world::generation::WorldGeneration>>,
+    generation: Option<Res<WorldGeneration>>,
+    mut building: Option<ResMut<SpawnAreaTask>>,
     // Grouped to stay within Bevy's sixteen system parameters.
     (terrain_material, grass_overlay_material, cutout_material, water_material, mask_material): (
         Res<TerrainMaterial>,
@@ -91,64 +190,39 @@ pub(crate) fn setup_streaming(
     mut ticks: Option<ResMut<BlockTicks>>,
     mut light: Option<ResMut<LightCache>>,
 ) {
+    // A world opened from the menu builds its spawn area in the background.
+    // The player spawns after this and needs the heightmap, so a world loaded
+    // at startup builds it here instead.
+    let (generator, spawn_area) = match building.as_deref_mut() {
+        Some(building) => {
+            let Some(area) = check_ready(&mut building.task) else {
+                return;
+            };
+            commands.remove_resource::<SpawnAreaTask>();
+            (Arc::clone(&building.generator), area)
+        }
+        None => {
+            let generator = world_generator(generation.as_deref(), persistence.as_deref());
+            let storage = persistence
+                .as_deref()
+                .and_then(WorldPersistence::storage)
+                .cloned();
+            let area = build_spawn_area(generator.as_ref(), storage.as_deref());
+            (generator, area)
+        }
+    };
+    if let Some(load) = spawn_area.load {
+        perf.load.record(load);
+    }
+    if let Some(generate) = spawn_area.generate {
+        perf.generate.record(generate);
+    }
     let quad_layers =
         quads.is_some() && !std::env::var(CHUNK_QUADS_ENV).is_ok_and(|value| value == "off");
     // Mesh jobs light chunks from here on, so block ticks must not.
     if let Some(light) = light.as_deref_mut() {
         light.set_streamed(true);
     }
-    let seed = persistence
-        .as_ref()
-        .map_or(0, |persistence| persistence.seed());
-    let generator = generation.map_or_else(
-        || {
-            Arc::new(OverworldGenerator::new(seed))
-                as Arc<dyn crate::world::generation::ChunkGenerator>
-        },
-        |generation| Arc::clone(&generation.0),
-    );
-    // The player starts in PostStartup and needs this heightmap immediately, so
-    // the chunk it will stand in is loaded or generated synchronously: where a
-    // saved player left off, or the origin for a new one.
-    let storage = persistence
-        .as_ref()
-        .and_then(|persistence| persistence.storage())
-        .cloned();
-    let spawn_chunk = storage
-        .as_ref()
-        .and_then(|storage| storage.load_player())
-        .map_or(ChunkPosition::ZERO, |player| {
-            ChunkPosition::from_world(player.x, player.z)
-        });
-    let load_start = Instant::now();
-    let stored = storage
-        .as_ref()
-        .and_then(|storage| storage.load_chunk(spawn_chunk));
-    let spawn_area = match stored {
-        Some(chunk) => {
-            perf.load.record(load_start.elapsed());
-            vec![(spawn_chunk, chunk, true)]
-        }
-        None => {
-            // A new spawn chunk is only finished once its neighbors' population
-            // passes have run, so build its whole neighborhood now. Saved
-            // neighbors are kept rather than overwritten.
-            let generate_start = Instant::now();
-            let area = crate::world::generation::generate_area(generator.as_ref(), spawn_chunk, 0);
-            perf.generate.record(generate_start.elapsed());
-            area.into_iter()
-                .map(|(position, generated)| {
-                    let stored = (position != spawn_chunk)
-                        .then(|| storage.as_ref()?.load_chunk(position))
-                        .flatten();
-                    match stored {
-                        Some(stored) => (position, stored, true),
-                        None => (position, generated, false),
-                    }
-                })
-                .collect()
-        }
-    };
     let materials = ChunkMaterials([
         terrain_material.0.clone(),
         grass_overlay_material.0.clone(),
@@ -157,7 +231,7 @@ pub(crate) fn setup_streaming(
         mask_material.0.clone(),
     ]);
     let max_in_flight = (AsyncComputeTaskPool::get().thread_num() * JOBS_PER_THREAD).max(2);
-    for (position, generated, loaded) in spawn_area {
+    for (position, generated, loaded) in spawn_area.chunks {
         if !loaded && let Some(persistence) = persistence.as_deref_mut() {
             persistence.mark_dirty(position);
         }
@@ -272,6 +346,7 @@ pub(crate) fn stream_chunks(
     // skip these O(loaded-chunks) sweeps on the many frames in between.
     if *last_unload_sweep != Some((center, load_radius)) {
         *last_unload_sweep = Some((center, load_radius));
+        let sweep_start = Instant::now();
 
         let mut forgotten = Vec::new();
 
@@ -315,6 +390,30 @@ pub(crate) fn stream_chunks(
             .positions()
             .filter(|position| !within_radius(*position, center, unload_radius))
             .collect();
+        // Sort the entities into their chunks once rather than searching all
+        // of them for every chunk that unloads.
+        let mut items_in: HashMap<ChunkPosition, Vec<Entity>> = HashMap::new();
+        let mut mobs_in: HashMap<ChunkPosition, Vec<Entity>> = HashMap::new();
+        let mut bodies_in: HashMap<ChunkPosition, Vec<Entity>> = HashMap::new();
+        if !stale.is_empty() {
+            for (entity, transform, ..) in &dropped {
+                let item_chunk = ChunkPosition::from_block(
+                    transform.translation.x.floor() as i32,
+                    transform.translation.z.floor() as i32,
+                );
+                items_in.entry(item_chunk).or_default().push(entity);
+            }
+            for (entity, transform, ..) in &mobs {
+                let mob_chunk =
+                    ChunkPosition::from_world(transform.translation.x, transform.translation.z);
+                mobs_in.entry(mob_chunk).or_default().push(entity);
+            }
+            for (entity, transform, ..) in &bodies {
+                let body_chunk =
+                    ChunkPosition::from_world(transform.translation.x, transform.translation.z);
+                bodies_in.entry(body_chunk).or_default().push(entity);
+            }
+        }
         for position in stale {
             if let Some(mut chunk) = chunks.remove(position) {
                 if let Some(ticks) = ticks.as_deref_mut() {
@@ -329,38 +428,30 @@ pub(crate) fn stream_chunks(
                 let cells = light
                     .as_deref_mut()
                     .and_then(|light| light.remove(position));
-                let mut leaving = Vec::new();
-                for (entity, transform, dropped, motion, state) in &dropped {
-                    let item_chunk = ChunkPosition::from_block(
-                        transform.translation.x.floor() as i32,
-                        transform.translation.z.floor() as i32,
-                    );
-                    if item_chunk == position {
-                        chunk.items.push(chunk_record(
-                            dropped.0,
-                            transform.translation,
-                            motion.0,
-                            state,
-                        ));
-                        leaving.push(entity);
-                    }
-                }
-                for entity in leaving {
+                for entity in items_in.remove(&position).unwrap_or_default() {
+                    let Ok((_, transform, dropped, motion, state)) = dropped.get(entity) else {
+                        continue;
+                    };
+                    chunk.items.push(chunk_record(
+                        dropped.0,
+                        transform.translation,
+                        motion.0,
+                        state,
+                    ));
                     commands.entity(entity).despawn();
                 }
                 let mut saved_mobs = Vec::new();
-                for (entity, transform, velocity, mob, living) in &mobs {
-                    if ChunkPosition::from_world(transform.translation.x, transform.translation.z)
-                        == position
-                    {
-                        saved_mobs.push(MobRecord::capture(
-                            mob,
-                            transform.translation,
-                            velocity.0,
-                            living,
-                        ));
-                        commands.entity(entity).despawn();
-                    }
+                for entity in mobs_in.remove(&position).unwrap_or_default() {
+                    let Ok((_, transform, velocity, mob, living)) = mobs.get(entity) else {
+                        continue;
+                    };
+                    saved_mobs.push(MobRecord::capture(
+                        mob,
+                        transform.translation,
+                        velocity.0,
+                        living,
+                    ));
+                    commands.entity(entity).despawn();
                 }
                 // Records left by the last autosave are stale: mobs that died
                 // or walked off since would come back on the next load.
@@ -371,9 +462,8 @@ pub(crate) fn stream_chunks(
                     }
                 }
                 let mut saved_bodies = Vec::new();
-                for (entity, transform, falling, tnt, velocity) in &bodies {
-                    if ChunkPosition::from_world(transform.translation.x, transform.translation.z)
-                        == position
+                for entity in bodies_in.remove(&position).unwrap_or_default() {
+                    if let Ok((_, transform, falling, tnt, velocity)) = bodies.get(entity)
                         && let Some(body) = SavedBody::capture(transform, falling, tnt, velocity)
                     {
                         saved_bodies.push(body);
@@ -391,17 +481,38 @@ pub(crate) fn stream_chunks(
                 }
             }
         }
+        perf.sweep.record(sweep_start.elapsed());
     }
+
+    // Finished jobs land nearest first, and only as many as the frame budget
+    // allows while the game is played. Unloading and the menus take them all.
+    let budgeted = !streaming.halted
+        && screen
+            .as_ref()
+            .is_none_or(|state| *state.get() == AppScreen::Playing);
+    let apply_start = Instant::now();
+    let mut applied = 0_usize;
+    let within_budget =
+        |applied: usize| !budgeted || applied == 0 || apply_start.elapsed() < APPLY_BUDGET;
 
     // Apply finished population jobs. Their chunks rejoin the world even if
     // the player has moved away, so the next unload pass saves what the
     // population pass wrote into them.
-    let populated: Vec<_> = streaming
+    let mut populated: Vec<_> = streaming
         .populating
-        .iter_mut()
-        .filter_map(|(source, task)| check_ready(task).map(|job| (*source, job)))
+        .iter()
+        .filter(|(_, task)| task.is_finished())
+        .map(|(source, _)| *source)
         .collect();
-    for (source, job) in populated {
+    sort_by_distance(&mut populated, center);
+    for source in populated {
+        if !within_budget(applied) {
+            break;
+        }
+        let Some(job) = streaming.populating.get_mut(&source).and_then(check_ready) else {
+            continue;
+        };
+        applied += 1;
         streaming.discovery_dirty = true;
         streaming.populating.remove(&source);
         perf.populate.record(job.elapsed);
@@ -420,12 +531,25 @@ pub(crate) fn stream_chunks(
 
     // Apply finished generation jobs. A chunk is only eligible for meshing once
     // it and its neighbors are populated.
-    let generated: Vec<_> = streaming
+    let mut generated: Vec<_> = streaming
         .generating
-        .iter_mut()
-        .filter_map(|(position, task)| check_ready(task).map(|job| (*position, job)))
+        .iter()
+        .filter(|(_, task)| task.is_finished())
+        .map(|(position, _)| *position)
         .collect();
-    for (position, job) in generated {
+    sort_by_distance(&mut generated, center);
+    for position in generated {
+        if !within_budget(applied) {
+            break;
+        }
+        let Some(job) = streaming
+            .generating
+            .get_mut(&position)
+            .and_then(check_ready)
+        else {
+            continue;
+        };
+        applied += 1;
         streaming.discovery_dirty = true;
         streaming.generating.remove(&position);
         if job.loaded {
@@ -452,12 +576,25 @@ pub(crate) fn stream_chunks(
     // Apply finished mesh jobs. A chunk that is already rendered (for example
     // after a regeneration) keeps its entity and handle; only the geometry is
     // replaced.
-    let meshed: Vec<_> = streaming
+    let mut meshed: Vec<_> = streaming
         .meshing
-        .iter_mut()
-        .filter_map(|(position, job)| check_ready(&mut job.task).map(|job| (*position, job)))
+        .iter()
+        .filter(|(_, job)| job.task.is_finished())
+        .map(|(position, _)| *position)
         .collect();
-    for (position, job) in meshed {
+    sort_by_distance(&mut meshed, center);
+    for position in meshed {
+        if !within_budget(applied) {
+            break;
+        }
+        let Some(job) = streaming
+            .meshing
+            .get_mut(&position)
+            .and_then(|job| check_ready(&mut job.task))
+        else {
+            continue;
+        };
+        applied += 1;
         streaming.discovery_dirty = true;
         streaming.meshing.remove(&position);
         perf.mesh.record(job.elapsed);
@@ -498,9 +635,13 @@ pub(crate) fn stream_chunks(
             streaming.request_remesh(position);
         }
     }
+    if applied > 0 {
+        perf.apply.record(apply_start.elapsed());
+    }
 
     // Edits take priority over first meshes. Only snapshot chunk data here;
     // lighting and mesh construction run on the compute pool.
+    let dispatch_start = Instant::now();
     let max_in_flight = streaming.max_in_flight;
     let remesh_attempts = streaming.remesh_queue.len().min(MAX_REMESH_PER_FRAME);
     for _ in 0..remesh_attempts {
@@ -536,6 +677,9 @@ pub(crate) fn stream_chunks(
         && !streaming.discovery_dirty
         && *discovered_revision == Some(chunks.membership_revision())
     {
+        if remesh_attempts > 0 {
+            perf.dispatch.record(dispatch_start.elapsed());
+        }
         return;
     }
     perf.discovery_passes += 1;
@@ -689,6 +833,7 @@ pub(crate) fn stream_chunks(
     *discovered_revision = Some(chunks.membership_revision());
     // Look again next frame for a chunk that waited on its write.
     streaming.discovery_dirty = waiting_on_save;
+    perf.dispatch.record(dispatch_start.elapsed());
 }
 
 /// Put a chunk into the live world: its pending block ticks go to the

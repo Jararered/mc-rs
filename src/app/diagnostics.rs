@@ -148,22 +148,18 @@ fn print_perf_stats(
         0,
     );
 
-    let (generate, populate, load, mesh, discovery_passes) = match perf {
-        Some(mut perf) => (
-            perf.generate.take(),
-            perf.populate.take(),
-            perf.load.take(),
-            perf.mesh.take(),
-            std::mem::take(&mut perf.discovery_passes),
-        ),
-        None => (
-            TimingStats::default(),
-            TimingStats::default(),
-            TimingStats::default(),
-            TimingStats::default(),
-            0,
-        ),
-    };
+    let StreamingDiagnostics {
+        generate,
+        populate,
+        load,
+        mesh,
+        sweep,
+        apply,
+        dispatch,
+        discovery_passes,
+    } = perf
+        .map(|mut perf| std::mem::take(&mut *perf))
+        .unwrap_or_default();
 
     let entity = entity_perf.map(|mut perf| perf.take()).unwrap_or_default();
     let per_search = if entity.searches.searches > 0 {
@@ -190,6 +186,9 @@ fn print_perf_stats(
          chunk populate  {}\n  \
          chunk load      {}\n  \
          mesh            {}\n  \
+         main: unload    {}\n  \
+         main: apply     {}\n  \
+         main: dispatch  {}\n  \
          mobs            {} ({} model boxes)\n  \
          mob ticks       {} over {} ticks\n  \
          pathfinding     {} searches, {} nodes ({per_search} per search), {} repeats reused\n  \
@@ -199,6 +198,9 @@ fn print_perf_stats(
         fmt_timing(&populate),
         fmt_timing(&load),
         fmt_timing(&mesh),
+        fmt_timing(&sweep),
+        fmt_timing(&apply),
+        fmt_timing(&dispatch),
         entity.mobs,
         entity.parts,
         fmt_timing(&entity.creatures),

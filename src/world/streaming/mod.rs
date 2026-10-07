@@ -28,7 +28,9 @@ use render::ChunkMaterials;
 use render::RenderedChunk;
 
 pub use render::ChunkCulling;
+pub(crate) use systems::SpawnAreaTask;
 pub(crate) use systems::setup_streaming;
+pub(crate) use systems::start_spawn_area;
 pub(crate) use systems::stream_chunks;
 
 pub const LOAD_RADIUS: i32 = 4;
@@ -77,6 +79,12 @@ pub struct StreamingDiagnostics {
     pub populate: TimingStats,
     pub load: TimingStats,
     pub mesh: TimingStats,
+    /// Main-thread time of the streaming pass, on the frames that did each
+    /// kind of work: unloading what left the radii, putting finished jobs
+    /// into the world, and finding and starting new jobs.
+    pub sweep: TimingStats,
+    pub apply: TimingStats,
+    pub dispatch: TimingStats,
     /// Candidate-discovery passes; settled frames should leave this unchanged.
     pub discovery_passes: u64,
 }

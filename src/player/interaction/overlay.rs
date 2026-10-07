@@ -62,8 +62,15 @@ struct OverlayLayer {
 }
 
 pub(crate) fn overlay_plugin(app: &mut App) {
+    // The group's systems need `GizmoPlugin`'s assets, which a headless app
+    // does not have.
+    if app
+        .world()
+        .contains_resource::<Assets<bevy::gizmos::GizmoAsset>>()
+    {
+        app.init_gizmo_group::<SelectionGizmos>();
+    }
     app.init_resource::<BlockFocus>()
-        .init_gizmo_group::<SelectionGizmos>()
         .add_systems(Startup, configure_selection_gizmos)
         .add_systems(PostStartup, spawn_block_overlays)
         .add_systems(

@@ -65,6 +65,10 @@ num_enum = "0.7.6"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 
+# Only to lower the priority of the chunk worker threads (`src/main.rs`).
+[target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
+libc = "0.2"
+
 [lints.clippy]
 all = "warn"
 pedantic = "warn"

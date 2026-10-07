@@ -1121,6 +1121,56 @@ fn leave_world(app: &mut App) {
 }
 
 #[test]
+fn opening_a_world_builds_its_spawn_area_in_the_background() {
+    use game::app::session::WorldChoice;
+    use game::app::session::WorldSession;
+    use game::app::settings::Difficulty;
+    use game::player::Player;
+    use game::world::persistence::SaveFormat;
+
+    let saves = temp_saves("session-background-spawn");
+    let mut app = session_app(&saves);
+    app.world_mut()
+        .resource_mut::<WorldSession>()
+        .request_load(WorldChoice::New {
+            name: "Background".to_owned(),
+            seed: 11,
+            difficulty: Difficulty::Normal,
+            format: SaveFormat::Binary,
+        });
+    // The frame that opens the world only starts the job: nothing was
+    // generated on it, and the world screens say why they are waiting.
+    app.update();
+    let session = app.world().resource::<WorldSession>();
+    assert!(session.is_busy());
+    assert_eq!(session.notice(), Some("Loading world..."));
+    assert!(app.world().resource::<WorldChunks>().is_empty());
+
+    assert!(
+        run_until(&mut app, Duration::from_secs(60), |app| {
+            app.world().resource::<WorldSession>().is_active()
+        }),
+        "the world never finished loading"
+    );
+    assert_eq!(app.world().resource::<WorldSession>().notice(), None);
+    assert!(
+        app.world()
+            .resource::<WorldChunks>()
+            .contains(ChunkPosition::ZERO)
+    );
+    // The world that was opened is still the one being saved.
+    assert!(
+        app.world()
+            .resource::<WorldPersistence>()
+            .storage()
+            .is_some()
+    );
+    let mut players = app.world_mut().query_filtered::<(), With<Player>>();
+    assert_eq!(players.iter(app.world()).count(), 1);
+    std::fs::remove_dir_all(saves).ok();
+}
+
+#[test]
 fn leaving_a_world_saves_its_edits_and_unloads_it_before_the_next_load() {
     use game::app::session::WorldChoice;
     use game::app::session::WorldSession;

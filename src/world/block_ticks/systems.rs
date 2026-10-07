@@ -90,7 +90,10 @@ pub(super) fn run_block_ticks(
 ) {
     let count = tick.ticks_this_frame();
     ticks.set_raining(weather.as_ref().is_some_and(|w| w.is_raining()));
-    ticks.set_weather_penalty(weather.as_ref().map_or(0, |w| w.skylight_penalty()));
+    ticks.set_weather_strength(
+        weather.as_ref().map_or(0.0, |w| w.rain_strength),
+        weather.as_ref().map_or(0.0, |w| w.weighted_thunder()),
+    );
     let now = tick.world_time();
     ticks.process_events(&mut chunks, &mut light, now);
 

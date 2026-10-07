@@ -467,6 +467,27 @@ impl WorldChunks {
         chunk.chunk.get(local_x, y as usize, local_z)
     }
 
+    /// `World.findTopSolidBlock`: one above the highest solid or liquid block
+    /// in the column, or `-1` for an empty or unloaded column.
+    pub fn top_solid_block(&self, x: i32, z: i32) -> i32 {
+        let Some(generated) = self.get(ChunkPosition::from_block(x, z)) else {
+            return -1;
+        };
+        let local_x = x.rem_euclid(CHUNK_SIZE as i32) as usize;
+        let local_z = z.rem_euclid(CHUNK_SIZE as i32) as usize;
+        (1..CHUNK_HEIGHT)
+            .rev()
+            .find(|&y| {
+                generated
+                    .chunk
+                    .get(local_x, y, local_z)
+                    .is_some_and(|block| {
+                        block.is_solid_material() || crate::block::fluids::is_liquid(block)
+                    })
+            })
+            .map_or(-1, |y| y as i32 + 1)
+    }
+
     /// Beta `World.getBlockMetadata`: zero outside the world or a loaded chunk.
     pub fn metadata_at(&self, x: i32, y: i32, z: i32) -> u8 {
         let Some(index) = local_index(x, y, z) else {

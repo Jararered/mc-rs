@@ -80,7 +80,6 @@ use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
 use crate::world::environment::celestial_angle;
-use crate::world::environment::skylight_subtracted;
 use crate::world::lighting::LightCache;
 use crate::world::lighting::beta_brightness;
 use crate::world::lighting::combined_light;
@@ -423,16 +422,14 @@ pub(crate) fn tick_creatures(
     if let Some(target) = target {
         crowd.push((Entity::PLACEHOLDER, target.aabb()));
     }
-    let penalty = weather
-        .as_ref()
-        .map_or(0, |weather| weather.skylight_penalty());
     let world = Surroundings {
         chunks: &chunks,
         light: &light,
         raining: weather.as_ref().is_some_and(|weather| weather.is_raining()),
-        skylight_subtracted: skylight_subtracted(celestial_angle(tick.world_time(), 0.0))
-            .saturating_add(penalty)
-            .min(15),
+        skylight_subtracted: crate::world::weather::skylight_subtracted(
+            weather.as_deref(),
+            celestial_angle(tick.world_time(), 0.0),
+        ),
         difficulty,
         player: target,
         crowd: crowd.as_slice(),

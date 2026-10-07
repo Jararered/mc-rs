@@ -321,13 +321,29 @@ fn cloud_geometry_follows_the_render_distance() {
 
 #[test]
 fn cloud_color_tracks_daylight() {
-    let noon = cloud_color(1.0);
+    let noon = cloud_color(1.0, 0.0, 0.0);
     assert!((noon[0] - 1.0).abs() < 1e-5);
     assert!((noon[2] - 1.0).abs() < 1e-5);
-    let night = cloud_color(0.0);
+    let night = cloud_color(0.0, 0.0, 0.0);
     assert!((night[0] - 0.1).abs() < 1e-5);
     assert!((night[1] - 0.1).abs() < 1e-5);
     assert!((night[2] - 0.15).abs() < 1e-5);
+}
+
+#[test]
+fn clouds_gray_in_rain_and_darken_in_thunder() {
+    // White keeps 5% of itself and takes the rest from 0.6 luma.
+    let rain = cloud_color(1.0, 1.0, 0.0);
+    for channel in rain {
+        assert!((channel - 0.62).abs() < 1e-5);
+    }
+    // Thunder then does the same toward 0.2 of that gray.
+    let storm = cloud_color(1.0, 1.0, 1.0);
+    for channel in storm {
+        assert!((channel - (0.62 * 0.05 + 0.62 * 0.2 * 0.95)).abs() < 1e-5);
+    }
+    let half = cloud_color(1.0, 0.5, 0.0);
+    assert!(half[0] < 1.0 && half[0] > rain[0]);
 }
 
 #[test]

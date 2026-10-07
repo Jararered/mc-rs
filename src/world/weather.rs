@@ -26,6 +26,7 @@ use crate::random::JavaRandom;
 use crate::world::biome::Biome;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::WorldChunks;
+use crate::world::environment::skylight_subtracted_in_weather;
 use crate::world::lighting::LightCache;
 use crate::world::tick::WorldTick;
 
@@ -56,14 +57,19 @@ impl Default for WorldWeather {
 }
 
 impl WorldWeather {
-    pub fn skylight_penalty(&self) -> u8 {
-        (self.rain_strength * 3.0 + self.thunder_strength * 5.0).round() as u8
+    /// `World.getWeightedThunderStrength`.
+    pub fn weighted_thunder(&self) -> f32 {
+        self.thunder_strength * self.rain_strength
+    }
+    /// `World.calculateSkylightSubtracted` under this weather.
+    pub fn skylight_subtracted(&self, angle: f32) -> u8 {
+        skylight_subtracted_in_weather(angle, self.rain_strength, self.weighted_thunder())
     }
     pub fn is_raining(&self) -> bool {
         self.rain_strength > 0.2
     }
     pub fn is_thundering(&self) -> bool {
-        self.thunder_strength * self.rain_strength > 0.9
+        self.weighted_thunder() > 0.9
     }
     pub fn step(&mut self) {
         let mut rng = JavaRandom::from_state(self.rng_state);
@@ -97,6 +103,14 @@ impl WorldWeather {
             (self.thunder_strength + if self.thundering { 0.01 } else { -0.01 }).clamp(0., 1.);
         self.rng_state = rng.state();
     }
+}
+
+/// Skylight subtracted at `angle`, with clear skies when there is no weather.
+pub fn skylight_subtracted(weather: Option<&WorldWeather>, angle: f32) -> u8 {
+    weather.map_or_else(
+        || crate::world::environment::skylight_subtracted(angle),
+        |weather| weather.skylight_subtracted(angle),
+    )
 }
 
 #[derive(Message, Clone, Copy, Debug)]

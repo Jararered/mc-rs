@@ -41,7 +41,6 @@ use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
 use crate::world::environment::celestial_angle;
-use crate::world::environment::skylight_subtracted;
 use crate::world::lighting::LightCache;
 use crate::world::lighting::combined_light;
 use crate::world::persistence::WorldPersistence;
@@ -428,7 +427,7 @@ fn tick_spawners(
                     &chunks,
                     &light,
                     tick.world_time(),
-                    weather.as_ref().map_or(0, |w| w.skylight_penalty()),
+                    weather.as_deref(),
                     persistence.as_ref().map_or(0, |p| p.seed()),
                     &mut rng,
                 ) {
@@ -592,7 +591,7 @@ pub fn can_spawn_at(
     chunks: &WorldChunks,
     light: &LightCache,
     tick: u64,
-    weather_penalty: u8,
+    weather: Option<&crate::world::weather::WorldWeather>,
     seed: u64,
     rng: &mut JavaRandom,
 ) -> bool {
@@ -647,9 +646,8 @@ pub fn can_spawn_at(
     let Some((sky, block)) = light.channels(x, y, z) else {
         return false;
     };
-    let subtracted = skylight_subtracted(celestial_angle(tick, 0.0))
-        .saturating_add(weather_penalty)
-        .min(15);
+    let subtracted =
+        crate::world::weather::skylight_subtracted(weather, celestial_angle(tick, 0.0));
     if !kind.hostile() {
         return chunks.block_at(x, y - 1, z) == Some(Block::Grass)
             && combined_light(sky, block, subtracted) > 8;
@@ -821,7 +819,7 @@ fn spawn_naturally(
                         &chunks,
                         &light,
                         tick.world_time(),
-                        weather.as_ref().map_or(0, |w| w.skylight_penalty()),
+                        weather,
                         seed,
                         &mut random.0,
                     )

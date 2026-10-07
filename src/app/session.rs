@@ -31,6 +31,7 @@ use crate::entity::explosion::PrimedTnt;
 use crate::entity::falling_block::FallingBlock;
 use crate::entity::mobs::Mob;
 use crate::entity::particles::block::BlockParticles;
+use crate::entity::particles::rain::RainParticles;
 use crate::entity::projectiles::Arrow;
 use crate::entity::projectiles::Fireball;
 use crate::entity::shadow::ShadowOwner;
@@ -39,7 +40,8 @@ use crate::inventory::session::InventorySession;
 use crate::player::Player;
 use crate::player::interaction::overlay::BlockFocus;
 use crate::rendering::sky::SkyAnchor;
-use crate::rendering::weather::LightningFlash;
+use crate::rendering::weather::LightningBolt;
+use crate::rendering::weather::SkyFlash;
 use crate::world::block_ticks::BlockTicks;
 use crate::world::chunk::WorldChunks;
 use crate::world::generation::WorldGeneration;
@@ -166,7 +168,9 @@ struct WorldState<'w, 's> {
     light: ResMut<'w, LightCache>,
     ticks: ResMut<'w, BlockTicks>,
     particles: ResMut<'w, BlockParticles>,
+    rain_particles: Option<ResMut<'w, RainParticles>>,
     weather: Option<ResMut<'w, WorldWeather>>,
+    sky_flash: Option<ResMut<'w, SkyFlash>>,
     inventory: ResMut<'w, InventorySession>,
     workbench: ResMut<'w, ActiveWorkbench>,
     focus: ResMut<'w, BlockFocus>,
@@ -187,7 +191,7 @@ struct WorldState<'w, 's> {
             With<PrimedTnt>,
             With<Arrow>,
             With<Fireball>,
-            With<LightningFlash>,
+            With<LightningBolt>,
             With<ShadowOwner>,
             With<Player>,
             With<SkyAnchor>,
@@ -283,8 +287,14 @@ fn drive_session(
         state.light.clear();
         *state.ticks = BlockTicks::default();
         *state.particles = BlockParticles::default();
+        if let Some(rain) = state.rain_particles.as_deref_mut() {
+            *rain = RainParticles::default();
+        }
         if let Some(weather) = state.weather.as_deref_mut() {
             *weather = WorldWeather::default();
+        }
+        if let Some(flash) = state.sky_flash.as_deref_mut() {
+            flash.0 = 0;
         }
         *state.inventory = InventorySession::default();
         *state.workbench = ActiveWorkbench::default();

@@ -10,6 +10,7 @@ use game::app::state::AppScreen;
 use game::block::blocks::Block;
 use game::entity::particles::block::BlockParticlePlugin;
 use game::entity::particles::block::BlockParticles;
+use game::entity::particles::rain::RainParticles;
 use game::entity::particles::registry::ParticleSprite;
 use game::physics::BlockFace;
 use game::physics::BlockHit;
@@ -359,4 +360,56 @@ fn debris_moves_on_render_frames_between_simulation_ticks() {
         }),
         "debris should move smoothly across successive render frames, not only every 50 ms"
     );
+}
+
+/// One chunk of `biome` with a stone floor, optionally roofed over.
+fn rain_world(biome: Biome, roofed: bool) -> WorldChunks {
+    let mut chunk = Chunk::new();
+    for x in 0..16 {
+        for z in 0..16 {
+            chunk.set(x, 63, z, Block::Stone);
+            if roofed {
+                chunk.set(x, 100, z, Block::Stone);
+            }
+        }
+    }
+    let climate = Climate {
+        temperature: 0.5,
+        humidity: 0.5,
+        biome,
+    };
+    let mut chunks = WorldChunks::default();
+    chunks.insert(
+        game::world::chunk::ChunkPosition::ZERO,
+        GeneratedChunk {
+            heightmap: Heightmap::from_chunk(&chunk),
+            chunk,
+            biomes: BiomeMap::from_cells([climate; 16 * 16]),
+            items: Vec::new(),
+            populated: true,
+        },
+    );
+    chunks
+}
+
+fn splashes(chunks: &WorldChunks, strength: f32, fancy: bool) -> usize {
+    let mut rain = RainParticles::default();
+    rain.spawn(chunks, Vec3::new(8.5, 65.6, 8.5), strength, fancy);
+    rain.active_count()
+}
+
+#[test]
+fn rain_splashes_land_on_exposed_ground_in_raining_biomes() {
+    let open = rain_world(Biome::Forest, false);
+    let full = splashes(&open, 1.0, true);
+    // A hundred tries a tick; the ones that land outside the chunk are lost.
+    assert!((20..=100).contains(&full), "{full} splashes");
+    assert_eq!(splashes(&open, 0.0, true), 0);
+    // Fast graphics halves the strength, and the count goes with its square.
+    assert!(splashes(&open, 1.0, false) <= 25);
+
+    // The roof is the top solid block and it is out of reach overhead.
+    assert_eq!(splashes(&rain_world(Biome::Forest, true), 1.0, true), 0);
+    assert_eq!(splashes(&rain_world(Biome::Desert, false), 1.0, true), 0);
+    assert_eq!(splashes(&rain_world(Biome::Tundra, false), 1.0, true), 0);
 }

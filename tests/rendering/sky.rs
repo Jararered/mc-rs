@@ -1,4 +1,5 @@
 use game::player::interpolated_swing;
+use game::rendering::sky::SkyWeather;
 use game::rendering::sky::base_fog_rgb;
 use game::rendering::sky::sky_disc_color;
 use game::rendering::sky::sky_fog_end;
@@ -6,6 +7,7 @@ use game::rendering::sky::sky_rgb;
 use game::rendering::sky::star_brightness;
 use game::rendering::sky::sunrise_rgba;
 use game::rendering::sky::view_distance_blocks;
+use game::rendering::sky::weather_fog_rgb;
 use game::rendering::sky::world_fog_range;
 use game::world::environment::celestial_angle;
 use game::world::environment::daylight_factor;
@@ -41,8 +43,8 @@ fn fog_distances_follow_the_loaded_chunk_radius() {
 
 #[test]
 fn noon_is_bright_and_midnight_is_dark() {
-    let noon = sky_rgb(0.5, 0.0);
-    let night = sky_rgb(0.5, 0.5);
+    let noon = sky_rgb(0.5, 0.0, SkyWeather::default());
+    let night = sky_rgb(0.5, 0.5, SkyWeather::default());
     assert!(noon[2] > noon[0], "daytime sky is blue");
     assert!(night.iter().all(|channel| *channel < 0.05));
     let noon_fog = base_fog_rgb(0.0);
@@ -59,6 +61,54 @@ fn noon_is_bright_and_midnight_is_dark() {
             "star brightness out of range at angle {angle}"
         );
     }
+}
+
+#[test]
+fn rain_and_thunder_gray_the_sky_and_fog() {
+    let clear = sky_rgb(0.5, 0.0, SkyWeather::default());
+    let luma = clear[0] * 0.3 + clear[1] * 0.59 + clear[2] * 0.11;
+    let rain = sky_rgb(
+        0.5,
+        0.0,
+        SkyWeather {
+            rain: 1.0,
+            ..Default::default()
+        },
+    );
+    // `getSkyColor` keeps a quarter of the color and takes the rest from 0.6 luma.
+    for (actual, channel) in rain.into_iter().zip(clear) {
+        near(actual, channel * 0.25 + luma * 0.6 * 0.75);
+    }
+    let storm = sky_rgb(
+        0.5,
+        0.0,
+        SkyWeather {
+            rain: 1.0,
+            thunder: 1.0,
+            flash: 0.0,
+        },
+    );
+    let rain_luma = rain[0] * 0.3 + rain[1] * 0.59 + rain[2] * 0.11;
+    for (actual, channel) in storm.into_iter().zip(rain) {
+        near(actual, channel * 0.25 + rain_luma * 0.2 * 0.75);
+    }
+    // A flash blends 45% of the way to pale blue, even at midnight.
+    let flash = sky_rgb(
+        0.5,
+        0.5,
+        SkyWeather {
+            flash: 2.0,
+            ..Default::default()
+        },
+    );
+    near(flash[0], 0.8 * 0.45);
+    near(flash[2], 0.45);
+
+    assert_eq!(weather_fog_rgb([0.8, 0.6, 1.0], 0.0, 0.0), [0.8, 0.6, 1.0]);
+    let fog = weather_fog_rgb([0.8, 0.6, 1.0], 1.0, 1.0);
+    near(fog[0], 0.8 * 0.5 * 0.5);
+    near(fog[1], 0.6 * 0.5 * 0.5);
+    near(fog[2], 0.6 * 0.5);
 }
 
 #[test]

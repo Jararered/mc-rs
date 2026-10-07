@@ -11,7 +11,6 @@ use crate::rendering::chunk_quads::ChunkQuads;
 use crate::rendering::meshing::BlockLighting;
 use crate::rendering::meshing::WATER_ALPHA;
 use crate::world::environment::celestial_angle;
-use crate::world::environment::skylight_subtracted;
 use crate::world::tick::WorldTick;
 
 /// `terrain.png` is a 16×16 grid of square tiles.
@@ -327,9 +326,10 @@ fn update_block_lighting(
     let Some(tick) = tick else {
         return;
     };
-    let subtracted = skylight_subtracted(celestial_angle(tick.world_time(), tick.partial()))
-        .saturating_add(weather.as_ref().map_or(0, |w| w.skylight_penalty()))
-        .min(15);
+    let subtracted = crate::world::weather::skylight_subtracted(
+        weather.as_deref(),
+        celestial_angle(tick.world_time(), tick.partial()),
+    );
     for handle in handles.handles() {
         let unchanged = materials.get(handle).is_none_or(|material| {
             material.extension.settings.lighting().skylight_subtracted == subtracted

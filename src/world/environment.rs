@@ -29,8 +29,15 @@ pub fn daylight_factor(angle: f32) -> f32 {
 
 /// `World.calculateSkylightSubtracted` with no rain or thunder.
 pub fn skylight_subtracted(angle: f32) -> u8 {
-    let mut light = 1.0 - daylight_factor(angle);
-    light = 1.0 - light;
-    light = 1.0 - light;
-    (light * 11.0) as u8
+    skylight_subtracted_in_weather(angle, 0.0, 0.0)
+}
+
+/// `World.calculateSkylightSubtracted`. `thunder` is Beta's weighted thunder
+/// strength, already multiplied by the rain strength. Weather dims what
+/// daylight there is, so a rainy night is no darker than a clear one.
+pub fn skylight_subtracted_in_weather(angle: f32, rain: f32, thunder: f32) -> u8 {
+    let mut light = daylight_factor(angle);
+    light = (f64::from(light) * (1.0 - f64::from(rain * 5.0) / 16.0)) as f32;
+    light = (f64::from(light) * (1.0 - f64::from(thunder * 5.0) / 16.0)) as f32;
+    ((1.0 - light) * 11.0) as u8
 }

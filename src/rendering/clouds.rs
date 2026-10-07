@@ -74,10 +74,21 @@ pub(super) fn plugin(app: &mut App) {
     );
 }
 
-/// `World.drawClouds` with no rain or thunder. `daylight` is the celestial factor.
-pub fn cloud_color(daylight: f32) -> [f32; 3] {
+/// `World.drawClouds`. `daylight` is the celestial factor and `thunder` the
+/// weighted thunder strength.
+pub fn cloud_color(daylight: f32, rain: f32, thunder: f32) -> [f32; 3] {
     let day = daylight.clamp(0.0, 1.0);
-    [day * 0.9 + 0.1, day * 0.9 + 0.1, day * 0.85 + 0.15]
+    let mut color = [1.0; 3];
+    if rain > 0.0 {
+        color = super::sky::desaturate(color, 0.6, 1.0 - rain * 0.95);
+    }
+    color[0] *= day * 0.9 + 0.1;
+    color[1] *= day * 0.9 + 0.1;
+    color[2] *= day * 0.85 + 0.15;
+    if thunder > 0.0 {
+        color = super::sky::desaturate(color, 0.2, 1.0 - thunder * 0.95);
+    }
+    color
 }
 
 /// Distance the sheet has drifted on X, wrapped so the value stays small.
@@ -438,6 +449,7 @@ fn set_uv_offset(
 
 fn update_clouds(
     tick: Res<WorldTick>,
+    weather: Option<Res<crate::world::weather::WorldWeather>>,
     settings: Res<GameSettings>,
     spawned: Option<ResMut<CloudsSpawned>>,
     player: Query<&Transform, (With<Player>, Without<FastClouds>, Without<FancyClouds>)>,
@@ -485,10 +497,14 @@ fn update_clouds(
         spawned.distance = settings.render_distance;
     }
     let fancy_mode = settings.graphics.fancy_leaves();
-    let color = cloud_color(daylight_factor(crate::world::environment::celestial_angle(
-        tick.world_time(),
-        tick.partial(),
-    )));
+    let color = cloud_color(
+        daylight_factor(crate::world::environment::celestial_angle(
+            tick.world_time(),
+            tick.partial(),
+        )),
+        weather.as_ref().map_or(0.0, |w| w.rain_strength),
+        weather.as_ref().map_or(0.0, |w| w.weighted_thunder()),
+    );
     let tint = tint_tag(Color::srgb(color[0], color[1], color[2]));
     let scroll = cloud_scroll_blocks(tick.world_time(), tick.partial());
     let cloud_y = cloud_render_y(settings.cloud_height);

@@ -40,7 +40,6 @@ use crate::player::model::mesh::sprite_mesh;
 use crate::rendering::appearance::item_tile;
 use crate::world::chunk::WorldChunks;
 use crate::world::environment::celestial_angle;
-use crate::world::environment::skylight_subtracted;
 use crate::world::lighting::LightCache;
 use crate::world::lighting::beta_brightness;
 use crate::world::lighting::combined_light;
@@ -433,13 +432,10 @@ fn pose_creatures(
     let mut posed = 0;
     let partial = tick.partial();
     let lerp = |from: f32, to: f32| from + (to - from) * partial;
-    let subtracted = skylight_subtracted(celestial_angle(tick.world_time(), partial))
-        .saturating_add(
-            weather
-                .as_ref()
-                .map_or(0, |weather| weather.skylight_penalty()),
-        )
-        .min(15);
+    let subtracted = crate::world::weather::skylight_subtracted(
+        weather.as_deref(),
+        celestial_angle(tick.world_time(), partial),
+    );
     for (model, mut node, children) in &mut nodes {
         let Ok((mob, living, root, previous, size, (wings, swim, fuse, bounce, hover))) =
             creatures.get(model.owner)

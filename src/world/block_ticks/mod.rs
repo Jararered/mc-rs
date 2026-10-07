@@ -47,7 +47,7 @@ use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::PendingTick;
 use crate::world::chunk::WorldChunks;
 use crate::world::environment::celestial_angle;
-use crate::world::environment::skylight_subtracted;
+use crate::world::environment::skylight_subtracted_in_weather;
 use crate::world::lighting::LightCache;
 
 mod behavior;
@@ -145,7 +145,8 @@ pub struct BlockTicks {
     update_lcg: i32,
     time: u64,
     raining: bool,
-    weather_penalty: u8,
+    /// Rain and weighted thunder strength, for the skylight they take away.
+    weather_strength: (f32, f32),
     events: Vec<BlockEvent>,
     changes: Vec<BlockChange>,
     effects: Vec<TickEffect>,
@@ -172,7 +173,7 @@ impl BlockTicks {
             update_lcg,
             time: 0,
             raining: false,
-            weather_penalty: 0,
+            weather_strength: (0.0, 0.0),
             events: Vec::new(),
             changes: Vec::new(),
             effects: Vec::new(),
@@ -186,8 +187,9 @@ impl BlockTicks {
         self.raining = raining;
     }
 
-    pub fn set_weather_penalty(&mut self, penalty: u8) {
-        self.weather_penalty = penalty.min(15);
+    /// `thunder` is the weighted strength, already multiplied by `rain`.
+    pub fn set_weather_strength(&mut self, rain: f32, thunder: f32) {
+        self.weather_strength = (rain, thunder);
     }
 
     /// The last world tick processed.
@@ -277,9 +279,8 @@ impl BlockTicks {
         light: &'a mut LightCache,
         time: u64,
     ) -> TickWorld<'a> {
-        let subtracted = skylight_subtracted(celestial_angle(time, 0.0))
-            .saturating_add(self.weather_penalty)
-            .min(15);
+        let (rain, thunder) = self.weather_strength;
+        let subtracted = skylight_subtracted_in_weather(celestial_angle(time, 0.0), rain, thunder);
         TickWorld::new(chunks, self, light, time, subtracted)
     }
 

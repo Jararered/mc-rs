@@ -15,7 +15,6 @@
 use bevy::asset::RenderAssetUsages;
 use bevy::camera::visibility::NoFrustumCulling;
 use bevy::camera::visibility::RenderLayers;
-use bevy::ecs::hierarchy::ChildSpawnerCommands;
 use bevy::ecs::system::SystemParam;
 use bevy::mesh::Indices;
 use bevy::mesh::MeshTag;
@@ -71,6 +70,10 @@ struct SunriseFan;
 
 #[derive(Component)]
 struct StarField;
+
+/// The sun or the moon.
+#[derive(Component)]
+struct CelestialBody;
 
 /// `EntityRenderer.fogColor1` / `fogColor2`, smoothed once per tick.
 #[derive(Resource)]
@@ -180,16 +183,25 @@ struct SkyViews<'w, 's> {
         (&'static mut Visibility, &'static mut MeshTag),
         (With<StarField>, Without<SunriseFan>),
     >,
+    bodies: Query<
+        'w,
+        's,
+        &'static mut MeshTag,
+        (With<CelestialBody>, Without<StarField>, Without<SunriseFan>),
+    >,
 }
 
 pub(super) fn plugin(app: &mut App) {
-    app.init_resource::<EyeFog>()
-        .add_systems(Update, (ensure_sky, update_atmosphere).chain());
+    app.init_resource::<EyeFog>().add_systems(
+        Update,
+        (ensure_sky, update_atmosphere)
+            .chain()
+            .after(super::weather::WeatherVisuals),
+    );
 }
 
 use crate::world::environment::celestial_angle;
 use crate::world::environment::daylight_factor;
-use crate::world::environment::skylight_subtracted;
 
 /// `World.getStarBrightness`.
 pub fn star_brightness(angle: f32) -> f32 {
@@ -235,10 +247,54 @@ pub fn biome_sky_rgb(temperature: f32) -> [f32; 3] {
     hsb_to_rgb(0.622_222_24 - shifted * 0.05, 0.5 + shifted * 0.1, 1.0)
 }
 
-/// Sky color after the daylight cosine. Rain and thunder are not simulated.
-pub fn sky_rgb(temperature: f32, angle: f32) -> [f32; 3] {
+/// What the weather does to the sky this frame.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct SkyWeather {
+    /// `World.getRainStrength`.
+    pub rain: f32,
+    /// `World.getWeightedThunderStrength`.
+    pub thunder: f32,
+    /// Beta's `World.field_27172_i` less the partial tick: ticks of lightning
+    /// flash left, `0` for none.
+    pub flash: f32,
+}
+
+/// Pulls a color toward `gray_scale` times its own luminance, keeping `keep`.
+pub(super) fn desaturate(rgb: [f32; 3], gray_scale: f32, keep: f32) -> [f32; 3] {
+    let gray = (rgb[0] * 0.3 + rgb[1] * 0.59 + rgb[2] * 0.11) * gray_scale;
+    rgb.map(|channel| channel * keep + gray * (1.0 - keep))
+}
+
+/// `World.getSkyColor`: the daylight cosine, then rain, thunder, and the
+/// lightning flash.
+pub fn sky_rgb(temperature: f32, angle: f32, weather: SkyWeather) -> [f32; 3] {
     let day = daylight_factor(angle);
-    biome_sky_rgb(temperature).map(|channel| channel * day)
+    let mut sky = biome_sky_rgb(temperature).map(|channel| channel * day);
+    if weather.rain > 0.0 {
+        sky = desaturate(sky, 0.6, 1.0 - weather.rain * 0.75);
+    }
+    if weather.thunder > 0.0 {
+        sky = desaturate(sky, 0.2, 1.0 - weather.thunder * 0.75);
+    }
+    if weather.flash > 0.0 {
+        let flash = weather.flash.min(1.0) * 0.45;
+        sky = [
+            sky[0] * (1.0 - flash) + 0.8 * flash,
+            sky[1] * (1.0 - flash) + 0.8 * flash,
+            sky[2] * (1.0 - flash) + flash,
+        ];
+    }
+    sky
+}
+
+/// `EntityRenderer.updateFogColor`'s rain and thunder dimming of the fog.
+pub fn weather_fog_rgb(fog: [f32; 3], rain: f32, thunder: f32) -> [f32; 3] {
+    let dim = 1.0 - thunder * 0.5;
+    [
+        fog[0] * (1.0 - rain * 0.5) * dim,
+        fog[1] * (1.0 - rain * 0.5) * dim,
+        fog[2] * (1.0 - rain * 0.4) * dim,
+    ]
 }
 
 /// `WorldProvider.func_4096_a`, the overworld fog before it blends toward the sky.
@@ -480,22 +536,22 @@ fn ensure_sky(
                 Visibility::default(),
             ))
             .with_children(|rig| {
-                spawn_layer(
-                    rig,
-                    "Sun",
-                    sun_mesh,
-                    sky_assets.sun.clone(),
-                    Transform::default(),
-                    CELESTIAL_LAYER,
-                );
-                spawn_layer(
-                    rig,
-                    "Moon",
-                    moon_mesh,
-                    sky_assets.moon.clone(),
-                    Transform::default(),
-                    CELESTIAL_LAYER,
-                );
+                for (name, mesh, material) in [
+                    ("Sun", sun_mesh, sky_assets.sun.clone()),
+                    ("Moon", moon_mesh, sky_assets.moon.clone()),
+                ] {
+                    rig.spawn((
+                        Name::new(name),
+                        CelestialBody,
+                        tint_tag(Color::WHITE),
+                        Mesh3d(mesh),
+                        MeshMaterial3d(material),
+                        Transform::default(),
+                        Visibility::default(),
+                        RenderLayers::layer(CELESTIAL_LAYER),
+                        NoFrustumCulling,
+                    ));
+                }
                 rig.spawn((
                     Name::new("Stars"),
                     StarField,
@@ -511,28 +567,10 @@ fn ensure_sky(
         });
 }
 
-fn spawn_layer(
-    parent: &mut ChildSpawnerCommands,
-    name: &str,
-    mesh: Handle<Mesh>,
-    material: Handle<TintedMaterial>,
-    transform: Transform,
-    layer: usize,
-) {
-    parent.spawn((
-        Name::new(name.to_string()),
-        Mesh3d(mesh),
-        MeshMaterial3d(material),
-        transform,
-        Visibility::default(),
-        RenderLayers::layer(layer),
-        NoFrustumCulling,
-    ));
-}
-
 fn update_atmosphere(
     tick: Res<WorldTick>,
     weather: Option<Res<crate::world::weather::WorldWeather>>,
+    flash: Option<Res<super::weather::SkyFlash>>,
     settings: Res<GameSettings>,
     chunks: Res<WorldChunks>,
     mut eye_fog: ResMut<EyeFog>,
@@ -556,8 +594,19 @@ fn update_atmosphere(
                 .map_or(0.5, |climate| climate.temperature as f32)
         })
         .unwrap_or(0.5);
-    let sky = sky_rgb(temperature, angle);
-    let mut fog = mix_fog_toward_sky(base_fog_rgb(angle), sky, far);
+    let sky_weather = SkyWeather {
+        rain: weather.as_ref().map_or(0.0, |w| w.rain_strength),
+        thunder: weather.as_ref().map_or(0.0, |w| w.weighted_thunder()),
+        flash: flash
+            .as_ref()
+            .map_or(0.0, |flash| (f32::from(flash.0) - tick.partial()).max(0.0)),
+    };
+    let sky = sky_rgb(temperature, angle, sky_weather);
+    let mut fog = weather_fog_rgb(
+        mix_fog_toward_sky(base_fog_rgb(angle), sky, far),
+        sky_weather.rain,
+        sky_weather.thunder,
+    );
     let medium = eye.map_or(Medium::Air, |eye| medium_at(&chunks, eye.translation));
     match medium {
         Medium::Water => fog = [0.02, 0.02, 0.2],
@@ -565,9 +614,7 @@ fn update_atmosphere(
         Medium::Air => {}
     }
 
-    let subtracted = skylight_subtracted(angle)
-        .saturating_add(weather.as_ref().map_or(0, |w| w.skylight_penalty()))
-        .min(15);
+    let subtracted = crate::world::weather::skylight_subtracted(weather.as_deref(), angle);
     let brightness = eye.map_or_else(
         || beta_brightness(15u8.saturating_sub(subtracted)),
         |eye| eye_brightness(&chunks, eye.translation, subtracted),
@@ -644,7 +691,13 @@ fn update_atmosphere(
             .map_unchanged(|rig| &mut rig.rotation)
             .set_if_neq(spin);
     }
-    let stars_on = star_brightness(angle);
+    // `RenderGlobal.renderSky` fades the sun, moon and stars out with the rain.
+    let clear = 1.0 - sky_weather.rain;
+    let body_tag = tint_tag(Color::WHITE.with_alpha(clear));
+    for mut tag in &mut views.bodies {
+        tag.set_if_neq(body_tag.clone());
+    }
+    let stars_on = star_brightness(angle) * clear;
     let star_tag = tint_tag(Color::WHITE.with_alpha(stars_on));
     for (mut visibility, mut tag) in &mut views.stars {
         visibility.set_if_neq(if stars_on > 0.0 {

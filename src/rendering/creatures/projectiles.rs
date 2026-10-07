@@ -23,7 +23,6 @@ use crate::player::PlayerCamera;
 use crate::rendering::appearance::item_tile;
 use crate::world::chunk::WorldChunks;
 use crate::world::environment::celestial_angle;
-use crate::world::environment::skylight_subtracted;
 use crate::world::lighting::LightCache;
 use crate::world::tick::WorldTick;
 use crate::world::weather::WorldWeather;
@@ -203,13 +202,10 @@ pub(super) fn pose_projectiles(
 ) {
     let partial = tick.partial();
     let lerp = |from: f32, to: f32| from + (to - from) * partial;
-    let subtracted = skylight_subtracted(celestial_angle(tick.world_time(), partial))
-        .saturating_add(
-            weather
-                .as_ref()
-                .map_or(0, |weather| weather.skylight_penalty()),
-        )
-        .min(15);
+    let subtracted = crate::world::weather::skylight_subtracted(
+        weather.as_deref(),
+        celestial_angle(tick.world_time(), partial),
+    );
     let facing = camera
         .single()
         .map_or(Quat::IDENTITY, |camera| camera.rotation());

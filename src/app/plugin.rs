@@ -3,6 +3,7 @@ use bevy::prelude::*;
 use crate::chat::ChatPlugin;
 use crate::entity::drops::items::DroppedItemPlugin;
 use crate::entity::particles::block::BlockParticlePlugin;
+use crate::entity::particles::rain::RainParticlePlugin;
 use crate::entity::particles::registry::ParticleRegistryPlugin;
 use crate::entity::shadow::plugin as entity_shadow_plugin;
 use crate::physics::PhysicsPlugin;
@@ -41,7 +42,7 @@ impl Plugin for GamePlugin {
                 // the seed recorded in its own `level.json`.
                 PersistencePlugin::default().deferred(),
                 PlayerPlugin,
-                BlockParticlePlugin,
+                (BlockParticlePlugin, RainParticlePlugin),
                 DroppedItemPlugin,
                 entity_shadow_plugin,
                 ParticleRegistryPlugin,

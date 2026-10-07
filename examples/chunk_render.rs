@@ -10,6 +10,7 @@
 //! `VIEW=1` and up pick other camera positions, and `SMOOTH=off` turns smooth lighting off. `DISTANCE` sets the
 //! render distance (8), `SIZE=2560x1440` the window's physical size, and
 //! `MSAA=off` turns anti-aliasing off, and
+//! `WEATHER=rain` or `WEATHER=thunder` renders under a full storm, and
 //! `HOLD=30` keeps the window open that many seconds after the timings so
 //! `footprint -p chunk_render` can read its memory. The window presents without
 //! VSync, but macOS can still pace it to the display, so treat the frame time
@@ -36,6 +37,7 @@ use game::rendering::WorldRenderingPlugin;
 use game::rendering::chunk_quads::ChunkQuads;
 use game::world::plugin::WorldPlugin;
 use game::world::streaming::WorldStreaming;
+use game::world::weather::WorldWeather;
 
 /// Frames with no streaming job in flight before the terrain counts as done.
 const SETTLED_FRAMES: u32 = 120;
@@ -120,9 +122,27 @@ fn main() {
             hold: None,
         })
         .add_plugins((WorldPlugin, WorldRenderingPlugin))
+        .add_systems(Startup, set_weather)
         .add_systems(Startup, spawn_view)
         .add_systems(Update, capture)
         .run();
+}
+
+fn set_weather(mut weather: ResMut<WorldWeather>) {
+    let Ok(kind) = std::env::var("WEATHER") else {
+        return;
+    };
+    let thundering = kind == "thunder";
+    *weather = WorldWeather {
+        raining: true,
+        thundering,
+        // Long enough that neither turns off during a run.
+        rain_time: 100_000,
+        thunder_time: 100_000,
+        rain_strength: 1.0,
+        thunder_strength: if thundering { 1.0 } else { 0.0 },
+        ..default()
+    };
 }
 
 fn spawn_view(mut commands: Commands) {

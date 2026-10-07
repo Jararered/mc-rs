@@ -4,7 +4,6 @@
 use bevy::math::IVec3;
 
 use crate::block::blocks::Block;
-use crate::block::fluids::is_liquid;
 use crate::random::JavaRandom;
 use crate::world::biome::Biome;
 use crate::world::chunk::CHUNK_HEIGHT;
@@ -241,15 +240,7 @@ impl<'a> TickWorld<'a> {
     /// `World.findTopSolidBlock`: one above the highest solid or liquid
     /// block in the column, or `-1` for an empty column.
     pub fn top_solid_block(&self, x: i32, z: i32) -> i32 {
-        let mut y = CHUNK_HEIGHT as i32 - 1;
-        while y > 0 {
-            let block = self.block(IVec3::new(x, y, z));
-            if block.is_solid_material() || is_liquid(block) {
-                return y + 1;
-            }
-            y -= 1;
-        }
-        -1
+        self.chunks.top_solid_block(x, z)
     }
 
     // --- Writing blocks -------------------------------------------------

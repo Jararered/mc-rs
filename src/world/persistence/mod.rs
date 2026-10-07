@@ -125,6 +125,14 @@ pub struct StoredPlayer {
     pub pitch: f32,
     #[serde(default = "full_player_health")]
     pub health: u8,
+    /// `PlayerSurvival::air`.
+    #[serde(default = "full_player_air")]
+    pub air: i16,
+    /// `PlayerSurvival::fire`.
+    #[serde(default = "resting_player_fire")]
+    pub fire: i16,
+    #[serde(default)]
+    pub fall_distance: f32,
     #[serde(default)]
     pub hotbar: Vec<Option<StoredStack>>,
     #[serde(default)]
@@ -145,6 +153,15 @@ pub struct StoredPlayer {
 
 const fn full_player_health() -> u8 {
     crate::player::MAX_PLAYER_HEALTH
+}
+
+const fn full_player_air() -> i16 {
+    crate::entity::creature::MAX_AIR
+}
+
+/// Where Beta's `fire` rests for a player who is not burning.
+const fn resting_player_fire() -> i16 {
+    -20
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -179,6 +196,9 @@ impl StoredPlayer {
             yaw,
             pitch,
             health: full_player_health(),
+            air: full_player_air(),
+            fire: resting_player_fire(),
+            fall_distance: 0.0,
             hotbar: Vec::new(),
             selected: 0,
             main: Vec::new(),
@@ -198,6 +218,15 @@ impl StoredPlayer {
 
     pub fn with_health(mut self, health: u8) -> Self {
         self.health = health;
+        self
+    }
+
+    pub fn with_survival(mut self, survival: Option<&crate::player::PlayerSurvival>) -> Self {
+        if let Some(survival) = survival {
+            self.air = survival.air;
+            self.fire = survival.fire;
+            self.fall_distance = survival.fall_distance;
+        }
         self
     }
 
@@ -1318,6 +1347,7 @@ impl WorldPersistence {
             bool,
             f32,
             u8,
+            Option<&crate::player::PlayerSurvival>,
         )>,
         items: &HashMap<ChunkPosition, Vec<ChunkDroppedItem>>,
         ticks: Option<&BlockTicks>,
@@ -1378,11 +1408,12 @@ impl WorldPersistence {
                 Err(error) => warn!("Failed to save world: {error}"),
             }
         }
-        if let Some((transform, hotbar, inventory, flying, fly_speed, health)) = player
+        if let Some((transform, hotbar, inventory, flying, fly_speed, health, survival)) = player
             && let Err(error) = storage.save_player(
                 &StoredPlayer::from_transform(transform)
                     .with_flying(flying, fly_speed)
                     .with_health(health)
+                    .with_survival(survival)
                     .with_inventory(
                         hotbar.unwrap_or(&Hotbar::default()),
                         inventory.unwrap_or(&Inventory::default()),
@@ -1509,6 +1540,7 @@ fn flush_persistence(
             Option<&crate::entity::Flying>,
             &crate::player::FlySpeed,
             Option<&crate::player::PlayerHealth>,
+            Option<&crate::player::PlayerSurvival>,
         ),
         With<Player>,
     >,
@@ -1627,7 +1659,7 @@ fn flush_persistence(
         persistence.flush(
             &chunks,
             player.single().ok().map(
-                |(transform, hotbar, inventory, flying, fly_speed, health)| {
+                |(transform, hotbar, inventory, flying, fly_speed, health, survival)| {
                     (
                         transform,
                         hotbar,
@@ -1635,6 +1667,7 @@ fn flush_persistence(
                         flying.is_some(),
                         fly_speed.0,
                         health.map_or(full_player_health(), |health| health.current),
+                        survival,
                     )
                 },
             ),
@@ -1660,10 +1693,11 @@ fn flush_persistence(
         .unwrap_or_default();
     let record = if persistence.player_pending {
         player.single().ok().map(
-            |(transform, hotbar, inventory, flying, fly_speed, health)| {
+            |(transform, hotbar, inventory, flying, fly_speed, health, survival)| {
                 StoredPlayer::from_transform(transform)
                     .with_flying(flying.is_some(), fly_speed.0)
                     .with_health(health.map_or(full_player_health(), |health| health.current))
+                    .with_survival(survival)
                     .with_inventory(
                         hotbar.unwrap_or(&Hotbar::default()),
                         inventory.unwrap_or(&Inventory::default()),

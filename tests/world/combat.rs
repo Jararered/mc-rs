@@ -4,6 +4,7 @@ use bevy::prelude::*;
 use game::app::settings::Difficulty;
 use game::block::blocks::Block;
 use game::entity::DroppedItem;
+use game::entity::Flying;
 use game::entity::Velocity;
 use game::entity::combat::HURT_TICKS;
 use game::entity::combat::Hit;
@@ -30,9 +31,13 @@ use game::item::ItemStack;
 use game::item::tools::damage_vs_entity;
 use game::item::tools::hit_durability;
 use game::physics::Aabb;
+use game::player::Bubble;
 use game::player::PlayerHealth;
+use game::player::PlayerSurvival;
+use game::player::SurvivalPlugin;
 use game::random::ItemRng;
 use game::random::JavaRandom;
+use game::world::chunk::WorldChunks;
 
 use super::mobs::creature_app;
 use super::mobs::feet_of;
@@ -492,4 +497,194 @@ fn mobs_stop_at_the_edge_of_the_loaded_world() {
     app.world_mut().get_mut::<Velocity>(pig).unwrap().0 = Vec3::new(40.0, 0.0, 0.0);
     run_ticks(&mut app, 5);
     assert!(feet_of(&app, pig).x < 32.0);
+}
+
+/// A player standing on a grass field at `y = 60`, with the hazard pass running.
+fn survival_app(build: impl FnOnce(&mut WorldChunks), feet: Vec3) -> App {
+    let mut chunks = field(60);
+    build(&mut chunks);
+    let mut app = creature_app(chunks, feet);
+    app.add_plugins(SurvivalPlugin);
+    app
+}
+
+fn survival(app: &mut App) -> PlayerSurvival {
+    *app.world_mut()
+        .query::<&PlayerSurvival>()
+        .single(app.world())
+        .unwrap()
+}
+
+fn set_block(app: &mut App, x: i32, y: i32, z: i32, block: Block) {
+    app.world_mut()
+        .resource_mut::<WorldChunks>()
+        .set_block(x, y, z, block);
+}
+
+const STANDING: Vec3 = Vec3::new(0.5, 61.0, 0.5);
+
+#[test]
+fn a_submerged_player_runs_out_of_air_then_drowns() {
+    let mut app = survival_app(
+        |chunks| {
+            chunks.set_block(0, 61, 0, Block::Water);
+            chunks.set_block(0, 62, 0, Block::Water);
+        },
+        STANDING,
+    );
+    run_ticks(&mut app, 150);
+    let state = survival(&mut app);
+    assert_eq!(state.air, 150);
+    // Half the row is left: five bubbles, the sixth just popped.
+    assert_eq!(state.bubble(4), Bubble::Full);
+    assert_eq!(state.bubble(5), Bubble::Empty);
+    run_ticks(&mut app, 169);
+    assert_eq!(survival(&mut app).air, -19);
+    assert_eq!(player_health(&mut app), 20);
+
+    // `air` reaching -20 is the first hit, and each 20 ticks after is another.
+    run_ticks(&mut app, 1);
+    assert_eq!(player_health(&mut app), 18);
+    assert_eq!(survival(&mut app).air, 0);
+    run_ticks(&mut app, 19);
+    assert_eq!(player_health(&mut app), 18);
+    run_ticks(&mut app, 1);
+    assert_eq!(player_health(&mut app), 16);
+
+    // One breath refills everything.
+    set_block(&mut app, 0, 62, 0, Block::Air);
+    run_ticks(&mut app, 1);
+    let state = survival(&mut app);
+    assert_eq!(state.air, 300);
+    assert!(!state.head_in_water);
+    assert_eq!(state.bubble(0), Bubble::Empty);
+}
+
+#[test]
+fn water_at_the_feet_does_not_use_air() {
+    let mut app = survival_app(
+        |chunks| _ = chunks.set_block(0, 61, 0, Block::Water),
+        STANDING,
+    );
+    run_ticks(&mut app, 400);
+    assert_eq!(survival(&mut app).air, 300);
+    assert_eq!(player_health(&mut app), 20);
+}
+
+#[test]
+fn lava_burns_for_four_and_sets_the_player_alight() {
+    let mut app = survival_app(
+        |chunks| _ = chunks.set_block(0, 61, 0, Block::Lava),
+        STANDING,
+    );
+    run_ticks(&mut app, 1);
+    assert_eq!(player_health(&mut app), 16);
+    assert!(survival(&mut app).fire >= 600);
+
+    // Out of the lava the player keeps burning, a point every second. The
+    // first burn tick falls inside the lava hit's invulnerability window.
+    set_block(&mut app, 0, 61, 0, Block::Air);
+    run_ticks(&mut app, 40);
+    assert_eq!(player_health(&mut app), 15);
+    assert!(survival(&mut app).is_burning());
+}
+
+#[test]
+fn fire_takes_a_second_to_catch_and_water_puts_it_out() {
+    let mut app = survival_app(
+        |chunks| _ = chunks.set_block(0, 61, 0, Block::Fire),
+        STANDING,
+    );
+    run_ticks(&mut app, 19);
+    assert!(!survival(&mut app).is_burning());
+    // Contact alone already hurts, once per invulnerability window.
+    assert_eq!(player_health(&mut app), 18);
+    run_ticks(&mut app, 1);
+    assert_eq!(survival(&mut app).fire, 300);
+
+    set_block(&mut app, 0, 61, 0, Block::Water);
+    run_ticks(&mut app, 1);
+    assert_eq!(survival(&mut app).fire, -20);
+}
+
+#[test]
+fn cactus_pricks_a_player_pressed_against_it() {
+    let beside = Vec3::new(0.75, 61.0, 0.5);
+    let mut app = survival_app(
+        |chunks| _ = chunks.set_block(1, 61, 0, Block::Cactus),
+        beside,
+    );
+    run_ticks(&mut app, 1);
+    assert_eq!(player_health(&mut app), 19);
+
+    let mut clear = survival_app(
+        |chunks| _ = chunks.set_block(1, 61, 0, Block::Cactus),
+        STANDING,
+    );
+    run_ticks(&mut clear, 5);
+    assert_eq!(player_health(&mut clear), 20);
+}
+
+#[test]
+fn a_block_over_the_head_suffocates_unless_flying() {
+    let buried = |chunks: &mut WorldChunks| _ = chunks.set_block(0, 62, 0, Block::Stone);
+    let mut app = survival_app(buried, STANDING);
+    run_ticks(&mut app, 1);
+    assert_eq!(player_health(&mut app), 19);
+    run_ticks(&mut app, 20);
+    assert_eq!(player_health(&mut app), 17);
+
+    let mut flying = survival_app(buried, STANDING);
+    let player = flying
+        .world_mut()
+        .query_filtered::<Entity, With<PlayerHealth>>()
+        .single(flying.world())
+        .unwrap();
+    flying.world_mut().entity_mut(player).insert(Flying);
+    run_ticks(&mut flying, 20);
+    assert_eq!(player_health(&mut flying), 20);
+}
+
+#[test]
+fn the_void_hurts_for_four() {
+    let mut app = survival_app(|_| {}, Vec3::new(0.5, -70.0, 0.5));
+    run_ticks(&mut app, 1);
+    assert_eq!(player_health(&mut app), 16);
+}
+
+#[test]
+fn a_landing_costs_a_point_per_block_past_three() {
+    let land = |distance: f32| {
+        let mut app = survival_app(|_| {}, STANDING);
+        app.world_mut()
+            .query::<&mut PlayerSurvival>()
+            .single_mut(app.world_mut())
+            .unwrap()
+            .landed = distance;
+        run_ticks(&mut app, 1);
+        assert_eq!(survival(&mut app).landed, 0.0);
+        player_health(&mut app)
+    };
+    assert_eq!(land(3.0), 20);
+    assert_eq!(land(3.1), 19);
+    assert_eq!(land(7.5), 15);
+    assert_eq!(land(40.0), 0);
+}
+
+#[test]
+fn respawning_clears_fire_and_refills_air() {
+    let mut app = survival_app(|_| {}, STANDING);
+    {
+        let world = app.world_mut();
+        let (mut health, mut state) = world
+            .query::<(&mut PlayerHealth, &mut PlayerSurvival)>()
+            .single_mut(world)
+            .unwrap();
+        health.current = 0;
+        state.fire = 200;
+        state.air = 10;
+    }
+    run_ticks(&mut app, 41);
+    assert_eq!(player_health(&mut app), 20);
+    assert_eq!(survival(&mut app), PlayerSurvival::default());
 }

@@ -897,6 +897,17 @@ fn player_from_nbt(player: &Compound, sidecar: &Sidecar) -> Option<StoredPlayer>
         yaw: yaw_from_beta(yaw),
         pitch: (-pitch.to_radians()) as f32,
         health,
+        air: if player.contains("Air") {
+            player.short("Air")
+        } else {
+            crate::entity::creature::MAX_AIR
+        },
+        fire: if player.contains("Fire") {
+            player.short("Fire")
+        } else {
+            -20
+        },
+        fall_distance: player.float("FallDistance"),
         hotbar,
         selected: sidecar.selected.min(HOTBAR_SLOTS - 1),
         main,
@@ -970,13 +981,9 @@ fn player_to_nbt(player: &StoredPlayer, mut base: Compound) -> Compound {
         "Rotation",
         nbt::floats(&[yaw_to_beta(player.yaw), -player.pitch.to_degrees()]),
     );
-    base.put_float("FallDistance", 0.0);
-    if !base.contains("Fire") {
-        base.put_short("Fire", -20);
-    }
-    if !base.contains("Air") {
-        base.put_short("Air", 300);
-    }
+    base.put_float("FallDistance", player.fall_distance);
+    base.put_short("Fire", player.fire);
+    base.put_short("Air", player.air);
     base.put_bool("OnGround", true);
     base.put_short("Health", i16::from(player.health));
     base.put_short("HurtTime", 0);

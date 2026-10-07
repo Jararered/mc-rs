@@ -19,6 +19,7 @@ use game::physics::raycast_blocks;
 use game::physics::water_current;
 use game::player::Player;
 use game::player::PlayerMovementInput;
+use game::player::PlayerSurvival;
 use game::world::biome::Biome;
 use game::world::biome::BiomeMap;
 use game::world::biome::Climate;
@@ -786,4 +787,43 @@ fn the_tick_that_jumps_is_still_slowed_by_the_ground_it_left() {
     let (velocity, collision) = query.single(app.world()).unwrap();
     assert!(!collision.on_ground);
     assert!((velocity.0.x - 2.0 * 0.6 * 0.91).abs() < 1e-4);
+}
+
+/// Drop a player from `feet_y` over [`fluid_world`] and return its fall state
+/// after `ticks`.
+fn dropped_player(fluid: Block, feet_y: f32, ticks: u32) -> PlayerSurvival {
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins)
+        .insert_resource(fluid_world(fluid))
+        .add_plugins(PhysicsPlugin);
+    app.world_mut().spawn((
+        Player,
+        Transform::from_xyz(8.5, feet_y + EntitySize::PLAYER.y_offset, 8.5),
+        EntitySize::PLAYER,
+    ));
+    for _ in 0..ticks {
+        app.world_mut().resource_mut::<WorldTick>().advance(0.05);
+        app.update();
+    }
+    let mut query = app.world_mut().query::<&PlayerSurvival>();
+    *query.single(app.world()).unwrap()
+}
+
+#[test]
+fn a_fall_is_measured_until_the_player_lands() {
+    let falling = dropped_player(Block::Air, 75.0, 10);
+    assert!(falling.fall_distance > 1.0, "{falling:?}");
+    assert_eq!(falling.landed, 0.0);
+
+    // Ten blocks down onto the stone at y = 64.
+    let landed = dropped_player(Block::Air, 75.0, 60);
+    assert_eq!(landed.fall_distance, 0.0);
+    assert!((9.0..=10.0).contains(&landed.landed), "{landed:?}");
+}
+
+#[test]
+fn water_breaks_a_fall() {
+    let landed = dropped_player(Block::Water, 80.0, 200);
+    assert_eq!(landed.fall_distance, 0.0);
+    assert_eq!(landed.landed, 0.0);
 }

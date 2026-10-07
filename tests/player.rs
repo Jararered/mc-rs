@@ -611,3 +611,27 @@ fn destroy_overlay_samples_the_terrain_atlas_crack_tiles() {
         );
     }
 }
+
+#[test]
+fn air_bubbles_follow_betas_hud_rounding() {
+    use game::player::Bubble;
+    use game::player::PlayerSurvival;
+    let row = |air: i16| {
+        let mut survival = PlayerSurvival::default();
+        survival.air = air;
+        survival.head_in_water = true;
+        let count = |kind| (0..10).filter(|&i| survival.bubble(i) == kind).count();
+        (count(Bubble::Full), count(Bubble::Popping))
+    };
+    assert_eq!(row(300), (10, 0));
+    assert_eq!(row(151), (5, 1));
+    assert_eq!(row(150), (5, 0));
+    assert_eq!(row(2), (0, 1));
+    assert_eq!(row(0), (0, 0));
+    assert_eq!(row(-10), (0, 0));
+
+    // Above water the row is hidden however little air is left.
+    let mut surfaced = PlayerSurvival::default();
+    surfaced.air = 40;
+    assert_eq!(surfaced.bubble(0), Bubble::Empty);
+}

@@ -166,6 +166,10 @@ impl Compound {
         self.integer(key)
     }
 
+    pub fn float(&self, key: &str) -> f32 {
+        self.get(key).and_then(Tag::as_f64).unwrap_or(0.0) as f32
+    }
+
     pub fn string(&self, key: &str) -> &str {
         match self.get(key) {
             Some(Tag::String(value)) => value,

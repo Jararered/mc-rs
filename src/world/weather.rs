@@ -216,6 +216,7 @@ fn apply_lightning(
         ),
         With<Player>,
     >,
+    mut survival: Query<&mut crate::player::PlayerSurvival, With<Player>>,
     mut spawn: MessageWriter<SpawnMob>,
     mut loot: Local<ItemRng>,
     mut spare_armor: Local<[Option<ItemStack>; 4]>,
@@ -289,6 +290,14 @@ fn apply_lightning(
                 Difficulty::Normal,
                 &mut loot,
             );
+            // `++fire; if (fire == 0) fire = 300`. A player rests at -20, so
+            // it is the fire the bolt leaves behind that sets them alight.
+            if let Ok(mut survival) = survival.single_mut() {
+                survival.fire += 1;
+                if survival.fire == 0 {
+                    survival.fire = 300;
+                }
+            }
         }
     }
 }

@@ -18,10 +18,12 @@ use crate::inventory::Hotbar;
 use crate::item::ItemStack;
 use crate::physics::BLOCK_REACH;
 use crate::physics::raycast_blocks;
+use crate::player::Bubble;
 use crate::player::HeartFill;
 use crate::player::Player;
 use crate::player::PlayerCamera;
 use crate::player::PlayerHealth;
+use crate::player::PlayerSurvival;
 use crate::rendering::icons::BlockIcons;
 use crate::ui::icons::overlay::UiFont;
 use crate::ui::icons::overlay::count_label;
@@ -57,6 +59,7 @@ impl Plugin for HudPlugin {
                 Update,
                 (
                     update_hearts,
+                    update_bubbles,
                     update_hotbar_selector,
                     update_hotbar_items,
                     update_hotbar_icons,
@@ -85,6 +88,10 @@ struct DebugOverlay;
 
 #[derive(Component)]
 struct HudHeart(usize);
+
+/// One of the ten air bubbles above the hearts, counted from the left.
+#[derive(Component)]
+struct HudBubble(usize);
 
 #[derive(Component)]
 struct HotbarSelector;
@@ -334,6 +341,25 @@ fn spawn_hearts(
                     heart.insert(Visibility::Hidden);
                 }
             }
+            // `GuiIngame` draws the air row one icon above the hearts. It
+            // only shows with the player's head under water.
+            for index in 0..HEART_COUNT {
+                let size = px(HEART_SIZE * scale);
+                row.spawn((
+                    HudBubble(index),
+                    Pickable::IGNORE,
+                    ImageNode::new(textures.icons.clone()).with_rect(bubble_rect(Bubble::Full)),
+                    Node {
+                        position_type: PositionType::Absolute,
+                        left: px(index as f32 * HEART_STRIDE * scale),
+                        top: px(-HEART_SIZE * scale),
+                        width: size,
+                        height: size,
+                        ..default()
+                    },
+                    Visibility::Hidden,
+                ));
+            }
         });
 }
 
@@ -504,6 +530,31 @@ fn update_hearts(
     }
 }
 
+fn update_bubbles(
+    survival: Query<&PlayerSurvival, With<Player>>,
+    mut bubbles: Query<(&HudBubble, &mut ImageNode, &mut Visibility)>,
+) {
+    let Ok(survival) = survival.single() else {
+        return;
+    };
+    for (bubble, mut image, mut visibility) in &mut bubbles {
+        let fill = survival.bubble(bubble.0);
+        let shown = if fill == Bubble::Empty {
+            Visibility::Hidden
+        } else {
+            Visibility::Inherited
+        };
+        // The air supply changes every tick; the row mostly does not.
+        if *visibility != shown {
+            *visibility = shown;
+        }
+        let rect = Some(bubble_rect(fill));
+        if fill != Bubble::Empty && image.rect != rect {
+            image.rect = rect;
+        }
+    }
+}
+
 fn update_hotbar_selector(
     hotbar: Query<&Hotbar, (With<Player>, Changed<Hotbar>)>,
     mut selector: Query<&mut Node, With<HotbarSelector>>,
@@ -655,5 +706,12 @@ fn heart_fill_rect(fill: HeartFill) -> Rect {
     match fill {
         HeartFill::Empty | HeartFill::Full => Rect::new(52.0, 0.0, 61.0, 9.0),
         HeartFill::Half => Rect::new(61.0, 0.0, 70.0, 9.0),
+    }
+}
+
+fn bubble_rect(bubble: Bubble) -> Rect {
+    match bubble {
+        Bubble::Empty | Bubble::Full => Rect::new(16.0, 18.0, 25.0, 27.0),
+        Bubble::Popping => Rect::new(25.0, 18.0, 34.0, 27.0),
     }
 }

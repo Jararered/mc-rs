@@ -35,6 +35,7 @@ use crate::entity::creature::Living;
 use crate::player::Player;
 use crate::player::PlayerInterpolation;
 use crate::player::PlayerMovementInput;
+use crate::player::PlayerSurvival;
 use crate::world::block_ticks::BlockEvent;
 use crate::world::block_ticks::BlockTicks;
 use crate::world::chunk::CHUNK_HEIGHT;
@@ -480,6 +481,7 @@ fn integrate_player(
             &mut PlayerInterpolation,
             Option<&Flying>,
             Option<&mut StepDistance>,
+            Option<&mut PlayerSurvival>,
         ),
         With<Player>,
     >,
@@ -502,6 +504,7 @@ fn integrate_player(
         mut interpolation,
         flying,
         mut steps,
+        mut survival,
     ) in &mut players
     {
         if !chunks.contains(ChunkPosition::from_world(
@@ -516,6 +519,9 @@ fn integrate_player(
             transform.translation += velocity.0 * time.delta_secs().min(MAX_FRAME_SECS);
             interpolation.previous_position = transform.translation;
             *collision = CollisionState::default();
+            if let Some(survival) = survival.as_deref_mut() {
+                survival.clear_fall();
+            }
             continue;
         }
         if tick.ticks_this_frame() == 0 {
@@ -535,6 +541,9 @@ fn integrate_player(
             let in_lava = !in_water && lava_contains(aabb, &chunks);
             if in_water {
                 motion += water_flow * WATER_CURRENT_PER_TICK;
+                if let Some(survival) = survival.as_deref_mut() {
+                    survival.fall_distance = 0.0;
+                }
             }
 
             if in_water || in_lava {
@@ -569,6 +578,9 @@ fn integrate_player(
                 );
                 transform.translation = size.position_from_aabb(movement.aabb);
                 *collision = movement.collision;
+                if let Some(survival) = survival.as_deref_mut() {
+                    survival.update_fall(motion.y, movement.collision.on_ground);
+                }
                 cancel_collided_motion(&mut motion, movement.collision);
                 step_on_block(
                     steps.as_deref_mut(),
@@ -633,6 +645,9 @@ fn integrate_player(
                 if input.sneaking && motion.y < 0.0 {
                     motion.y = 0.0;
                 }
+                if let Some(survival) = survival.as_deref_mut() {
+                    survival.fall_distance = 0.0;
+                }
             }
 
             let sneaking_on_ground = collision.on_ground && input.sneaking;
@@ -647,6 +662,9 @@ fn integrate_player(
             );
             transform.translation = size.position_from_aabb(movement.aabb);
             *collision = movement.collision;
+            if let Some(survival) = survival.as_deref_mut() {
+                survival.update_fall(step.y, movement.collision.on_ground);
+            }
 
             cancel_collided_motion(&mut motion, movement.collision);
             step_on_block(
@@ -846,6 +864,70 @@ pub fn lava_contains(aabb: Aabb, chunks: &WorldChunks) -> bool {
         aabb.max - Vec3::new(0.1, 0.4, 0.1),
     );
     contains_liquid_material(area, chunks, is_lava)
+}
+
+/// `Entity.isInsideOfMaterial(Material.water)`: `eye` is below the surface of
+/// the water in its cell.
+pub fn eye_in_water(eye: Vec3, chunks: &WorldChunks) -> bool {
+    let (x, y, z) = (
+        eye.x.floor() as i32,
+        eye.y.floor() as i32,
+        eye.z.floor() as i32,
+    );
+    chunks.block_at(x, y, z).is_some_and(is_water) && {
+        let surface = (y + 1) as f32 - (percent_air(chunks.metadata_at(x, y, z)) - 0.111_111_11);
+        eye.y < surface
+    }
+}
+
+/// `Entity.isEntityInsideOpaqueBlock`: eight points around the eyes of a body
+/// `width` wide.
+pub fn inside_opaque_block(eye: Vec3, width: f32, chunks: &WorldChunks) -> bool {
+    (0..8).any(|i| {
+        let dx = ((i & 1) as f32 - 0.5) * width * 0.9;
+        let dy = (((i >> 1) & 1) as f32 - 0.5) * 0.1;
+        let dz = (((i >> 2) & 1) as f32 - 0.5) * width * 0.9;
+        let at = eye + Vec3::new(dx, dy, dz);
+        chunks
+            .block_at(
+                at.x.floor() as i32,
+                at.y.floor() as i32,
+                at.z.floor() as i32,
+            )
+            .is_some_and(crate::block::blocks::Block::is_opaque_cube)
+    })
+}
+
+/// `World.isBoundingBoxBurning`: fire or lava in any cell the box spans.
+pub fn burning_in(area: Aabb, chunks: &WorldChunks) -> bool {
+    use crate::block::blocks::Block;
+    let min = area.min.floor().as_ivec3();
+    let max = (area.max + Vec3::ONE).floor().as_ivec3();
+    (min.x..max.x).any(|x| {
+        (min.y..max.y).any(|y| {
+            (min.z..max.z).any(|z| {
+                matches!(
+                    chunks.block_at(x, y, z),
+                    Some(Block::Fire | Block::Lava | Block::FlowingLava)
+                )
+            })
+        })
+    })
+}
+
+/// The `onEntityCollidedWithBlock` loop of `Entity.moveEntity` for
+/// `BlockCactus`: a cactus in any cell the body, inset 0.001, reaches into.
+/// A cactus's collision box is a sixteenth short of its cell, which is what
+/// lets a body pressed against one overlap it.
+pub fn touches_cactus(aabb: Aabb, chunks: &WorldChunks) -> bool {
+    let min = (aabb.min + Vec3::splat(0.001)).floor().as_ivec3();
+    let max = (aabb.max - Vec3::splat(0.001)).floor().as_ivec3();
+    (min.x..=max.x).any(|x| {
+        (min.y..=max.y).any(|y| {
+            (min.z..=max.z)
+                .any(|z| chunks.block_at(x, y, z) == Some(crate::block::blocks::Block::Cactus))
+        })
+    })
 }
 
 /// `World.getIsAnyLiquid`.

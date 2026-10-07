@@ -149,9 +149,28 @@ fn weather_and_spawner_mobs_round_trip_without_changing_older_saves() {
     let reopened = WorldStorage::open(storage.root().to_path_buf()).unwrap();
     assert!(reopened.manifest().weather.raining);
     assert_eq!(reopened.manifest().weather.rain_time, 200);
-    let player = StoredPlayer::from_transform(&Transform::default()).with_health(7);
+    let mut player = StoredPlayer::from_transform(&Transform::default()).with_health(7);
+    player.air = 120;
+    player.fire = 45;
+    player.fall_distance = 2.5;
     storage.save_player(&player).unwrap();
-    assert_eq!(reopened.load_player().unwrap().health, 7);
+    let loaded = reopened.load_player().unwrap();
+    assert_eq!(loaded.health, 7);
+    assert_eq!(
+        (loaded.air, loaded.fire, loaded.fall_distance),
+        (120, 45, 2.5)
+    );
+
+    // A `player.json` from before air and fire were saved loads rested.
+    let mut older = serde_json::to_value(&player).unwrap();
+    for key in ["air", "fire", "fall_distance"] {
+        older.as_object_mut().unwrap().remove(key);
+    }
+    let older: StoredPlayer = serde_json::from_value(older).unwrap();
+    assert_eq!(
+        (older.air, older.fire, older.fall_distance),
+        (300, -20, 0.0)
+    );
 
     let pos = ChunkPosition::ZERO;
     let mut generated = OverworldGenerator::new(9).generate(pos);

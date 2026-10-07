@@ -38,8 +38,6 @@ use bevy::prelude::*;
 use crate::app::settings::Difficulty;
 use crate::app::settings::GameSettings;
 use crate::block::blocks::Block;
-use crate::block::fluids::is_water;
-use crate::block::fluids::percent_air;
 use crate::entity::CollisionState;
 use crate::entity::EntityDiagnostics;
 use crate::entity::EntitySize;
@@ -65,7 +63,10 @@ use crate::inventory::Inventory;
 use crate::item::ItemStack;
 use crate::physics::Aabb;
 use crate::physics::WATER_CURRENT_PER_TICK;
+use crate::physics::burning_in;
 use crate::physics::collides;
+use crate::physics::eye_in_water;
+use crate::physics::inside_opaque_block;
 use crate::physics::intersects_liquid;
 use crate::physics::lava_contains;
 use crate::physics::move_entity;
@@ -91,7 +92,7 @@ use crate::world::weather::WorldWeather;
 /// `EntityLiving.jump`.
 const JUMP_MOTION: f32 = 0.42;
 /// `EntityPlayer.getEyeHeight`. A player's `posY` is already at its eyes.
-const PLAYER_EYE_HEIGHT: f32 = 0.12;
+pub const PLAYER_EYE_HEIGHT: f32 = 0.12;
 /// `Entity.maxAir`.
 pub const MAX_AIR: i16 = 300;
 
@@ -694,37 +695,14 @@ impl Body<'_> {
         }
     }
 
-    /// `Entity.isEntityInsideOpaqueBlock`: eight points around the eyes.
+    /// `Entity.isEntityInsideOpaqueBlock`.
     fn inside_opaque_block(&self, world: &Surroundings) -> bool {
-        (0..8).any(|i| {
-            let dx = ((i & 1) as f32 - 0.5) * self.size.width * 0.9;
-            let dy = (((i >> 1) & 1) as f32 - 0.5) * 0.1;
-            let dz = (((i >> 2) & 1) as f32 - 0.5) * self.size.width * 0.9;
-            let at = self.eye() + Vec3::new(dx, dy, dz);
-            world
-                .chunks
-                .block_at(
-                    at.x.floor() as i32,
-                    at.y.floor() as i32,
-                    at.z.floor() as i32,
-                )
-                .is_some_and(Block::is_opaque_cube)
-        })
+        inside_opaque_block(self.eye(), self.size.width, world.chunks)
     }
 
     /// `Entity.isInsideOfMaterial(Material.water)` at eye level.
     fn head_in_water(&self, world: &Surroundings) -> bool {
-        let eye = self.eye();
-        let (x, y, z) = (
-            eye.x.floor() as i32,
-            eye.y.floor() as i32,
-            eye.z.floor() as i32,
-        );
-        world.chunks.block_at(x, y, z).is_some_and(is_water) && {
-            let surface =
-                (y + 1) as f32 - (percent_air(world.chunks.metadata_at(x, y, z)) - 0.111_111_11);
-            eye.y < surface
-        }
+        eye_in_water(self.eye(), world.chunks)
     }
 
     /// `EntityCreature.updatePlayerActionState`. Returns `hasAttacked`: the
@@ -1194,7 +1172,7 @@ impl Body<'_> {
 
         let foot = self.feet.floor().as_ivec3();
         let wet = self.living.in_water || world.rained_on(foot);
-        if touching_fire(world.chunks, grow(self.aabb(), Vec3::splat(-0.001))) {
+        if burning_in(grow(self.aabb(), Vec3::splat(-0.001)), world.chunks) {
             if !self.fire_immune() {
                 self.hurt(Hit::environment(1), fx);
             }
@@ -1271,22 +1249,6 @@ impl Body<'_> {
         living.prev_body_yaw = near_angle(living.prev_body_yaw, living.body_yaw);
         living.prev_pitch = near_angle(living.prev_pitch, living.pitch);
     }
-}
-
-/// `World.isBoundingBoxBurning`: fire or lava in any cell the box spans.
-fn touching_fire(chunks: &WorldChunks, area: Aabb) -> bool {
-    let min = area.min.floor().as_ivec3();
-    let max = (area.max + Vec3::ONE).floor().as_ivec3();
-    (min.x..max.x).any(|x| {
-        (min.y..max.y).any(|y| {
-            (min.z..max.z).any(|z| {
-                matches!(
-                    chunks.block_at(x, y, z),
-                    Some(Block::Fire | Block::Lava | Block::FlowingLava)
-                )
-            })
-        })
-    })
 }
 
 /// Beta's `AxisAlignedBB.expand`: grow (or, with negative amounts, shrink)

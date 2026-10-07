@@ -489,7 +489,7 @@ fn the_player_is_stored_in_level_dat() {
     inventory.crafting[1] = Some(stack(Item::Stick, 4));
     inventory.carried = Some(stack(Item::Coal, 2));
 
-    let player = StoredPlayer::from_transform(&Transform {
+    let mut player = StoredPlayer::from_transform(&Transform {
         translation: Vec3::new(48.0, 72.0, -24.0),
         rotation: Quat::from_euler(EulerRot::YXZ, 0.75, -0.2, 0.0),
         ..default()
@@ -497,6 +497,9 @@ fn the_player_is_stored_in_level_dat() {
     .with_flying(true, 2.5)
     .with_health(14)
     .with_inventory(&hotbar, &inventory);
+    player.air = 88;
+    player.fire = 130;
+    player.fall_distance = 4.25;
     storage.save_player(&player).unwrap();
 
     let loaded = WorldStorage::open(storage.root().to_path_buf())
@@ -509,6 +512,10 @@ fn the_player_is_stored_in_level_dat() {
     assert!((loaded.yaw - 0.75).abs() < 0.001, "yaw {}", loaded.yaw);
     assert!((loaded.pitch - -0.2).abs() < 0.001);
     assert_eq!(loaded.health, 14);
+    assert_eq!(
+        (loaded.air, loaded.fire, loaded.fall_distance),
+        (88, 130, 4.25)
+    );
     assert!(loaded.flying);
     assert_eq!(loaded.fly_speed, 2.5);
 

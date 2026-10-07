@@ -309,7 +309,10 @@ impl Item {
             Self::Minecart => Some(standalone(self, 1, ItemData::None)),
             Self::Saddle => Some(standalone(self, 1, ItemData::None)),
             Self::IronDoor => Some(standalone(self, 1, ItemData::None)),
-            Self::Redstone => Some(standalone(self, 64, ItemData::None)),
+            Self::Redstone => Some(ItemProperties {
+                block: Some(Block::RedstoneWire),
+                ..standalone(self, 64, ItemData::None)
+            }),
             Self::Snowball => Some(standalone(self, 16, ItemData::None)),
             Self::Boat => Some(standalone(self, 1, ItemData::None)),
             Self::Leather => Some(standalone(self, 64, ItemData::None)),
@@ -337,7 +340,10 @@ impl Item {
             Self::Sugar => Some(standalone(self, 64, ItemData::None)),
             Self::Cake => Some(standalone(self, 1, ItemData::None)),
             Self::Bed => Some(standalone(self, 1, ItemData::None)),
-            Self::Repeater => Some(standalone(self, 64, ItemData::None)),
+            Self::Repeater => Some(ItemProperties {
+                block: Some(Block::Repeater),
+                ..standalone(self, 64, ItemData::None)
+            }),
             Self::Cookie => Some(standalone(self, 8, ItemData::None)),
             Self::Map => Some(standalone(self, 1, ItemData::Map)),
             Self::Shears => Some(standalone(self, 1, ItemData::Durability(238))),

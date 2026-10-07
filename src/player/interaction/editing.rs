@@ -25,6 +25,9 @@ use crate::entity::drops::blocks::player_break_drops_with_metadata;
 use crate::entity::drops::items::spawn_block_drop;
 use crate::entity::drops::items::spawn_chest_drops;
 use crate::entity::drops::items::spawn_thrown_item;
+use crate::entity::minecart::CART_SIZE;
+use crate::entity::minecart::Minecart;
+use crate::entity::minecart::spawn_minecart;
 use crate::entity::particles::block::BlockParticles;
 use crate::entity::projectiles::FIREBALL_SIZE;
 use crate::entity::projectiles::Fireball;
@@ -91,6 +94,7 @@ pub(crate) struct BlockInteractState {
 enum Pointed {
     Mob(Entity),
     Fireball(Entity),
+    Minecart(Entity),
 }
 
 pub(crate) fn interact_blocks(
@@ -117,10 +121,11 @@ pub(crate) fn interact_blocks(
         Option<ResMut<WorldPersistence>>,
         Option<ResMut<BlockTicks>>,
     ),
-    (mut particles, mut mobs, mut fireballs): (
+    (mut particles, mut mobs, mut fireballs, carts): (
         Option<ResMut<BlockParticles>>,
         Query<MobTarget, Without<Player>>,
         Query<(Entity, &mut Fireball, &Transform), Without<Player>>,
+        Query<(Entity, &Transform), With<Minecart>>,
     ),
     mut focus: ResMut<BlockFocus>,
     (mut state, frame): (Local<BlockInteractState>, Res<bevy::diagnostic::FrameCount>),
@@ -228,6 +233,10 @@ pub(crate) fn interact_blocks(
                 .chain(fireballs.iter().map(|(entity, _, transform)| {
                     let aabb = FIREBALL_SIZE.aabb(transform.translation);
                     (Pointed::Fireball(entity), bordered(aabb, FIREBALL_BORDER))
+                }))
+                .chain(carts.iter().map(|(entity, transform)| {
+                    let aabb = CART_SIZE.aabb(transform.translation);
+                    (Pointed::Minecart(entity), bordered(aabb, 0.0))
                 })),
         );
         if let Some(pointed) = pointed {
@@ -252,6 +261,26 @@ pub(crate) fn interact_blocks(
                 Pointed::Fireball(target) => {
                     if left_click && let Ok((_, mut fireball, _)) = fireballs.get_mut(target) {
                         fireball.deflect(look);
+                    }
+                }
+                // `EntityMinecart.attackEntityFrom`: a punch breaks the cart
+                // and leaves a minecart item.
+                Pointed::Minecart(target) => {
+                    if left_click && let Ok((_, cart)) = carts.get(target) {
+                        let position = cart.translation;
+                        commands.entity(target).despawn();
+                        if let Ok(stack) = ItemStack::new(Item::Minecart, 1) {
+                            spawn_block_drop(
+                                &mut commands,
+                                &mut item_rng,
+                                position.floor().as_ivec3(),
+                                stack,
+                            );
+                        }
+                        if let Some(persistence) = persistence.as_deref_mut() {
+                            persistence
+                                .mark_dirty(ChunkPosition::from_world(position.x, position.z));
+                        }
                     }
                 }
             }
@@ -285,21 +314,26 @@ pub(crate) fn interact_blocks(
         *focus = BlockFocus::default();
         return;
     }
-    if right_click && !inventory_screen.open && hit.is_some_and(|hit| hit.block.is_chest()) {
+    if right_click
+        && !inventory_screen.open
+        && hit.is_some_and(|hit| hit.block.is_chest() || hit.block == Block::Dispenser)
+    {
         let hit = hit.expect("checked above");
-        let Some(group) = chunks.chest_group_at(hit.x, hit.y, hit.z) else {
+        let Some(group) = chunks.container_group_at(hit.x, hit.y, hit.z) else {
             state.mining.reset();
             *focus = BlockFocus::default();
             return;
         };
-        let blocked = [Some(group.first), group.second]
-            .into_iter()
-            .flatten()
-            .any(|(x, y, z)| {
-                chunks
-                    .block_at(x, y + 1, z)
-                    .is_some_and(Block::is_opaque_cube)
-            });
+        // Only a chest is blocked by a cube on top.
+        let blocked = !group.dispenser
+            && [Some(group.first), group.second]
+                .into_iter()
+                .flatten()
+                .any(|(x, y, z)| {
+                    chunks
+                        .block_at(x, y + 1, z)
+                        .is_some_and(Block::is_opaque_cube)
+                });
         if blocked {
             state.mining.reset();
             *focus = BlockFocus::default();
@@ -371,6 +405,18 @@ pub(crate) fn interact_blocks(
 
     if left_held {
         if left_click && let Some(hit) = hit {
+            // `BlockTNT.onBlockClicked`: flint and steel marks the block, and
+            // breaking it then lights the fuse instead of dropping it.
+            if hit.block == Block::Tnt
+                && hotbar
+                    .selected_stack()
+                    .is_some_and(|stack| stack.item() == Item::FlintAndSteel)
+            {
+                chunks.set_metadata(hit.x, hit.y, hit.z, 1);
+                if let Some(persistence) = persistence.as_deref_mut() {
+                    persistence.mark_dirty(ChunkPosition::from_block(hit.x, hit.z));
+                }
+            }
             // `Block.onBlockClicked`, when the player starts to dig.
             push_event(
                 &mut block_ticks,
@@ -430,8 +476,37 @@ pub(crate) fn interact_blocks(
             );
         }
         // `Block.blockActivated` returning true keeps the held item unused.
-        let activated = hit.is_some_and(|hit| hit.block.is_door() || hit.block == Block::Trapdoor);
+        let activated = hit.is_some_and(|hit| {
+            hit.block.is_door()
+                || matches!(
+                    hit.block,
+                    Block::Trapdoor
+                        | Block::Lever
+                        | Block::StoneButton
+                        | Block::Repeater
+                        | Block::PoweredRepeater
+                        | Block::NoteBlock
+                )
+        });
         if activated {
+        } else if let Some(hit) = hit
+            && matches!(
+                hit.block,
+                Block::Rail | Block::PoweredRail | Block::DetectorRail
+            )
+            && hotbar
+                .selected_stack()
+                .is_some_and(|stack| stack.item() == Item::Minecart)
+        {
+            // `ItemMinecart.onItemUse`: a cart on the clicked rail.
+            spawn_minecart(&mut commands, IVec3::new(hit.x, hit.y, hit.z));
+            let selected = hotbar.selected;
+            hotbar.slots[selected] = hotbar.slots[selected].and_then(|stack| {
+                ItemStack::with_data(stack.item(), stack.count() - 1, stack.data()).ok()
+            });
+            if let Some(persistence) = persistence.as_deref_mut() {
+                persistence.mark_dirty(ChunkPosition::from_block(hit.x, hit.z));
+            }
         } else if hotbar
             .selected_stack()
             .is_some_and(|stack| stack.item() == Item::Bucket)
@@ -741,7 +816,12 @@ fn apply_break(
         .chest_at(hit.x, hit.y, hit.z)
         .map(|chest| chest.slots.into_iter().flatten().collect::<Vec<_>>())
         .unwrap_or_default();
+    let dispenser_drops = chunks
+        .dispenser_at(hit.x, hit.y, hit.z)
+        .map(|dispenser| dispenser.slots.into_iter().flatten().collect::<Vec<_>>())
+        .unwrap_or_default();
     let light_edit = hit.block.is_torch()
+        || matches!(hit.block, Block::RedstoneTorch | Block::UnlitRedstoneTorch)
         || hit.block == Block::LitFurnace
         || attached
             .iter()
@@ -755,6 +835,12 @@ fn apply_break(
             spawn_block_drop(commands, rng, IVec3::new(hit.x, hit.y, hit.z), stack);
         }
         spawn_chest_drops(commands, rng, IVec3::new(hit.x, hit.y, hit.z), chest_drops);
+        spawn_chest_drops(
+            commands,
+            rng,
+            IVec3::new(hit.x, hit.y, hit.z),
+            dispenser_drops,
+        );
         for stack in player_break_drops_with_metadata(hit.block, metadata, tool, rng) {
             spawn_block_drop(commands, rng, IVec3::new(hit.x, hit.y, hit.z), stack);
         }
@@ -945,6 +1031,32 @@ pub fn place_selected_block_facing(
     if !hit.block.is_opaque_cube() && selected == Block::Torch {
         return false;
     }
+    // `canPlaceBlockAt`: dust, repeaters, plates, and rails sit on a full cube.
+    if matches!(
+        selected,
+        Block::RedstoneWire
+            | Block::Repeater
+            | Block::StonePressurePlate
+            | Block::WoodenPressurePlate
+            | Block::Rail
+            | Block::PoweredRail
+            | Block::DetectorRail
+    ) && !chunks
+        .block_at(x, y - 1, z)
+        .is_some_and(Block::is_opaque_cube)
+    {
+        return false;
+    }
+    // Levers, buttons, and redstone torches hang on the side or top of a cube.
+    if matches!(
+        selected,
+        Block::Lever | Block::StoneButton | Block::RedstoneTorch
+    ) && (!hit.block.is_opaque_cube()
+        || hit.face == BlockFace::Down
+        || (selected == Block::StoneButton && hit.face == BlockFace::Up))
+    {
+        return false;
+    }
     // `BlockFence.canPlaceBlockAt`: on another fence or on solid ground.
     if selected == Block::Fence
         && !chunks
@@ -1001,6 +1113,31 @@ pub fn place_selected_block_facing(
                 return false;
             };
             (selected, selected.facing_metadata(support))
+        }
+        // Beta's `onBlockPlaced` names the clicked side: 5 is the floor.
+        Block::Lever | Block::StoneButton | Block::RedstoneTorch => (
+            selected,
+            match hit.face {
+                BlockFace::West => 2,
+                BlockFace::East => 1,
+                BlockFace::North => 4,
+                BlockFace::South => 3,
+                BlockFace::Up | BlockFace::Down => 5,
+            },
+        ),
+        // `BlockRedstoneRepeater.onBlockPlacedBy`: the repeater points away
+        // from the player and takes its input from behind.
+        Block::Repeater => (
+            selected,
+            match front {
+                Direction::South => 0,
+                Direction::West => 1,
+                Direction::North => 2,
+                Direction::East => 3,
+            },
+        ),
+        Block::Piston | Block::StickyPiston => {
+            (selected, piston_placement_facing(player, (x, y, z), front))
         }
         _ => (selected, species),
     };
@@ -1074,6 +1211,30 @@ pub fn place_door(chunks: &mut WorldChunks, hit: BlockHit, door: Block, front: D
     chunks.set_block_with_metadata(x, y, z, door, facing);
     chunks.set_block_with_metadata(x, y + 1, z, door, facing + 8);
     true
+}
+
+/// `BlockPistonBase.determineOrientation`: close to the placed block, the
+/// player's eye height takes priority over horizontal facing. The collision
+/// box starts at the feet, so `min.y + 1.82` is Beta's placement height
+/// (`posY + 1.82 - yOffset`).
+fn piston_placement_facing(player: Aabb, (x, y, z): (i32, i32, i32), front: Direction) -> u8 {
+    let player_x = (player.min.x + player.max.x) * 0.5;
+    let player_z = (player.min.z + player.max.z) * 0.5;
+    if (player_x - x as f32).abs() < 2.0 && (player_z - z as f32).abs() < 2.0 {
+        let placement_height = player.min.y + 1.82;
+        if placement_height - y as f32 > 2.0 {
+            return 1;
+        }
+        if y as f32 - placement_height > 0.0 {
+            return 0;
+        }
+    }
+    match front {
+        Direction::North => 2,
+        Direction::East => 5,
+        Direction::South => 3,
+        Direction::West => 4,
+    }
 }
 
 fn ladder_facing(

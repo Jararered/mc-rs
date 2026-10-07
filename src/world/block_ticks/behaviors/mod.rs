@@ -12,18 +12,25 @@ use super::behavior::BlockBehavior;
 use super::behavior::inert_table;
 
 pub mod attached;
+pub mod controls;
 pub mod crops;
+pub mod dispenser;
 pub mod falling;
 pub mod fire;
 pub mod fixtures;
 pub mod fluid;
 pub mod leaves;
+pub mod note;
 pub mod ore;
+pub mod piston;
 pub mod plants;
 pub mod portal;
+pub mod rail;
+pub mod redstone;
 pub mod snow;
 pub mod soil;
 pub mod sponge;
+pub mod tnt;
 
 /// Register `behavior` for every block in `blocks`.
 fn register(
@@ -89,5 +96,34 @@ pub(super) fn table() -> [&'static dyn BlockBehavior; 256] {
     register(&mut table, &[Block::Trapdoor], &fixtures::TRAPDOOR);
     register(&mut table, &[Block::StoneSlab], &fixtures::SLAB);
     register(&mut table, &[Block::NetherPortal], &portal::PORTAL);
+    register(&mut table, &[Block::RedstoneWire], &redstone::WIRE);
+    register(
+        &mut table,
+        &[Block::Repeater, Block::PoweredRepeater],
+        &redstone::REPEATER,
+    );
+    register(
+        &mut table,
+        &[Block::RedstoneTorch, Block::UnlitRedstoneTorch],
+        &redstone::REDSTONE_TORCH,
+    );
+    register(&mut table, &[Block::Lever], &controls::LEVER);
+    register(&mut table, &[Block::StoneButton], &controls::BUTTON);
+    register(
+        &mut table,
+        &[Block::StonePressurePlate, Block::WoodenPressurePlate],
+        &controls::PLATE,
+    );
+    register(
+        &mut table,
+        &[Block::Piston, Block::StickyPiston],
+        &piston::PISTON,
+    );
+    register(&mut table, &[Block::PistonHead], &piston::HEAD);
+    register(&mut table, &[Block::Rail, Block::PoweredRail], &rail::RAIL);
+    register(&mut table, &[Block::DetectorRail], &rail::DETECTOR);
+    register(&mut table, &[Block::NoteBlock], &note::NOTE);
+    register(&mut table, &[Block::Tnt], &tnt::TNT);
+    register(&mut table, &[Block::Dispenser], &dispenser::DISPENSER);
     table
 }

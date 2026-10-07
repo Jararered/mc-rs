@@ -308,6 +308,21 @@ impl Block {
             | Self::Chest
             | Self::Pumpkin
             | Self::Dispenser
+            | Self::RedstoneWire
+            | Self::Repeater
+            | Self::PoweredRepeater
+            | Self::RedstoneTorch
+            | Self::UnlitRedstoneTorch
+            | Self::Lever
+            | Self::StoneButton
+            | Self::StonePressurePlate
+            | Self::WoodenPressurePlate
+            | Self::Rail
+            | Self::PoweredRail
+            | Self::DetectorRail
+            | Self::Piston
+            | Self::StickyPiston
+            | Self::PistonHead
             | Self::Wool
             | Self::StoneSlab
             | Self::DoubleStoneSlab
@@ -329,13 +344,14 @@ impl Block {
     }
 
     /// Picking bounds for the block with `metadata`. Torches, ladders,
-    /// doors, and trapdoors depend on it.
+    /// doors, trapdoors, and the redstone family depend on it.
     pub fn selection_bounds_for(self, metadata: u8) -> definition::BlockBounds {
         match self {
             Self::Torch | Self::Ladder => definition::oriented_bounds(self, metadata),
             Self::WoodenDoor | Self::IronDoor => definition::door_bounds(metadata),
             Self::Trapdoor => definition::trapdoor_bounds(metadata),
-            _ => self.selection_bounds(),
+            _ => definition::redstone_bounds(self, metadata)
+                .unwrap_or_else(|| self.selection_bounds()),
         }
     }
 
@@ -348,6 +364,9 @@ impl Block {
             Self::SnowLayer if metadata & 7 >= 3 => Some(([0.0; 3], [1.0, 0.5, 1.0])),
             Self::WoodenDoor | Self::IronDoor => Some(definition::door_bounds(metadata)),
             Self::Trapdoor => Some(definition::trapdoor_bounds(metadata)),
+            Self::Piston | Self::StickyPiston | Self::PistonHead => {
+                definition::redstone_bounds(self, metadata).or_else(|| self.collision_bounds())
+            }
             _ => self.collision_bounds(),
         }
     }
@@ -385,27 +404,15 @@ impl Block {
         match (self, data) {
             (
                 Self::Bed
-                | Self::Rail
-                | Self::PoweredRail
-                | Self::DetectorRail
-                | Self::Piston
-                | Self::StickyPiston
                 | Self::PistonHead
                 | Self::MovingPiston
-                | Self::RedstoneWire
                 | Self::StandingSign
                 | Self::WallSign
                 | Self::WoodenDoor
                 | Self::IronDoor
-                | Self::Lever
-                | Self::StonePressurePlate
-                | Self::WoodenPressurePlate
                 | Self::UnlitRedstoneTorch
-                | Self::RedstoneTorch
-                | Self::StoneButton
                 | Self::NetherPortal
                 | Self::Cake
-                | Self::Repeater
                 | Self::PoweredRepeater,
                 _,
             ) => None,

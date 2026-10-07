@@ -5,6 +5,7 @@ pub mod block_ticks;
 pub mod chest;
 pub mod chunk;
 pub mod dimension;
+pub mod dispenser;
 pub mod environment;
 pub mod furnace;
 pub mod generation;

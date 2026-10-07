@@ -16,7 +16,7 @@
 //! ticks from the world, and mob timers from defaults. Every Beta block id loads;
 //! one with a shape this game does not draw yet (rails, beds, signs, redstone
 //! parts, cake) shows as a stone-textured cube. Tile entities
-//! other than chests, furnaces and spawners (signs, note blocks, dispensers) are
+//! other than chests, furnaces, dispensers, note blocks and spawners (signs) are
 //! dropped, which is also what Beta does with ids it does not know. Falling
 //! blocks and primed TNT in flight are not written, so one caught mid-fall or
 //! mid-fuse by a save is lost with its block; the native format keeps them.
@@ -75,7 +75,10 @@ use crate::world::chunk::ChunkDroppedItem;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::GeneratedChunk;
 use crate::world::chunk::Heightmap;
+use crate::world::chunk::NoteState;
 use crate::world::dimension::Dimension;
+use crate::world::dispenser::DISPENSER_SLOTS;
+use crate::world::dispenser::Dispenser;
 use crate::world::furnace::FURNACE_SLOTS;
 use crate::world::furnace::Furnace;
 use crate::world::furnace::SMELT_TICKS;
@@ -509,6 +512,16 @@ impl ChunkSnapshot {
             tile.put_list("Items", items_list(&chest.slots));
             tiles.push(Tag::Compound(tile));
         }
+        for (index, dispenser) in chunk.dispensers() {
+            let mut tile = tile_entity("Trap", index);
+            tile.put_list("Items", items_list(&dispenser.slots));
+            tiles.push(Tag::Compound(tile));
+        }
+        for (index, note) in chunk.notes() {
+            let mut tile = tile_entity("Music", index);
+            tile.put_byte("note", note.pitch as i8);
+            tiles.push(Tag::Compound(tile));
+        }
         for (index, furnace) in chunk.furnaces() {
             let mut tile = tile_entity("Furnace", index);
             tile.put_short("BurnTime", furnace.burn_ticks as i16);
@@ -605,6 +618,19 @@ fn decode_chunk(
             "Chest" if block.is_some_and(Block::is_chest) => {
                 let slots = read_items::<CHEST_SLOTS>(tile);
                 chunk.insert_chest(index, Chest { slots });
+            }
+            "Trap" if block == Some(Block::Dispenser) => {
+                let slots = read_items::<DISPENSER_SLOTS>(tile);
+                chunk.insert_dispenser(index, Dispenser { slots });
+            }
+            "Music" if block == Some(Block::NoteBlock) => {
+                chunk.insert_note(
+                    index,
+                    NoteState {
+                        pitch: tile.byte("note").clamp(0, 24) as u8,
+                        previous_powered: false,
+                    },
+                );
             }
             "Furnace" if block.is_some_and(Block::is_furnace) => {
                 let slots = read_items::<FURNACE_SLOTS>(tile);

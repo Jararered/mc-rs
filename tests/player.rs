@@ -635,3 +635,175 @@ fn air_bubbles_follow_betas_hud_rounding() {
     surfaced.air = 40;
     assert_eq!(surfaced.bubble(0), Bubble::Empty);
 }
+
+#[test]
+fn placed_repeater_points_away_from_the_player() {
+    // `BlockRedstoneRepeater.onBlockPlacedBy` takes the repeater facing from
+    // the player's yaw, so the plate and its two torches face away from the
+    // player and the input side faces them.
+    for (front, metadata) in [
+        (Direction::South, 0),
+        (Direction::West, 1),
+        (Direction::North, 2),
+        (Direction::East, 3),
+    ] {
+        let mut chunk = Chunk::new();
+        chunk.set(8, 64, 8, Block::Stone);
+        let mut chunks = world_with(chunk);
+        let player = Aabb::new(Vec3::new(2.0, 70.0, 2.0), Vec3::new(2.6, 71.8, 2.6));
+
+        assert!(place_selected_block_facing(
+            &mut chunks,
+            hit(8, 64, 8, BlockFace::Up, Block::Stone),
+            player,
+            Block::Repeater,
+            0,
+            front,
+        ));
+        assert_eq!(chunks.block_at(8, 65, 8), Some(Block::Repeater));
+        assert_eq!(chunks.metadata_at(8, 65, 8), metadata, "{front:?}");
+    }
+}
+
+#[test]
+fn normal_and_sticky_pistons_can_be_placed_facing_up_and_down() {
+    for block in [Block::Piston, Block::StickyPiston] {
+        let mut floor = Chunk::new();
+        floor.set(8, 64, 8, Block::Stone);
+        let mut chunks = world_with(floor);
+        // Standing two blocks above the placement cell makes the piston face up.
+        let above =
+            EntitySize::PLAYER.aabb(Vec3::new(8.5, 66.0 + EntitySize::PLAYER.y_offset, 8.5));
+        assert!(place_selected_block_facing(
+            &mut chunks,
+            hit(8, 64, 8, BlockFace::Up, Block::Stone),
+            above,
+            block,
+            0,
+            Direction::West,
+        ));
+        assert_eq!(chunks.block_at(8, 65, 8), Some(block));
+        assert_eq!(chunks.metadata_at(8, 65, 8), 1, "{block:?} should face up");
+
+        let mut ceiling = Chunk::new();
+        ceiling.set(8, 70, 8, Block::Stone);
+        let mut chunks = world_with(ceiling);
+        let below =
+            EntitySize::PLAYER.aabb(Vec3::new(8.5, 65.0 + EntitySize::PLAYER.y_offset, 8.5));
+        assert!(place_selected_block_facing(
+            &mut chunks,
+            hit(8, 70, 8, BlockFace::Down, Block::Stone),
+            below,
+            block,
+            0,
+            Direction::East,
+        ));
+        assert_eq!(chunks.block_at(8, 69, 8), Some(block));
+        assert_eq!(
+            chunks.metadata_at(8, 69, 8),
+            0,
+            "{block:?} should face down"
+        );
+    }
+}
+
+#[test]
+fn piston_placement_uses_horizontal_facing_when_near_eye_level_or_far_away() {
+    for block in [Block::Piston, Block::StickyPiston] {
+        for (front, metadata) in [
+            (Direction::North, 2),
+            (Direction::East, 5),
+            (Direction::South, 3),
+            (Direction::West, 4),
+        ] {
+            let mut chunk = Chunk::new();
+            chunk.set(8, 64, 8, Block::Stone);
+            let mut chunks = world_with(chunk);
+            // Next to the piston, not inside its target cell, and at eye level.
+            let beside =
+                EntitySize::PLAYER.aabb(Vec3::new(9.5, 63.0 + EntitySize::PLAYER.y_offset, 9.5));
+            assert!(place_selected_block_facing(
+                &mut chunks,
+                hit(8, 64, 8, BlockFace::East, Block::Stone),
+                beside,
+                block,
+                0,
+                front,
+            ));
+            assert_eq!(chunks.metadata_at(9, 64, 8), metadata);
+        }
+        let mut chunk = Chunk::new();
+        chunk.set(8, 64, 8, Block::Stone);
+        let mut chunks = world_with(chunk);
+        let far = EntitySize::PLAYER.aabb(Vec3::new(10.0, 66.0 + EntitySize::PLAYER.y_offset, 8.5));
+        assert!(place_selected_block_facing(
+            &mut chunks,
+            hit(8, 64, 8, BlockFace::Up, Block::Stone),
+            far,
+            block,
+            0,
+            Direction::West,
+        ));
+        assert_eq!(chunks.metadata_at(8, 65, 8), 4);
+    }
+}
+
+#[test]
+fn placed_redstone_controls_keep_their_support_side() {
+    let mut chunk = Chunk::new();
+    chunk.set(8, 64, 8, Block::Stone);
+    chunk.set(10, 64, 8, Block::Stone);
+    let mut chunks = world_with(chunk);
+    let player = Aabb::new(Vec3::new(0.0, 70.0, 0.0), Vec3::new(0.6, 71.8, 0.6));
+    // A lever or button on the east face of a cube hangs on its west side.
+    for (block, metadata) in [(Block::Lever, 1), (Block::StoneButton, 1)] {
+        let mut chunks = world_with({
+            let mut chunk = Chunk::new();
+            chunk.set(8, 64, 8, Block::Stone);
+            chunk
+        });
+        assert!(place_selected_block_facing(
+            &mut chunks,
+            hit(8, 64, 8, BlockFace::East, Block::Stone),
+            player,
+            block,
+            0,
+            Direction::East,
+        ));
+        assert_eq!(chunks.metadata_at(9, 64, 8), metadata, "{block:?}");
+    }
+    // A button cannot sit on the top of a cube, and nothing hangs from air.
+    assert!(!place_selected_block_facing(
+        &mut chunks,
+        hit(10, 64, 8, BlockFace::Up, Block::Stone),
+        player,
+        Block::StoneButton,
+        0,
+        Direction::East,
+    ));
+    assert!(!place_selected_block_facing(
+        &mut chunks,
+        hit(10, 66, 8, BlockFace::East, Block::Air),
+        player,
+        Block::Lever,
+        0,
+        Direction::East,
+    ));
+    // Dust needs a full cube beneath it.
+    assert!(place_selected_block_facing(
+        &mut chunks,
+        hit(10, 64, 8, BlockFace::Up, Block::Stone),
+        player,
+        Block::RedstoneWire,
+        0,
+        Direction::East,
+    ));
+    assert!(!place_selected_block_facing(
+        &mut chunks,
+        hit(10, 70, 8, BlockFace::Up, Block::Air),
+        player,
+        Block::RedstoneWire,
+        0,
+        Direction::East,
+    ));
+}

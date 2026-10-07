@@ -8,6 +8,7 @@ use crate::block::blocks::Block;
 use crate::world::biome::Climate;
 use crate::world::chest::Chest;
 use crate::world::chunk::GeneratedChunk;
+use crate::world::dispenser::Dispenser;
 use crate::world::furnace::Furnace;
 
 use super::ChunkPosition;
@@ -27,6 +28,8 @@ pub struct ChestGroup {
     /// First half in stable world order: west-to-east or north-to-south.
     pub first: (i32, i32, i32),
     pub second: Option<(i32, i32, i32)>,
+    /// A single nine-slot dispenser uses the same container GUI path.
+    pub dispenser: bool,
 }
 
 impl ChestGroup {
@@ -35,8 +38,22 @@ impl ChestGroup {
     }
 
     pub const fn slot_count(self) -> usize {
-        if self.is_double() { 54 } else { 27 }
+        if self.dispenser {
+            9
+        } else if self.is_double() {
+            54
+        } else {
+            27
+        }
     }
+}
+
+/// Beta TileEntityNote: pitch and prior redstone input are separate from
+/// the four-bit block metadata.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct NoteState {
+    pub pitch: u8,
+    pub previous_powered: bool,
 }
 
 /// A scheduled block tick carried by a chunk that is not loaded into the live
@@ -69,6 +86,8 @@ pub struct Chunk {
     /// Block-local inventories and simulation state. Keyed by flat block index.
     furnaces: HashMap<usize, Furnace>,
     chests: HashMap<usize, Chest>,
+    dispensers: HashMap<usize, Dispenser>,
+    notes: HashMap<usize, NoteState>,
     /// Scheduled ticks saved with the chunk. Empty while the chunk is live.
     pending_ticks: Vec<PendingTick>,
     mob_records: Vec<crate::entity::mobs::MobRecord>,
@@ -87,6 +106,8 @@ impl Chunk {
             metadata: None,
             furnaces: HashMap::new(),
             chests: HashMap::new(),
+            dispensers: HashMap::new(),
+            notes: HashMap::new(),
             pending_ticks: Vec::new(),
             mob_records: Vec::new(),
             saved_bodies: Vec::new(),
@@ -120,11 +141,25 @@ impl Chunk {
             .filter(|(_, block)| **block == Block::MobSpawner)
             .map(|(index, _)| (index, Default::default()))
             .collect();
+        let dispensers = blocks
+            .iter()
+            .enumerate()
+            .filter(|(_, block)| **block == Block::Dispenser)
+            .map(|(index, _)| (index, Dispenser::default()))
+            .collect();
+        let notes = blocks
+            .iter()
+            .enumerate()
+            .filter(|(_, block)| **block == Block::NoteBlock)
+            .map(|(index, _)| (index, NoteState::default()))
+            .collect();
         Self {
             blocks: blocks.into_iter().map(Block::as_u8).collect(),
             metadata: None,
             furnaces,
             chests,
+            dispensers,
+            notes,
             pending_ticks: Vec::new(),
             mob_records: Vec::new(),
             saved_bodies: Vec::new(),
@@ -156,11 +191,19 @@ impl Chunk {
         let spawners = indices(|block| block == Block::MobSpawner)
             .map(|index| (index, Default::default()))
             .collect();
+        let notes = indices(|block| block == Block::NoteBlock)
+            .map(|index| (index, NoteState::default()))
+            .collect();
+        let dispensers = indices(|block| block == Block::Dispenser)
+            .map(|index| (index, Dispenser::default()))
+            .collect();
         Self {
             blocks: blocks.into(),
             metadata: None,
             furnaces,
             chests,
+            dispensers,
+            notes,
             pending_ticks: Vec::new(),
             mob_records: Vec::new(),
             saved_bodies: Vec::new(),
@@ -334,10 +377,20 @@ impl Chunk {
         } else if !Block::is_furnace(previous) && Block::is_furnace(block) {
             self.furnaces.entry(index).or_default();
         }
+        if previous == Block::NoteBlock && block != Block::NoteBlock {
+            self.notes.remove(&index);
+        } else if previous != Block::NoteBlock && block == Block::NoteBlock {
+            self.notes.entry(index).or_default();
+        }
         if previous.is_chest() && !block.is_chest() {
             self.chests.remove(&index);
         } else if !previous.is_chest() && block.is_chest() {
             self.chests.entry(index).or_default();
+        }
+        if previous == Block::Dispenser && block != Block::Dispenser {
+            self.dispensers.remove(&index);
+        } else if previous != Block::Dispenser && block == Block::Dispenser {
+            self.dispensers.entry(index).or_default();
         }
         Arc::make_mut(&mut self.blocks)[index] = block.as_u8();
     }
@@ -360,6 +413,16 @@ impl Chunk {
         self.furnaces.insert(index, furnace);
     }
 
+    pub fn notes(&self) -> impl Iterator<Item = (usize, &NoteState)> {
+        self.notes.iter().map(|(index, note)| (*index, note))
+    }
+    pub fn note_mut(&mut self, index: usize) -> Option<&mut NoteState> {
+        self.notes.get_mut(&index)
+    }
+    pub fn insert_note(&mut self, index: usize, note: NoteState) {
+        self.notes.insert(index, note);
+    }
+
     pub fn chests(&self) -> impl Iterator<Item = (usize, &Chest)> {
         self.chests.iter().map(|(index, chest)| (*index, chest))
     }
@@ -374,6 +437,24 @@ impl Chunk {
 
     pub fn insert_chest(&mut self, index: usize, chest: Chest) {
         self.chests.insert(index, chest);
+    }
+
+    pub fn dispensers(&self) -> impl Iterator<Item = (usize, &Dispenser)> {
+        self.dispensers
+            .iter()
+            .map(|(index, dispenser)| (*index, dispenser))
+    }
+
+    pub fn dispenser(&self, index: usize) -> Option<&Dispenser> {
+        self.dispensers.get(&index)
+    }
+
+    pub fn dispenser_mut(&mut self, index: usize) -> Option<&mut Dispenser> {
+        self.dispensers.get_mut(&index)
+    }
+
+    pub fn insert_dispenser(&mut self, index: usize, dispenser: Dispenser) {
+        self.dispensers.insert(index, dispenser);
     }
 
     pub const fn index(x: usize, y: usize, z: usize) -> usize {
@@ -574,6 +655,39 @@ impl WorldChunks {
         positions
     }
 
+    pub fn note_at_mut(&mut self, x: i32, y: i32, z: i32) -> Option<&mut NoteState> {
+        let index = local_index(x, y, z)?;
+        self.get_mut(ChunkPosition::from_block(x, z))?
+            .chunk
+            .note_mut(index)
+    }
+
+    pub fn dispenser_at(&self, x: i32, y: i32, z: i32) -> Option<&Dispenser> {
+        let index = local_index(x, y, z)?;
+        self.get(ChunkPosition::from_block(x, z))?
+            .chunk
+            .dispenser(index)
+    }
+
+    pub fn dispenser_at_mut(&mut self, x: i32, y: i32, z: i32) -> Option<&mut Dispenser> {
+        let index = local_index(x, y, z)?;
+        self.get_mut(ChunkPosition::from_block(x, z))?
+            .chunk
+            .dispenser_mut(index)
+    }
+
+    pub fn container_group_at(&self, x: i32, y: i32, z: i32) -> Option<ChestGroup> {
+        if self.block_at(x, y, z) == Some(Block::Dispenser) {
+            Some(ChestGroup {
+                first: (x, y, z),
+                second: None,
+                dispenser: true,
+            })
+        } else {
+            self.chest_group_at(x, y, z)
+        }
+    }
+
     pub fn chest_at(&self, x: i32, y: i32, z: i32) -> Option<&Chest> {
         let chunk = self.get(ChunkPosition::from_block(x, z))?;
         let index = local_index(x, y, z)?;
@@ -617,6 +731,7 @@ impl WorldChunks {
             return adjacent.is_empty().then_some(ChestGroup {
                 first: (x, y, z),
                 second: None,
+                dispenser: false,
             });
         };
 
@@ -650,6 +765,7 @@ impl WorldChunks {
         Some(ChestGroup {
             first,
             second: Some(second),
+            dispenser: false,
         })
     }
 

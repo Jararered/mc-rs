@@ -849,3 +849,42 @@ fn the_nether_generator_matches_the_beta_server_nether() {
     }
     assert!(compared > 50, "only {compared} Nether chunks were found");
 }
+
+#[test]
+fn dispensers_and_note_blocks_use_beta_tile_entities() {
+    let (saves, storage) = original_world("redstone-tiles");
+    let position = ChunkPosition::ZERO;
+    let mut generated = OverworldGenerator::new(SEED).generate(position);
+    generated
+        .chunk
+        .set_with_metadata(3, 90, 4, Block::Dispenser, 3);
+    generated
+        .chunk
+        .dispenser_mut(Chunk::index(3, 90, 4))
+        .unwrap()
+        .slots[2] = Some(stack(Item::Arrow, 9));
+    generated.chunk.set(7, 90, 4, Block::NoteBlock);
+    generated
+        .chunk
+        .note_mut(Chunk::index(7, 90, 4))
+        .unwrap()
+        .pitch = 12;
+    storage.save_chunk(position, &generated).unwrap();
+
+    let loaded = storage.load_chunk(position).unwrap();
+    assert_eq!(
+        loaded
+            .chunk
+            .dispenser(Chunk::index(3, 90, 4))
+            .unwrap()
+            .slots[2],
+        Some(stack(Item::Arrow, 9))
+    );
+    let (_, note) = loaded
+        .chunk
+        .notes()
+        .find(|(index, _)| *index == Chunk::index(7, 90, 4))
+        .unwrap();
+    assert_eq!(note.pitch, 12);
+    fs::remove_dir_all(saves).unwrap();
+}

@@ -577,6 +577,30 @@ pub fn block_tile(
         Block::LockedChest if face == 4 => tile(27),
         Block::LockedChest => tile(26),
         Block::WoodenDoor | Block::IronDoor => door_tile(block, metadata, face).0,
+        Block::RedstoneWire => (4, 10),
+        // `BlockRedstoneRepeater`: the top and torch shade with power.
+        Block::Repeater if face == 0 => tile(131),
+        Block::PoweredRepeater if face == 0 => tile(147),
+        Block::Repeater | Block::PoweredRepeater => tile(5),
+        Block::RedstoneTorch => tile(99),
+        Block::UnlitRedstoneTorch => tile(115),
+        Block::StoneButton | Block::StonePressurePlate => (1, 0),
+        Block::WoodenPressurePlate => (4, 0),
+        Block::Lever => (0, 6),
+        // `BlockRail.getBlockTextureFromSideAndMetadata`: curves use the tile
+        // above, and powered rails dim when unpowered.
+        Block::Rail if metadata >= 6 => tile(112),
+        Block::Rail => tile(128),
+        Block::PoweredRail if metadata & 8 == 0 => tile(163),
+        Block::PoweredRail => tile(179),
+        Block::DetectorRail => tile(195),
+        Block::Piston | Block::StickyPiston if face == 0 => tile(if block == Block::StickyPiston {
+            106
+        } else {
+            107
+        }),
+        Block::Piston | Block::StickyPiston if face == 1 => tile(109),
+        Block::Piston | Block::StickyPiston | Block::PistonHead => tile(108),
         _ => (1, 0),
     }
 }

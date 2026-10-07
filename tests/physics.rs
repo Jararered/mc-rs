@@ -13,6 +13,7 @@ use game::physics::BLOCK_REACH;
 use game::physics::BlockFace;
 use game::physics::PhysicsPlugin;
 use game::physics::block_hit_distance;
+use game::physics::colliding_aabbs;
 use game::physics::move_entity;
 use game::physics::move_entity_with_sneak;
 use game::physics::raycast_blocks;
@@ -192,6 +193,65 @@ fn raycast_only_hits_the_torch_near_its_visible_shaft() {
     );
     assert!(raycast_blocks(&chunks, Vec3::new(8.8, 64.4, 7.0), Vec3::Z, BLOCK_REACH).is_none());
     assert!(raycast_blocks(&chunks, Vec3::new(8.5, 64.9, 7.0), Vec3::Z, BLOCK_REACH).is_none());
+}
+
+#[test]
+fn wall_redstone_torches_are_targetable_at_their_actual_mounting_side() {
+    for block in [Block::RedstoneTorch, Block::UnlitRedstoneTorch] {
+        for (metadata, near, direction) in [
+            (1, Vec3::new(7.0, 64.5, 8.5), Vec3::X),
+            (2, Vec3::new(10.0, 64.5, 8.5), Vec3::NEG_X),
+            (3, Vec3::new(8.5, 64.5, 7.0), Vec3::Z),
+            (4, Vec3::new(8.5, 64.5, 10.0), Vec3::NEG_Z),
+        ] {
+            let mut chunk = Chunk::new();
+            chunk.set(8, 64, 8, block);
+            chunk.set_metadata(8, 64, 8, metadata);
+            let mut chunks = WorldChunks::default();
+            chunks.insert(ChunkPosition::ZERO, generated(chunk));
+            // A redstone torch is shaped like the plain torch it replaces.
+            assert_eq!(
+                block.selection_bounds_for(metadata),
+                Block::Torch.selection_bounds_for(metadata)
+            );
+            assert!(
+                raycast_blocks(&chunks, near, direction, BLOCK_REACH)
+                    .is_some_and(|hit| hit.block == block),
+                "{block:?} {metadata}"
+            );
+            let (off_side, across) = if metadata <= 2 {
+                (Vec3::new(8.5, 64.5, 7.0), Vec3::Z)
+            } else {
+                (Vec3::new(7.0, 64.5, 8.5), Vec3::X)
+            };
+            assert!(raycast_blocks(&chunks, off_side, across, BLOCK_REACH).is_none());
+        }
+    }
+}
+
+#[test]
+fn an_extended_piston_and_its_head_collide_only_where_they_are_solid() {
+    let mut chunk = Chunk::new();
+    // A base facing east, extended, with its head in the next cell.
+    chunk.set(8, 64, 8, Block::Piston);
+    chunk.set_metadata(8, 64, 8, 5 | 8);
+    chunk.set(9, 64, 8, Block::PistonHead);
+    chunk.set_metadata(9, 64, 8, 5);
+    let mut chunks = WorldChunks::default();
+    chunks.insert(ChunkPosition::ZERO, generated(chunk));
+    assert_eq!(
+        Block::Piston.collision_bounds_for(5 | 8),
+        Some(([0.0, 0.0, 0.0], [0.75, 1.0, 1.0]))
+    );
+    assert_eq!(
+        Block::PistonHead.collision_bounds_for(5),
+        Some(([0.75, 0.0, 0.0], [1.0, 1.0, 1.0]))
+    );
+    // The recess of the base is empty.
+    let recess = Aabb::new(Vec3::new(8.8, 64.2, 8.2), Vec3::new(8.95, 64.8, 8.8));
+    assert!(colliding_aabbs(&chunks, recess).is_empty());
+    let plate = Aabb::new(Vec3::new(9.8, 64.2, 8.2), Vec3::new(9.95, 64.8, 8.8));
+    assert_eq!(colliding_aabbs(&chunks, plate).len(), 1);
 }
 
 #[test]

@@ -41,7 +41,10 @@ use crate::world::chunk::ChunkDroppedItem;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::GeneratedChunk;
 use crate::world::chunk::Heightmap;
+use crate::world::chunk::NoteState;
 use crate::world::chunk::PendingTick;
+use crate::world::dispenser::DISPENSER_SLOTS;
+use crate::world::dispenser::Dispenser;
 use crate::world::furnace::FURNACE_SLOTS;
 use crate::world::furnace::Furnace;
 
@@ -130,6 +133,10 @@ pub(super) struct StoredChunk {
     /// Absent on chunks saved before chest inventories were added.
     #[serde(default)]
     chests: Vec<StoredChest>,
+    #[serde(default)]
+    dispensers: Vec<StoredDispenser>,
+    #[serde(default)]
+    notes: Vec<StoredNote>,
     /// Absent on chunks saved before population ran across chunks. Those were
     /// decorated in full when generated.
     #[serde(default = "populated_default")]
@@ -171,6 +178,19 @@ struct StoredFurnace {
 struct StoredChest {
     index: u16,
     slots: [Option<StoredStack>; CHEST_SLOTS],
+}
+
+#[derive(Serialize, Deserialize)]
+struct StoredDispenser {
+    index: u16,
+    slots: [Option<StoredStack>; DISPENSER_SLOTS],
+}
+
+#[derive(Serialize, Deserialize)]
+struct StoredNote {
+    index: u16,
+    pitch: u8,
+    previous_powered: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -262,6 +282,25 @@ impl StoredChunk {
                 .map(|(index, chest)| StoredChest {
                     index: index as u16,
                     slots: chest.slots.map(|stack| stack.map(StoredStack::from_stack)),
+                })
+                .collect(),
+            dispensers: generated
+                .chunk
+                .dispensers()
+                .map(|(index, dispenser)| StoredDispenser {
+                    index: index as u16,
+                    slots: dispenser
+                        .slots
+                        .map(|stack| stack.map(StoredStack::from_stack)),
+                })
+                .collect(),
+            notes: generated
+                .chunk
+                .notes()
+                .map(|(index, note)| StoredNote {
+                    index: index as u16,
+                    pitch: note.pitch,
+                    previous_powered: note.previous_powered,
                 })
                 .collect(),
             populated: generated.populated,
@@ -374,6 +413,41 @@ impl StoredChunk {
                 .slots
                 .map(|stack| stack.and_then(StoredStack::into_stack));
             chunk.insert_chest(index, Chest { slots });
+        }
+        for dispenser in self.dispensers {
+            let index = usize::from(dispenser.index);
+            if index >= BLOCKS_PER_CHUNK {
+                continue;
+            }
+            let y = index / (CHUNK_SIZE * CHUNK_SIZE);
+            let z = index / CHUNK_SIZE % CHUNK_SIZE;
+            let x = index % CHUNK_SIZE;
+            if chunk.get(x, y, z) != Some(Block::Dispenser) {
+                continue;
+            }
+            let slots = dispenser
+                .slots
+                .map(|stack| stack.and_then(StoredStack::into_stack));
+            chunk.insert_dispenser(index, Dispenser { slots });
+        }
+        for note in self.notes {
+            let index = usize::from(note.index);
+            if index >= BLOCKS_PER_CHUNK {
+                continue;
+            }
+            let y = index / (CHUNK_SIZE * CHUNK_SIZE);
+            let z = index / CHUNK_SIZE % CHUNK_SIZE;
+            let x = index % CHUNK_SIZE;
+            if chunk.get(x, y, z) != Some(Block::NoteBlock) {
+                continue;
+            }
+            chunk.insert_note(
+                index,
+                NoteState {
+                    pitch: note.pitch.min(24),
+                    previous_powered: note.previous_powered,
+                },
+            );
         }
 
         Some(GeneratedChunk {

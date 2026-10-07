@@ -1,12 +1,13 @@
-//! Wooden fixtures with state: Beta's `BlockDoor`, `BlockTrapDoor`, and the
-//! stacking half of `BlockStep`. Redstone is not simulated, so nothing here
-//! reacts to power and an iron door never opens.
+//! Fixtures with state: Beta's `BlockDoor`, `BlockTrapDoor`, and the stacking
+//! half of `BlockStep`. Doors and trapdoors open and close with power, and
+//! an iron door opens only that way.
 
 use bevy::math::IVec3;
 
 use crate::block::blocks::Block;
 use crate::world::block_ticks::BlockBehavior;
 use crate::world::block_ticks::TickWorld;
+use crate::world::block_ticks::behavior;
 
 /// Metadata bit of an open door or trapdoor.
 pub const OPEN: u8 = 4;
@@ -38,6 +39,21 @@ impl Door {
     }
 }
 
+impl Door {
+    /// `BlockDoor.onPoweredBlockChange`: swing the pair to match `open`.
+    fn set_open(world: &mut TickWorld, position: IVec3, open: bool) {
+        let door = world.block(position);
+        let metadata = world.metadata(position);
+        if (metadata & OPEN != 0) == open {
+            return;
+        }
+        if world.block(position + IVec3::Y) == door {
+            world.set_metadata_notify(position + IVec3::Y, (metadata ^ OPEN) + UPPER);
+        }
+        world.set_metadata_notify(position, metadata ^ OPEN);
+    }
+}
+
 impl BlockBehavior for Door {
     fn clicked(&self, world: &mut TickWorld, position: IVec3) {
         Self::toggle(world, position);
@@ -50,13 +66,16 @@ impl BlockBehavior for Door {
     /// `BlockDoor.onNeighborBlockChange`: a half without its other half
     /// goes, and so does a door whose floor went. Only the lower half drops
     /// the item.
-    fn neighbor_changed(&self, world: &mut TickWorld, position: IVec3, _neighbor: Block) {
+    fn neighbor_changed(&self, world: &mut TickWorld, position: IVec3, neighbor: Block) {
         let door = world.block(position);
         let metadata = world.metadata(position);
         let (below, above) = (position - IVec3::Y, position + IVec3::Y);
         if metadata & UPPER != 0 {
             if world.block(below) != door {
                 world.set_block_notify(position, Block::Air);
+            } else if neighbor != door {
+                // The upper half passes the change down, as Beta does.
+                self.neighbor_changed(world, below, neighbor);
             }
             return;
         }
@@ -74,6 +93,10 @@ impl BlockBehavior for Door {
         }
         if removed {
             world.drop_block_as_item(position, door, metadata);
+        } else if behavior(neighbor).can_provide_power() {
+            let powered = world.block_indirectly_getting_powered(position)
+                || world.block_indirectly_getting_powered(above);
+            Door::set_open(world, position, powered);
         }
     }
 }
@@ -107,11 +130,17 @@ impl BlockBehavior for Trapdoor {
         Self::toggle(world, position);
     }
 
-    fn neighbor_changed(&self, world: &mut TickWorld, position: IVec3, _neighbor: Block) {
+    fn neighbor_changed(&self, world: &mut TickWorld, position: IVec3, neighbor: Block) {
         let metadata = world.metadata(position);
         if !world.is_normal_cube(position + Self::support(metadata)) {
             world.set_block_notify(position, Block::Air);
             world.drop_block_as_item(position, Block::Trapdoor, metadata);
+        } else if behavior(neighbor).can_provide_power() {
+            // `BlockTrapDoor.onNeighborBlockChange`: open while powered.
+            let powered = world.block_indirectly_getting_powered(position);
+            if (metadata & OPEN != 0) != powered {
+                world.set_metadata_notify(position, metadata ^ OPEN);
+            }
         }
     }
 }

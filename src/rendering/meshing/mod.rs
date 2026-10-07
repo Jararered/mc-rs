@@ -30,7 +30,9 @@ use crate::world::lighting::Skylight;
 
 pub(crate) mod geometry;
 mod greedy;
+mod piston;
 mod quads;
+mod redstone;
 mod vertex;
 
 pub use self::quads::ATTRIBUTE_QUAD_CORNER;
@@ -443,9 +445,15 @@ impl BlockGeometry {
     }
 
     /// Build the same post for floor and wall attachments, then rotate its
-    /// vertices and normals together so the cap follows the shaft.
-    fn push_torch(&mut self, origin: [f32; 3], metadata: u8) {
-        let facing = Block::Torch.facing(metadata);
+    /// vertices and normals together so the cap follows the shaft. A redstone
+    /// torch shares the shape and swaps the tile.
+    fn push_torch(&mut self, origin: [f32; 3], block: Block, metadata: u8) {
+        let facing = Block::Torch.facing(metadata & 7);
+        let tile = match block {
+            Block::RedstoneTorch => (3, 6),
+            Block::UnlitRedstoneTorch => (3, 7),
+            _ => (0, 5),
+        };
         let unit_cube = BlockFaceGeometry::unit_cube();
         for (face_index, face) in FACES.iter().enumerate() {
             if face_index == FACE_BOTTOM {
@@ -461,27 +469,11 @@ impl BlockGeometry {
                     ],
                 )
             });
-            let texels = if face_index == FACE_TOP {
-                [
-                    AtlasTexel::new(0, 5, 7, 6),
-                    AtlasTexel::new(0, 5, 7, 8),
-                    AtlasTexel::new(0, 5, 9, 8),
-                    AtlasTexel::new(0, 5, 9, 6),
-                ]
-            } else {
-                // Only columns 7..8 and rows 6..15 contain the torch.
-                // Sampling the whole transparent tile shrinks the shaft to
-                // two pixels on a face that is already physically narrow.
-                face_texels(0, 5, face_index).map(|texel| {
-                    let [u, v] = texel.texel;
-                    AtlasTexel::new(0, 5, 7 + u / 16 * 2, 6 + v / 16 * 10)
-                })
-            };
             self.push_block_quad(
                 origin,
                 torch_normal(facing, face.normal),
                 corners,
-                texels,
+                torch_texels(tile, face_index),
                 [1.0; 3],
                 CornerShading::FULL_BRIGHT,
             );
@@ -835,8 +827,39 @@ impl<'a> Mesher<'a> {
                     }
                     let origin = [x as f32, (y - y_origin) as f32, z as f32];
                     let metadata = chunk.metadata(x, y, z);
-                    if block.is_torch() {
-                        meshes.grass_overlay.push_torch(origin, metadata);
+                    if block.is_torch()
+                        || matches!(block, Block::RedstoneTorch | Block::UnlitRedstoneTorch)
+                    {
+                        meshes.grass_overlay.push_torch(origin, block, metadata);
+                        continue;
+                    }
+                    if block == Block::RedstoneWire {
+                        self.push_redstone_wire(&mut meshes.masked, origin, x, y, z);
+                        continue;
+                    }
+                    if matches!(block, Block::Repeater | Block::PoweredRepeater) {
+                        self.push_repeater(&mut meshes.masked, origin, x, y, z, block);
+                        continue;
+                    }
+                    if matches!(
+                        block,
+                        Block::Rail | Block::PoweredRail | Block::DetectorRail
+                    ) {
+                        self.push_rail(&mut meshes.masked, origin, x, y, z, block);
+                        continue;
+                    }
+                    if block == Block::Lever {
+                        self.push_lever(&mut meshes.masked, origin, x, y, z);
+                        continue;
+                    }
+                    if matches!(
+                        block,
+                        Block::Piston | Block::StickyPiston | Block::PistonHead
+                    ) {
+                        self.push_piston(&mut meshes.opaque, origin, x, y, z, block);
+                        continue;
+                    }
+                    if block == Block::MovingPiston {
                         continue;
                     }
                     if block.is_ladder() {
@@ -970,7 +993,15 @@ impl<'a> Mesher<'a> {
                     if y as i32 + face.neighbor[1] < 0 {
                         continue;
                     }
-                    if neighbor_hides_face(block, neighbor_at(face.neighbor), self.fancy_graphics) {
+                    let [dx, dy, dz] = face.neighbor;
+                    if neighbor_hides_face_at(
+                        block,
+                        neighbors,
+                        chunk,
+                        (x as i32 + dx, y as i32 + dy, z as i32 + dz),
+                        face_index,
+                        self.fancy_graphics,
+                    ) {
                         continue;
                     }
                 }
@@ -1044,8 +1075,14 @@ impl<'a> Mesher<'a> {
             if ny < 0 {
                 continue;
             }
-            let neighbor = neighbors.get(chunk, nx, ny, nz);
-            if neighbor_hides_face(block, neighbor, fancy_graphics) {
+            if neighbor_hides_face_at(
+                block,
+                neighbors,
+                chunk,
+                (nx, ny, nz),
+                face_index,
+                fancy_graphics,
+            ) {
                 continue;
             }
             let grass_side =
@@ -1164,7 +1201,14 @@ impl<'a> Mesher<'a> {
                 && face_index != FACE_TOP
                 && face_index != FACE_BOTTOM
                 && neighbor == Some(Block::SnowLayer))
-                || neighbor_hides_face(block, neighbor, fancy_graphics)
+                || neighbor_hides_face_at(
+                    block,
+                    neighbors,
+                    chunk,
+                    (x as i32 + face.neighbor[0], ny, z as i32 + face.neighbor[2]),
+                    face_index,
+                    fancy_graphics,
+                )
             {
                 // Equal-height snow layers share a side, including across chunks.
                 continue;
@@ -1816,6 +1860,7 @@ fn neighbor_hides_face(block: Block, neighbor: Option<Block>, fancy_graphics: bo
         || neighbor.is_chest()
         || neighbor.is_ladder()
         || neighbor.is_torch()
+        || partial_redstone_block(neighbor)
         || neighbor.is_crossed_plant()
         || neighbor == Block::Cobweb
         || neighbor == Block::Fence
@@ -1839,6 +1884,67 @@ fn neighbor_hides_face(block: Block, neighbor: Option<Block>, fancy_graphics: bo
         return false;
     }
     true
+}
+
+/// Redstone parts that fill only part of their cell, so they never hide a
+/// neighbor's face. An extended piston base also leaves a strip along its
+/// sides, which [`neighbor_hides_face_at`] checks with metadata.
+fn partial_redstone_block(block: Block) -> bool {
+    matches!(
+        block,
+        Block::RedstoneWire
+            | Block::Repeater
+            | Block::PoweredRepeater
+            | Block::RedstoneTorch
+            | Block::UnlitRedstoneTorch
+            | Block::Lever
+            | Block::StoneButton
+            | Block::StonePressurePlate
+            | Block::WoodenPressurePlate
+            | Block::Rail
+            | Block::PoweredRail
+            | Block::DetectorRail
+            | Block::PistonHead
+            | Block::MovingPiston
+    )
+}
+
+/// [`neighbor_hides_face`] for the cell at `(x, y, z)` relative to `chunk`,
+/// seen through `face` of `block`. It also reads the neighbor's metadata:
+/// the recessed quarter of an extended piston base leaves a strip along every
+/// side, so only its back covers a whole neighboring face.
+fn neighbor_hides_face_at(
+    block: Block,
+    neighbors: &ChunkNeighbors<'_>,
+    chunk: &Chunk,
+    (x, y, z): (i32, i32, i32),
+    face: usize,
+    fancy_graphics: bool,
+) -> bool {
+    let neighbor = neighbors.get(chunk, x, y, z);
+    if matches!(neighbor, Some(Block::Piston | Block::StickyPiston)) {
+        let metadata = neighbors.cell(chunk, x, y, z).1;
+        if metadata & 8 != 0
+            && let Some((min, max)) =
+                crate::block::definition::redstone_bounds(neighbor.unwrap_or(Block::Air), metadata)
+        {
+            let covers_plane = match face {
+                FACE_TOP => min[1] == 0.0,
+                FACE_BOTTOM => max[1] == 1.0,
+                FACE_EAST => min[0] == 0.0,
+                FACE_WEST => max[0] == 1.0,
+                FACE_SOUTH => min[2] == 0.0,
+                _ => max[2] == 1.0,
+            };
+            let covers_face = (0..3)
+                .filter(|&axis| FACES[face].neighbor[axis] == 0)
+                .all(|axis| min[axis] == 0.0 && max[axis] == 1.0);
+            if !(covers_plane && covers_face) {
+                return false;
+            }
+        }
+    }
+    neighbor_hides_face(block, neighbor, fancy_graphics)
 }
 
 /// Tile corners in the winding each face's geometry uses.
@@ -1880,6 +1986,25 @@ fn box_texels(tile: (u8, u8), face: usize, corners: [[f32; 3]; 4], flip: bool) -
 /// Box shapes whose tiles have transparent texels.
 fn box_shape_masked(block: Block) -> bool {
     block == Block::Trapdoor || block.is_door()
+}
+
+/// Sample just the visible shaft and tip of a torch atlas tile.
+fn torch_texels(tile: (u8, u8), face_index: usize) -> [AtlasTexel; 4] {
+    if face_index == FACE_TOP {
+        return [
+            AtlasTexel::new(tile.0, tile.1, 7, 6),
+            AtlasTexel::new(tile.0, tile.1, 7, 8),
+            AtlasTexel::new(tile.0, tile.1, 9, 8),
+            AtlasTexel::new(tile.0, tile.1, 9, 6),
+        ];
+    }
+    // Only columns 7..8 and rows 6..15 contain the torch. Sampling the whole
+    // transparent tile shrinks the shaft to two pixels on a face that is
+    // already physically narrow.
+    face_texels(tile.0, tile.1, face_index).map(|texel| {
+        let [u, v] = texel.texel;
+        AtlasTexel::new(tile.0, tile.1, 7 + u / 16 * 2, 6 + v / 16 * 10)
+    })
 }
 
 fn tile_texels(tile_x: u8, tile_y: u8, corners: [[u8; 2]; 4]) -> [AtlasTexel; 4] {

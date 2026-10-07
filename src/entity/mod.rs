@@ -12,6 +12,7 @@ use crate::entity::explosion::PrimedTnt;
 use crate::entity::explosion::prime_tnt;
 use crate::entity::falling_block::FallingBlock;
 use crate::entity::falling_block::spawn_falling;
+use crate::entity::minecart::Minecart;
 use crate::entity::pathfinding::SearchStats;
 use crate::item::ItemStack;
 use crate::world::streaming::TimingStats;
@@ -21,6 +22,7 @@ pub mod creature;
 pub mod drops;
 pub mod explosion;
 pub mod falling_block;
+pub mod minecart;
 pub mod mobs;
 pub mod particles;
 pub mod pathfinding;
@@ -71,6 +73,8 @@ pub enum SavedBody {
         velocity: [f32; 3],
         fuse: u16,
     },
+    /// A minecart on or off its rail, with its speed in blocks per tick.
+    Minecart { center: [f32; 3], motion: [f32; 3] },
 }
 
 /// The components [`SavedBody::capture`] reads, for a query filtered by
@@ -81,8 +85,9 @@ pub type SavedBodyData = (
     Option<&'static FallingBlock>,
     Option<&'static PrimedTnt>,
     Option<&'static Velocity>,
+    Option<&'static Minecart>,
 );
-pub type SavedBodyFilter = Or<(With<FallingBlock>, With<PrimedTnt>)>;
+pub type SavedBodyFilter = Or<(With<FallingBlock>, With<PrimedTnt>, With<Minecart>)>;
 
 impl SavedBody {
     pub fn capture(
@@ -90,8 +95,15 @@ impl SavedBody {
         falling: Option<&FallingBlock>,
         tnt: Option<&PrimedTnt>,
         velocity: Option<&Velocity>,
+        minecart: Option<&Minecart>,
     ) -> Option<Self> {
         let position = transform.translation.to_array();
+        if let Some(cart) = minecart {
+            return Some(Self::Minecart {
+                center: position,
+                motion: cart.motion.to_array(),
+            });
+        }
         if let Some(falling) = falling {
             return Some(Self::FallingBlock {
                 block: falling.block.as_u8(),
@@ -137,6 +149,12 @@ impl SavedBody {
                 commands
                     .entity(entity)
                     .insert(Velocity(Vec3::from_array(velocity)));
+            }
+            Self::Minecart { center, motion } => {
+                let entity = minecart::spawn_minecart_at(commands, Vec3::from_array(center));
+                commands.entity(entity).insert(Minecart {
+                    motion: Vec3::from_array(motion),
+                });
             }
         }
     }

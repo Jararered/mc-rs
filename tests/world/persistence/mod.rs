@@ -1325,3 +1325,44 @@ fn a_chunk_changed_after_its_snapshot_still_counts_as_unsaved() {
         "a drain writes each chunk once, so the later change is still owed"
     );
 }
+
+#[test]
+fn dispenser_inventory_and_note_state_round_trip_with_their_blocks() {
+    let saves = temp_saves("redstone-tiles");
+    let storage = WorldStorage::create(&saves, 0, "Redstone").unwrap();
+    let position = ChunkPosition::ZERO;
+    let mut generated = OverworldGenerator::new(0).generate(position);
+    generated
+        .chunk
+        .set_with_metadata(4, 90, 5, Block::Dispenser, 2);
+    let dispenser = Chunk::index(4, 90, 5);
+    generated.chunk.dispenser_mut(dispenser).unwrap().slots[8] =
+        Some(ItemStack::new(game::item::Item::Arrow, 13).unwrap());
+    generated.chunk.set(6, 90, 5, Block::NoteBlock);
+    let note_index = Chunk::index(6, 90, 5);
+    let note = generated.chunk.note_mut(note_index).unwrap();
+    note.pitch = 17;
+    note.previous_powered = true;
+    storage.save_chunk(position, &generated).unwrap();
+
+    let loaded = storage.load_chunk(position).unwrap();
+    assert_eq!(loaded.chunk.metadata(4, 90, 5), 2);
+    assert_eq!(
+        loaded.chunk.dispenser(dispenser).unwrap().slots[8],
+        Some(ItemStack::new(game::item::Item::Arrow, 13).unwrap())
+    );
+    let note = loaded.chunk.notes().find(|(index, _)| *index == note_index);
+    let (_, note) = note.unwrap();
+    assert_eq!((note.pitch, note.previous_powered), (17, true));
+    fs::remove_dir_all(saves).unwrap();
+}
+
+#[test]
+fn a_saved_minecart_returns_with_its_speed() {
+    let body = SavedBody::Minecart {
+        center: [8.5, 64.35, 8.5],
+        motion: [0.2, 0.0, 0.0],
+    };
+    let json = serde_json::to_string(&body).unwrap();
+    assert_eq!(serde_json::from_str::<SavedBody>(&json).unwrap(), body);
+}

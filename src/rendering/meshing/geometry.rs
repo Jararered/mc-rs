@@ -165,8 +165,15 @@ fn flat((min, max): ([f32; 3], [f32; 3])) -> Bounds {
 
 /// Whether [`block_boxes`] draws `block`.
 pub(crate) fn is_box_shape(block: Block) -> bool {
-    matches!(block, Block::StoneSlab | Block::Fence | Block::Trapdoor)
-        || block.is_stairs()
+    matches!(
+        block,
+        Block::StoneSlab
+            | Block::Fence
+            | Block::Trapdoor
+            | Block::StoneButton
+            | Block::StonePressurePlate
+            | Block::WoodenPressurePlate
+    ) || block.is_stairs()
         || block.is_door()
 }
 
@@ -182,7 +189,12 @@ pub(crate) fn block_boxes(block: Block, metadata: u8, fence_links: [bool; 4]) ->
                 boxes.push(flat(bounds));
             }
         }
-        Block::WoodenDoor | Block::IronDoor | Block::Trapdoor => {
+        Block::WoodenDoor
+        | Block::IronDoor
+        | Block::Trapdoor
+        | Block::StoneButton
+        | Block::StonePressurePlate
+        | Block::WoodenPressurePlate => {
             boxes.push(flat(block.selection_bounds_for(metadata)));
         }
         Block::Fence => {

@@ -313,7 +313,11 @@ fn only_drawable_blocks_are_placeable_and_none_of_them_looks_like_stone() {
         let Some((placed, metadata)) = block.placed(0) else {
             continue;
         };
-        if matches!(placed, Block::Stone | Block::Piston) {
+        // Pistons draw their own tiles; stone buttons and plates are stone.
+        if matches!(
+            placed,
+            Block::Stone | Block::Piston | Block::StoneButton | Block::StonePressurePlate
+        ) {
             continue;
         }
         for face in 0..6 {

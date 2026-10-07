@@ -372,6 +372,74 @@ pub(crate) fn trapdoor_bounds(metadata: u8) -> BlockBounds {
     }
 }
 
+/// A slab of `thickness` against the low or high end of `axis`.
+fn slab(axis: usize, high: bool, thickness: f32) -> BlockBounds {
+    let mut min = [0.0; 3];
+    let mut max = [1.0; 3];
+    if high {
+        min[axis] = 1.0 - thickness;
+    } else {
+        max[axis] = thickness;
+    }
+    (min, max)
+}
+
+/// Beta's metadata-dependent boxes for the redstone family, shared by
+/// picking, the outline, and collision where the block collides.
+pub(crate) fn redstone_bounds(block: Block, metadata: u8) -> Option<BlockBounds> {
+    Some(match block {
+        // `BlockPistonBase`: extended, the base is three quarters thick on the
+        // side away from its head.
+        Block::Piston | Block::StickyPiston if metadata & 8 != 0 => match metadata & 7 {
+            0 => slab(1, true, 0.75),
+            1 => slab(1, false, 0.75),
+            2 => slab(2, true, 0.75),
+            3 => slab(2, false, 0.75),
+            4 => slab(0, true, 0.75),
+            _ => slab(0, false, 0.75),
+        },
+        // `BlockPistonExtension`: the head is a quarter-thick plate.
+        Block::PistonHead => match metadata & 7 {
+            0 => slab(1, false, 0.25),
+            1 => slab(1, true, 0.25),
+            2 => slab(2, false, 0.25),
+            3 => slab(2, true, 0.25),
+            4 => slab(0, false, 0.25),
+            _ => slab(0, true, 0.25),
+        },
+        Block::StoneButton => match metadata & 7 {
+            1 => slab(0, false, 0.125),
+            2 => slab(0, true, 0.125),
+            3 => slab(2, false, 0.125),
+            _ => slab(2, true, 0.125),
+        },
+        Block::Lever => match metadata & 7 {
+            1 => ([0.0, 0.2, 0.25], [0.5, 0.8, 0.75]),
+            2 => ([0.5, 0.2, 0.25], [1.0, 0.8, 0.75]),
+            3 => ([0.25, 0.2, 0.0], [0.75, 0.8, 0.5]),
+            4 => ([0.25, 0.2, 0.5], [0.75, 0.8, 1.0]),
+            _ => ([0.25, 0.0, 0.25], [0.75, 0.6, 0.75]),
+        },
+        Block::RedstoneWire => slab(1, false, 1.0 / 16.0),
+        Block::RedstoneTorch | Block::UnlitRedstoneTorch => {
+            torch_selection_bounds(Block::Torch.facing(metadata & 7))
+        }
+        Block::StonePressurePlate | Block::WoodenPressurePlate => (
+            [1.0 / 16.0, 0.0, 1.0 / 16.0],
+            [
+                15.0 / 16.0,
+                if metadata == 0 {
+                    1.0 / 16.0
+                } else {
+                    0.5 / 16.0
+                },
+                15.0 / 16.0,
+            ],
+        ),
+        _ => return None,
+    })
+}
+
 /// `BlockStairs.getCollidingBoundingBoxes`: a half-height step and a
 /// full-height riser, turned by `metadata`.
 pub(crate) fn stairs_boxes(metadata: u8) -> [BlockBounds; 2] {

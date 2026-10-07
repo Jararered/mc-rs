@@ -10,6 +10,7 @@ mod leaves;
 mod misc;
 mod plants;
 mod portal;
+mod redstone;
 mod soil;
 mod systems;
 
@@ -179,8 +180,12 @@ impl TestWorld {
                     block,
                     metadata,
                 } => Some((position, block, metadata)),
-                TickEffect::FallingBlock { .. } => None,
-                TickEffect::PrimedTnt { .. } => None,
+                TickEffect::FallingBlock { .. }
+                | TickEffect::PrimedTnt { .. }
+                | TickEffect::Note { .. }
+                | TickEffect::Dispense { .. }
+                | TickEffect::DropStack { .. }
+                | TickEffect::PistonPush { .. } => None,
             })
             .collect()
     }

@@ -34,8 +34,8 @@ pub fn player_break_drops_with_metadata(
 ) -> Vec<ItemStack> {
     let mut drops = Vec::new();
     // `BlockTNT.onBlockDestroyedByPlayer` runs even when the harvest drop is empty.
-    // There is no primed metadata, so a player break always returns the block.
-    if block == Block::Tnt {
+    // Flint and steel marks the block primed, which lights it instead.
+    if block == Block::Tnt && metadata & 1 == 0 {
         push_block(&mut drops, Block::Tnt, 1);
     }
     if can_harvest(tool, block) {

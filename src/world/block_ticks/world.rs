@@ -37,6 +37,15 @@ pub const NEIGHBORS: [IVec3; 6] = [
 /// Beta's checked radius around a scheduled tick (`TickUpdates`' `byte0`).
 pub const SCHEDULED_TICK_REACH: i32 = 8;
 
+const POWER_SIDES: [IVec3; 6] = [
+    IVec3::NEG_Y,
+    IVec3::Y,
+    IVec3::NEG_Z,
+    IVec3::Z,
+    IVec3::NEG_X,
+    IVec3::X,
+];
+
 /// Neighbor notifications nest through behaviors, as in Beta. Past this
 /// depth they are queued and delivered once the current update unwinds.
 const MAX_NOTIFY_DEPTH: u32 = 64;
@@ -56,6 +65,8 @@ pub struct TickWorld<'a> {
     skylight_subtracted: u8,
     /// Beta `World.editingBlocks`: suppresses neighbor notifications.
     editing: bool,
+    wire_power_enabled: bool,
+    wire_update_active: bool,
     /// Beta `World.scheduledUpdatesAreImmediate`.
     immediate: bool,
     depth: u32,
@@ -78,6 +89,8 @@ impl<'a> TickWorld<'a> {
             raining,
             skylight_subtracted,
             editing: false,
+            wire_power_enabled: true,
+            wire_update_active: false,
             immediate: false,
             depth: 0,
         }
@@ -100,6 +113,46 @@ impl<'a> TickWorld<'a> {
 
     pub fn chunks(&self) -> &WorldChunks {
         self.chunks
+    }
+
+    pub fn note_mut(&mut self, position: IVec3) -> Option<&mut crate::world::chunk::NoteState> {
+        self.chunks.note_at_mut(position.x, position.y, position.z)
+    }
+    pub fn dispenser(&self, position: IVec3) -> Option<&crate::world::dispenser::Dispenser> {
+        self.chunks.dispenser_at(position.x, position.y, position.z)
+    }
+    pub fn dispense(&mut self, position: IVec3, facing: u8, slot: usize) {
+        let Some(dispenser) = self
+            .chunks
+            .dispenser_at_mut(position.x, position.y, position.z)
+        else {
+            return;
+        };
+        let Some(stack) = dispenser.slots[slot] else {
+            return;
+        };
+        dispenser.slots[slot] =
+            crate::item::ItemStack::with_data(stack.item(), stack.count() - 1, stack.data()).ok();
+        let single = crate::item::ItemStack::with_data(stack.item(), 1, stack.data())
+            .expect("valid dispenser item");
+        self.mark_state_dirty(position);
+        self.ticks.effects.push(TickEffect::Dispense {
+            position,
+            facing,
+            stack: single,
+        });
+    }
+    /// A tile entity changed without replacing its block or metadata.
+    pub fn mark_state_dirty(&mut self, position: IVec3) {
+        let block = self.block(position);
+        let metadata = self.metadata(position);
+        self.ticks.changes.push(BlockChange {
+            position,
+            previous: block,
+            previous_metadata: metadata,
+            block,
+            metadata,
+        });
     }
 
     // --- Reading blocks -------------------------------------------------
@@ -153,6 +206,126 @@ impl<'a> TickWorld<'a> {
     /// `World.getBlockMaterial(...).isSolid()`.
     pub fn is_solid(&self, position: IVec3) -> bool {
         (self.block(position)).is_solid_material()
+    }
+
+    /// World.isBlockProvidingPowerTo: strong output from the queried block.
+    pub fn block_providing_power_to(&mut self, position: IVec3, side: u8) -> bool {
+        let block = self.block(position);
+        (block != Block::RedstoneWire || self.wire_power_enabled)
+            && behavior(block).strong_power(self, position, side)
+    }
+
+    /// World.isBlockGettingPowered: strong power from any adjacent face.
+    pub fn block_getting_powered(&mut self, position: IVec3) -> bool {
+        POWER_SIDES
+            .iter()
+            .enumerate()
+            .any(|(side, offset)| self.block_providing_power_to(position + *offset, side as u8))
+    }
+
+    /// World.isBlockIndirectlyProvidingPowerTo: normal blocks relay strong
+    /// power; other blocks provide their own weak power on this face.
+    pub fn block_indirectly_providing_power_to(&mut self, position: IVec3, side: u8) -> bool {
+        if self.is_normal_cube(position) {
+            self.block_getting_powered(position)
+        } else {
+            let block = self.block(position);
+            (block != Block::RedstoneWire || self.wire_power_enabled)
+                && behavior(block).weak_power(self, position, side)
+        }
+    }
+
+    /// World.isBlockIndirectlyGettingPowered.
+    pub fn block_indirectly_getting_powered(&mut self, position: IVec3) -> bool {
+        POWER_SIDES.iter().enumerate().any(|(side, offset)| {
+            self.block_indirectly_providing_power_to(position + *offset, side as u8)
+        })
+    }
+
+    /// Suppress wire output while calculating its strength, not all sources.
+    pub fn without_wire_power(&mut self, f: impl FnOnce(&mut Self) -> bool) -> bool {
+        let was_enabled = self.wire_power_enabled;
+        self.wire_power_enabled = false;
+        let result = f(self);
+        self.wire_power_enabled = was_enabled;
+        result
+    }
+
+    /// Record a torch switching off; eight toggles in 100 ticks burn out.
+    pub fn torch_burned_out(&mut self, position: IVec3, record: bool) -> bool {
+        while self
+            .ticks
+            .torch_updates
+            .front()
+            .is_some_and(|(_, at)| self.time.saturating_sub(*at) > 100)
+        {
+            self.ticks.torch_updates.pop_front();
+        }
+        if record {
+            self.ticks.torch_updates.push_back((position, self.time));
+        }
+        self.ticks
+            .torch_updates
+            .iter()
+            .filter(|(cell, _)| *cell == position)
+            .count()
+            >= 8
+    }
+
+    /// Prevent nested neighbor notifications from recursively propagating dust.
+    pub fn begin_wire_update(&mut self) -> bool {
+        if self.wire_update_active {
+            false
+        } else {
+            self.wire_update_active = true;
+            true
+        }
+    }
+    pub fn end_wire_update(&mut self) {
+        self.wire_update_active = false;
+    }
+
+    /// Beta's inset plate/detector bounding box against current entities.
+    pub fn occupant_on(&self, position: IVec3, block: Block) -> bool {
+        let inset = 0.125;
+        self.ticks.occupants.iter().any(|body| {
+            let eligible = match block {
+                Block::StonePressurePlate => body.living,
+                Block::DetectorRail => body.minecart,
+                _ => true,
+            };
+            eligible
+                && body.max[0] > position.x as f32 + inset
+                && body.min[0] < position.x as f32 + 1.0 - inset
+                && body.max[1] > position.y as f32
+                && body.min[1] < position.y as f32 + 0.25
+                && body.max[2] > position.z as f32 + inset
+                && body.min[2] < position.z as f32 + 1.0 - inset
+        })
+    }
+
+    /// A contact is checked every tick, independently of footstep distance.
+    pub fn tick_entity_contacts(&mut self) {
+        let cells: Vec<_> = self
+            .ticks
+            .occupants
+            .iter()
+            .flat_map(|body| {
+                let y = body.min[1].floor() as i32;
+                let x = ((body.min[0] + body.max[0]) * 0.5).floor() as i32;
+                let z = ((body.min[2] + body.max[2]) * 0.5).floor() as i32;
+                [IVec3::new(x, y, z), IVec3::new(x, y - 1, z)]
+            })
+            .collect();
+        for position in cells {
+            let block = self.block(position);
+            if matches!(
+                block,
+                Block::StonePressurePlate | Block::WoodenPressurePlate | Block::DetectorRail
+            ) {
+                behavior(block).entity_collided(self, position);
+            }
+        }
     }
 
     // --- Light and sky --------------------------------------------------
@@ -611,6 +784,20 @@ impl<'a> TickWorld<'a> {
         self.ticks
             .effects
             .push(TickEffect::FallingBlock { position, block });
+    }
+
+    /// Beta `BlockTNT.onBlockDestroyedByPlayer`: the block becomes a primed entity.
+    pub fn prime_tnt(&mut self, position: IVec3, fuse: u16) {
+        self.ticks
+            .effects
+            .push(TickEffect::PrimedTnt { position, fuse });
+    }
+
+    pub fn piston_push(&mut self, position: IVec3, direction: IVec3) {
+        self.ticks.effects.push(TickEffect::PistonPush {
+            position,
+            direction,
+        });
     }
 
     /// Queue an ECS effect after the block tick pass.

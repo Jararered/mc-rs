@@ -5,12 +5,25 @@ use bevy::prelude::*;
 
 use crate::app::settings::GameSettings;
 use crate::app::state::AppScreen;
+use crate::entity::DroppedItem;
+use crate::entity::EntitySize;
+use crate::entity::creature::Living;
 use crate::entity::drops::blocks::natural_drops_with_metadata;
+use crate::entity::drops::items::dispenser_direction;
 use crate::entity::drops::items::spawn_block_drop;
+use crate::entity::drops::items::spawn_chest_drops;
+use crate::entity::drops::items::spawn_dispensed_item;
+use crate::entity::explosion::PrimedTnt;
 use crate::entity::falling_block;
+use crate::entity::minecart;
+use crate::entity::minecart::Minecart;
+use crate::entity::projectiles::spawn_arrow;
+use crate::item::Item;
+use crate::physics::Aabb;
 use crate::physics::PhysicsSet;
 use crate::player::Player;
 use crate::random::ItemRng;
+use crate::random::JavaRandom;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
 use crate::world::lighting::LightCache;
@@ -21,6 +34,7 @@ use crate::world::tick::WorldTick;
 
 use super::BlockTicks;
 use super::RANDOM_TICK_RADIUS;
+use super::RedstoneOccupant;
 use super::TickEffect;
 
 /// Block updates run after player input and physics have written this
@@ -39,9 +53,11 @@ impl Plugin for BlockTicksPlugin {
             .add_systems(
                 Update,
                 (
+                    minecart::tick_minecarts,
                     run_block_ticks,
                     falling_block::tick_falling_blocks,
                     apply_tick_effects,
+                    minecart::sync_minecart_rendering,
                 )
                     .chain()
                     .in_set(BlockTickSet)
@@ -86,7 +102,11 @@ pub(super) fn run_block_ticks(
     mut streaming: Option<ResMut<WorldStreaming>>,
     mut persistence: Option<ResMut<WorldPersistence>>,
     settings: Option<Res<GameSettings>>,
-    player: Query<&Transform, With<Player>>,
+    player: Query<(&Transform, &EntitySize), With<Player>>,
+    dropped: Query<(&Transform, &EntitySize), With<DroppedItem>>,
+    creatures: Query<(&Transform, &EntitySize), With<Living>>,
+    primed: Query<(&Transform, &EntitySize), With<PrimedTnt>>,
+    carts: Query<(&Transform, &EntitySize), With<Minecart>>,
 ) {
     let count = tick.ticks_this_frame();
     ticks.set_dimension(environment.dimension());
@@ -94,12 +114,31 @@ pub(super) fn run_block_ticks(
     let (rain, thunder) = environment.weather_strength();
     ticks.set_weather_strength(rain, thunder);
     let now = tick.world_time();
+    let occupant = |transform: &Transform, size: &EntitySize, living| {
+        let box_ = size.aabb(transform.translation);
+        RedstoneOccupant {
+            min: box_.min.to_array(),
+            max: box_.max.to_array(),
+            living,
+            minecart: false,
+        }
+    };
+    let mut occupants: Vec<_> = player.iter().map(|(t, s)| occupant(t, s, true)).collect();
+    occupants.extend(dropped.iter().map(|(t, s)| occupant(t, s, false)));
+    occupants.extend(creatures.iter().map(|(t, s)| occupant(t, s, true)));
+    occupants.extend(primed.iter().map(|(t, s)| occupant(t, s, false)));
+    occupants.extend(carts.iter().map(|(t, s)| {
+        let mut body = occupant(t, s, false);
+        body.minecart = true;
+        body
+    }));
+    ticks.set_occupants(occupants);
     ticks.process_events(&mut chunks, &mut light, now);
 
     if count > 0 {
         let random_chunks = player.single().map_or_else(
             |_| Vec::new(),
-            |player| {
+            |(player, _)| {
                 let radius = settings.as_ref().map_or(RANDOM_TICK_RADIUS, |settings| {
                     settings.render_distance.min(RANDOM_TICK_RADIUS)
                 });
@@ -149,6 +188,7 @@ fn apply_tick_effects(
     mut commands: Commands,
     mut ticks: ResMut<BlockTicks>,
     mut rng: Local<ItemRng>,
+    mut bodies: Query<(&mut Transform, &EntitySize)>,
 ) {
     for effect in ticks.take_effects() {
         match effect {
@@ -171,6 +211,59 @@ fn apply_tick_effects(
                     fuse,
                 );
             }
+            TickEffect::Dispense {
+                position,
+                facing,
+                stack,
+            } => {
+                if stack.item() == Item::Arrow {
+                    // `BlockDispenser.dispenseItem`: heading (dx, 0.1, dz) at
+                    // 1.1 blocks per tick with a spread of 6.
+                    let direction = dispenser_direction(facing);
+                    spawn_arrow(
+                        &mut commands,
+                        position.as_vec3() + Vec3::new(0.5, 0.5, 0.5) + direction * 0.6,
+                        Vec3::new(direction.x, 0.1, direction.z),
+                        1.1,
+                        6.0,
+                        None,
+                        &mut JavaRandom::new(rng.next_u64()),
+                    );
+                } else {
+                    spawn_dispensed_item(&mut commands, &mut rng, position, facing, stack);
+                }
+            }
+            TickEffect::DropStack { position, stack } => {
+                spawn_chest_drops(&mut commands, &mut rng, position, [stack]);
+            }
+            TickEffect::PistonPush {
+                position,
+                direction,
+            } => {
+                let block = Aabb::from_block(position.x, position.y, position.z);
+                for (mut transform, size) in &mut bodies {
+                    let bounds = size.aabb(transform.translation);
+                    if !bounds.intersects(block) {
+                        continue;
+                    }
+                    let distance = if direction.x > 0 {
+                        block.max.x - bounds.min.x
+                    } else if direction.x < 0 {
+                        bounds.max.x - block.min.x
+                    } else if direction.y > 0 {
+                        block.max.y - bounds.min.y
+                    } else if direction.y < 0 {
+                        bounds.max.y - block.min.y
+                    } else if direction.z > 0 {
+                        block.max.z - bounds.min.z
+                    } else {
+                        bounds.max.z - block.min.z
+                    };
+                    transform.translation += direction.as_vec3() * (distance + 0.001);
+                }
+            }
+            // Note blocks have no sound to play until audio is implemented.
+            TickEffect::Note { .. } => {}
         }
     }
 }

@@ -119,10 +119,42 @@ fn native_save_values_and_supported_states_round_trip() {
             }
         }
     }
-    // Shapes the mesher cannot draw yet are not placeable.
-    for id in [Block::Cake, Block::Bed, Block::Rail, Block::WoodenDoor] {
+    // Shapes the mesher cannot draw, and parts placed by another block or
+    // item, are not placeable directly.
+    for id in [
+        Block::Cake,
+        Block::Bed,
+        Block::WoodenDoor,
+        Block::PistonHead,
+        Block::MovingPiston,
+        Block::PoweredRepeater,
+        Block::UnlitRedstoneTorch,
+    ] {
         assert_eq!(id.placed(0), None);
     }
+    // Redstone parts the mesher draws place as themselves.
+    for id in [
+        Block::Rail,
+        Block::PoweredRail,
+        Block::DetectorRail,
+        Block::Lever,
+        Block::StoneButton,
+        Block::RedstoneTorch,
+        Block::Piston,
+        Block::StickyPiston,
+        Block::RedstoneWire,
+        Block::Repeater,
+    ] {
+        assert_eq!(id.placed(0), Some((id, 0)));
+    }
+    assert_eq!(
+        ItemStack::new(Item::Redstone, 1).unwrap().runtime_block(),
+        Some((Block::RedstoneWire, 0))
+    );
+    assert_eq!(
+        ItemStack::new(Item::Repeater, 1).unwrap().runtime_block(),
+        Some((Block::Repeater, 0))
+    );
     for id in [Block::Fence, Block::Trapdoor, Block::Glass] {
         assert_eq!(
             ItemStack::new(Item::from_block(id).unwrap(), 1)

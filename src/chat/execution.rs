@@ -278,6 +278,14 @@ impl CommandContext<'_, '_> {
                         .map(|chest| chest.slots.into_iter().flatten().collect())
                         .unwrap_or_default()
                 };
+                let dispenser_drops = if block == crate::block::blocks::Block::Dispenser {
+                    Vec::new()
+                } else {
+                    chunks
+                        .dispenser_at(position.x, position.y, position.z)
+                        .map(|dispenser| dispenser.slots.into_iter().flatten().collect())
+                        .unwrap_or_default()
+                };
                 let change = match set_loaded_block(chunks, position, block) {
                     Ok(change) => change,
                     Err(error) => {
@@ -290,6 +298,7 @@ impl CommandContext<'_, '_> {
                         spawn_block_drop(commands, rng, position, stack);
                     }
                     spawn_chest_drops(commands, rng, position, chest_drops);
+                    spawn_chest_drops(commands, rng, position, dispenser_drops);
                     if let Some(ticks) = ticks.as_deref_mut() {
                         ticks.block_changed(position, previous, metadata);
                     }

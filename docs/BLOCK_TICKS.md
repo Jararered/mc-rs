@@ -123,6 +123,12 @@ convert facings, and `blocks::species` names the species values.
 | Crops | Growth stage 0–7 |
 | Farmland | Moisture 0–7 (wet texture when > 0) |
 | Cactus, sugar cane | Growth counter 0–15 |
+| Redstone wire | Power level 0–15 |
+| Levers, buttons | Support side in bits 0–2, powered bit 8 |
+| Repeaters | Facing in bits 0–1; delay in bits 2–3 |
+| Doors, trapdoors | Facing, open bit 4, upper-half bit 8 (doors) |
+| Pistons | Facing 0–5 and extended bit 8 |
+| Rails | Track shape 0–9; powered and detector rails keep the power bit 8 |
 | Leaves | Bits 0-1 species (oak, spruce, birch); bit 8 (`CHECK_DECAY`): look for a log on the next random tick |
 | Wood, planks | Bits 0-1 species |
 | Tall grass | 2 is the fern |
@@ -251,6 +257,21 @@ instead of Java's runtime-seeded `World.rand`.
 - **Weather.** Nothing is rained on, so farmland only hydrates from water
   and snow never accumulates. Put rain in `TickWorld::rained_on` and the
   snowfall half of `freeze_column`.
-- **Saplings** (not in the world) and **redstone** blocks.
+- **Redstone details.** Dust, torches (with Beta's burnout), repeaters,
+  levers, buttons, pressure plates, doors, trapdoors, pistons, rails, note
+  blocks, TNT, and dispensers have update behaviors
+  (`behaviors/{redstone,controls,piston,rail,note,tnt,dispenser,fixtures}.rs`).
+  Power is queried through `BlockBehavior::{can_provide_power, weak_power,
+  strong_power}` and the `TickWorld::block_*_powered` helpers, which mirror
+  `World.isBlockIndirectlyGettingPowered` and friends. Pistons move blocks
+  immediately and push bodies out of the new head with
+  `TickEffect::PistonPush`, rather than animating `TileEntityPiston`.
+  Dispensers persist nine slots and fire arrows (as `entity::projectiles`
+  arrows) or eject items; eggs and snowballs are ejected as items. Note
+  blocks keep their pitch but make no sound until audio is implemented.
+  Plates and detector rails read a per-tick snapshot of nearby bodies
+  (`BlockTicks::set_occupants`); arrows do not trigger wooden plates yet.
+  Minecarts (`entity::minecart`) follow rails and are saved with their chunk;
+  chest and furnace carts do not exist.
 - Presentation-only hooks: `randomDisplayTick`, redstone ore sparkles, lava
   fizz and smoke, and fluid sounds.

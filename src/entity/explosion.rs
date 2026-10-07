@@ -338,6 +338,10 @@ pub(crate) fn apply_explosions(
                 let stacks: Vec<_> = chest.slots.into_iter().flatten().collect();
                 spawn_chest_drops(&mut commands, &mut loot, cell, stacks);
             }
+            if let Some(dispenser) = chunks.dispenser_at(cell.x, cell.y, cell.z) {
+                let stacks: Vec<_> = dispenser.slots.into_iter().flatten().collect();
+                spawn_chest_drops(&mut commands, &mut loot, cell, stacks);
+            }
             for stack in natural_drops_with_metadata(block, metadata, &mut *loot) {
                 if rng.0.next_float() <= 0.3 {
                     spawn_block_drop(&mut commands, &mut loot, cell, stack);

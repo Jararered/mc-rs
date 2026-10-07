@@ -62,7 +62,7 @@ impl Plugin for MenuPlugin {
 
 #[derive(Resource)]
 pub(super) struct MenuTextures {
-    background: Handle<Image>,
+    pub(super) background: Handle<Image>,
     pub(super) buttons: Handle<Image>,
     logo: Handle<Image>,
     pub(super) font: Handle<Font>,

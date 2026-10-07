@@ -19,6 +19,7 @@ use crate::player::portal::PortalTravel;
 use crate::player::portal::overlay_alpha;
 use crate::rendering::textures::PortalTexture;
 use crate::ui::icons::overlay::UiFont;
+use crate::ui::screens::menu::MenuTextures;
 use crate::world::dimension::Dimension;
 use crate::world::tick::WorldTick;
 
@@ -51,7 +52,12 @@ struct TravelNotice;
 #[derive(Component)]
 struct TravelNoticeText;
 
-fn spawn(mut commands: Commands, mut images: ResMut<Assets<Image>>, font: Res<UiFont>) {
+fn spawn(
+    mut commands: Commands,
+    mut images: ResMut<Assets<Image>>,
+    font: Res<UiFont>,
+    menu: Res<MenuTextures>,
+) {
     let frames = PortalTexture::new();
     let image = images.add(Image::new(
         Extent3d {
@@ -86,7 +92,16 @@ fn spawn(mut commands: Commands, mut images: ResMut<Assets<Image>>, font: Res<Ui
             Pickable::IGNORE,
             GlobalZIndex(10),
             Visibility::Hidden,
-            BackgroundColor(Color::srgb(0.11, 0.08, 0.06)),
+            // The standard menu dirt (`drawBackground`), tiled and dimmed as
+            // the other screens draw it.
+            ImageNode::new(menu.background.clone())
+                .with_color(Color::srgb(0.45, 0.45, 0.45))
+                .with_mode(NodeImageMode::Tiled {
+                    tile_x: true,
+                    tile_y: true,
+                    stretch_value: 3.0,
+                }),
+            BackgroundColor(Color::srgb(0.18, 0.15, 0.13)),
             Node {
                 position_type: PositionType::Absolute,
                 width: percent(100),

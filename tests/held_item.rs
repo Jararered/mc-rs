@@ -481,3 +481,64 @@ fn disabling_bobbing_removes_walk_pose_but_keeps_interpolation_and_equip() {
     assert_eq!(visual(&mut app, "Held stack").0, Visibility::Visible);
     assert_eq!(visual(&mut app, "Right arm").0, Visibility::Hidden);
 }
+
+#[test]
+fn icon_atlas_is_rebuilt_at_the_gui_scale() {
+    use game::rendering::icons::BlockIcons;
+
+    let mut app = app();
+    let source = Image::new_fill(
+        bevy::render::render_resource::Extent3d {
+            width: 256,
+            height: 256,
+            depth_or_array_layers: 1,
+        },
+        bevy::render::render_resource::TextureDimension::D2,
+        &[255, 255, 255, 255],
+        bevy::render::render_resource::TextureFormat::Rgba8UnormSrgb,
+        bevy::asset::RenderAssetUsages::default(),
+    );
+    for path in ["terrain.png", "gui/items.png"] {
+        let handle = app
+            .world()
+            .resource::<AssetServer>()
+            .get_handle::<Image>(path)
+            .unwrap();
+        app.world_mut()
+            .resource_mut::<Assets<Image>>()
+            .insert(handle.id(), source.clone())
+            .unwrap();
+    }
+    let stone = ItemStack::from_block(game::block::blocks::Block::Stone, 1).unwrap();
+    let mut uv = None;
+    // Each GUI pixel of the 16×16 icon is `scale` screen pixels, so the block's
+    // slanted edges are drawn at the resolution they are shown at.
+    for scale in [2.0_f32, 4.0, 1.0, 3.0] {
+        app.world_mut().resource_mut::<GameSettings>().gui_scale = scale;
+        app.update();
+        let icons = app.world().resource::<BlockIcons>();
+        assert!(icons.ready());
+        assert_eq!(icons.icon_size(), 16 * scale as u32);
+        assert_eq!(
+            icons.rect_for_stack(stone).unwrap().size(),
+            Vec2::splat(16.0 * scale)
+        );
+        // World sprites keep their normalized cell.
+        let next = icons.uv_for_stack(stone);
+        assert_eq!(*uv.get_or_insert(next), next);
+        let image = app
+            .world()
+            .resource::<Assets<Image>>()
+            .get(&icons.image)
+            .unwrap();
+        assert_eq!(image.texture_descriptor.size.width, 16 * 16 * scale as u32);
+        // The top face's center is opaque at every size.
+        let (x, y) = (8 * scale as u32, 4 * scale as u32);
+        let rect = icons.rect_for_stack(stone).unwrap();
+        let at = (((rect.min.y as u32 + y) * image.texture_descriptor.size.width
+            + rect.min.x as u32
+            + x)
+            * 4) as usize;
+        assert_eq!(image.data.as_ref().unwrap()[at + 3], 255);
+    }
+}

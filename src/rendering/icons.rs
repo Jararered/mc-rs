@@ -1,6 +1,12 @@
-//! Beta inventory sprites. The two original atlases are sampled once after
+//! Beta inventory sprites. The two original atlases are sampled after
 //! loading, producing a compact icon atlas for all registered item identities
 //! and their visual subtypes. No reference texture is written to disk.
+//!
+//! Beta draws a block item as a small 3D model at screen resolution, so its
+//! edges and texels stay sharp at every GUI scale. The software rasterizer
+//! here gets the same result by drawing each icon at exactly the size the GUI
+//! shows it, `16 * GameSettings::gui_scale` pixels, and rebuilding the atlas
+//! when that scale changes.
 use std::collections::HashMap;
 
 use bevy::asset::RenderAssetUsages;
@@ -11,6 +17,8 @@ use bevy::render::render_resource::Extent3d;
 use bevy::render::render_resource::TextureDimension;
 use bevy::render::render_resource::TextureFormat;
 
+use crate::app::settings::DEFAULT_GUI_SCALE;
+use crate::app::settings::GameSettings;
 use crate::block::blocks::Block;
 use crate::item::ItemData;
 use crate::item::ItemRegistry;
@@ -31,9 +39,18 @@ impl Plugin for ItemIconsPlugin {
     }
 }
 
-pub const ICON_SIZE: u32 = 32;
+/// Icon edge in pixels at the default GUI scale, and the size
+/// [`rasterize_icon`] draws.
+pub const ICON_SIZE: u32 = icon_size_for(DEFAULT_GUI_SCALE);
+/// Edge of an inventory icon in GUI pixels.
+const ICON_GUI: u32 = 16;
 const COLUMNS: u32 = 16;
-const ATLAS_SIZE: u32 = ICON_SIZE * COLUMNS;
+
+/// Icon edge in screen pixels for a `GameSettings::gui_scale` value.
+pub const fn icon_size_for(gui_scale: f32) -> u32 {
+    let scale = gui_scale.round() as u32;
+    ICON_GUI * if scale == 0 { 1 } else { scale }
+}
 
 #[derive(Resource)]
 pub struct BlockIcons {
@@ -41,6 +58,8 @@ pub struct BlockIcons {
     terrain: Handle<Image>,
     items: Handle<Image>,
     rectangles: HashMap<(u16, u16), Rect>,
+    /// Pixel edge of one icon in the atlas as it is currently built.
+    icon_size: u32,
     ready: bool,
 }
 
@@ -59,39 +78,56 @@ impl BlockIcons {
         self.ready
     }
 
+    /// Pixel edge of one icon in the built atlas.
+    pub fn icon_size(&self) -> u32 {
+        self.icon_size
+    }
+
     /// UV rectangle for a world item quad, in normalized atlas coordinates.
     pub fn uv_for_stack(&self, stack: ItemStack) -> Option<(f32, f32, f32, f32)> {
         let rect = self.rect_for_stack(stack)?;
+        // Cells keep their place when the atlas is rebuilt at another size, so
+        // these stay valid across a GUI scale change.
+        let atlas = (self.icon_size * COLUMNS) as f32;
         Some((
-            rect.min.x / ATLAS_SIZE as f32,
-            rect.min.y / ATLAS_SIZE as f32,
-            rect.max.x / ATLAS_SIZE as f32,
-            rect.max.y / ATLAS_SIZE as f32,
+            rect.min.x / atlas,
+            rect.min.y / atlas,
+            rect.max.x / atlas,
+            rect.max.y / atlas,
         ))
     }
 }
 
 pub fn setup(mut commands: Commands, server: Res<AssetServer>, mut images: ResMut<Assets<Image>>) {
     let load = |path| server.load(path);
-    let mut atlas = Image::new_fill(
-        Extent3d {
-            width: ATLAS_SIZE,
-            height: ATLAS_SIZE,
-            depth_or_array_layers: 1,
-        },
-        TextureDimension::D2,
-        &[0, 0, 0, 0],
-        TextureFormat::Rgba8UnormSrgb,
-        RenderAssetUsages::default(),
+    let atlas = atlas_image(
+        ICON_SIZE,
+        vec![0; (ICON_SIZE * COLUMNS).pow(2) as usize * 4],
     );
-    atlas.sampler = ImageSampler::Default;
     commands.insert_resource(BlockIcons {
         image: images.add(atlas),
         terrain: load("terrain.png"),
         items: load("gui/items.png"),
         rectangles: HashMap::new(),
+        icon_size: ICON_SIZE,
         ready: false,
     });
+}
+
+fn atlas_image(icon_size: u32, pixels: Vec<u8>) -> Image {
+    let mut atlas = Image::new(
+        Extent3d {
+            width: icon_size * COLUMNS,
+            height: icon_size * COLUMNS,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        pixels,
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::default(),
+    );
+    atlas.sampler = ImageSampler::Default;
+    atlas
 }
 
 struct Source {
@@ -146,8 +182,14 @@ impl Source {
     }
 }
 
-pub fn build(mut icons: ResMut<BlockIcons>, mut images: ResMut<Assets<Image>>) {
-    if icons.ready {
+pub fn build(
+    mut icons: ResMut<BlockIcons>,
+    mut images: ResMut<Assets<Image>>,
+    settings: Option<Res<GameSettings>>,
+    mut materials: Option<ResMut<Assets<StandardMaterial>>>,
+) {
+    let size = settings.map_or(ICON_SIZE, |settings| icon_size_for(settings.gui_scale));
+    if icons.ready && icons.icon_size == size {
         return;
     }
     let Some(terrain) = images.get(&icons.terrain).and_then(Source::from_image) else {
@@ -156,12 +198,8 @@ pub fn build(mut icons: ResMut<BlockIcons>, mut images: ResMut<Assets<Image>>) {
     let Some(items) = images.get(&icons.items).and_then(Source::from_image) else {
         return;
     };
-    let Some(mut atlas) = images.get_mut(&icons.image) else {
-        return;
-    };
-    let Some(pixels) = atlas.data.as_mut() else {
-        return;
-    };
+    let atlas_size = size * COLUMNS;
+    let mut pixels = vec![0; (atlas_size * atlas_size * 4) as usize];
     let mut rectangles = HashMap::new();
     let mut index = 0u32;
     for definition in ItemRegistry::iter() {
@@ -172,66 +210,87 @@ pub fn build(mut icons: ResMut<BlockIcons>, mut images: ResMut<Assets<Image>>) {
         for data in 0..=max_data {
             let id = definition.item.as_u16();
             let icon = if id < 256 {
-                render_block_icon(&terrain, id as u8, data)
+                render_block_icon(&terrain, size, id as u8, data)
             } else if let Some(tile) = item_tile(id, data) {
-                render_flat(&items, tile, [255; 3])
+                render_flat(&items, size, tile, [255; 3])
             } else {
                 continue;
             };
-            let left = index % COLUMNS * ICON_SIZE;
-            let top = index / COLUMNS * ICON_SIZE;
-            if top + ICON_SIZE > ATLAS_SIZE {
+            let left = index % COLUMNS * size;
+            let top = index / COLUMNS * size;
+            if top + size > atlas_size {
                 warn!("Inventory icon atlas is full");
                 return;
             }
-            for y in 0..ICON_SIZE {
-                let src = (y * ICON_SIZE * 4) as usize;
-                let dst = (((top + y) * ATLAS_SIZE + left) * 4) as usize;
-                pixels[dst..dst + (ICON_SIZE * 4) as usize]
-                    .copy_from_slice(&icon[src..src + (ICON_SIZE * 4) as usize]);
+            for y in 0..size {
+                let src = (y * size * 4) as usize;
+                let dst = (((top + y) * atlas_size + left) * 4) as usize;
+                pixels[dst..dst + (size * 4) as usize]
+                    .copy_from_slice(&icon[src..src + (size * 4) as usize]);
             }
             rectangles.insert(
                 (id, data),
                 Rect::new(
                     left as f32,
                     top as f32,
-                    (left + ICON_SIZE) as f32,
-                    (top + ICON_SIZE) as f32,
+                    (left + size) as f32,
+                    (top + size) as f32,
                 ),
             );
             index += 1;
         }
     }
+    let Some(mut atlas) = images.get_mut(&icons.image) else {
+        return;
+    };
+    *atlas = atlas_image(size, pixels);
+    // A resized atlas is a new GPU texture; materials that sample it (dropped
+    // item sprites) must be prepared again to bind it.
+    if let Some(materials) = materials.as_mut() {
+        let users: Vec<_> = materials
+            .iter()
+            .filter(|(_, material)| material.base_color_texture.as_ref() == Some(&icons.image))
+            .map(|(id, _)| id)
+            .collect();
+        for id in users {
+            let _ = materials.get_mut(id);
+        }
+    }
     icons.rectangles = rectangles;
+    icons.icon_size = size;
     icons.ready = true;
     info!("Built {index} inventory icons from terrain and item atlases");
 }
 
-fn render_flat(source: &Source, tile: u8, tint: [u8; 3]) -> Vec<u8> {
-    let mut out = vec![0; (ICON_SIZE * ICON_SIZE * 4) as usize];
-    for y in 0..ICON_SIZE {
-        for x in 0..ICON_SIZE {
+fn render_flat(source: &Source, size: u32, tile: u8, tint: [u8; 3]) -> Vec<u8> {
+    let mut out = vec![0; (size * size * 4) as usize];
+    for y in 0..size {
+        for x in 0..size {
+            // Sample at the pixel center so every texel gets the same share.
             let mut pixel = source.pixel(
                 tile,
-                x as f32 / ICON_SIZE as f32,
-                y as f32 / ICON_SIZE as f32,
+                (x as f32 + 0.5) / size as f32,
+                (y as f32 + 0.5) / size as f32,
             );
             for c in 0..3 {
                 pixel[c] = (u16::from(pixel[c]) * u16::from(tint[c]) / 255) as u8;
             }
-            out[((y * ICON_SIZE + x) * 4) as usize..((y * ICON_SIZE + x) * 4 + 4) as usize]
-                .copy_from_slice(&pixel);
+            let at = ((y * size + x) * 4) as usize;
+            out[at..at + 4].copy_from_slice(&pixel);
         }
     }
     out
 }
 
-fn render_block_icon(source: &Source, id: u8, data: u16) -> Vec<u8> {
+fn render_block_icon(source: &Source, size: u32, id: u8, data: u16) -> Vec<u8> {
     let appearance = block_appearance(id, data);
     if appearance.shape == Shape::Flat {
-        return render_flat(source, appearance.top, appearance.tint);
+        return render_flat(source, size, appearance.top, appearance.tint);
     }
-    let mut out = vec![0; (ICON_SIZE * ICON_SIZE * 4) as usize];
+    let mut out = Canvas {
+        pixels: vec![0; (size * size * 4) as usize],
+        size,
+    };
     match appearance.shape {
         Shape::Cube => {
             let bounds = if id == Block::Farmland.as_u8() {
@@ -301,10 +360,30 @@ fn render_block_icon(source: &Source, id: u8, data: u16) -> Vec<u8> {
         Shape::Cactus => draw_cactus(&mut out, source, appearance),
         Shape::Flat => unreachable!(),
     }
-    out
+    out.pixels
 }
 
-fn draw_cactus(out: &mut [u8], source: &Source, look: Appearance) {
+/// One icon being drawn, `size` pixels on each edge.
+struct Canvas {
+    pixels: Vec<u8>,
+    size: u32,
+}
+
+impl Canvas {
+    // Orthographic projection of the inventory orientation used by RenderItem:
+    // a 45-degree yaw with elevated view. Each visible quad samples the matching
+    // clipped region of its Beta terrain tile. The block spans 14 of the icon's
+    // 16 GUI pixels.
+    fn project(&self, x: f32, y: f32, z: f32) -> (f32, f32) {
+        let gui = self.size as f32 / ICON_GUI as f32;
+        (
+            (8.0 + 7.0 * (x - z)) * gui,
+            (8.0 + 3.5 * (x + z) - 8.0 * y) * gui,
+        )
+    }
+}
+
+fn draw_cactus(out: &mut Canvas, source: &Source, look: Appearance) {
     let geometry = BlockFaceGeometry::cactus();
     for (face_index, tile, light) in [
         (4, look.left, 0.78),
@@ -312,7 +391,7 @@ fn draw_cactus(out: &mut [u8], source: &Source, look: Appearance) {
         (0, look.top, 1.0),
     ] {
         let face = geometry.face(face_index);
-        let points = face.corners.map(|[x, y, z]| project(x, y, z));
+        let points = face.corners.map(|[x, y, z]| out.project(x, y, z));
         draw_face(
             out,
             source,
@@ -325,32 +404,25 @@ fn draw_cactus(out: &mut [u8], source: &Source, look: Appearance) {
     }
 }
 
-// Orthographic projection of the inventory orientation used by RenderItem:
-// a 45-degree yaw with elevated view. Each visible quad samples the matching
-// clipped region of its Beta terrain tile.
-fn project(x: f32, y: f32, z: f32) -> (f32, f32) {
-    (16.0 + 14.0 * (x - z), 16.0 + 7.0 * (x + z) - 16.0 * y)
-}
-
-fn draw_box(out: &mut [u8], source: &Source, look: Appearance, bounds: [f32; 6]) {
+fn draw_box(out: &mut Canvas, source: &Source, look: Appearance, bounds: [f32; 6]) {
     let [x0, y0, z0, x1, y1, z1] = bounds;
     let left = [
-        project(x0, y1, z1),
-        project(x1, y1, z1),
-        project(x1, y0, z1),
-        project(x0, y0, z1),
+        out.project(x0, y1, z1),
+        out.project(x1, y1, z1),
+        out.project(x1, y0, z1),
+        out.project(x0, y0, z1),
     ];
     let right = [
-        project(x1, y1, z1),
-        project(x1, y1, z0),
-        project(x1, y0, z0),
-        project(x1, y0, z1),
+        out.project(x1, y1, z1),
+        out.project(x1, y1, z0),
+        out.project(x1, y0, z0),
+        out.project(x1, y0, z1),
     ];
     let top = [
-        project(x0, y1, z0),
-        project(x1, y1, z0),
-        project(x1, y1, z1),
-        project(x0, y1, z1),
+        out.project(x0, y1, z0),
+        out.project(x1, y1, z0),
+        out.project(x1, y1, z1),
+        out.project(x0, y1, z1),
     ];
     let side_uv = [
         (x0, 1.0 - y1),
@@ -371,7 +443,7 @@ fn draw_box(out: &mut [u8], source: &Source, look: Appearance, bounds: [f32; 6])
 }
 
 fn draw_face(
-    out: &mut [u8],
+    out: &mut Canvas,
     source: &Source,
     tile: u8,
     tint: [u8; 3],
@@ -379,8 +451,8 @@ fn draw_face(
     points: [(f32, f32); 4],
     uv: [(f32, f32); 4],
 ) {
-    for y in 0..ICON_SIZE {
-        for x in 0..ICON_SIZE {
+    for y in 0..out.size {
+        for x in 0..out.size {
             let p = (x as f32 + 0.5, y as f32 + 0.5);
             let uv = triangle(p, points[0], points[1], points[2], [uv[0], uv[1], uv[2]])
                 .or_else(|| triangle(p, points[0], points[2], points[3], [uv[0], uv[2], uv[3]]));
@@ -394,8 +466,8 @@ fn draw_face(
             for c in 0..3 {
                 pixel[c] = (pixel[c] as f32 * tint[c] as f32 / 255.0 * light).round() as u8;
             }
-            let at = ((y * ICON_SIZE + x) * 4) as usize;
-            out[at..at + 4].copy_from_slice(&pixel);
+            let at = ((y * out.size + x) * 4) as usize;
+            out.pixels[at..at + 4].copy_from_slice(&pixel);
         }
     }
 }
@@ -437,5 +509,5 @@ pub fn rasterize_icon(source: &[u8], width: u32, block: Block, metadata: u8) -> 
         return vec![0; (ICON_SIZE * ICON_SIZE * 4) as usize];
     }
     let (block, metadata) = block.item_form(metadata);
-    render_block_icon(&image, block.as_u8(), u16::from(metadata))
+    render_block_icon(&image, ICON_SIZE, block.as_u8(), u16::from(metadata))
 }

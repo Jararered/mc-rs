@@ -482,6 +482,7 @@ fn integrate_player(
             Option<&Flying>,
             Option<&mut StepDistance>,
             Option<&mut PlayerSurvival>,
+            Option<&mut crate::player::portal::PortalTravel>,
         ),
         With<Player>,
     >,
@@ -505,6 +506,7 @@ fn integrate_player(
         flying,
         mut steps,
         mut survival,
+        mut portal,
     ) in &mut players
     {
         if !chunks.contains(ChunkPosition::from_world(
@@ -522,6 +524,13 @@ fn integrate_player(
             if let Some(survival) = survival.as_deref_mut() {
                 survival.clear_fall();
             }
+            let mut unslowed = Vec3::ZERO;
+            touch_blocks(
+                size.aabb(transform.translation),
+                &chunks,
+                &mut unslowed,
+                portal.as_deref_mut(),
+            );
             continue;
         }
         if tick.ticks_this_frame() == 0 {
@@ -589,6 +598,7 @@ fn integrate_player(
                     movement,
                     sneaking_on_ground,
                 );
+                touch_blocks(movement.aabb, &chunks, &mut motion, portal.as_deref_mut());
 
                 let drag = if in_water { 0.8 } else { 0.5 };
                 motion *= drag;
@@ -674,6 +684,7 @@ fn integrate_player(
                 movement,
                 sneaking_on_ground,
             );
+            touch_blocks(movement.aabb, &chunks, &mut motion, portal.as_deref_mut());
 
             if (movement.collision.collided_x || movement.collision.collided_z)
                 && player_is_on_ladder(movement.aabb, &chunks)
@@ -690,6 +701,38 @@ fn integrate_player(
         }
 
         velocity.0 = motion / TICK_SECONDS;
+    }
+}
+
+/// The end of `Entity.moveEntity`: every block the box overlaps, shrunk by a
+/// thousandth, gets `onEntityCollidedWithBlock`. Soul sand, whose collision
+/// box stops an eighth short so feet sink into its cell, slows the player
+/// (`BlockSoulSand`), and a portal starts charging (`BlockPortal`).
+fn touch_blocks(
+    aabb: Aabb,
+    chunks: &WorldChunks,
+    motion: &mut Vec3,
+    mut portal: Option<&mut crate::player::portal::PortalTravel>,
+) {
+    let low = (aabb.min + Vec3::splat(0.001)).floor().as_ivec3();
+    let high = (aabb.max - Vec3::splat(0.001)).floor().as_ivec3();
+    for x in low.x..=high.x {
+        for y in low.y..=high.y {
+            for z in low.z..=high.z {
+                match chunks.block_at(x, y, z) {
+                    Some(crate::block::blocks::Block::SoulSand) => {
+                        motion.x *= 0.4;
+                        motion.z *= 0.4;
+                    }
+                    Some(crate::block::blocks::Block::NetherPortal) => {
+                        if let Some(portal) = portal.as_deref_mut() {
+                            portal.set_in_portal();
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
     }
 }
 

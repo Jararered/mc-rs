@@ -56,7 +56,8 @@ pub struct BlockShadingSettings {
     pub flags: u32,
     /// Leaf wiggle in world units (~blocks). Zero for every layer but leaves.
     pub wiggle_amplitude: f32,
-    pub _padding: f32,
+    /// Brightness of light level 0: `Dimension::ambient_light`.
+    pub ambient: f32,
 }
 
 impl BlockShadingSettings {
@@ -71,7 +72,7 @@ impl BlockShadingSettings {
             skylight_subtracted: f32::from(lighting.skylight_subtracted),
             flags,
             wiggle_amplitude,
-            _padding: 0.0,
+            ambient: crate::world::dimension::Dimension::Overworld.ambient_light(),
         }
     }
 

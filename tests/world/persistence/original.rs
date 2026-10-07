@@ -22,6 +22,7 @@ use game::inventory::Inventory;
 use game::item::Item;
 use game::item::ItemStack;
 use game::player::Player;
+use game::world::biome::Biome;
 use game::world::chest::CHEST_SLOTS;
 use game::world::chest::Chest;
 use game::world::chunk::CHUNK_HEIGHT;
@@ -31,7 +32,10 @@ use game::world::chunk::ChunkDroppedItem;
 use game::world::chunk::ChunkPosition;
 use game::world::chunk::GeneratedChunk;
 use game::world::chunk::WorldChunks;
+use game::world::dimension::Dimension;
 use game::world::furnace::Furnace;
+use game::world::generation::ChunkGenerator;
+use game::world::generation::nether::NetherGenerator;
 use game::world::generation::overworld::OverworldGenerator;
 use game::world::persistence::SaveFormat;
 use game::world::persistence::StoredPlayer;
@@ -776,4 +780,72 @@ fn the_beta_client_save_loads_its_player() {
         .load_chunk(spawn)
         .expect("the chunk under the player was saved");
     assert!(chunk.populated);
+}
+
+/// What `ChunkProviderHell.provideChunk` decides and nothing later moves:
+/// netherrack, soul sand and bedrock. Everything else (air, lava, gravel that
+/// fell, and decoration, whose placement Beta leaves to chunk load order)
+/// counts as open.
+fn nether_terrain(block: Block) -> u8 {
+    match block {
+        Block::Netherrack | Block::SoulSand | Block::Bedrock => block.as_u8(),
+        _ => 0,
+    }
+}
+
+#[test]
+fn the_nether_generator_matches_the_beta_server_nether() {
+    let Some((_saves, root)) = beta_world_copy("beta-server-nether", "world") else {
+        return;
+    };
+    let source = refs_directory().join("world/DIM-1");
+    if !source.is_dir() {
+        eprintln!("skipping: {} is missing", source.display());
+        return;
+    }
+    copy_directory(&source, &root.join("DIM-1"));
+    let storage = WorldStorage::open(root).unwrap();
+    let generator = NetherGenerator::new(storage.seed());
+
+    let mut compared = 0;
+    for x in -6..6 {
+        for z in -6..6 {
+            let position = ChunkPosition { x, z };
+            let Some(saved) = storage.load_chunk_in(Dimension::Nether, position) else {
+                continue;
+            };
+            assert_eq!(saved.biomes.get(0, 0).biome, Biome::Hell);
+            let ours = generator.generate_base(position);
+            let mut different = 0;
+            for (index, (&ours, &beta)) in ours
+                .chunk
+                .raw_blocks()
+                .iter()
+                .zip(saved.chunk.raw_blocks())
+                .enumerate()
+            {
+                let (ours, beta) = (Block::from(ours), Block::from(beta));
+                // `WorldGenHellLava` turns a netherrack cell into a lava
+                // source, which then flows; that is population, not terrain.
+                if ours == Block::Netherrack && matches!(beta, Block::Lava | Block::FlowingLava) {
+                    continue;
+                }
+                if nether_terrain(ours) != nether_terrain(beta) {
+                    different += 1;
+                    if different <= 5 {
+                        let (bx, bz, by) = (index % 16, index / 16 % 16, index / 256);
+                        eprintln!(
+                            "chunk ({x}, {z}) at ({bx}, {by}, {bz}): {ours:?} vs Beta {beta:?}"
+                        );
+                    }
+                }
+            }
+            assert_eq!(
+                different, 0,
+                "chunk ({x}, {z}) differs from the Beta 1.7.3 server's Nether"
+            );
+            compared += 1;
+        }
+    }
+    assert!(compared > 50, "only {compared} Nether chunks were found");
 }

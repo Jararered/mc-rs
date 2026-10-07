@@ -65,6 +65,7 @@ use crate::entity::mobs::MobType;
 use crate::item::Item;
 use crate::item::ItemStack;
 use crate::random::JavaRandom;
+use crate::world::biome::BiomeMap;
 use crate::world::chest::CHEST_SLOTS;
 use crate::world::chest::Chest;
 use crate::world::chunk::CHUNK_HEIGHT;
@@ -74,6 +75,7 @@ use crate::world::chunk::ChunkDroppedItem;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::GeneratedChunk;
 use crate::world::chunk::Heightmap;
+use crate::world::dimension::Dimension;
 use crate::world::furnace::FURNACE_SLOTS;
 use crate::world::furnace::Furnace;
 use crate::world::furnace::SMELT_TICKS;
@@ -425,7 +427,7 @@ impl ChunkSnapshot {
 
     /// The chunk as a zlib-compressed NBT document, like Beta writes into a
     /// region file.
-    fn to_compressed(&self, time: i64) -> io::Result<Vec<u8>> {
+    fn to_compressed(&self, time: i64, dimension: Dimension) -> io::Result<Vec<u8>> {
         let chunk = &self.chunk;
         let raw = chunk.raw_blocks();
         let metadata = chunk.raw_metadata();
@@ -453,7 +455,10 @@ impl ChunkSnapshot {
                         set_nibble(&mut data, beta, nibble(metadata, ours));
                     }
                     let (sky_level, block_level) = unpack(light[ours]);
-                    set_nibble(&mut sky, beta, sky_level);
+                    // `hasNoSky`: the Nether's sky light array stays zero.
+                    if dimension.has_sky() {
+                        set_nibble(&mut sky, beta, sky_level);
+                    }
                     set_nibble(&mut block_light, beta, block_level);
                     if height.is_none()
                         && Block::from_u8(raw[ours]).is_none_or(|b| light_opacity(b) > 0)
@@ -528,7 +533,7 @@ impl ChunkSnapshot {
 fn decode_chunk(
     level: &Compound,
     position: ChunkPosition,
-    biomes: &BiomeGenerator,
+    biomes: Option<&BiomeGenerator>,
 ) -> Option<GeneratedChunk> {
     // Beta logs a mismatched chunk and carries on; one that claims to be
     // somewhere else is not trustworthy, so it is regenerated instead.
@@ -654,7 +659,8 @@ fn decode_chunk(
     Some(GeneratedChunk {
         heightmap: Heightmap::from_chunk(&chunk),
         chunk,
-        biomes: biomes.generate(position),
+        // The Nether is one biome; the Overworld's climate comes from the seed.
+        biomes: biomes.map_or_else(BiomeMap::hell, |biomes| biomes.generate(position)),
         items,
         populated: level.boolean("TerrainPopulated"),
     })
@@ -920,6 +926,7 @@ fn player_from_nbt(player: &Compound, sidecar: &Sidecar) -> Option<StoredPlayer>
         } else {
             1.0
         },
+        dimension: Dimension::from_id(player.int("Dimension")),
     })
 }
 
@@ -989,7 +996,7 @@ fn player_to_nbt(player: &StoredPlayer, mut base: Compound) -> Compound {
     base.put_short("HurtTime", 0);
     base.put_short("DeathTime", 0);
     base.put_short("AttackTime", 0);
-    base.put_int("Dimension", 0);
+    base.put_int("Dimension", player.dimension.id());
     base.put_list("Inventory", inventory_list(player));
     if !base.contains("Sleeping") {
         base.put_bool("Sleeping", false);
@@ -1008,7 +1015,7 @@ fn player_to_nbt(player: &StoredPlayer, mut base: Compound) -> Compound {
 /// it, so a load on a generation thread only waits for the disk read.
 pub(super) struct OriginalStore {
     root: PathBuf,
-    regions: Mutex<HashMap<(i32, i32), RegionFile>>,
+    regions: Mutex<HashMap<(Dimension, i32, i32), RegionFile>>,
     biomes: BiomeGenerator,
 }
 
@@ -1033,9 +1040,16 @@ impl OriginalStore {
         }
     }
 
-    fn region_path(&self, region: (i32, i32)) -> PathBuf {
-        self.root
-            .join(REGION_DIRECTORY)
+    /// `SaveOldDir.getChunkLoader`: the Nether's regions live in `DIM-1`.
+    fn region_directory(&self, dimension: Dimension) -> PathBuf {
+        match dimension.folder() {
+            Some(folder) => self.root.join(folder).join(REGION_DIRECTORY),
+            None => self.root.join(REGION_DIRECTORY),
+        }
+    }
+
+    fn region_path(&self, dimension: Dimension, region: (i32, i32)) -> PathBuf {
+        self.region_directory(dimension)
             .join(format!("r.{}.{}.mcr", region.0, region.1))
     }
 
@@ -1043,17 +1057,19 @@ impl OriginalStore {
     /// region that does not exist is made only when `create` is set.
     fn with_region<T>(
         &self,
+        dimension: Dimension,
         position: ChunkPosition,
         create: bool,
         action: impl FnOnce(&mut RegionFile) -> io::Result<T>,
     ) -> io::Result<Option<T>> {
-        let key = (position.x >> 5, position.z >> 5);
+        let key = (dimension, position.x >> 5, position.z >> 5);
         let mut regions = self.regions.lock().unwrap();
         if !regions.contains_key(&key) {
             if create {
-                fs::create_dir_all(self.root.join(REGION_DIRECTORY))?;
+                fs::create_dir_all(self.region_directory(dimension))?;
             }
-            let Some(file) = RegionFile::open(&self.region_path(key), create)? else {
+            let path = self.region_path(dimension, (key.1, key.2));
+            let Some(file) = RegionFile::open(&path, create)? else {
                 return Ok(None);
             };
             regions.insert(key, file);
@@ -1062,9 +1078,13 @@ impl OriginalStore {
         action(region).map(Some)
     }
 
-    pub(super) fn load_chunk(&self, position: ChunkPosition) -> Option<GeneratedChunk> {
+    pub(super) fn load_chunk(
+        &self,
+        dimension: Dimension,
+        position: ChunkPosition,
+    ) -> Option<GeneratedChunk> {
         let stored = self
-            .with_region(position, false, |region| {
+            .with_region(dimension, position, false, |region| {
                 region.read(position.x, position.z)
             })
             .map_err(|error| warn!("Ignoring unreadable region at {position:?}: {error}"))
@@ -1074,20 +1094,22 @@ impl OriginalStore {
             .and_then(|bytes| nbt::read_root(&bytes))
             .map_err(|error| warn!("Ignoring unreadable chunk {position:?}: {error}"))
             .ok()?;
-        decode_chunk(decoded.compound("Level")?, position, &self.biomes)
+        let biomes = (dimension == Dimension::Overworld).then_some(&self.biomes);
+        decode_chunk(decoded.compound("Level")?, position, biomes)
     }
 
     /// Encode and write chunks. Returns how many were written; a chunk too big
     /// for a region file is skipped with a warning, as Beta drops it.
     pub(super) fn write_chunks<'a>(
         &self,
+        dimension: Dimension,
         chunks: impl IntoIterator<Item = (ChunkPosition, &'a ChunkSnapshot)>,
         world_time: u64,
     ) -> io::Result<usize> {
         let mut saved = 0;
         for (position, snapshot) in chunks {
-            let compressed = snapshot.to_compressed(world_time as i64)?;
-            let written = self.with_region(position, true, |region| {
+            let compressed = snapshot.to_compressed(world_time as i64, dimension)?;
+            let written = self.with_region(dimension, position, true, |region| {
                 region.write(position.x, position.z, &compressed)
             });
             match written {

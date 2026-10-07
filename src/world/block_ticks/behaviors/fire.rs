@@ -74,6 +74,12 @@ impl BlockBehavior for Fire {
     }
 
     fn on_added(&self, world: &mut TickWorld, pos: IVec3) {
+        // Fire on obsidian lights a portal if the frame around it is whole.
+        if world.block(pos - IVec3::Y) == Block::Obsidian
+            && super::portal::try_to_create_portal(world, pos)
+        {
+            return;
+        }
         if !can_stay(world, pos) {
             world.set_block_notify(pos, Block::Air);
         } else {

@@ -450,6 +450,7 @@ fn set_uv_offset(
 fn update_clouds(
     tick: Res<WorldTick>,
     weather: Option<Res<crate::world::weather::WorldWeather>>,
+    dimension: Option<Res<crate::world::dimension::ActiveDimension>>,
     settings: Res<GameSettings>,
     spawned: Option<ResMut<CloudsSpawned>>,
     player: Query<&Transform, (With<Player>, Without<FastClouds>, Without<FancyClouds>)>,
@@ -496,6 +497,8 @@ fn update_clouds(
         }
         spawned.distance = settings.render_distance;
     }
+    // `RenderGlobal.renderClouds` draws nothing in the Nether.
+    let clouds = dimension.is_none_or(|dimension| dimension.0.has_sky());
     let fancy_mode = settings.graphics.fancy_leaves();
     let color = cloud_color(
         daylight_factor(crate::world::environment::celestial_angle(
@@ -512,7 +515,7 @@ fn update_clouds(
         fancy_cloud_anchor(player.translation.x, player.translation.z, scroll, cloud_y);
 
     if let Ok((mut transform, mut visibility, mut tag, _, material)) = fast.single_mut() {
-        visibility.set_if_neq(if fancy_mode {
+        visibility.set_if_neq(if fancy_mode || !clouds {
             Visibility::Hidden
         } else {
             Visibility::Inherited
@@ -536,7 +539,7 @@ fn update_clouds(
     }
 
     if let Ok((mut transform, mut visibility, mut tag, _, material)) = fancy.single_mut() {
-        visibility.set_if_neq(if fancy_mode {
+        visibility.set_if_neq(if fancy_mode && clouds {
             Visibility::Inherited
         } else {
             Visibility::Hidden

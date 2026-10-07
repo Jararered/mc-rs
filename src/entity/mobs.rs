@@ -576,6 +576,13 @@ pub fn spawn_table(biome: Biome, category: SpawnCategory) -> &'static [(MobType,
         (M::Cow, 8),
         (M::Wolf, 2),
     ];
+    // `BiomeGenHell` clears every list and adds only these two.
+    if biome == Biome::Hell {
+        return match category {
+            SpawnCategory::Monster => &[(M::Ghast, 10), (M::PigZombie, 10)],
+            _ => &[],
+        };
+    }
     match category {
         SpawnCategory::Monster => MONSTERS,
         SpawnCategory::Water => &[(M::Squid, 10)],
@@ -642,6 +649,14 @@ pub fn can_spawn_at(
         return y < 16
             && rng.next_int(10) == 0
             && JavaRandom::new(seed.wrapping_add(coord) ^ 987_234_911).next_int(10) == 0;
+    }
+    match kind {
+        // `EntityGhast.getCanSpawnHere`: one attempt in twenty, with no
+        // light test.
+        MobType::Ghast => return rng.next_int(20) == 0,
+        // `EntityPigZombie.getCanSpawnHere` skips `EntityMob`'s light test.
+        MobType::PigZombie => return true,
+        _ => {}
     }
     let Some((sky, block)) = light.channels(x, y, z) else {
         return false;
@@ -781,6 +796,9 @@ fn spawn_naturally(
             };
             let biome = chunk.biomes.get(8, 8).biome;
             let table = spawn_table(biome, category);
+            if table.is_empty() {
+                continue;
+            }
             let sum: u32 = table.iter().map(|(_, weight)| weight).sum();
             let mut roll = random.0.next_int(sum);
             let mut kind = table[0].0;
@@ -833,7 +851,9 @@ fn spawn_naturally(
                 });
                 count += 1;
                 group_size += 1;
-                if count > cap || group_size == 4 {
+                // `getMaxSpawnedInChunk`: ghasts come alone.
+                let pack = if kind == MobType::Ghast { 1 } else { 4 };
+                if count > cap || group_size == pack {
                     break;
                 }
             }

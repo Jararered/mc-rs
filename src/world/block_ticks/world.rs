@@ -83,6 +83,11 @@ impl<'a> TickWorld<'a> {
         }
     }
 
+    /// `WorldProvider.isHellWorld`.
+    pub fn is_hell(&self) -> bool {
+        self.ticks.dimension.is_hell()
+    }
+
     /// The world tick being simulated.
     pub fn time(&self) -> u64 {
         self.time
@@ -169,7 +174,11 @@ impl<'a> TickWorld<'a> {
         }
         self.light
             .channels(position.x, position.y, position.z)
-            .unwrap_or((15, 0))
+            .unwrap_or(if self.ticks.dimension.has_sky() {
+                (15, 0)
+            } else {
+                (0, 0)
+            })
     }
 
     /// `World.getBlockLightValue`: the brighter of sky light, dimmed by the
@@ -218,7 +227,11 @@ impl<'a> TickWorld<'a> {
                 .is_some_and(|climate| {
                     !matches!(
                         climate.biome,
-                        Biome::Taiga | Biome::Tundra | Biome::IceDesert | Biome::Desert
+                        Biome::Taiga
+                            | Biome::Tundra
+                            | Biome::IceDesert
+                            | Biome::Desert
+                            | Biome::Hell
                     )
                 })
     }

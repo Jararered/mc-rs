@@ -18,6 +18,8 @@ pub enum Biome {
     Plains,
     IceDesert,
     Tundra,
+    /// `BiomeGenHell`: every Nether column, with temperature 1 and no rain.
+    Hell,
     #[num_enum(catch_all)]
     Unknown(u8),
 }
@@ -50,6 +52,17 @@ pub struct BiomeMap {
 }
 
 impl BiomeMap {
+    /// `WorldChunkManagerHell`: one biome and one climate everywhere.
+    pub fn hell() -> Self {
+        Self {
+            cells: [Climate {
+                temperature: 1.0,
+                humidity: 0.0,
+                biome: Biome::Hell,
+            }; CHUNK_SIZE * CHUNK_SIZE],
+        }
+    }
+
     /// Rebuild a biome map from stored cells, as produced by [`Self::cells`].
     pub fn from_cells(cells: [Climate; CHUNK_SIZE * CHUNK_SIZE]) -> Self {
         Self { cells }

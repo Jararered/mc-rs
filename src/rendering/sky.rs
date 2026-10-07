@@ -143,9 +143,10 @@ struct SkyViews<'w, 's> {
     anchors: Query<
         'w,
         's,
-        &'static mut Transform,
+        (&'static mut Transform, &'static mut Visibility),
         (
             With<SkyAnchor>,
+            Without<StarField>,
             Without<CelestialRig>,
             Without<SunriseFan>,
             Without<Player>,
@@ -297,6 +298,9 @@ pub fn weather_fog_rgb(fog: [f32; 3], rain: f32, thunder: f32) -> [f32; 3] {
     ]
 }
 
+/// `WorldProviderHell.func_4096_a`: the Nether's fog, the same at every hour.
+pub const NETHER_FOG_RGB: [f32; 3] = [0.2, 0.03, 0.03];
+
 /// `WorldProvider.func_4096_a`, the overworld fog before it blends toward the sky.
 pub fn base_fog_rgb(angle: f32) -> [f32; 3] {
     let day = daylight_factor(angle);
@@ -378,11 +382,23 @@ fn srgb(rgb: [f32; 3]) -> Color {
     Color::srgb(rgb[0], rgb[1], rgb[2])
 }
 
-fn eye_brightness(chunks: &WorldChunks, eye: Vec3, subtracted: u8) -> f32 {
+/// `World.getLightBrightness` at the eye: the chunk's cached light when it
+/// has been lit, otherwise an estimate from the column.
+fn eye_brightness(
+    chunks: &WorldChunks,
+    light: Option<&crate::world::lighting::LightCache>,
+    eye: Vec3,
+    subtracted: u8,
+    ambient: f32,
+) -> f32 {
     let x = eye.x.floor() as i32;
     let y = eye.y.floor() as i32;
     let z = eye.z.floor() as i32;
-    beta_brightness(light_level_at(chunks, x, y, z, subtracted))
+    let level = light.and_then(|light| light.channels(x, y, z)).map_or_else(
+        || light_level_at(chunks, x, y, z, subtracted),
+        |(sky, block)| crate::world::lighting::combined_light(sky, block, subtracted),
+    );
+    beta_brightness(level, ambient)
 }
 
 fn medium_at(chunks: &WorldChunks, eye: Vec3) -> Medium {
@@ -569,10 +585,11 @@ fn ensure_sky(
 
 fn update_atmosphere(
     tick: Res<WorldTick>,
-    weather: Option<Res<crate::world::weather::WorldWeather>>,
     flash: Option<Res<super::weather::SkyFlash>>,
+    environment: crate::world::dimension::Environment,
     settings: Res<GameSettings>,
     chunks: Res<WorldChunks>,
+    light: Option<Res<crate::world::lighting::LightCache>>,
     mut eye_fog: ResMut<EyeFog>,
     assets: Option<Res<SkyAssets>>,
     mut views: SkyViews,
@@ -582,7 +599,8 @@ fn update_atmosphere(
         return;
     }
     let far = view_distance_blocks(settings.render_distance);
-    let angle = celestial_angle(tick.world_time(), tick.partial());
+    let dimension = environment.dimension();
+    let angle = environment.celestial_angle(tick.partial());
     let eye = views.eyes.single().ok().map(|eye| *eye);
     let temperature = eye
         .map(|eye| {
@@ -594,16 +612,25 @@ fn update_atmosphere(
                 .map_or(0.5, |climate| climate.temperature as f32)
         })
         .unwrap_or(0.5);
+    let (rain, thunder) = environment.weather_strength();
     let sky_weather = SkyWeather {
-        rain: weather.as_ref().map_or(0.0, |w| w.rain_strength),
-        thunder: weather.as_ref().map_or(0.0, |w| w.weighted_thunder()),
+        rain,
+        thunder,
         flash: flash
             .as_ref()
             .map_or(0.0, |flash| (f32::from(flash.0) - tick.partial()).max(0.0)),
     };
     let sky = sky_rgb(temperature, angle, sky_weather);
+    // `WorldProviderHell.func_4096_a` is one colour at every hour. The sky
+    // it blends toward is black, since the Nether's celestial angle is fixed
+    // at midnight.
+    let base_fog = if dimension.has_sky() {
+        base_fog_rgb(angle)
+    } else {
+        NETHER_FOG_RGB
+    };
     let mut fog = weather_fog_rgb(
-        mix_fog_toward_sky(base_fog_rgb(angle), sky, far),
+        mix_fog_toward_sky(base_fog, sky, far),
         sky_weather.rain,
         sky_weather.thunder,
     );
@@ -614,10 +641,19 @@ fn update_atmosphere(
         Medium::Air => {}
     }
 
-    let subtracted = crate::world::weather::skylight_subtracted(weather.as_deref(), angle);
+    let subtracted = environment.skylight_subtracted(tick.partial());
+    let ambient = environment.ambient_light();
     let brightness = eye.map_or_else(
-        || beta_brightness(15u8.saturating_sub(subtracted)),
-        |eye| eye_brightness(&chunks, eye.translation, subtracted),
+        || beta_brightness(15u8.saturating_sub(subtracted), ambient),
+        |eye| {
+            eye_brightness(
+                &chunks,
+                light.as_deref(),
+                eye.translation,
+                subtracted,
+                ambient,
+            )
+        },
     );
     let weight = distance_light_weight(far);
     let target = brightness * (1.0 - weight) + weight;
@@ -635,7 +671,13 @@ fn update_atmosphere(
     let fog = fog.map(|channel| channel * factor);
     let fog_color = srgb(fog);
 
-    let (start, end) = world_fog_range(far);
+    // `setupFog`: with no sky to fade into, the Nether's fog starts at the
+    // camera.
+    let (start, end) = if dimension.has_sky() {
+        world_fog_range(far)
+    } else {
+        (0.0, far)
+    };
     let world_falloff = match medium {
         Medium::Water => FogFalloff::Exponential { density: 0.1 },
         Medium::Lava => FogFalloff::Exponential { density: 2.0 },
@@ -665,7 +707,13 @@ fn update_atmosphere(
         // Keep the atmosphere behind the fog-free sky geometry. World
         // blocks and clouds still use the player's fog, but the sky pass
         // should not introduce a second fog-colored horizon.
-        let clear = srgb(sky);
+        // Beta draws no sky in the Nether; what shows is the clear colour,
+        // which is the fog's.
+        let clear = if dimension.has_sky() {
+            srgb(sky)
+        } else {
+            fog_color
+        };
         if !matches!(camera.clear_color, ClearColorConfig::Custom(color) if color == clear) {
             camera.clear_color = ClearColorConfig::Custom(clear);
         }
@@ -676,7 +724,13 @@ fn update_atmosphere(
     }
 
     if let Ok(camera) = views.player.single() {
-        for mut anchor in &mut views.anchors {
+        for (mut anchor, mut visibility) in &mut views.anchors {
+            // The sun, moon, stars and sunrise all hang from the anchor.
+            visibility.set_if_neq(if dimension.has_sky() {
+                Visibility::Inherited
+            } else {
+                Visibility::Hidden
+            });
             let next = Transform {
                 translation: camera.translation(),
                 rotation: Quat::IDENTITY,

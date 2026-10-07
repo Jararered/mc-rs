@@ -79,7 +79,7 @@ fn random_tick_chunks(
 
 pub(super) fn run_block_ticks(
     tick: Res<WorldTick>,
-    weather: Option<Res<crate::world::weather::WorldWeather>>,
+    environment: crate::world::dimension::Environment,
     mut ticks: ResMut<BlockTicks>,
     mut chunks: ResMut<WorldChunks>,
     mut light: ResMut<LightCache>,
@@ -89,11 +89,10 @@ pub(super) fn run_block_ticks(
     player: Query<&Transform, With<Player>>,
 ) {
     let count = tick.ticks_this_frame();
-    ticks.set_raining(weather.as_ref().is_some_and(|w| w.is_raining()));
-    ticks.set_weather_strength(
-        weather.as_ref().map_or(0.0, |w| w.rain_strength),
-        weather.as_ref().map_or(0.0, |w| w.weighted_thunder()),
-    );
+    ticks.set_dimension(environment.dimension());
+    ticks.set_raining(environment.is_raining());
+    let (rain, thunder) = environment.weather_strength();
+    ticks.set_weather_strength(rain, thunder);
     let now = tick.world_time();
     ticks.process_events(&mut chunks, &mut light, now);
 

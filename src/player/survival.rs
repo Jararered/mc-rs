@@ -12,6 +12,8 @@ use super::Player;
 use super::PlayerHealth;
 use super::PlayerInterpolation;
 use super::default_spawn_transform;
+use crate::app::session::Travel;
+use crate::app::session::WorldSession;
 use crate::app::settings::Difficulty;
 use crate::app::state::AppScreen;
 use crate::entity::CollisionState;
@@ -41,9 +43,9 @@ use crate::random::ItemRng;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
+use crate::world::dimension::Environment;
 use crate::world::persistence::WorldPersistence;
 use crate::world::tick::WorldTick;
-use crate::world::weather::WorldWeather;
 
 /// `EntityPlayer.fireResistance`: `fire` rests this far below zero, so a fire
 /// block takes a second to set the player alight.
@@ -184,7 +186,7 @@ fn rained_on(chunks: &WorldChunks, cell: IVec3) -> bool {
 fn tick_player_survival(
     tick: Res<WorldTick>,
     chunks: Res<WorldChunks>,
-    weather: Option<Res<WorldWeather>>,
+    environment: Environment,
     mut player: Query<
         (
             &mut Transform,
@@ -204,6 +206,7 @@ fn tick_player_survival(
     mut rng: Local<ItemRng>,
     mut spare_armor: Local<[Option<ItemStack>; 4]>,
     mut persistence: Option<ResMut<WorldPersistence>>,
+    mut session: Option<ResMut<WorldSession>>,
 ) {
     let Ok((
         mut transform,
@@ -220,7 +223,7 @@ fn tick_player_survival(
     else {
         return;
     };
-    let raining = weather.as_ref().is_some_and(|weather| weather.is_raining());
+    let raining = environment.is_raining();
     // The HUD and inventory screens redraw on change, so hits write through
     // and the change is flagged once below.
     let health_before = health.current;
@@ -260,8 +263,17 @@ fn tick_player_survival(
             } else {
                 survival.death_ticks -= 1;
                 if survival.death_ticks == 0 {
-                    *transform = default_spawn_transform(&chunks);
-                    interpolation.previous_position = transform.translation;
+                    // `Minecraft.respawn`: where `canRespawnHere` is false
+                    // the player leaves for the Overworld first, and is put
+                    // at the spawn point once it has loaded.
+                    if !environment.dimension().can_respawn()
+                        && let Some(session) = session.as_deref_mut()
+                    {
+                        session.request_travel(Travel::Respawn);
+                    } else {
+                        *transform = default_spawn_transform(&chunks);
+                        interpolation.previous_position = transform.translation;
+                    }
                     velocity.0 = Vec3::ZERO;
                     *collision = CollisionState::default();
                     *combat = PlayerCombat::default();

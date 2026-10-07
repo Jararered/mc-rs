@@ -36,7 +36,7 @@ fn lit_or_open(world: &PopulationWorld, x: i32, y: i32, z: i32) -> bool {
 }
 
 /// `WorldGenFlowers`: 64 attempts. Beta also places mushrooms with it.
-pub(super) fn flower_patch(
+pub(in crate::world::generation) fn flower_patch(
     world: &mut PopulationWorld,
     rand: &mut JavaRandom,
     x: i32,

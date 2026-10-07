@@ -413,6 +413,35 @@ impl BlockGeometry {
         );
     }
 
+    /// `BlockPortal.setBlockBoundsBasedOnState`: a pane a quarter block
+    /// thick, of which only the two broad faces are ever drawn. `along_x`
+    /// says the portal's plane runs along x, so the pane is thin in z.
+    fn push_portal(&mut self, origin: [f32; 3], along_x: bool) {
+        let unit_cube = BlockFaceGeometry::unit_cube();
+        let (axis, faces) = if along_x {
+            (2, [FACE_SOUTH, FACE_NORTH])
+        } else {
+            (0, [FACE_EAST, FACE_WEST])
+        };
+        let (tile_x, tile_y) = crate::rendering::textures::PORTAL_TILE;
+        for face_index in faces {
+            let normal = FACES[face_index].normal;
+            let coordinate = if normal[axis] > 0.0 { 0.625 } else { 0.375 };
+            let corners = unit_cube.face(face_index).corners.map(|mut corner| {
+                corner[axis] = coordinate;
+                corner
+            });
+            self.push_block_quad(
+                origin,
+                normal,
+                corners,
+                face_texels(tile_x, tile_y, face_index),
+                [1.0; 3],
+                CornerShading::FULL_BRIGHT,
+            );
+        }
+    }
+
     /// Build the same post for floor and wall attachments, then rotate its
     /// vertices and normals together so the cap follows the shaft.
     fn push_torch(&mut self, origin: [f32; 3], metadata: u8) {
@@ -812,6 +841,15 @@ impl<'a> Mesher<'a> {
                     }
                     if block.is_ladder() {
                         meshes.masked.push_ladder(origin, metadata);
+                        continue;
+                    }
+                    if block == Block::NetherPortal {
+                        let portal = |dx: i32| {
+                            self.neighbors.get(chunk, x as i32 + dx, y as i32, z as i32)
+                                == Some(Block::NetherPortal)
+                        };
+                        // Translucent, so it shares water's blended layer.
+                        meshes.water.push_portal(origin, portal(-1) || portal(1));
                         continue;
                     }
                     let column = z * CHUNK_SIZE + x;
@@ -1774,6 +1812,7 @@ fn neighbor_hides_face(block: Block, neighbor: Option<Block>, fancy_graphics: bo
         || neighbor == Block::Lava
         || neighbor == Block::FlowingLava
         || neighbor == Block::MobSpawner
+        || neighbor == Block::NetherPortal
         || neighbor.is_chest()
         || neighbor.is_ladder()
         || neighbor.is_torch()

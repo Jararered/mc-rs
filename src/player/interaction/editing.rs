@@ -551,6 +551,40 @@ pub(crate) fn interact_blocks(
                     },
                 );
                 notify_edit(&mut streaming, &mut persistence, hit.x, hit.y, hit.z, false);
+            } else if stack.item() == Item::FlintAndSteel {
+                // `ItemFlintAndSteel.onItemUse`: fire in the cell against the
+                // clicked face if it is empty, and one use either way. Fire's
+                // `onBlockAdded` decides whether it stays or lights a portal.
+                let (x, y, z) = hit.face.neighbor(hit.x, hit.y, hit.z);
+                if chunks.block_at(x, y, z) == Some(Block::Air)
+                    && chunks.set_block(x, y, z, Block::Fire).is_some()
+                {
+                    push_event(
+                        &mut block_ticks,
+                        BlockEvent::Changed {
+                            position: IVec3::new(x, y, z),
+                            previous: Block::Air,
+                            metadata: 0,
+                        },
+                    );
+                    notify_edit(&mut streaming, &mut persistence, x, y, z, true);
+                }
+                hotbar.damage_selected(1);
+            } else if stack.item() == Item::WaterBucket
+                && block_ticks
+                    .as_ref()
+                    .is_some_and(|ticks| ticks.dimension().is_hell())
+            {
+                // `ItemBucket`: water poured in the Nether boils away, and
+                // the bucket comes back empty.
+                let (x, y, z) = hit.face.neighbor(hit.x, hit.y, hit.z);
+                if chunks
+                    .block_at(x, y, z)
+                    .is_some_and(|block| !block.is_solid_material())
+                {
+                    let selected = hotbar.selected;
+                    hotbar.slots[selected] = ItemStack::new(Item::Bucket, 1).ok();
+                }
             } else if let Some(fluid) = match stack.item() {
                 Item::WaterBucket => Some(Fluid::Water),
                 Item::LavaBucket => Some(Fluid::Lava),

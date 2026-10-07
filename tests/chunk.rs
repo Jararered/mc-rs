@@ -623,9 +623,9 @@ fn complete_neighborhood_does_not_invent_light_at_cave_edges() {
 
 #[test]
 fn beta_brightness_curve_keeps_caves_dark() {
-    assert!((beta_brightness(15) - 1.0).abs() < f32::EPSILON);
-    assert!((beta_brightness(0) - 0.05).abs() < f32::EPSILON);
-    assert!(beta_brightness(4) < 0.3);
+    assert!((beta_brightness(15, 0.05) - 1.0).abs() < f32::EPSILON);
+    assert!((beta_brightness(0, 0.05) - 0.05).abs() < f32::EPSILON);
+    assert!(beta_brightness(4, 0.05) < 0.3);
 }
 
 #[test]
@@ -651,7 +651,7 @@ fn night_dims_sunlight_and_leaves_torches() {
         "open sunlight should darken after dusk, day {day_top} night {night_top}"
     );
     // Beta's brightness is gamma-encoded; the shader linearizes it.
-    let linear = |level| ((beta_brightness(level) + 0.055_f32) / 1.055).powf(2.4);
+    let linear = |level| ((beta_brightness(level, 0.05) + 0.055_f32) / 1.055).powf(2.4);
     assert!((day_top - linear(15)).abs() < 1e-4);
     assert!((night_top - linear(4)).abs() < 1e-4);
 }

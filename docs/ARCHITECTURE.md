@@ -72,24 +72,39 @@ Meshes, texture loaders, shaders, sky, and clouds live under `rendering/`.
 Simulation daylight calculations stay outside the sky renderer, and
 render-specific block-state equivalence lives beside the mesher.
 
-## Adding a dimension
+## Dimensions
 
-A new generator can reuse chunk storage, population-world access, noise,
-lighting, persistence records, and meshing without duplicating the Overworld
-implementation. Keep its algorithms in a sibling of `generation::overworld`.
+A save holds the Overworld and the Nether, and one of them is loaded at a
+time. `world::dimension::Dimension` carries Beta's `WorldProvider` rules (sky,
+weather, ambient light, celestial angle, lava reach, respawning, the 8:1
+coordinate scale, the `DIM-1` save folder), and the `ActiveDimension` resource
+says which is loaded. Systems that light or shade read the
+`world::dimension::Environment` system parameter instead of calling the
+Overworld daylight functions in `world::environment` directly.
 
-This refactor does not implement the Nether or live dimension switching. The
-current simulation and renderer still apply Overworld environment rules,
-including sunlight, daylight, water, and freezing. Nether work must supply the
-appropriate environment policies at those boundaries, and dimension switching
-must partition save paths/world resources and retire in-flight jobs. The
-`WorldGeneration` override selects generation at startup; it is not a runtime
-transition or a dimension-aware save format.
+`generation::nether::NetherGenerator` is a sibling of `generation::overworld`
+and reuses chunk storage, `PopulationWorld`, noise, lighting, persistence
+records, and meshing. `setup_streaming` picks the generator from
+`ActiveDimension` unless a `WorldGeneration` override is present.
+
+Changing dimension is owned by `app::session` (`WorldSession::request_travel`).
+It settles and saves like a leave, drops only the dimension's own state,
+points `WorldStorage` at the other dimension, and runs `world::portal` (Beta's
+`Teleporter`) on a background task over chunks held outside the live world.
+The chunks a new portal was built in are handed to `WorldChunks` before
+streaming restarts around the player. `WorldPersistence`'s bookkeeping is
+keyed by chunk position alone, so the storage's dimension only changes while
+it is idle with nothing unsaved.
+
+A third dimension would add a `Dimension` variant with its policies, a
+generator module, and a save folder; the session's travel path and the
+storage do not assume there are only two.
 
 ## Verification
 
 Tests remain under `tests/`. The existing `world` binary includes the rendering
 suite from `tests/rendering/` so reorganizing it does not add another Bevy link.
-Regression coverage includes pinned Beta chunks, save/resume behavior, input
+Regression coverage includes pinned Beta chunks from both dimensions, portal
+frames, the teleporter, dimension travel through a real session, save/resume behavior, input
 focus, headless chat dispatch, headless world composition, and an alternate
 generator used through real startup and background streaming jobs.

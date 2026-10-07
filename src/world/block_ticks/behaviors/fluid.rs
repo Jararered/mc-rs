@@ -207,7 +207,12 @@ impl BlockBehavior for Flowing {
         let Some(fluid) = Fluid::of(block) else {
             return;
         };
-        let step = fluid.decay_step();
+        // `isHellWorld`: Nether lava loses one level per block, like water.
+        let step = if world.is_hell() {
+            1
+        } else {
+            fluid.decay_step()
+        };
         let mut decay = flow_decay(world, position, fluid);
         let mut settles = true;
         if decay > 0 {

@@ -145,7 +145,10 @@ impl BlockVertex {
         let light = {
             let brightness = |sample: u8| {
                 let (sky, block) = unpack(sample);
-                beta_brightness(combined_light(sky, block, lighting.skylight_subtracted))
+                beta_brightness(
+                    combined_light(sky, block, lighting.skylight_subtracted),
+                    crate::world::dimension::Dimension::Overworld.ambient_light(),
+                )
             };
             let level = if lighting.smooth_lighting {
                 self.light.iter().copied().map(brightness).sum::<f32>() * 0.25

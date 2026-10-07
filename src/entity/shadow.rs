@@ -27,8 +27,6 @@ use crate::player::Player;
 use crate::rendering::textures::TintedMaterial;
 use crate::rendering::textures::tint_tag;
 use crate::world::chunk::WorldChunks;
-use crate::world::environment::celestial_angle;
-use crate::world::environment::skylight_subtracted;
 use crate::world::lighting::beta_brightness;
 use crate::world::lighting::light_level_at;
 use crate::world::tick::WorldTick;
@@ -186,6 +184,7 @@ fn spawn_shadow_quads(
 fn update_shadow_quads(
     settings: Res<GameSettings>,
     tick: Res<WorldTick>,
+    environment: crate::world::dimension::Environment,
     chunks: Res<WorldChunks>,
     camera: Query<&Transform, With<Player>>,
     owners: Query<(
@@ -204,8 +203,7 @@ fn update_shadow_quads(
         return;
     };
     let hidden = !settings.graphics.entity_shadows();
-    let angle = celestial_angle(tick.world_time(), tick.partial());
-    let subtracted = skylight_subtracted(angle);
+    let subtracted = environment.skylight_subtracted(tick.partial());
     for (shadow, transform, size, link, previous_tick) in &owners {
         let Ok((mut quad_transform, mut tag, mut visibility)) = quads.get_mut(link.0) else {
             continue;
@@ -289,7 +287,12 @@ pub fn place_shadow(
     let shadow_anchor_y = feet_y + size.height * 0.5;
     let ground_top_y = ground_cell_y as f32;
     let height_above_ground = (shadow_anchor_y - ground_top_y).max(0.0);
-    let alpha = (fade - height_above_ground / 2.0) * 0.5 * beta_brightness(light);
+    let alpha = (fade - height_above_ground / 2.0)
+        * 0.5
+        * beta_brightness(
+            light,
+            crate::world::dimension::Dimension::Overworld.ambient_light(),
+        );
     if alpha <= 0.0 {
         return None;
     }

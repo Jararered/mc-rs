@@ -384,8 +384,84 @@ impl AtlasLayout {
     }
 }
 
+/// The tile Beta's `Block.portal` draws, which `TexturePortalFX` animates.
+pub const PORTAL_TILE: (u8, u8) = (14, 0);
+
+/// Beta `TexturePortalFX`: thirty-two frames of two counter-rotating spirals,
+/// worked out once and shown one per tick.
+pub struct PortalTexture {
+    frames: Vec<[u8; 1024]>,
+    tick: usize,
+}
+
+impl Default for PortalTexture {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl PortalTexture {
+    pub fn new() -> Self {
+        use crate::world::generation::math;
+        let mut random = crate::random::JavaRandom::new(100);
+        let mut frames = vec![[0u8; 1024]; 32];
+        for (frame, pixels) in frames.iter_mut().enumerate() {
+            for x in 0..16 {
+                for y in 0..16 {
+                    let mut value = 0.0f32;
+                    for spiral in 0..2 {
+                        let center = (spiral * 8) as f32;
+                        let mut dx = (x as f32 - center) / 16.0 * 2.0;
+                        let mut dy = (y as f32 - center) / 16.0 * 2.0;
+                        if dx < -1.0 {
+                            dx += 2.0;
+                        }
+                        if dx >= 1.0 {
+                            dx -= 2.0;
+                        }
+                        if dy < -1.0 {
+                            dy += 2.0;
+                        }
+                        if dy >= 1.0 {
+                            dy -= 2.0;
+                        }
+                        let distance = dx * dx + dy * dy;
+                        let angle = f64::from(dy).atan2(f64::from(dx)) as f32
+                            + (frame as f32 / 32.0 * math::PI * 2.0 - distance * 10.0
+                                + (spiral * 2) as f32)
+                                * (spiral * 2 - 1) as f32;
+                        let wave = (math::sin(angle) + 1.0) / 2.0 / (distance + 1.0);
+                        value += wave * 0.5;
+                    }
+                    value += random.next_float() * 0.1;
+                    // Java narrows each `int` to a byte, wrapping past 255.
+                    let blue = (value * 100.0 + 155.0) as i32;
+                    let red = (value * value * 200.0 + 55.0) as i32;
+                    let green = (value * value * value * value * 255.0) as i32;
+                    let alpha = (value * 100.0 + 155.0) as i32;
+                    let pixel = (y * 16 + x) * 4;
+                    pixels[pixel] = red as u8;
+                    pixels[pixel + 1] = green as u8;
+                    pixels[pixel + 2] = blue as u8;
+                    pixels[pixel + 3] = alpha as u8;
+                }
+            }
+        }
+        Self { frames, tick: 0 }
+    }
+
+    pub fn tick(&mut self) {
+        self.tick = self.tick.wrapping_add(1);
+    }
+
+    pub fn rgba(&self) -> &[u8] {
+        &self.frames[self.tick & 31]
+    }
+}
+
 #[derive(Resource)]
 pub(super) struct WaterAnimator {
+    portal: PortalTexture,
     still: StillWaterTexture,
     flow: FlowingWaterTexture,
     lava: LavaTexture,
@@ -395,7 +471,8 @@ pub(super) struct WaterAnimator {
 /// Frames in [`FluidFrames::frames`] and the atlas tiles each one fills.
 /// Flowing water and lava repeat one frame over a 2×2 block of tiles, like
 /// Beta's `tileSize = 2` texture effects.
-const FLUID_TILES: [(usize, (u8, u8)); 10] = [
+const FLUID_TILES: [(usize, (u8, u8)); 11] = [
+    (4, PORTAL_TILE),
     (0, WATER_STILL_TILE),
     (1, WATER_FLOW_TILE),
     (1, (WATER_FLOW_TILE.0 + 1, WATER_FLOW_TILE.1)),
@@ -416,7 +493,7 @@ const FLUID_TILES: [(usize, (u8, u8)); 10] = [
 pub(super) struct FluidFrames {
     atlas: AssetId<Image>,
     stride: u32,
-    frames: [Vec<u8>; 4],
+    frames: [Vec<u8>; 5],
     version: u64,
 }
 
@@ -446,6 +523,7 @@ impl FluidFrames {
             padded_frame(layout, animator.flow.rgba())?,
             padded_frame(layout, animator.lava.rgba())?,
             padded_frame(layout, animator.lava_flow.rgba())?,
+            padded_frame(layout, animator.portal.rgba())?,
         ];
         self.version += 1;
         Some(())
@@ -462,6 +540,7 @@ pub(super) fn start_fluid_animation(
     image: &mut Image,
 ) {
     let mut animator = WaterAnimator {
+        portal: PortalTexture::new(),
         still: StillWaterTexture::new(),
         flow: FlowingWaterTexture::new(),
         lava: LavaTexture::still(),
@@ -471,6 +550,7 @@ pub(super) fn start_fluid_animation(
     animator.flow.tick();
     animator.lava.tick();
     animator.lava_flow.tick();
+    animator.portal.tick();
     // The first frame goes out with the atlas upload itself; later frames are
     // tile writes from the render world.
     for (frame, (tile_x, tile_y)) in FLUID_TILES {
@@ -478,7 +558,8 @@ pub(super) fn start_fluid_animation(
             0 => animator.still.rgba(),
             1 => animator.flow.rgba(),
             2 => animator.lava.rgba(),
-            _ => animator.lava_flow.rgba(),
+            3 => animator.lava_flow.rgba(),
+            _ => animator.portal.rgba(),
         };
         write_atlas_tile(image, tile_x, tile_y, rgba);
     }
@@ -509,6 +590,7 @@ pub(super) fn animate_fluid_textures(
         animator.flow.tick();
         animator.lava.tick();
         animator.lava_flow.tick();
+        animator.portal.tick();
     }
     if let (Some(layout), Some(mut frames)) = (layout, frames) {
         frames.update(layout.0, &animator);

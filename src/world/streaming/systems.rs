@@ -60,8 +60,11 @@ use crate::rendering::textures::WaterMaterial;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::GeneratedChunk;
 use crate::world::chunk::WorldChunks;
+use crate::world::dimension::ActiveDimension;
+use crate::world::dimension::Dimension;
 use crate::world::generation::ChunkGenerator;
 use crate::world::generation::WorldGeneration;
+use crate::world::generation::nether::NetherGenerator;
 use crate::world::generation::overworld::OverworldGenerator;
 
 /// Jobs of each kind kept in flight per async compute thread. A job that
@@ -97,22 +100,39 @@ pub(crate) struct SpawnAreaTask {
 fn world_generator(
     generation: Option<&WorldGeneration>,
     persistence: Option<&WorldPersistence>,
+    dimension: Dimension,
 ) -> Arc<dyn ChunkGenerator> {
     let seed = persistence.map_or(0, WorldPersistence::seed);
     generation.map_or_else(
-        || Arc::new(OverworldGenerator::new(seed)) as Arc<dyn ChunkGenerator>,
+        || match dimension {
+            Dimension::Overworld => {
+                Arc::new(OverworldGenerator::new(seed)) as Arc<dyn ChunkGenerator>
+            }
+            Dimension::Nether => Arc::new(NetherGenerator::new(seed)),
+        },
         |generation| Arc::clone(&generation.0),
     )
 }
 
+/// The chunk the player will stand in: where a player already in the world
+/// is, else where a saved one left off, else the origin for a new one.
+fn spawn_area_chunk(storage: Option<&WorldStorage>, standing: Option<Vec3>) -> ChunkPosition {
+    standing
+        .map(|position| ChunkPosition::from_world(position.x, position.z))
+        .or_else(|| {
+            let player = storage?.load_player()?;
+            Some(ChunkPosition::from_world(player.x, player.z))
+        })
+        .unwrap_or(ChunkPosition::ZERO)
+}
+
 /// Load or generate the chunk the player will stand in: where a saved player
 /// left off, or the origin for a new one.
-fn build_spawn_area(generator: &dyn ChunkGenerator, storage: Option<&WorldStorage>) -> SpawnArea {
-    let spawn_chunk = storage
-        .and_then(WorldStorage::load_player)
-        .map_or(ChunkPosition::ZERO, |player| {
-            ChunkPosition::from_world(player.x, player.z)
-        });
+fn build_spawn_area(
+    generator: &dyn ChunkGenerator,
+    storage: Option<&WorldStorage>,
+    spawn_chunk: ChunkPosition,
+) -> SpawnArea {
     let load_start = Instant::now();
     if let Some(chunk) = storage.and_then(|storage| storage.load_chunk(spawn_chunk)) {
         return SpawnArea {
@@ -153,16 +173,20 @@ pub(crate) fn start_spawn_area(
     mut commands: Commands,
     generation: Option<Res<WorldGeneration>>,
     persistence: Option<Res<WorldPersistence>>,
+    dimension: Option<Res<ActiveDimension>>,
 ) {
-    let generator = world_generator(generation.as_deref(), persistence.as_deref());
+    let dimension = dimension.map_or_else(Dimension::default, |dimension| dimension.0);
+    let generator = world_generator(generation.as_deref(), persistence.as_deref(), dimension);
     let storage = persistence
         .as_deref()
         .and_then(WorldPersistence::storage)
         .cloned();
     let task = {
         let generator = Arc::clone(&generator);
-        AsyncComputeTaskPool::get()
-            .spawn(async move { build_spawn_area(generator.as_ref(), storage.as_deref()) })
+        AsyncComputeTaskPool::get().spawn(async move {
+            let spawn_chunk = spawn_area_chunk(storage.as_deref(), None);
+            build_spawn_area(generator.as_ref(), storage.as_deref(), spawn_chunk)
+        })
     };
     commands.insert_resource(SpawnAreaTask { task, generator });
 }
@@ -189,10 +213,13 @@ pub(crate) fn setup_streaming(
     mut perf: ResMut<StreamingDiagnostics>,
     mut ticks: Option<ResMut<BlockTicks>>,
     mut light: Option<ResMut<LightCache>>,
+    dimension: Option<Res<ActiveDimension>>,
+    player: Query<&Transform, With<Player>>,
 ) {
+    let dimension = dimension.map_or_else(Dimension::default, |dimension| dimension.0);
     // A world opened from the menu builds its spawn area in the background.
     // The player spawns after this and needs the heightmap, so a world loaded
-    // at startup builds it here instead.
+    // at startup, or an arrival through a portal, builds it here instead.
     let (generator, spawn_area) = match building.as_deref_mut() {
         Some(building) => {
             let Some(area) = check_ready(&mut building.task) else {
@@ -202,12 +229,29 @@ pub(crate) fn setup_streaming(
             (Arc::clone(&building.generator), area)
         }
         None => {
-            let generator = world_generator(generation.as_deref(), persistence.as_deref());
+            let generator =
+                world_generator(generation.as_deref(), persistence.as_deref(), dimension);
             let storage = persistence
                 .as_deref()
                 .and_then(WorldPersistence::storage)
                 .cloned();
-            let area = build_spawn_area(generator.as_ref(), storage.as_deref());
+            // A player who is already in the world, having just changed
+            // dimension, says where to start; otherwise the saved one does.
+            let spawn_chunk = spawn_area_chunk(
+                storage.as_deref(),
+                player.single().ok().map(|player| player.translation),
+            );
+            let area = if chunks.contains(spawn_chunk) {
+                // An arrival through a portal has already put its
+                // surroundings in.
+                SpawnArea {
+                    chunks: Vec::new(),
+                    load: None,
+                    generate: None,
+                }
+            } else {
+                build_spawn_area(generator.as_ref(), storage.as_deref(), spawn_chunk)
+            };
             (generator, area)
         }
     };
@@ -222,6 +266,7 @@ pub(crate) fn setup_streaming(
     // Mesh jobs light chunks from here on, so block ticks must not.
     if let Some(light) = light.as_deref_mut() {
         light.set_streamed(true);
+        light.set_has_sky(dimension.has_sky());
     }
     let materials = ChunkMaterials([
         terrain_material.0.clone(),
@@ -270,6 +315,7 @@ pub(crate) fn setup_streaming(
         discovery_dirty: true,
         max_in_flight,
         halted: false,
+        has_sky: dimension.has_sky(),
     });
 }
 
@@ -838,7 +884,7 @@ pub(crate) fn stream_chunks(
 
 /// Put a chunk into the live world: its pending block ticks go to the
 /// scheduler, and the items, mobs and bodies saved with it become entities.
-fn admit_chunk(
+pub(crate) fn admit_chunk(
     commands: &mut Commands,
     chunks: &mut WorldChunks,
     ticks: Option<&mut BlockTicks>,

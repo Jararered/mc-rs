@@ -46,8 +46,7 @@ use crate::world::chunk::Chunk;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::PendingTick;
 use crate::world::chunk::WorldChunks;
-use crate::world::environment::celestial_angle;
-use crate::world::environment::skylight_subtracted_in_weather;
+use crate::world::dimension::Dimension;
 use crate::world::lighting::LightCache;
 
 mod behavior;
@@ -147,6 +146,8 @@ pub struct BlockTicks {
     raining: bool,
     /// Rain and weighted thunder strength, for the skylight they take away.
     weather_strength: (f32, f32),
+    /// Which `WorldProvider` rules updates follow.
+    dimension: Dimension,
     events: Vec<BlockEvent>,
     changes: Vec<BlockChange>,
     effects: Vec<TickEffect>,
@@ -174,6 +175,7 @@ impl BlockTicks {
             time: 0,
             raining: false,
             weather_strength: (0.0, 0.0),
+            dimension: Dimension::Overworld,
             events: Vec::new(),
             changes: Vec::new(),
             effects: Vec::new(),
@@ -190,6 +192,16 @@ impl BlockTicks {
     /// `thunder` is the weighted strength, already multiplied by `rain`.
     pub fn set_weather_strength(&mut self, rain: f32, thunder: f32) {
         self.weather_strength = (rain, thunder);
+    }
+
+    /// The dimension whose rules block updates follow: no sky light and
+    /// far-flowing lava in the Nether.
+    pub fn set_dimension(&mut self, dimension: Dimension) {
+        self.dimension = dimension;
+    }
+
+    pub fn dimension(&self) -> Dimension {
+        self.dimension
     }
 
     /// The last world tick processed.
@@ -280,7 +292,9 @@ impl BlockTicks {
         time: u64,
     ) -> TickWorld<'a> {
         let (rain, thunder) = self.weather_strength;
-        let subtracted = skylight_subtracted_in_weather(celestial_angle(time, 0.0), rain, thunder);
+        let subtracted = self
+            .dimension
+            .skylight_subtracted_in_weather(time, 0.0, rain, thunder);
         TickWorld::new(chunks, self, light, time, subtracted)
     }
 

@@ -13,13 +13,8 @@ const SEA_LEVEL: usize = 64;
 /// Beta's density grid spacing, `684.412` in every noise axis.
 const DENSITY_SCALE: f64 = 684.412;
 
-/// Raw block bytes of one chunk in [`crate::world::chunk::Chunk::index`]
-/// order, the working form of Beta's `byte[]` during base generation.
-pub(super) type RawBlocks = Vec<u8>;
-
-pub(super) const fn raw_index(x: usize, y: usize, z: usize) -> usize {
-    (y * CHUNK_SIZE + z) * CHUNK_SIZE + x
-}
+pub(super) use super::super::RawBlocks;
+pub(super) use super::super::raw_index;
 
 pub(super) struct TerrainGenerator {
     min_limit: PerlinOctaves,

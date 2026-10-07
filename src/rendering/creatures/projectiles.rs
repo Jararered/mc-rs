@@ -22,10 +22,8 @@ use crate::item::Item;
 use crate::player::PlayerCamera;
 use crate::rendering::appearance::item_tile;
 use crate::world::chunk::WorldChunks;
-use crate::world::environment::celestial_angle;
 use crate::world::lighting::LightCache;
 use crate::world::tick::WorldTick;
-use crate::world::weather::WorldWeather;
 
 /// The mesh drawn for an arrow or fireball, as a child of its body.
 #[derive(Component)]
@@ -183,7 +181,7 @@ pub(super) fn pose_projectiles(
     tick: Res<WorldTick>,
     chunks: Res<WorldChunks>,
     light: Option<Res<LightCache>>,
-    weather: Option<Res<WorldWeather>>,
+    environment: crate::world::dimension::Environment,
     camera: Query<&GlobalTransform, With<PlayerCamera>>,
     bodies: Query<
         (
@@ -202,10 +200,8 @@ pub(super) fn pose_projectiles(
 ) {
     let partial = tick.partial();
     let lerp = |from: f32, to: f32| from + (to - from) * partial;
-    let subtracted = crate::world::weather::skylight_subtracted(
-        weather.as_deref(),
-        celestial_angle(tick.world_time(), partial),
-    );
+    let subtracted = environment.skylight_subtracted(partial);
+    let ambient = environment.ambient_light();
     let facing = camera
         .single()
         .map_or(Quat::IDENTITY, |camera| camera.rotation());
@@ -226,8 +222,14 @@ pub(super) fn pose_projectiles(
             continue;
         };
         let slide = previous.0.lerp(body.translation, partial) - body.translation;
-        let brightness =
-            entity_brightness(&chunks, light.as_deref(), body.translation, 0.5, subtracted);
+        let brightness = entity_brightness(
+            &chunks,
+            light.as_deref(),
+            body.translation,
+            0.5,
+            subtracted,
+            ambient,
+        );
         for child in children.iter() {
             if let Ok((mut pose, mut tag)) = models.get_mut(child) {
                 pose.set_if_neq(Transform::from_translation(slide).with_rotation(rotation));

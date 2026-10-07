@@ -39,13 +39,11 @@ use crate::entity::mobs::MobType;
 use crate::player::model::mesh::sprite_mesh;
 use crate::rendering::appearance::item_tile;
 use crate::world::chunk::WorldChunks;
-use crate::world::environment::celestial_angle;
 use crate::world::lighting::LightCache;
 use crate::world::lighting::beta_brightness;
 use crate::world::lighting::combined_light;
 use crate::world::lighting::light_level_at;
 use crate::world::tick::WorldTick;
-use crate::world::weather::WorldWeather;
 use models::Cuboid;
 use models::Frame;
 use models::Layer;
@@ -397,7 +395,7 @@ fn pose_creatures(
     tick: Res<WorldTick>,
     chunks: Res<WorldChunks>,
     light: Option<Res<LightCache>>,
-    weather: Option<Res<WorldWeather>>,
+    environment: crate::world::dimension::Environment,
     assets: Res<CreatureAssets>,
     creatures: Query<(
         &Mob,
@@ -432,10 +430,8 @@ fn pose_creatures(
     let mut posed = 0;
     let partial = tick.partial();
     let lerp = |from: f32, to: f32| from + (to - from) * partial;
-    let subtracted = crate::world::weather::skylight_subtracted(
-        weather.as_deref(),
-        celestial_angle(tick.world_time(), partial),
-    );
+    let subtracted = environment.skylight_subtracted(partial);
+    let ambient = environment.ambient_light();
     for (model, mut node, children) in &mut nodes {
         let Ok((mob, living, root, previous, size, (wings, swim, fuse, bounce, hover))) =
             creatures.get(model.owner)
@@ -528,6 +524,7 @@ fn pose_creatures(
             root.translation,
             size.height,
             subtracted,
+            ambient,
         );
         let brightness = world_brightness;
         let hurt = living.hurt_time > 0 || living.death_time > 0;
@@ -579,6 +576,7 @@ fn entity_brightness(
     feet: Vec3,
     height: f32,
     subtracted: u8,
+    ambient: f32,
 ) -> f32 {
     let x = feet.x.floor() as i32;
     let y = (feet.y + height * 0.66).floor() as i32;
@@ -587,5 +585,5 @@ fn entity_brightness(
         || light_level_at(chunks, x, y, z, subtracted),
         |(sky, block)| combined_light(sky, block, subtracted),
     );
-    beta_brightness(level)
+    beta_brightness(level, ambient)
 }

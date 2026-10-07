@@ -165,6 +165,36 @@ impl CommandContext<'_, '_> {
             }
             return;
         }
+        if let ChatCommand::WeatherCommand {
+            raining,
+            thundering,
+        } = command
+        {
+            let Some(weather) = weather.as_deref_mut() else {
+                chat.push("Weather is unavailable");
+                return;
+            };
+            weather.raining = raining;
+            weather.thundering = thundering;
+            weather.rain_time = if raining { 12_000 } else { 168_000 };
+            weather.thunder_time = if thundering { 12_000 } else { 168_000 };
+            weather.rain_strength = if raining { 1.0 } else { 0.0 };
+            weather.thunder_strength = if thundering { 1.0 } else { 0.0 };
+            if let Some(storage) = persistence.as_deref().and_then(WorldPersistence::storage) {
+                storage.set_weather(weather);
+            }
+            chat.push(format!(
+                "Weather: {}",
+                if thundering {
+                    "thunder"
+                } else if raining {
+                    "rain"
+                } else {
+                    "clear"
+                }
+            ));
+            return;
+        }
         let Ok((
             mut transform,
             mut velocity,
@@ -183,7 +213,8 @@ impl CommandContext<'_, '_> {
             | ChatCommand::TimeSetCommand(_)
             | ChatCommand::TimeAddCommand(_)
             | ChatCommand::TimeQueryCommand(_)
-            | ChatCommand::WireframeCommand { .. } => {
+            | ChatCommand::WireframeCommand { .. }
+            | ChatCommand::WeatherCommand { .. } => {
                 unreachable!("handled before the player lookup")
             }
             ChatCommand::GiveCommand { item, amount } => {
@@ -226,36 +257,6 @@ impl CommandContext<'_, '_> {
                 } else {
                     spawn(commands, Mob::new(kind, clock.world_time()), feet);
                     format!("Summoned {}", kind.name())
-                }
-            }
-            ChatCommand::WeatherCommand {
-                raining,
-                thundering,
-            } => {
-                if let Some(weather) = weather.as_deref_mut() {
-                    weather.raining = raining;
-                    weather.thundering = thundering;
-                    weather.rain_time = if raining { 12_000 } else { 168_000 };
-                    weather.thunder_time = if thundering { 12_000 } else { 168_000 };
-                    weather.rain_strength = if raining { 1.0 } else { 0.0 };
-                    weather.thunder_strength = if thundering { 1.0 } else { 0.0 };
-                    if let Some(storage) =
-                        persistence.as_deref().and_then(WorldPersistence::storage)
-                    {
-                        storage.set_weather(weather);
-                    }
-                    format!(
-                        "Weather: {}",
-                        if thundering {
-                            "thunder"
-                        } else if raining {
-                            "rain"
-                        } else {
-                            "clear"
-                        }
-                    )
-                } else {
-                    "Weather is unavailable".to_owned()
                 }
             }
             ChatCommand::SetBlockCommand { position, block } => {

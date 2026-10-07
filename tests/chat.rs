@@ -658,6 +658,105 @@ fn help_and_time_work_without_player_and_preserve_scheduled_delays() {
     );
 }
 
+#[test]
+fn weather_command_sets_the_world_weather_without_a_player() {
+    use bevy::input::keyboard::KeyboardInput;
+    use bevy::state::app::StatesPlugin;
+    use bevy::window::CursorGrabMode;
+    use bevy::window::CursorOptions;
+    use bevy::window::PrimaryWindow;
+    use game::app::state::AppScreen;
+    use game::chat::ChatPlugin;
+    use game::ui::ChatUiPlugin;
+    use game::ui::icons::overlay::UiFont;
+    use game::world::tick::WorldTick;
+    use game::world::weather::WorldWeather;
+
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, StatesPlugin))
+        .init_state::<AppScreen>()
+        .add_message::<KeyboardInput>()
+        .insert_resource(ButtonInput::<KeyCode>::default())
+        .insert_resource(WorldTick::default())
+        .insert_resource(WorldChunks::default())
+        .insert_resource(BlockTicks::default())
+        .insert_resource(WorldWeather::default())
+        .insert_resource(UiFont {
+            minecraft: Handle::default(),
+        })
+        .add_plugins((ChatPlugin, ChatUiPlugin));
+    let window = app
+        .world_mut()
+        .spawn((
+            Window {
+                focused: true,
+                ..default()
+            },
+            PrimaryWindow,
+            CursorOptions {
+                grab_mode: CursorGrabMode::Locked,
+                ..default()
+            },
+        ))
+        .id();
+    app.update();
+    app.world_mut()
+        .resource_mut::<NextState<AppScreen>>()
+        .set(AppScreen::Playing);
+    app.update();
+
+    submit_command(&mut app, window, "/weather rain");
+    let weather = app.world().resource::<WorldWeather>();
+    assert!(weather.raining && !weather.thundering);
+    assert_eq!((weather.rain_time, weather.thunder_time), (12_000, 168_000));
+    assert_eq!(
+        (weather.rain_strength, weather.thunder_strength),
+        (1.0, 0.0)
+    );
+    assert!(weather.is_raining() && !weather.is_thundering());
+    assert!(
+        app.world_mut()
+            .query::<&Text>()
+            .iter(app.world())
+            .any(|text| text.0 == "Weather: rain")
+    );
+
+    submit_command(&mut app, window, "/weather thunder");
+    let weather = app.world().resource::<WorldWeather>();
+    assert!(weather.raining && weather.thundering);
+    assert_eq!((weather.rain_time, weather.thunder_time), (12_000, 12_000));
+    assert_eq!(
+        (weather.rain_strength, weather.thunder_strength),
+        (1.0, 1.0)
+    );
+    assert!(weather.is_thundering());
+    assert!(
+        app.world_mut()
+            .query::<&Text>()
+            .iter(app.world())
+            .any(|text| text.0 == "Weather: thunder")
+    );
+
+    submit_command(&mut app, window, "/weather clear");
+    let weather = app.world().resource::<WorldWeather>();
+    assert!(!weather.raining && !weather.thundering);
+    assert_eq!(
+        (weather.rain_time, weather.thunder_time),
+        (168_000, 168_000)
+    );
+    assert_eq!(
+        (weather.rain_strength, weather.thunder_strength),
+        (0.0, 0.0)
+    );
+    assert!(!weather.is_raining() && !weather.is_thundering());
+    assert!(
+        app.world_mut()
+            .query::<&Text>()
+            .iter(app.world())
+            .any(|text| text.0 == "Weather: clear")
+    );
+}
+
 fn parse_command(text: &str) -> Result<ChatCommand, String> {
     CommandRegistry::default().parse(text)
 }

@@ -177,7 +177,15 @@ fn update_debug_overlay(
     chat: Option<Res<crate::chat::ChatFocus>>,
     keys: Option<Res<ButtonInput<KeyCode>>>,
     mut visible: ResMut<DebugVisible>,
-    player: Query<(&Transform, &CollisionState, Option<&Flying>), With<Player>>,
+    player: Query<
+        (
+            &Transform,
+            &CollisionState,
+            Option<&Flying>,
+            &crate::player::GameMode,
+        ),
+        With<Player>,
+    >,
     camera: Query<&GlobalTransform, With<PlayerCamera>>,
     chunks: Res<WorldChunks>,
     mut overlay: Query<(&mut Text, &mut Visibility), With<DebugOverlay>>,
@@ -198,7 +206,7 @@ fn update_debug_overlay(
     if !visible.0 {
         return;
     }
-    let Ok((transform, collision, flying)) = player.single() else {
+    let Ok((transform, collision, flying, mode)) = player.single() else {
         return;
     };
     let p = transform.translation;
@@ -229,7 +237,7 @@ fn update_debug_overlay(
         );
     let flight = if flying.is_some() { "ON" } else { "OFF" };
     let next = format!(
-        "XYZ: {:.2} / {:.2} / {:.2}\nBlock: {} / {} / {}  Chunk: {} / {}\nFeet Y: {:.2}  Grounded: {}  Below: {}\nFlight: {}  Target: {}",
+        "XYZ: {:.2} / {:.2} / {:.2}\nBlock: {} / {} / {}  Chunk: {} / {}\nFeet Y: {:.2}  Grounded: {}  Below: {}\nMode: {}  Flight: {}  Target: {}",
         p.x,
         p.y,
         p.z,
@@ -241,6 +249,7 @@ fn update_debug_overlay(
         feet_y,
         collision.on_ground,
         below,
+        mode.name(),
         flight,
         target
     );

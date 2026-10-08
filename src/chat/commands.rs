@@ -8,6 +8,7 @@ use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
 use crate::item::Item;
 use crate::item::ItemStack;
+use crate::player::GameMode;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::WorldChunks;
 
@@ -31,6 +32,7 @@ pub enum ChatCommand {
     TeleportCommand(Vec3),
     SummonCommand(MobType),
     HealCommand,
+    GameModeCommand(GameMode),
     WeatherCommand {
         raining: bool,
         thundering: bool,
@@ -71,6 +73,15 @@ pub(super) fn register_builtin_commands(registry: &mut CommandRegistry) {
             parse_heal,
         )
         .expect("valid heal command");
+    registry
+        .register_with_completions(
+            "gamemode",
+            "Set the player's game mode.",
+            ["/gamemode survival|creative|spectator"],
+            parse_gamemode,
+            complete_gamemode,
+        )
+        .expect("valid gamemode command");
     registry
         .register_with_completions(
             "weather",
@@ -153,6 +164,15 @@ fn parse_heal(_: &CommandRegistry, args: &[&str]) -> Result<ChatCommand, Command
     } else {
         Err(CommandParseError::Usage)
     }
+}
+
+fn parse_gamemode(_: &CommandRegistry, args: &[&str]) -> Result<ChatCommand, CommandParseError> {
+    let [name] = args else {
+        return Err(CommandParseError::Usage);
+    };
+    GameMode::parse(name)
+        .map(ChatCommand::GameModeCommand)
+        .ok_or_else(|| format!("Unknown game mode: {name}").into())
 }
 
 fn parse_weather(_: &CommandRegistry, args: &[&str]) -> Result<ChatCommand, CommandParseError> {
@@ -304,6 +324,16 @@ fn complete_summon(_: &CommandRegistry, args: &[&str]) -> Vec<String> {
         [] => MobType::ALL
             .iter()
             .map(|kind| kind.name().to_owned())
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn complete_gamemode(_: &CommandRegistry, args: &[&str]) -> Vec<String> {
+    match args {
+        [] => GameMode::ALL
+            .iter()
+            .map(|mode| mode.name().to_owned())
             .collect(),
         _ => Vec::new(),
     }

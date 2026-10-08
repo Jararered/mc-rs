@@ -151,6 +151,8 @@ pub struct StoredPlayer {
     pub flying: bool,
     #[serde(default)]
     pub fly_speed: f32,
+    #[serde(default)]
+    pub game_mode: crate::player::GameMode,
     /// Which dimension the position is in. Beta's `Dimension` tag.
     #[serde(default)]
     pub dimension: Dimension,
@@ -212,6 +214,7 @@ impl StoredPlayer {
             carried: None,
             flying: false,
             fly_speed: 1.0,
+            game_mode: crate::player::GameMode::Survival,
             dimension: Dimension::Overworld,
         }
     }
@@ -224,6 +227,11 @@ impl StoredPlayer {
     pub fn with_flying(mut self, flying: bool, fly_speed: f32) -> Self {
         self.flying = flying;
         self.fly_speed = fly_speed;
+        self
+    }
+
+    pub fn with_game_mode(mut self, game_mode: crate::player::GameMode) -> Self {
+        self.game_mode = game_mode;
         self
     }
 
@@ -1416,6 +1424,7 @@ impl WorldPersistence {
             Option<&Inventory>,
             bool,
             f32,
+            crate::player::GameMode,
             u8,
             Option<&crate::player::PlayerSurvival>,
         )>,
@@ -1478,11 +1487,13 @@ impl WorldPersistence {
                 Err(error) => warn!("Failed to save world: {error}"),
             }
         }
-        if let Some((transform, hotbar, inventory, flying, fly_speed, health, survival)) = player
+        if let Some((transform, hotbar, inventory, flying, fly_speed, game_mode, health, survival)) =
+            player
             && let Err(error) = storage.save_player(
                 &StoredPlayer::from_transform(transform)
                     .with_dimension(storage.dimension())
                     .with_flying(flying, fly_speed)
+                    .with_game_mode(game_mode)
                     .with_health(health)
                     .with_survival(survival)
                     .with_inventory(
@@ -1617,6 +1628,7 @@ fn flush_persistence(
             Option<&Inventory>,
             Option<&crate::entity::Flying>,
             &crate::player::FlySpeed,
+            &crate::player::GameMode,
             Option<&crate::player::PlayerHealth>,
             Option<&crate::player::PlayerSurvival>,
         ),
@@ -1738,13 +1750,14 @@ fn flush_persistence(
         persistence.flush(
             &chunks,
             player.single().ok().map(
-                |(transform, hotbar, inventory, flying, fly_speed, health, survival)| {
+                |(transform, hotbar, inventory, flying, fly_speed, game_mode, health, survival)| {
                     (
                         transform,
                         hotbar,
                         inventory,
                         flying.is_some(),
                         fly_speed.0,
+                        *game_mode,
                         health.map_or(full_player_health(), |health| health.current),
                         survival,
                     )
@@ -1775,10 +1788,11 @@ fn flush_persistence(
         .map_or_else(Dimension::default, |storage| storage.dimension());
     let record = if persistence.player_pending {
         player.single().ok().map(
-            |(transform, hotbar, inventory, flying, fly_speed, health, survival)| {
+            |(transform, hotbar, inventory, flying, fly_speed, game_mode, health, survival)| {
                 StoredPlayer::from_transform(transform)
                     .with_dimension(dimension)
                     .with_flying(flying.is_some(), fly_speed.0)
+                    .with_game_mode(*game_mode)
                     .with_health(health.map_or(full_player_health(), |health| health.current))
                     .with_survival(survival)
                     .with_inventory(

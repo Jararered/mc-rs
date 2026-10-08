@@ -7,6 +7,7 @@
 
 use bevy::prelude::*;
 
+use super::GameMode;
 use super::MAX_PLAYER_HEALTH;
 use super::Player;
 use super::PlayerHealth;
@@ -63,9 +64,12 @@ impl Plugin for SurvivalPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             Update,
-            tick_player_survival
-                .after(PhysicsSet::Integrate)
-                .before(tick_player_combat)
+            (
+                apply_game_mode.before(PhysicsSet::ApplyInput),
+                tick_player_survival
+                    .after(PhysicsSet::Integrate)
+                    .before(tick_player_combat),
+            )
                 .run_if(|screen: Option<Res<State<AppScreen>>>| {
                     screen.is_none_or(|screen| *screen.get() == AppScreen::Playing)
                 }),
@@ -171,6 +175,29 @@ impl PlayerSurvival {
     }
 }
 
+/// Keeps flight and invulnerability in step with the player's [`GameMode`]:
+/// survival never flies, a spectator always does, and only survival is hurt.
+fn apply_game_mode(
+    mut player: Query<(Entity, &GameMode, Has<Flying>, &mut PlayerCombat), With<Player>>,
+    mut commands: Commands,
+) {
+    let Ok((entity, mode, flying, mut combat)) = player.single_mut() else {
+        return;
+    };
+    match mode {
+        GameMode::Survival if flying => {
+            commands.entity(entity).remove::<Flying>();
+        }
+        GameMode::Spectator if !flying => {
+            commands.entity(entity).insert(Flying);
+        }
+        _ => {}
+    }
+    if combat.invulnerable == mode.takes_damage() {
+        combat.invulnerable = !mode.takes_damage();
+    }
+}
+
 /// `World.canBlockBeRainedOn`, the rain half of `Entity.isWet`.
 fn rained_on(chunks: &WorldChunks, cell: IVec3) -> bool {
     chunks
@@ -198,7 +225,7 @@ fn tick_player_survival(
             &mut PlayerInterpolation,
             Option<&mut Hotbar>,
             Option<&mut Inventory>,
-            Has<Flying>,
+            &GameMode,
         ),
         With<Player>,
     >,
@@ -218,7 +245,7 @@ fn tick_player_survival(
         mut interpolation,
         mut hotbar,
         mut inventory,
-        flying,
+        mode,
     )) = player.single_mut()
     else {
         return;
@@ -283,6 +310,12 @@ fn tick_player_survival(
             }
             continue;
         }
+        if !mode.takes_damage() {
+            // Nothing burns, drowns, or bruises this player, and no fall
+            // waits for a return to survival.
+            *survival = PlayerSurvival::default();
+            continue;
+        }
 
         let position = transform.translation;
         let aabb = EntitySize::PLAYER.aabb(position);
@@ -333,9 +366,8 @@ fn tick_player_survival(
             hurt(4);
         }
 
-        // `EntityLiving.onEntityUpdate`. Flight passes through blocks, so it
-        // cannot suffocate.
-        if !flying && inside_opaque_block(eye, EntitySize::PLAYER.width, &chunks) {
+        // `EntityLiving.onEntityUpdate`.
+        if inside_opaque_block(eye, EntitySize::PLAYER.width, &chunks) {
             hurt(1);
         }
         state.head_in_water = eye_in_water(eye, &chunks);
@@ -350,13 +382,7 @@ fn tick_player_survival(
             state.air = MAX_AIR;
         }
 
-        // The tail of `Entity.moveEntity`, which `noClip` skips.
-        if flying {
-            if state.fire <= 0 {
-                state.fire = -FIRE_RESISTANCE;
-            }
-            continue;
-        }
+        // The tail of `Entity.moveEntity`.
         let fallen = std::mem::take(&mut state.landed);
         let damage = (fallen - 3.0).ceil() as i16;
         if damage > 0 {

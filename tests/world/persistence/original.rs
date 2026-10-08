@@ -499,6 +499,7 @@ fn the_player_is_stored_in_level_dat() {
         ..default()
     })
     .with_flying(true, 2.5)
+    .with_game_mode(game::player::GameMode::Creative)
     .with_health(14)
     .with_inventory(&hotbar, &inventory);
     player.air = 88;
@@ -521,6 +522,7 @@ fn the_player_is_stored_in_level_dat() {
         (88, 130, 4.25)
     );
     assert!(loaded.flying);
+    assert_eq!(loaded.game_mode, game::player::GameMode::Creative);
     assert_eq!(loaded.fly_speed, 2.5);
 
     assert_eq!(loaded.hotbar[2], Some(stored(Item::Stick, 3)));

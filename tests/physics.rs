@@ -887,3 +887,45 @@ fn water_breaks_a_fall() {
     assert_eq!(landed.fall_distance, 0.0);
     assert_eq!(landed.landed, 0.0);
 }
+
+#[test]
+fn creative_flight_lands_on_blocks_and_spectator_flight_passes_through() {
+    use game::entity::Flying;
+    use game::player::GameMode;
+
+    let fly_down = |mode: GameMode| {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(
+                50,
+            )))
+            .insert_resource(floor_world(64))
+            .add_plugins(PhysicsPlugin);
+        let player = app
+            .world_mut()
+            .spawn((
+                Player,
+                mode,
+                Flying,
+                Transform::from_xyz(8.5, 72.0, 8.5),
+                Velocity(Vec3::new(0.0, -20.0, 0.0)),
+            ))
+            .id();
+        for _ in 0..40 {
+            app.update();
+        }
+        let entity = app.world().entity(player);
+        (
+            entity.get::<Transform>().unwrap().translation.y,
+            entity.contains::<Flying>(),
+        )
+    };
+
+    let (y, flying) = fly_down(GameMode::Creative);
+    assert!((y - (65.0 + EntitySize::PLAYER.y_offset)).abs() < 0.05);
+    assert!(!flying, "touching down ends a creative flight");
+
+    let (y, flying) = fly_down(GameMode::Spectator);
+    assert!(y < 60.0, "a spectator sinks through the floor");
+    assert!(flying);
+}

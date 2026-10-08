@@ -32,6 +32,7 @@ use crate::entity::StepDistance;
 use crate::entity::StepHeight;
 use crate::entity::Velocity;
 use crate::entity::creature::Living;
+use crate::player::GameMode;
 use crate::player::Player;
 use crate::player::PlayerInterpolation;
 use crate::player::PlayerMovementInput;
@@ -51,6 +52,8 @@ const TERMINAL_VELOCITY: f32 = 78.4;
 const MAX_STEP_SECS: f32 = 0.05;
 /// Frame time integrated at most, so a long hitch does not replay as a burst.
 const MAX_FRAME_SECS: f32 = 0.25;
+/// Longest single sweep of a colliding flight, in blocks.
+const MAX_FLIGHT_STEP: f32 = 8.0;
 /// Covers the f32 error from converting a player's feet to eye height and back.
 const CONTACT_EPSILON: f32 = 1e-4;
 /// `World.handleMaterialAcceleration`: current added to motion each world tick.
@@ -470,8 +473,10 @@ fn integrate_player(
     time: Res<Time>,
     chunks: Res<WorldChunks>,
     mut block_ticks: Option<ResMut<BlockTicks>>,
+    mut commands: Commands,
     mut players: Query<
         (
+            Entity,
             &mut Transform,
             &mut Velocity,
             &EntitySize,
@@ -480,6 +485,7 @@ fn integrate_player(
             &mut PlayerMovementInput,
             &mut PlayerInterpolation,
             Option<&Flying>,
+            &GameMode,
             Option<&mut StepDistance>,
             Option<&mut PlayerSurvival>,
             Option<&mut crate::player::portal::PortalTravel>,
@@ -496,6 +502,7 @@ fn integrate_player(
     const JUMP_IMPULSE: f32 = 0.419_999_99;
 
     for (
+        entity,
         mut transform,
         mut velocity,
         size,
@@ -504,6 +511,7 @@ fn integrate_player(
         input,
         mut interpolation,
         flying,
+        mode,
         mut steps,
         mut survival,
         mut portal,
@@ -517,10 +525,41 @@ fn integrate_player(
         }
 
         if flying.is_some() {
-            // Noclip flight cannot tunnel, so it needs no step limit.
-            transform.translation += velocity.0 * time.delta_secs().min(MAX_FRAME_SECS);
+            let delta = velocity.0 * time.delta_secs().min(MAX_FRAME_SECS);
+            if mode.noclip() {
+                transform.translation += delta;
+                *collision = CollisionState::default();
+            } else {
+                // The sweep cannot tunnel; short steps only bound how many
+                // cells one sweep gathers at high speed.
+                let steps = (delta.length() / MAX_FLIGHT_STEP).ceil().max(1.0);
+                let mut aabb = size.aabb(transform.translation);
+                let mut hit = CollisionState::default();
+                for _ in 0..steps as u32 {
+                    let movement = move_entity(aabb, delta / steps, 0.0, false, &chunks);
+                    aabb = movement.aabb;
+                    hit.on_ground |= movement.collision.on_ground;
+                    hit.collided_x |= movement.collision.collided_x;
+                    hit.collided_y |= movement.collision.collided_y;
+                    hit.collided_z |= movement.collision.collided_z;
+                }
+                transform.translation = size.position_from_aabb(aabb);
+                *collision = hit;
+                if hit.collided_x {
+                    velocity.0.x = 0.0;
+                }
+                if hit.collided_y {
+                    velocity.0.y = 0.0;
+                }
+                if hit.collided_z {
+                    velocity.0.z = 0.0;
+                }
+                // Touching down ends the flight, as it does in creative.
+                if hit.on_ground {
+                    commands.entity(entity).remove::<Flying>();
+                }
+            }
             interpolation.previous_position = transform.translation;
-            *collision = CollisionState::default();
             if let Some(survival) = survival.as_deref_mut() {
                 survival.clear_fall();
             }

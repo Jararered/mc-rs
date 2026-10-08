@@ -8,7 +8,7 @@
 //! region/
 //!   r.0.0.mcr         McRegion file: chunks 0..31 x 0..31
 //!   r.-1.0.mcr        chunks -32..-1 x 0..31
-//! mc-rs.json          what Beta has no field for (difficulty, flying); ignored by Beta
+//! mc-rs.json          what Beta has no field for (difficulty, game mode, flying); ignored by Beta
 //! ```
 //!
 //! Beta stores blocks, metadata and light but not biomes, scheduled ticks or the
@@ -707,6 +707,8 @@ struct Sidecar {
     #[serde(default)]
     fly_speed: f32,
     #[serde(default)]
+    game_mode: crate::player::GameMode,
+    #[serde(default)]
     selected: usize,
 }
 
@@ -836,6 +838,7 @@ pub(super) fn write_level(
         data.put_compound("Player", player_to_nbt(player, base));
         sidecar.flying = player.flying;
         sidecar.fly_speed = player.fly_speed;
+        sidecar.game_mode = player.game_mode;
         sidecar.selected = player.selected;
     }
     level.put_compound("Data", data);
@@ -947,6 +950,7 @@ fn player_from_nbt(player: &Compound, sidecar: &Sidecar) -> Option<StoredPlayer>
         armor,
         carried: None,
         flying: sidecar.flying,
+        game_mode: sidecar.game_mode,
         fly_speed: if sidecar.fly_speed > 0.0 {
             sidecar.fly_speed
         } else {

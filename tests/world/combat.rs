@@ -4,7 +4,6 @@ use bevy::prelude::*;
 use game::app::settings::Difficulty;
 use game::block::blocks::Block;
 use game::entity::DroppedItem;
-use game::entity::Flying;
 use game::entity::Velocity;
 use game::entity::combat::HURT_TICKS;
 use game::entity::combat::Hit;
@@ -32,6 +31,7 @@ use game::item::tools::damage_vs_entity;
 use game::item::tools::hit_durability;
 use game::physics::Aabb;
 use game::player::Bubble;
+use game::player::GameMode;
 use game::player::PlayerHealth;
 use game::player::PlayerSurvival;
 use game::player::SurvivalPlugin;
@@ -626,7 +626,7 @@ fn cactus_pricks_a_player_pressed_against_it() {
 }
 
 #[test]
-fn a_block_over_the_head_suffocates_unless_flying() {
+fn a_block_over_the_head_suffocates_only_in_survival() {
     let buried = |chunks: &mut WorldChunks| _ = chunks.set_block(0, 62, 0, Block::Stone);
     let mut app = survival_app(buried, STANDING);
     run_ticks(&mut app, 1);
@@ -634,15 +634,42 @@ fn a_block_over_the_head_suffocates_unless_flying() {
     run_ticks(&mut app, 20);
     assert_eq!(player_health(&mut app), 17);
 
-    let mut flying = survival_app(buried, STANDING);
-    let player = flying
+    let mut spectating = survival_app(buried, STANDING);
+    set_game_mode(&mut spectating, GameMode::Spectator);
+    run_ticks(&mut spectating, 20);
+    assert_eq!(player_health(&mut spectating), 20);
+}
+
+fn set_game_mode(app: &mut App, mode: GameMode) {
+    let player = app
         .world_mut()
         .query_filtered::<Entity, With<PlayerHealth>>()
-        .single(flying.world())
+        .single(app.world())
         .unwrap();
-    flying.world_mut().entity_mut(player).insert(Flying);
-    run_ticks(&mut flying, 20);
-    assert_eq!(player_health(&mut flying), 20);
+    app.world_mut().entity_mut(player).insert(mode);
+}
+
+#[test]
+fn creative_players_take_no_damage_and_are_not_hunted() {
+    let mut app = survival_app(
+        |chunks| _ = chunks.set_block(0, 61, 0, Block::Lava),
+        STANDING,
+    );
+    set_game_mode(&mut app, GameMode::Creative);
+    let zombie = summon(
+        &mut app,
+        Mob::new(MobType::Zombie, 3),
+        Vec3::new(0.5, 61.0, 6.5),
+    );
+    run_ticks(&mut app, 200);
+    assert_eq!(player_health(&mut app), 20);
+    assert!(!survival(&mut app).is_burning());
+    assert!(!app.world().get::<Living>(zombie).unwrap().chasing());
+
+    // Back in survival the lava burns again.
+    set_game_mode(&mut app, GameMode::Survival);
+    run_ticks(&mut app, 2);
+    assert!(player_health(&mut app) < 20);
 }
 
 #[test]

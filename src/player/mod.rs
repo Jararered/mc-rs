@@ -4,6 +4,8 @@ use bevy::prelude::*;
 use bevy::window::CursorGrabMode;
 use bevy::window::CursorOptions;
 use bevy::window::PrimaryWindow;
+use serde::Deserialize;
+use serde::Serialize;
 
 use crate::app::settings::GameSettings;
 use crate::app::state::AppScreen;
@@ -121,6 +123,7 @@ impl Plugin for PlayerPlugin {
     StepHeight = StepHeight::PLAYER,
     StepDistance,
     FlySpeed,
+    GameMode,
     PlayerMovementInput,
     PlayerInterpolation,
     PlayerCombat,
@@ -128,6 +131,52 @@ impl Plugin for PlayerPlugin {
     portal::PortalTravel
 )]
 pub struct Player;
+
+/// What the world lets the player do, set with `/gamemode`.
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum GameMode {
+    /// Walks, falls, and takes damage.
+    #[default]
+    Survival,
+    /// Takes no damage and may fly, still colliding with blocks.
+    Creative,
+    /// Takes no damage and always flies, passing through blocks.
+    Spectator,
+}
+
+impl GameMode {
+    pub const ALL: [Self; 3] = [Self::Survival, Self::Creative, Self::Spectator];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Survival => "survival",
+            Self::Creative => "creative",
+            Self::Spectator => "spectator",
+        }
+    }
+
+    pub fn parse(name: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|mode| mode.name().eq_ignore_ascii_case(name))
+    }
+
+    /// Hazards, mobs, and explosions can hurt the player.
+    pub fn takes_damage(self) -> bool {
+        self == Self::Survival
+    }
+
+    /// The player may switch [`Flying`] on and off.
+    pub fn toggles_flight(self) -> bool {
+        self == Self::Creative
+    }
+
+    /// Movement ignores blocks.
+    pub fn noclip(self) -> bool {
+        self == Self::Spectator
+    }
+}
 
 /// Frame-sampled controls consumed by the tick-based player physics system.
 #[derive(Component, Default, Clone, Copy, Debug)]
@@ -215,11 +264,19 @@ const SPRINT_SPEED: f32 = 5.612;
 pub(crate) const SPRINT_ACCELERATION_MULTIPLIER: f32 = SPRINT_SPEED / WALK_SPEED;
 const MOUSE_SENSITIVITY: f32 = 0.002;
 
-/// Flying mode base speed in blocks per second.
-const FLY_SPEED: f32 = 30.0;
-const MIN_FLY_SPEED: f32 = 1.0;
+/// Flying base speed in blocks per second, as creative flight in current
+/// Minecraft. Sprinting doubles the horizontal part.
+const FLY_SPEED: f32 = 10.92;
+const FLY_VERTICAL_SPEED: f32 = 7.5;
+const FLY_SPRINT_MULTIPLIER: f32 = 2.0;
+/// Share of flying velocity kept each tick, horizontally and vertically.
+const FLY_HORIZONTAL_DRAG: f32 = 0.91;
+const FLY_VERTICAL_DRAG: f32 = 0.6;
+const MIN_FLY_SPEED: f32 = 0.25;
 const MAX_FLY_SPEED: f32 = 50.0;
 const FLY_SPEED_STEP: f32 = 1.25;
+/// Longest gap between two presses of jump that toggles creative flight.
+const FLIGHT_DOUBLE_TAP_SECS: f32 = 0.35;
 
 pub(crate) fn spawn_player(
     mut commands: Commands,
@@ -240,7 +297,12 @@ pub(crate) fn spawn_player(
         .as_ref()
         .map(|player| player.to_inventory())
         .unwrap_or_default();
-    let flying = saved.as_ref().map(|p| p.flying).unwrap_or(false);
+    let game_mode = saved.as_ref().map(|p| p.game_mode).unwrap_or_default();
+    let flying = match game_mode {
+        GameMode::Survival => false,
+        GameMode::Creative => saved.as_ref().is_some_and(|p| p.flying),
+        GameMode::Spectator => true,
+    };
     let fly_speed = saved.as_ref().map(|p| p.fly_speed).unwrap_or(1.0);
     let interpolation = PlayerInterpolation {
         previous_position: transform.translation,
@@ -260,6 +322,7 @@ pub(crate) fn spawn_player(
         inventory,
         CameraBobbing::default(),
         FlySpeed(fly_speed),
+        game_mode,
         interpolation,
         transform,
     ));
@@ -318,8 +381,9 @@ fn update_camera_bobbing(
             &mut CameraBobbing,
             &Children,
             Option<&PlayerCombat>,
+            Has<Flying>,
         ),
-        (With<Player>, Without<PlayerCamera>, Without<Flying>),
+        (With<Player>, Without<PlayerCamera>),
     >,
     mut cameras: Query<&mut Transform, With<PlayerCamera>>,
 ) {
@@ -328,7 +392,9 @@ fn update_camera_bobbing(
         return;
     }
 
-    for (transform, interpolation, velocity, collision, mut bob, children, combat) in &mut players {
+    for (transform, interpolation, velocity, collision, mut bob, children, combat, flying) in
+        &mut players
+    {
         let horizontal_motion = velocity.0.xz().length() * dt;
         bob.distance_walked += horizontal_motion * 0.6;
 
@@ -338,7 +404,7 @@ fn update_camera_bobbing(
             0.0
         };
         let vertical_motion = velocity.0.y * dt;
-        let target_pitch = if collision.on_ground {
+        let target_pitch = if collision.on_ground || flying {
             0.0
         } else {
             (-vertical_motion * 0.2).atan() * 15.0
@@ -461,37 +527,67 @@ fn update_mouse_capture(
     }
 }
 
+/// Creative flight starts and stops on F or a double tap of jump.
 fn toggle_flying(
     keys: Res<ButtonInput<KeyCode>>,
-    mut player: Query<(Entity, Option<&Flying>, &mut FlySpeed), With<Player>>,
+    time: Res<Time>,
+    mut last_jump: Local<Option<f32>>,
+    mut player: Query<(Entity, &GameMode, Has<Flying>, &mut FlySpeed, &mut Velocity), With<Player>>,
     mut commands: Commands,
 ) {
-    if !keys.just_pressed(KeyCode::KeyF) {
+    let mut toggle = keys.just_pressed(KeyCode::KeyF);
+    if keys.just_pressed(KeyCode::Space) {
+        let now = time.elapsed_secs();
+        if last_jump.is_some_and(|last| now - last <= FLIGHT_DOUBLE_TAP_SECS) {
+            toggle = true;
+            *last_jump = None;
+        } else {
+            *last_jump = Some(now);
+        }
+    }
+    if !toggle {
         return;
     }
-    let Ok((entity, flying, mut fly_speed)) = player.single_mut() else {
+    let Ok((entity, mode, flying, mut fly_speed, mut velocity)) = player.single_mut() else {
         return;
     };
-    if flying.is_some() {
+    if !mode.toggles_flight() {
+        return;
+    }
+    if flying {
         commands.entity(entity).remove::<Flying>();
     } else {
         fly_speed.clamp_value();
+        // Standing still carries gravity's pull, which would land the flight
+        // on its first frame.
+        velocity.0.y = velocity.0.y.max(0.0);
         commands.entity(entity).insert(Flying);
     }
 }
 
+/// Plus and minus change the flying speed. A spectator has no use for the
+/// hotbar, so the scroll wheel changes it too.
 fn adjust_fly_speed(
     keys: Res<ButtonInput<KeyCode>>,
-    mut player: Query<(&Flying, &mut FlySpeed), With<Player>>,
+    scroll: Res<AccumulatedMouseScroll>,
+    mut player: Query<(&GameMode, &mut FlySpeed), (With<Player>, With<Flying>)>,
 ) {
-    let Ok((_flying, mut fly_speed)) = player.single_mut() else {
+    let Ok((mode, mut fly_speed)) = player.single_mut() else {
         return;
     };
+    let mut steps = 0;
     if keys.just_pressed(KeyCode::Equal) || keys.just_pressed(KeyCode::NumpadAdd) {
-        fly_speed.0 = (fly_speed.0 * FLY_SPEED_STEP).min(MAX_FLY_SPEED);
+        steps += 1;
     }
     if keys.just_pressed(KeyCode::Minus) || keys.just_pressed(KeyCode::NumpadSubtract) {
-        fly_speed.0 = (fly_speed.0 / FLY_SPEED_STEP).max(MIN_FLY_SPEED);
+        steps -= 1;
+    }
+    if *mode == GameMode::Spectator && scroll.delta.y != 0.0 {
+        steps += if scroll.delta.y > 0.0 { 1 } else { -1 };
+    }
+    if steps != 0 {
+        fly_speed.0 =
+            (fly_speed.0 * FLY_SPEED_STEP.powi(steps)).clamp(MIN_FLY_SPEED, MAX_FLY_SPEED);
     }
 }
 
@@ -525,6 +621,7 @@ fn apply_player_input(
     chat: Option<Res<crate::chat::ChatFocus>>,
     pause: Option<Res<PauseMenu>>,
     keys: Res<ButtonInput<KeyCode>>,
+    time: Res<Time>,
     windows: Query<(&Window, &CursorOptions), With<PrimaryWindow>>,
     mut player: Query<
         (
@@ -549,33 +646,36 @@ fn apply_player_input(
         && chat_controls_active(chat, pause);
 
     if flying.is_some() {
-        // Flying mode: full 3D movement along the camera axes
-        let mut direction = Vec3::ZERO;
+        // W/S follow the heading rather than the pitch; jump and sneak climb
+        // and sink.
+        let mut target = Vec3::ZERO;
         if locked {
-            let forward = *transform.forward();
-            let right = *transform.right();
-
-            if keys.pressed(KeyCode::KeyW) {
-                direction += forward;
-            }
-            if keys.pressed(KeyCode::KeyS) {
-                direction -= forward;
-            }
-            if keys.pressed(KeyCode::KeyD) {
-                direction += right;
-            }
-            if keys.pressed(KeyCode::KeyA) {
-                direction -= right;
-            }
-            if keys.pressed(KeyCode::Space) {
-                direction.y += 1.0;
-            }
-            if sneak_pressed(&keys) {
-                direction.y -= 1.0;
-            }
+            let (yaw, _, _) = transform.rotation.to_euler(EulerRot::YXZ);
+            let heading = Quat::from_rotation_y(yaw);
+            let horizontal = (heading
+                * Vec3::new(
+                    axis(keys.pressed(KeyCode::KeyD), keys.pressed(KeyCode::KeyA)),
+                    0.0,
+                    axis(keys.pressed(KeyCode::KeyS), keys.pressed(KeyCode::KeyW)),
+                ))
+            .normalize_or_zero();
+            let sprint = if sprint_pressed(&keys) {
+                FLY_SPRINT_MULTIPLIER
+            } else {
+                1.0
+            };
+            target = horizontal * FLY_SPEED * sprint;
+            target.y =
+                axis(keys.pressed(KeyCode::Space), sneak_pressed(&keys)) * FLY_VERTICAL_SPEED;
+            target *= fly_speed.0;
         }
-        let speed = FLY_SPEED * fly_speed.0;
-        velocity.0 = direction.normalize_or_zero() * speed;
+        // The drag is per tick; apply the same decay over this frame.
+        let ticks = time.delta_secs() / crate::world::tick::TICK_SECONDS;
+        let horizontal = 1.0 - FLY_HORIZONTAL_DRAG.powf(ticks);
+        let vertical = 1.0 - FLY_VERTICAL_DRAG.powf(ticks);
+        let current = velocity.0;
+        velocity.0 += (target - current) * Vec3::new(horizontal, vertical, horizontal);
+        *movement_input = PlayerMovementInput::default();
         return;
     }
 
@@ -628,13 +728,14 @@ fn select_hotbar(
     keys: Res<ButtonInput<KeyCode>>,
     scroll: Res<AccumulatedMouseScroll>,
     inventory_screen: Option<Res<crate::inventory::session::InventorySession>>,
-    mut hotbar: Query<&mut Hotbar, With<Player>>,
+    mut hotbar: Query<(&mut Hotbar, &GameMode), With<Player>>,
 ) {
-    let Ok(mut hotbar) = hotbar.single_mut() else {
+    let Ok((mut hotbar, mode)) = hotbar.single_mut() else {
         return;
     };
 
-    if scroll.delta.y != 0.0 {
+    // A spectator's wheel sets the flying speed instead.
+    if scroll.delta.y != 0.0 && *mode != GameMode::Spectator {
         hotbar.scroll(if scroll.delta.y > 0.0 { 1 } else { -1 });
     }
     // While the inventory is open, 1–9 move the hovered stack instead of

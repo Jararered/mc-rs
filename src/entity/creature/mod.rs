@@ -410,11 +410,16 @@ pub(crate) fn tick_creatures(
         .as_ref()
         .map_or(Difficulty::Normal, |settings| settings.difficulty);
     let mut player = player.single_mut().ok();
-    let target = player.as_ref().map(|(transform, health, ..)| Target {
-        eye: transform.translation,
-        feet: transform.translation - Vec3::Y * EntitySize::PLAYER.y_offset,
-        alive: health.as_ref().is_none_or(|health| health.current > 0),
-    });
+    let target = player
+        .as_ref()
+        .map(|(transform, health, combat, ..)| Target {
+            eye: transform.translation,
+            feet: transform.translation - Vec3::Y * EntitySize::PLAYER.y_offset,
+            // Mobs leave a creative or spectating player alone, as they do a
+            // dead one.
+            alive: health.as_ref().is_none_or(|health| health.current > 0)
+                && combat.as_ref().is_none_or(|combat| !combat.invulnerable),
+        });
     crowd.clear();
     crowd.extend(
         creatures

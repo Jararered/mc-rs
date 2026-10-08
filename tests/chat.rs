@@ -27,6 +27,21 @@ fn parses_heal_without_arguments() {
 }
 
 #[test]
+fn parses_the_three_game_modes() {
+    use game::player::GameMode;
+
+    for mode in GameMode::ALL {
+        assert_eq!(
+            parse_command(&format!("/gamemode {}", mode.name())).unwrap(),
+            ChatCommand::GameModeCommand(mode)
+        );
+    }
+    assert!(parse_command("/gamemode").is_err());
+    assert!(parse_command("/gamemode adventure").is_err());
+    assert!(parse_command("/gamemode creative now").is_err());
+}
+
+#[test]
 fn parses_numeric_beta_ids_and_three_commands() {
     assert_eq!(
         parse_command("/summon skeleton").unwrap(),
@@ -377,6 +392,7 @@ fn submitted_commands_change_player_inventory_and_world() {
         "/setblock 1 70 2 1",
         "/weather rain",
         "/summon sheep",
+        "/gamemode spectator",
     ] {
         app.world_mut()
             .resource_mut::<ButtonInput<KeyCode>>()
@@ -409,10 +425,11 @@ fn submitted_commands_change_player_inventory_and_world() {
     }
     let player = app
         .world_mut()
-        .query_filtered::<(&Transform, &Hotbar), With<Player>>()
+        .query_filtered::<(&Transform, &Hotbar, &game::player::GameMode), With<Player>>()
         .single(app.world())
         .unwrap();
     assert_eq!(player.0.translation, Vec3::new(5.0, 80.0, 6.0));
+    assert_eq!(*player.2, game::player::GameMode::Spectator);
     assert_eq!(player.1.slots[0].unwrap().count(), 64);
     assert_eq!(player.1.slots[1].unwrap().count(), 6);
     assert_eq!(
@@ -948,6 +965,7 @@ fn suggestions_complete_command_names_then_their_arguments() {
     assert_eq!(
         items(&registry, "/"),
         [
+            "/gamemode",
             "/give",
             "/heal",
             "/help",
@@ -1116,14 +1134,14 @@ fn chat_input_lists_suggestions_and_tab_accepts_the_selected_one() {
     // Eight commands scroll through six rows.
     let rows = shown(&mut app);
     assert_eq!(rows.len(), 6);
-    assert_eq!(rows[0], ("/give".to_owned(), true));
+    assert_eq!(rows[0], ("/gamemode".to_owned(), true));
     key(&mut app, KeyCode::ArrowUp, Key::ArrowUp, None);
     let rows = shown(&mut app);
     assert_eq!(rows.len(), 6);
     assert_eq!(rows[5], ("/wireframe".to_owned(), true));
     assert_eq!(rows[0].0, "/setblock");
     key(&mut app, KeyCode::ArrowDown, Key::ArrowDown, None);
-    assert_eq!(shown(&mut app)[0], ("/give".to_owned(), true));
+    assert_eq!(shown(&mut app)[0], ("/gamemode".to_owned(), true));
 
     key(
         &mut app,

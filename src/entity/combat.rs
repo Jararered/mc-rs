@@ -89,6 +89,8 @@ pub struct PlayerCombat {
     pub prev_hurt_time: i16,
     /// `attackedAtYaw`, in degrees relative to where the player faces.
     pub attacked_at_yaw: f32,
+    /// No hit lands. `player::survival` sets this from the player's game mode.
+    pub invulnerable: bool,
     /// `EntityPlayer.damageRemainder`: armor's carried fraction of a point.
     damage_remainder: i32,
 }
@@ -112,7 +114,7 @@ pub fn hurt_player(
     difficulty: Difficulty,
     rng: &mut ItemRng,
 ) -> bool {
-    if victim.health.current == 0 {
+    if victim.health.current == 0 || victim.combat.invulnerable {
         return false;
     }
     if hit.source == Source::Monster {

@@ -11,6 +11,7 @@ use crate::entity::mobs::Mob;
 use crate::entity::mobs::spawn;
 use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
+use crate::player::GameMode;
 use crate::player::MAX_PLAYER_HEALTH;
 use crate::player::Player;
 use crate::player::PlayerHealth;
@@ -53,6 +54,7 @@ pub(super) struct CommandContext<'w, 's> {
             &'static mut Inventory,
             &'static EntitySize,
             &'static mut PlayerHealth,
+            &'static mut GameMode,
         ),
         With<Player>,
     >,
@@ -207,6 +209,7 @@ impl CommandContext<'_, '_> {
             mut inventory,
             size,
             mut health,
+            mut game_mode,
         )) = player.single_mut()
         else {
             chat.push("Player is unavailable");
@@ -260,6 +263,11 @@ impl CommandContext<'_, '_> {
                     health.current = MAX_PLAYER_HEALTH;
                     "Restored health".to_owned()
                 }
+            }
+            ChatCommand::GameModeCommand(mode) => {
+                // `player::survival` moves flight and invulnerability over.
+                game_mode.set_if_neq(mode);
+                format!("Set game mode to {}", mode.name())
             }
             ChatCommand::SummonCommand(kind) => {
                 let feet =

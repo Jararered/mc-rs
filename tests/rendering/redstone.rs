@@ -405,3 +405,53 @@ fn extended_piston_exposes_neighbors_along_all_sides_but_not_the_back() {
         }
     }
 }
+
+#[test]
+fn lever_stick_samples_its_tip_and_winds_outward_on_every_support() {
+    for facing in 1..=6_u8 {
+        for on in [0, 8] {
+            let mut chunk = Chunk::new();
+            chunk.set(X, Y, Z, Block::Lever);
+            chunk.set_metadata(X, Y, Z, facing | on);
+            let meshes = mesh(&chunk);
+            let quads: Vec<_> = meshes.masked.vertices().chunks_exact(4).collect();
+            assert_eq!(quads.len(), 12, "facing {facing}, on {on}");
+            assert!(meshes.opaque.is_empty());
+
+            for (index, quad) in quads.iter().enumerate() {
+                assert!(quad.iter().all(|v| {
+                    [X, Y, Z].iter().enumerate().all(|(axis, &cell)| {
+                        (0.0..=1.0).contains(&(v.position[axis] - cell as f32))
+                    })
+                }));
+                // The winding and the stored normal agree, so the face is
+                // visible from outside whichever way the stick leans.
+                let edge = |a: usize, b: usize| {
+                    std::array::from_fn::<f32, 3, _>(|axis| {
+                        quad[b].position[axis] - quad[a].position[axis]
+                    })
+                };
+                let (first, second) = (edge(0, 1), edge(1, 2));
+                let wound = [
+                    first[1] * second[2] - first[2] * second[1],
+                    first[2] * second[0] - first[0] * second[2],
+                    first[0] * second[1] - first[1] * second[0],
+                ];
+                let along: f32 = (0..3).map(|axis| wound[axis] * quad[0].normal[axis]).sum();
+                assert!(along > 0.0, "quad {index}, facing {facing}, on {on}");
+                if index >= 6 {
+                    // Stick faces take the 2-wide column of the lever tile,
+                    // including the tip rows a position-based crop would miss.
+                    assert!(quad.iter().all(|v| v.texel.tile == [0, 6]
+                        && (7..=9).contains(&v.texel.texel[0])
+                        && (6..=16).contains(&v.texel.texel[1])));
+                }
+            }
+            let tip_rows: Vec<_> = quads[8..]
+                .iter()
+                .flat_map(|quad| quad.iter().map(|v| v.texel.texel[1]))
+                .collect();
+            assert!(tip_rows.contains(&6) && tip_rows.contains(&16));
+        }
+    }
+}

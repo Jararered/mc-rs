@@ -2,6 +2,9 @@
 //! family that are not a plain box (`renderBlockRedstoneWire`,
 //! `renderBlockRepeater`, `renderBlockMinecartTrack`, `renderBlockLever`).
 
+use std::f32::consts::FRAC_PI_2;
+use std::f32::consts::PI;
+
 use bevy::prelude::Color;
 
 use crate::block::blocks::Block;
@@ -338,98 +341,151 @@ impl Mesher<'_> {
         z: usize,
     ) {
         let metadata = self.chunk.metadata(x, y, z);
-        let on = metadata & 8 != 0;
-        // Rotation taking the floor lever's up axis onto the support's
-        // outward normal, and the local direction the stick leans when on.
-        let (to_world, lean): (fn([f32; 3]) -> [f32; 3], [f32; 3]) = match metadata & 7 {
-            1 => (|[x, y, z]| [y, -x, z], [-1.0, 0.0, 0.0]),
-            2 => (|[x, y, z]| [-y, x, z], [1.0, 0.0, 0.0]),
-            3 => (|[x, y, z]| [x, -z, y], [0.0, 0.0, -1.0]),
-            4 => (|[x, y, z]| [x, z, -y], [0.0, 0.0, 1.0]),
-            _ => (|point| point, [1.0, 0.0, 0.0]),
-        };
+        let facing = metadata & 7;
         let light = self.skylight.channels_at(x as i32, y as i32, z as i32);
         let shading = CornerShading {
             light: [[light; 4]; 4],
             ao: [0; 4],
             shade: true,
         };
-        let centre = [0.5; 3];
-        let place = |point: [f32; 3]| {
-            let local = [
-                point[0] - centre[0],
-                point[1] - centre[1],
-                point[2] - centre[2],
-            ];
-            let world = to_world(local);
-            [
-                world[0] + centre[0],
-                world[1] + centre[1],
-                world[2] + centre[2],
-            ]
-        };
         // The base never moves.
-        let base = BlockFaceGeometry::from_bounds([0.25, 0.0, 0.25, 0.75, 0.1875, 0.75]);
+        let base = BlockFaceGeometry::from_bounds(lever_base_bounds(facing));
         for (face_index, face) in FACES.iter().enumerate() {
-            let corners = base.face(face_index).corners.map(place);
+            let corners = base.face(face_index).corners;
             mesh.push_block_quad(
                 origin,
-                to_world(face.normal),
+                face.normal,
                 corners,
-                box_texels((0, 1), face_index, base.face(face_index).corners, false),
+                box_texels((0, 1), face_index, corners, false),
                 [1.0; 3],
                 shading,
             );
         }
-        // The stick pivots on top of the base.
-        let tilt = if on { 0.6_f32 } else { -0.6 };
-        let (sin, cos) = tilt.sin_cos();
-        let pivot = [0.5, 0.1875, 0.5];
-        let lean_x = lean[0];
-        let lean_z = lean[2];
-        let lever = |point: [f32; 3]| {
-            let rel = [
-                point[0] - pivot[0],
-                point[1] - pivot[1],
-                point[2] - pivot[2],
+        // The stick is Beta's eight vertices, drawn with texels 7..9 of its
+        // tile: rows 6..8 on the two ends and 6..16 along the sides.
+        let stick = lever_stick(facing, metadata & 8 != 0);
+        let centre: [f32; 3] =
+            std::array::from_fn(|axis| stick.iter().map(|v| v[axis]).sum::<f32>() / 8.0);
+        for (index, order) in LEVER_STICK_FACES.iter().enumerate() {
+            let mut corners = order.map(|vertex| stick[vertex]);
+            let (top, bottom) = if index < 2 { (6, 8) } else { (6, 16) };
+            let mut texels = [(7, bottom), (9, bottom), (9, top), (7, top)]
+                .map(|(u, v)| AtlasTexel::new(0, 6, u, v));
+            let edge = |a: [f32; 3], b: [f32; 3]| [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+            let (first, second) = (edge(corners[0], corners[1]), edge(corners[1], corners[2]));
+            let mut normal = [
+                first[1] * second[2] - first[2] * second[1],
+                first[2] * second[0] - first[0] * second[2],
+                first[0] * second[1] - first[1] * second[0],
             ];
-            // Tip the up axis toward `lean` by `tilt`.
-            let along = rel[0] * lean_x + rel[2] * lean_z;
-            let across = [rel[0] - along * lean_x, rel[2] - along * lean_z];
-            let tipped_along = along * cos + rel[1] * sin;
-            let tipped_up = -along * sin + rel[1] * cos;
-            place([
-                pivot[0] + across[0] + tipped_along * lean_x,
-                pivot[1] + tipped_up,
-                pivot[2] + across[1] + tipped_along * lean_z,
-            ])
-        };
-        let stick =
-            BlockFaceGeometry::from_bounds([0.4375, 0.1875, 0.4375, 0.5625, 0.8125, 0.5625]);
-        for (face_index, face) in FACES.iter().enumerate() {
-            let local = stick.face(face_index).corners;
-            let corners = local.map(lever);
-            // Rotate the face normal with the stick.
-            let normal = {
-                let n = face.normal;
-                let along = n[0] * lean_x + n[2] * lean_z;
-                let across = [n[0] - along * lean_x, n[2] - along * lean_z];
-                let tipped_along = along * cos + n[1] * sin;
-                let tipped_up = -along * sin + n[1] * cos;
-                to_world([
-                    across[0] + tipped_along * lean_x,
-                    tipped_up,
-                    across[1] + tipped_along * lean_z,
-                ])
-            };
+            let middle: [f32; 3] =
+                std::array::from_fn(|axis| corners.iter().map(|c| c[axis]).sum::<f32>() / 4.0);
+            let outward: f32 = (0..3)
+                .map(|axis| normal[axis] * (middle[axis] - centre[axis]))
+                .sum();
+            if outward < 0.0 {
+                // Beta's winding is for a client that culls differently.
+                corners.reverse();
+                texels.reverse();
+                normal = normal.map(|v| -v);
+            }
+            let length = normal.iter().map(|v| v * v).sum::<f32>().sqrt();
             mesh.push_block_quad(
                 origin,
-                normal,
+                normal.map(|v| v / length),
                 corners,
-                box_texels((0, 6), face_index, local, false),
+                texels,
                 [1.0; 3],
                 shading,
             );
         }
     }
+}
+
+/// `renderBlockLever`'s `setBlockBounds` for the cobblestone base: 5 and 6 sit
+/// on the floor along x and z, 1 to 4 against the support on that side.
+fn lever_base_bounds(facing: u8) -> [f32; 6] {
+    const LONG: f32 = 0.25;
+    const SHORT: f32 = 0.1875;
+    match facing {
+        6 => [0.5 - LONG, 0.0, 0.5 - SHORT, 0.5 + LONG, SHORT, 0.5 + SHORT],
+        4 => [
+            0.5 - SHORT,
+            0.5 - LONG,
+            1.0 - SHORT,
+            0.5 + SHORT,
+            0.5 + LONG,
+            1.0,
+        ],
+        3 => [0.5 - SHORT, 0.5 - LONG, 0.0, 0.5 + SHORT, 0.5 + LONG, SHORT],
+        2 => [
+            1.0 - SHORT,
+            0.5 - LONG,
+            0.5 - SHORT,
+            1.0,
+            0.5 + LONG,
+            0.5 + SHORT,
+        ],
+        1 => [0.0, 0.5 - LONG, 0.5 - SHORT, SHORT, 0.5 + LONG, 0.5 + SHORT],
+        _ => [0.5 - SHORT, 0.0, 0.5 - LONG, 0.5 + SHORT, SHORT, 0.5 + LONG],
+    }
+}
+
+/// The stick's vertices, indexed as in Beta: 0..4 the bottom, 4..8 the top,
+/// each going round the square.
+const LEVER_STICK_FACES: [[usize; 4]; 6] = [
+    [0, 1, 2, 3],
+    [7, 6, 5, 4],
+    [1, 0, 4, 5],
+    [2, 1, 5, 6],
+    [3, 2, 6, 7],
+    [0, 3, 7, 4],
+];
+
+/// `Vec3D.rotateAroundX`.
+fn rotate_x([x, y, z]: [f32; 3], angle: f32) -> [f32; 3] {
+    let (sin, cos) = angle.sin_cos();
+    [x, y * cos + z * sin, z * cos - y * sin]
+}
+
+/// `Vec3D.rotateAroundY`.
+fn rotate_y([x, y, z]: [f32; 3], angle: f32) -> [f32; 3] {
+    let (sin, cos) = angle.sin_cos();
+    [x * cos + z * sin, y, z * cos - x * sin]
+}
+
+/// The eight stick vertices `renderBlockLever` builds, in cell coordinates:
+/// a 2/16 square, 10/16 long, shifted and tipped toward the lever's on or off
+/// side, then turned to the support.
+fn lever_stick(facing: u8, on: bool) -> [[f32; 3]; 8] {
+    const HALF: f32 = 0.0625;
+    const LENGTH: f32 = 0.625;
+    const TILT: f32 = 0.69813174;
+    std::array::from_fn(|vertex| {
+        let corner = [[-HALF, -HALF], [HALF, -HALF], [HALF, HALF], [-HALF, HALF]][vertex % 4];
+        let mut point = [corner[0], if vertex < 4 { 0.0 } else { LENGTH }, corner[1]];
+        if on {
+            point[2] -= HALF;
+            point = rotate_x(point, TILT);
+        } else {
+            point[2] += HALF;
+            point = rotate_x(point, -TILT);
+        }
+        if facing == 6 {
+            point = rotate_y(point, FRAC_PI_2);
+        }
+        if (1..5).contains(&facing) {
+            point[1] -= 0.375;
+            point = rotate_x(point, FRAC_PI_2);
+            match facing {
+                3 => point = rotate_y(point, PI),
+                2 => point = rotate_y(point, FRAC_PI_2),
+                1 => point = rotate_y(point, -FRAC_PI_2),
+                _ => {}
+            }
+            [point[0] + 0.5, point[1] + 0.5, point[2] + 0.5]
+        } else {
+            [point[0] + 0.5, point[1] + 0.125, point[2] + 0.5]
+        }
+    })
 }

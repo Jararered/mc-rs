@@ -30,6 +30,8 @@ use crate::physics::water_current;
 use crate::player::Player;
 use crate::random::ItemRng;
 use crate::random::JavaRandom;
+use crate::rendering::appearance::Shape;
+use crate::rendering::appearance::block_appearance;
 use crate::rendering::icons::BlockIcons;
 use crate::rendering::meshing::dropped_block_meshes;
 use crate::rendering::textures::AlphaMaskMaterial;
@@ -548,11 +550,17 @@ pub fn item_piece_transform(
         .with_scale(Vec3::splat(scale))
 }
 
-/// Full cubes we already mesh in the world. Torch and ladder items use Beta's
-/// flat item sprite path rather than their in-world block render types.
+/// Blocks drawn as a 3D model. `RenderBlocks.renderItemIn3d` accepts only a few
+/// render types; torches, ladders, plants, repeaters, levers, and the rest use
+/// Beta's flat item sprite instead (`Shape::Flat`).
 pub fn dropped_block_model(stack: ItemStack) -> Option<(Block, u8)> {
     let (block, metadata) = stack.runtime_block()?;
-    if block.is_ladder() || block.is_torch() || block.is_crossed_plant() || block == Block::Cobweb {
+    if block.is_ladder()
+        || block.is_torch()
+        || block.is_crossed_plant()
+        || block == Block::Cobweb
+        || block_appearance(block.as_u8(), u16::from(metadata)).shape == Shape::Flat
+    {
         None
     } else {
         Some((block, metadata))

@@ -414,6 +414,20 @@ fn dropped_ladder_uses_the_flat_item_sprite() {
     assert_eq!(dropped_block_model(ladder), None);
 }
 
+#[test]
+fn redstone_parts_drop_as_flat_sprites() {
+    // `renderItemIn3d` only models a few render types; torches, repeaters, and
+    // levers are item sprites, while solid blocks stay cubes.
+    for block in [Block::RedstoneTorch, Block::Repeater, Block::Lever] {
+        let stack = ItemStack::from_block_state(block, 0, 1).unwrap();
+        assert_eq!(dropped_block_model(stack), None, "{block:?}");
+    }
+    let repeater = ItemStack::new(Item::Repeater, 1).unwrap();
+    assert_eq!(dropped_block_model(repeater), None);
+    let stone = ItemStack::from_block_state(Block::Stone, 0, 1).unwrap();
+    assert_eq!(dropped_block_model(stone), Some((Block::Stone, 0)));
+}
+
 fn position_count(mesh: &BlockGeometry) -> usize {
     mesh.vertex_count()
 }

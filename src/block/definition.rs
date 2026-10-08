@@ -407,12 +407,17 @@ pub(crate) fn redstone_bounds(block: Block, metadata: u8) -> Option<BlockBounds>
             4 => slab(0, false, 0.25),
             _ => slab(0, true, 0.25),
         },
-        Block::StoneButton => match metadata & 7 {
-            1 => slab(0, false, 0.125),
-            2 => slab(0, true, 0.125),
-            3 => slab(2, false, 0.125),
-            _ => slab(2, true, 0.125),
-        },
+        // `BlockButton.setBlockBoundsBasedOnState`: a small plate that sinks
+        // from 2/16 to 1/16 thick while pressed.
+        Block::StoneButton => {
+            let t = if metadata & 8 != 0 { 0.0625 } else { 0.125 };
+            match metadata & 7 {
+                1 => ([0.0, 0.375, 0.3125], [t, 0.625, 0.6875]),
+                2 => ([1.0 - t, 0.375, 0.3125], [1.0, 0.625, 0.6875]),
+                3 => ([0.3125, 0.375, 0.0], [0.6875, 0.625, t]),
+                _ => ([0.3125, 0.375, 1.0 - t], [0.6875, 0.625, 1.0]),
+            }
+        }
         Block::Lever => match metadata & 7 {
             1 => ([0.0, 0.2, 0.25], [0.5, 0.8, 0.75]),
             2 => ([0.5, 0.2, 0.25], [1.0, 0.8, 0.75]),

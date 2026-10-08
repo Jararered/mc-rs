@@ -197,6 +197,27 @@ fn oriented_bounds_follow_metadata() {
 }
 
 #[test]
+fn button_is_a_small_plate_that_sinks_when_pressed() {
+    // `BlockButton.setBlockBoundsBasedOnState`.
+    assert_eq!(
+        Block::StoneButton.selection_bounds_for(1),
+        ([0.0, 0.375, 0.3125], [0.125, 0.625, 0.6875])
+    );
+    assert_eq!(
+        Block::StoneButton.selection_bounds_for(2),
+        ([0.875, 0.375, 0.3125], [1.0, 0.625, 0.6875])
+    );
+    assert_eq!(
+        Block::StoneButton.selection_bounds_for(3),
+        ([0.3125, 0.375, 0.0], [0.6875, 0.625, 0.125])
+    );
+    assert_eq!(
+        Block::StoneButton.selection_bounds_for(4 | 8),
+        ([0.3125, 0.375, 0.9375], [0.6875, 0.625, 1.0])
+    );
+}
+
+#[test]
 fn species_stay_in_metadata_and_stack_by_subtype() {
     for species in [species::OAK, species::SPRUCE, species::BIRCH] {
         for block in [Block::Wood, Block::WoodenPlanks, Block::Leaves] {

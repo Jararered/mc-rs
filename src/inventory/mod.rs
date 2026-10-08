@@ -26,6 +26,7 @@ pub use transfer::shift_click_furnace_slot;
 pub use transfer::shift_click_slot;
 pub use transfer::slot_accepts_drag;
 pub use transfer::take_from_stack;
+pub use transfer::take_matching_stacks;
 
 /// Number of hotbar slots shown on the in-game HUD.
 pub const HOTBAR_SLOTS: usize = 9;

@@ -5,6 +5,7 @@ use game::inventory::collect_matching_stacks;
 use game::inventory::sort_container_slots;
 use game::inventory::sort_main_inventory;
 use game::inventory::take_from_stack;
+use game::inventory::take_matching_stacks;
 use game::item::Item;
 use game::item::ItemStack;
 
@@ -1078,4 +1079,31 @@ fn take_from_stack_keeps_item_data_and_ignores_zero() {
     assert_eq!(slot.unwrap().data(), 5);
     assert_eq!(take_from_stack(&mut slot, 0), None);
     assert_eq!(slot.unwrap().count(), 2);
+}
+
+#[test]
+fn take_matching_stacks_removes_only_the_same_item_and_data() {
+    let coal = ItemStack::new(Item::Coal, 8).unwrap();
+    let mut slots = [
+        Some(ItemStack::new(Item::Coal, 64).unwrap()),
+        Some(ItemStack::new(Item::Diamond, 2).unwrap()),
+        None,
+        Some(ItemStack::from_block_state(Block::Wool, 5, 3).unwrap()),
+        Some(ItemStack::new(Item::Coal, 5).unwrap()),
+    ];
+    let wool = slots[3].unwrap();
+
+    let taken = take_matching_stacks(slots.iter_mut(), coal);
+    assert_eq!(
+        taken.iter().map(|stack| stack.count()).collect::<Vec<_>>(),
+        [64, 5]
+    );
+    assert_eq!(slots[0], None);
+    assert_eq!(slots[4], None);
+    assert_eq!(slots[1], Some(ItemStack::new(Item::Diamond, 2).unwrap()));
+    assert_eq!(slots[3], Some(wool));
+
+    // Same block, different data (wool colour): left alone.
+    let other = ItemStack::from_block_state(Block::Wool, 1, 1).unwrap();
+    assert!(take_matching_stacks(slots.iter_mut(), other).is_empty());
 }

@@ -38,6 +38,7 @@ use crate::inventory::slot_accepts_drag;
 use crate::inventory::sort_container_slots;
 use crate::inventory::sort_main_inventory;
 use crate::inventory::take_from_stack;
+use crate::inventory::take_matching_stacks;
 use crate::item::ItemData;
 use crate::item::ItemStack;
 use crate::player::Player;
@@ -1326,7 +1327,8 @@ impl DropInput {
 }
 
 /// Throws items out of the open inventory. The drop key takes one item from the
-/// hovered slot, or the whole stack with Control held. A click outside the inventory image throws the carried stack
+/// hovered slot, its whole stack with Control held, or every stack of that item
+/// with Control and Shift held. A click outside the inventory image throws the carried stack
 /// (left) or one item of it (right). Returns whether input was consumed.
 #[allow(clippy::too_many_arguments)]
 fn drop_items(
@@ -1342,35 +1344,53 @@ fn drop_items(
     chunks: &mut WorldChunks,
     persistence: &mut Option<ResMut<WorldPersistence>>,
 ) -> bool {
-    let thrown = if input.key {
+    let thrown: Vec<ItemStack> = if input.key {
         let Some(slot) = hovered else {
             return false;
         };
-        let count = if input.whole_stack { u8::MAX } else { 1 };
-        take_from_slot(
-            screen,
-            slot,
-            count,
-            hotbar,
-            inventory,
-            workbench,
-            chunks,
-            persistence,
-        )
+        if input.whole_stack && input.shift {
+            take_all_matching(
+                screen,
+                slot,
+                hotbar,
+                inventory,
+                workbench,
+                chunks,
+                persistence,
+            )
+        } else {
+            let count = if input.whole_stack { u8::MAX } else { 1 };
+            take_from_slot(
+                screen,
+                slot,
+                count,
+                hotbar,
+                inventory,
+                workbench,
+                chunks,
+                persistence,
+            )
+            .into_iter()
+            .collect()
+        }
     } else if input.shift || inventory.carried.is_none() || hovered.is_some() {
         return false;
     } else if input.left {
-        inventory.carried.take()
+        inventory.carried.take().into_iter().collect()
     } else if input.right {
         take_from_stack(&mut inventory.carried, 1)
+            .into_iter()
+            .collect()
     } else {
         return false;
     };
-    let Some(stack) = thrown else {
+    if thrown.is_empty() {
         // The key over an empty slot (or the result slot) is still handled.
         return input.key;
-    };
-    spawn_thrown_item(commands, rng, player, *player.forward(), stack);
+    }
+    for stack in thrown {
+        spawn_thrown_item(commands, rng, player, *player.forward(), stack);
+    }
     if let Some(persistence) = persistence.as_deref_mut() {
         persistence.mark_dirty(ChunkPosition::from_block(
             player.translation.x.floor() as i32,
@@ -1378,6 +1398,61 @@ fn drop_items(
         ));
     }
     true
+}
+
+/// Every stack of the hovered slot's item: across the hotbar and main storage
+/// for those slots, or across the container for a chest slot. Other slots give
+/// up just their own stack.
+fn take_all_matching(
+    screen: &InventorySession,
+    slot: Slot,
+    hotbar: &mut Hotbar,
+    inventory: &mut Inventory,
+    workbench: &mut ActiveWorkbench,
+    chunks: &mut WorldChunks,
+    persistence: &mut Option<ResMut<WorldPersistence>>,
+) -> Vec<ItemStack> {
+    match slot {
+        Slot::Hotbar(_) | Slot::Main(_) => {
+            let template = match slot {
+                Slot::Hotbar(i) => hotbar.slots.get(i).copied().flatten(),
+                Slot::Main(i) => inventory.main.get(i).copied().flatten(),
+                _ => None,
+            };
+            let Some(template) = template else {
+                return Vec::new();
+            };
+            take_matching_stacks(
+                hotbar.slots.iter_mut().chain(inventory.main.iter_mut()),
+                template,
+            )
+        }
+        Slot::Chest(i) => {
+            let Some(group) = screen.chest_group else {
+                return Vec::new();
+            };
+            let mut chest_slots = read_chest_group_slots(chunks, group);
+            let Some(template) = chest_slots.get(i).copied().flatten() else {
+                return Vec::new();
+            };
+            let taken = take_matching_stacks(chest_slots.iter_mut(), template);
+            write_chest_group_slots(chunks, group, &chest_slots);
+            mark_chest_dirty(persistence, group);
+            taken
+        }
+        _ => take_from_slot(
+            screen,
+            slot,
+            u8::MAX,
+            hotbar,
+            inventory,
+            workbench,
+            chunks,
+            persistence,
+        )
+        .into_iter()
+        .collect(),
+    }
 }
 
 #[allow(clippy::too_many_arguments)]

@@ -32,6 +32,23 @@ pub fn take_from_stack(slot: &mut Option<ItemStack>, count: u8) -> Option<ItemSt
     Some(stack)
 }
 
+/// Remove every stack in `slots` that holds the same item and data as
+/// `template`, returning them in slot order.
+pub fn take_matching_stacks<'a>(
+    slots: impl IntoIterator<Item = &'a mut Option<ItemStack>>,
+    template: ItemStack,
+) -> Vec<ItemStack> {
+    slots
+        .into_iter()
+        .filter(|slot| {
+            slot.is_some_and(|stack| {
+                stack.item() == template.item() && stack.data() == template.data()
+            })
+        })
+        .filter_map(Option::take)
+        .collect()
+}
+
 /// A slot the inventory screen can address.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SlotId {

@@ -407,6 +407,51 @@ fn extended_piston_exposes_neighbors_along_all_sides_but_not_the_back() {
 }
 
 #[test]
+fn wire_wall_strips_wind_towards_the_wire_on_every_side() {
+    for (dx, dz) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+        let mut chunk = Chunk::new();
+        chunk.set(X, Y, Z, Block::RedstoneWire);
+        chunk.set(
+            X.wrapping_add_signed(dx),
+            Y,
+            Z.wrapping_add_signed(dz),
+            Block::Stone,
+        );
+        chunk.set(
+            X.wrapping_add_signed(dx),
+            Y + 1,
+            Z.wrapping_add_signed(dz),
+            Block::RedstoneWire,
+        );
+        let meshes = mesh(&chunk);
+        let walls: Vec<_> = meshes
+            .masked
+            .vertices()
+            .chunks_exact(4)
+            .filter(|quad| quad[0].normal[1] == 0.0)
+            .collect();
+        assert_eq!(walls.len(), 2, "side ({dx}, {dz})");
+        for quad in walls {
+            // The strip faces away from the stone it climbs.
+            assert_eq!(quad[0].normal, [-dx as f32, 0.0, -dz as f32]);
+            let edge = |a: usize, b: usize| {
+                std::array::from_fn::<f32, 3, _>(|axis| {
+                    quad[b].position[axis] - quad[a].position[axis]
+                })
+            };
+            let (first, second) = (edge(0, 1), edge(1, 2));
+            let wound = [
+                first[1] * second[2] - first[2] * second[1],
+                first[2] * second[0] - first[0] * second[2],
+                first[0] * second[1] - first[1] * second[0],
+            ];
+            let along: f32 = (0..3).map(|axis| wound[axis] * quad[0].normal[axis]).sum();
+            assert!(along > 0.0, "side ({dx}, {dz}) is back-face culled");
+        }
+    }
+}
+
+#[test]
 fn lever_stick_samples_its_tip_and_winds_outward_on_every_support() {
     for facing in 1..=6_u8 {
         for on in [0, 8] {

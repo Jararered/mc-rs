@@ -232,24 +232,33 @@ impl Mesher<'_> {
                     2 => 1.0 / 64.0 + offset,
                     _ => 1.0 - 1.0 / 64.0 - offset,
                 };
+                // The written order winds towards -x and +z; the faces
+                // looking the other way (+x and -z) need it reversed or the
+                // strip is back-face culled.
                 let (corners, texels) = if face < 2 {
-                    let corners = [
+                    let mut corners = [
                         [plane, 0.0, 0.0],
                         [plane, 0.0, 1.0],
                         [plane, 1.0, 1.0],
                         [plane, 1.0, 0.0],
                     ];
+                    if face == 0 {
+                        corners.reverse();
+                    }
                     let texels = corners.map(|[_, cy, cz]| {
                         AtlasTexel::new(5, row, (cy * 16.0) as u8, (cz * 16.0) as u8)
                     });
                     (corners, texels)
                 } else {
-                    let corners = [
+                    let mut corners = [
                         [0.0, 0.0, plane],
                         [1.0, 0.0, plane],
                         [1.0, 1.0, plane],
                         [0.0, 1.0, plane],
                     ];
+                    if face == 3 {
+                        corners.reverse();
+                    }
                     let texels = corners.map(|[cx, cy, _]| {
                         AtlasTexel::new(5, row, (cy * 16.0) as u8, (cx * 16.0) as u8)
                     });

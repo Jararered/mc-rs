@@ -34,9 +34,11 @@ fn instrument(block: Block) -> u8 {
         | Block::CobblestoneStairs
         | Block::Furnace
         | Block::LitFurnace
+        | Block::StonePressurePlate
+        | Block::Glowstone
         | Block::Netherrack => 1,
         Block::Sand | Block::Gravel | Block::SoulSand => 2,
-        Block::Glass | Block::Glowstone => 3,
+        Block::Glass => 3,
         Block::WoodenPlanks
         | Block::Wood
         | Block::Bookshelf
@@ -49,6 +51,7 @@ fn instrument(block: Block) -> u8 {
         | Block::WoodenStairs
         | Block::WoodenDoor
         | Block::Trapdoor
+        | Block::WoodenPressurePlate
         | Block::StandingSign
         | Block::WallSign => 4,
         _ => 0,

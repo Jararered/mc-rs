@@ -1043,7 +1043,7 @@ pub fn place_selected_block_facing(
             | Block::DetectorRail
     ) && !chunks
         .block_at(x, y - 1, z)
-        .is_some_and(Block::is_opaque_cube)
+        .is_some_and(Block::is_normal_cube)
     {
         return false;
     }
@@ -1051,7 +1051,7 @@ pub fn place_selected_block_facing(
     if matches!(
         selected,
         Block::Lever | Block::StoneButton | Block::RedstoneTorch
-    ) && (!hit.block.is_opaque_cube()
+    ) && (!hit.block.is_normal_cube()
         || hit.face == BlockFace::Down
         || (selected == Block::StoneButton && hit.face == BlockFace::Up))
     {
@@ -1096,7 +1096,7 @@ pub fn place_selected_block_facing(
         // `BlockTrapDoor.canPlaceBlockOnSide` and `onBlockPlaced`: hinged on
         // the side of a full cube.
         Block::Trapdoor => {
-            if !hit.block.is_opaque_cube() {
+            if !hit.block.is_normal_cube() {
                 return false;
             }
             let metadata = match hit.face {
@@ -1170,7 +1170,7 @@ pub fn place_door(chunks: &mut WorldChunks, hit: BlockHit, door: Block, front: D
             .is_some_and(|block| block.is_replaceable())
     };
     if y >= CHUNK_HEIGHT as i32 - 1
-        || !hit.block.is_opaque_cube()
+        || !hit.block.is_normal_cube()
         || !free(chunks, y)
         || !free(chunks, y + 1)
     {

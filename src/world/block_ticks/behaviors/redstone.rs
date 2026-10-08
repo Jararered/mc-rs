@@ -46,12 +46,14 @@ fn wire_neighbors(world: &TickWorld, position: IVec3) -> [IVec3; 8] {
 
 fn propagate(world: &mut TickWorld, position: IVec3) {
     // Beta recursively visits adjacent dust. Drain the same work iteratively
-    // so a large circuit cannot exhaust the Rust call stack.
-    if !world.begin_wire_update() {
-        return;
-    }
+    // so a large circuit cannot exhaust the Rust call stack. Writes inside
+    // the loop notify nobody (`editingBlocks`), so the loop itself never
+    // nests; the notifications after it may run another update, as Beta's
+    // `updateAndPropagateCurrentStrength` does.
     let mut pending = vec![position];
-    let mut notifications = std::collections::HashSet::new();
+    // `blocksNeedingUpdate`, in the order cells were added.
+    let mut notifications = Vec::new();
+    let mut queued = std::collections::HashSet::new();
     let mut work = 0usize;
     while let Some(position) = pending.pop() {
         if world.block(position) != Block::RedstoneWire {
@@ -82,32 +84,68 @@ fn propagate(world: &mut TickWorld, position: IVec3) {
         world.set_metadata_notify(position, strength);
         world.set_editing(false);
         pending.extend(wire_neighbors(world, position));
-        if old == 0 || strength == 0 {
-            notifications.insert(position);
-            for offset in crate::world::block_ticks::NEIGHBORS {
-                notifications.insert(position + offset);
+        // Beta tests the new strength after decrementing it, so a wire that
+        // settles at 1 notifies as well as one that goes dark.
+        if old == 0 || strength <= 1 {
+            for cell in std::iter::once(position)
+                .chain(crate::world::block_ticks::NEIGHBORS.map(|offset| position + offset))
+            {
+                if queued.insert(cell) {
+                    notifications.push(cell);
+                }
             }
         }
     }
-    // Do not recursively notify dust for each changed cell: notification of
-    // consumers is sufficient, and an unchanged wire needs no second pass.
     for cell in notifications {
         world.notify_neighbors(cell, Block::RedstoneWire);
     }
-    world.end_wire_update();
+}
+
+/// `notifyWireNeighborsOfNeighborChange`: a wire whose connections changed
+/// may now point somewhere else, so everything around it and around its six
+/// neighbors looks again.
+fn notify_wire_neighbors(world: &mut TickWorld, position: IVec3) {
+    if world.block(position) != Block::RedstoneWire {
+        return;
+    }
+    world.notify_neighbors(position, Block::RedstoneWire);
+    for offset in [
+        IVec3::NEG_X,
+        IVec3::X,
+        IVec3::NEG_Z,
+        IVec3::Z,
+        IVec3::NEG_Y,
+        IVec3::Y,
+    ] {
+        world.notify_neighbors(position + offset, Block::RedstoneWire);
+    }
+}
+
+/// The tail `onBlockAdded` and `onBlockRemoval` share: the four wires beside
+/// the cell, then the one a step up or down on each side.
+fn notify_connected_wires(world: &mut TickWorld, position: IVec3) {
+    for offset in HORIZONTAL {
+        notify_wire_neighbors(world, position + offset);
+    }
+    for offset in HORIZONTAL {
+        let adjacent = position + offset;
+        let step = if world.is_normal_cube(adjacent) {
+            IVec3::Y
+        } else {
+            IVec3::NEG_Y
+        };
+        notify_wire_neighbors(world, adjacent + step);
+    }
 }
 
 fn is_power_provider_or_wire(world: &TickWorld, position: IVec3, side: i8) -> bool {
     let block = world.block(position);
-    if block == Block::RedstoneWire {
-        return true;
-    }
-    if side < 0 {
-        return false;
-    }
+    // A source on the step above or below (`side` -1) still connects; only
+    // a repeater has to face the dust.
     match block {
+        Block::RedstoneWire => true,
         Block::Repeater | Block::PoweredRepeater => {
-            (world.metadata(position) & 3) == [2, 3, 0, 1][side as usize % 4]
+            i16::from(side) == [2, 3, 0, 1][usize::from(world.metadata(position) & 3)]
         }
         _ => super::super::behavior::behavior(block).can_provide_power(),
     }
@@ -162,20 +200,26 @@ impl BlockBehavior for Wire {
         propagate(world, position);
         world.notify_neighbors(position + IVec3::Y, Block::RedstoneWire);
         world.notify_neighbors(position - IVec3::Y, Block::RedstoneWire);
-        for neighbor in wire_neighbors(world, position) {
-            if world.block(neighbor) == Block::RedstoneWire {
-                world.notify_neighbors(neighbor, Block::RedstoneWire);
-            }
-        }
+        notify_connected_wires(world, position);
     }
-    fn on_removed(&self, world: &mut TickWorld, position: IVec3, _: Block, _: u8) {
+    fn on_removed(&self, world: &mut TickWorld, position: IVec3, _: Block, metadata: u8) {
         world.notify_neighbors(position + IVec3::Y, Block::RedstoneWire);
         world.notify_neighbors(position - IVec3::Y, Block::RedstoneWire);
+        // Beta recomputes the emptied cell itself, which reaches the wires
+        // it fed and, because the cell read as unpowered, notifies around it
+        // and its six neighbors.
         for neighbor in wire_neighbors(world, position) {
             if world.block(neighbor) == Block::RedstoneWire {
                 propagate(world, neighbor);
             }
         }
+        if metadata > 0 {
+            world.notify_neighbors(position, Block::RedstoneWire);
+            for offset in crate::world::block_ticks::NEIGHBORS {
+                world.notify_neighbors(position + offset, Block::RedstoneWire);
+            }
+        }
+        notify_connected_wires(world, position);
     }
     fn neighbor_changed(&self, world: &mut TickWorld, position: IVec3, _: Block) {
         if !world.is_normal_cube(position - IVec3::Y) {
@@ -261,6 +305,14 @@ impl BlockBehavior for Repeater {
 pub struct RedstoneTorch;
 pub static REDSTONE_TORCH: RedstoneTorch = RedstoneTorch;
 
+/// `BlockTorch.canPlaceTorchOn` for a floor torch; side torches need a cube.
+fn torch_supported(world: &TickWorld, position: IVec3) -> bool {
+    let offset = torch_support(world.metadata(position));
+    let support = position + offset;
+    world.is_normal_cube(support)
+        || (offset == IVec3::NEG_Y && world.block(support) == Block::Fence)
+}
+
 fn torch_support(metadata: u8) -> IVec3 {
     match metadata {
         1 => IVec3::NEG_X,
@@ -332,7 +384,7 @@ impl BlockBehavior for RedstoneTorch {
         }
     }
     fn neighbor_changed(&self, world: &mut TickWorld, position: IVec3, _: Block) {
-        if !world.is_normal_cube(position + torch_support(world.metadata(position))) {
+        if !torch_supported(world, position) {
             world.drop_block_as_item(position, Block::RedstoneTorch, 0);
             world.set_block_notify(position, Block::Air);
         } else {

@@ -92,13 +92,25 @@ pub fn step_minecart(cart: &mut Minecart, center: &mut Vec3, chunks: &WorldChunk
         cart.motion = Vec3::ZERO;
         return;
     };
-    let shape = chunks.metadata_at(cell.x, cell.y, cell.z) & 7;
+    // Only powered and detector rails keep a power bit above the shape; a
+    // plain rail's curves 8 and 9 use it.
+    let metadata = chunks.metadata_at(cell.x, cell.y, cell.z);
+    let shape = if block == Block::Rail {
+        metadata
+    } else {
+        metadata & 7
+    };
     let (start, end) = path(shape);
     let base = cell.as_vec3() + Vec3::new(0.5, CART_SIZE.y_offset, 0.5);
     let a = base + start;
     let b = base + end;
     let horizontal = Vec3::new(b.x - a.x, 0.0, b.z - a.z).normalize();
-    let mut speed = cart.motion.dot(horizontal);
+    // Beta keeps the cart's whole horizontal speed and only turns it along
+    // the track, so a curve does not slow it.
+    let mut speed = cart.motion.xz().length();
+    if cart.motion.dot(horizontal) < 0.0 {
+        speed = -speed;
+    }
     if block == Block::PoweredRail {
         if chunks.metadata_at(cell.x, cell.y, cell.z) & 8 == 0 {
             speed *= 0.5;
@@ -109,12 +121,12 @@ pub fn step_minecart(cart: &mut Minecart, center: &mut Vec3, chunks: &WorldChunk
             let ahead = cell + horizontal.as_ivec3();
             if chunks
                 .block_at(behind.x, behind.y, behind.z)
-                .is_some_and(Block::is_opaque_cube)
+                .is_some_and(Block::is_normal_cube)
             {
                 speed = 0.02;
             } else if chunks
                 .block_at(ahead.x, ahead.y, ahead.z)
-                .is_some_and(Block::is_opaque_cube)
+                .is_some_and(Block::is_normal_cube)
             {
                 speed = -0.02;
             }

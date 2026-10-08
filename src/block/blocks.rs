@@ -192,6 +192,19 @@ impl Block {
         definition::properties(self).opaque_cube
     }
 
+    /// Beta's `World.isBlockNormalCube`: a full cube of a solid, opaque
+    /// material that dust, torches, and rails rest on and that relays strong
+    /// redstone power. Pistons draw as cubes here but are not one in Beta,
+    /// TNT's material is translucent, and a mob spawner counts although it
+    /// is not an opaque cube.
+    pub fn is_normal_cube(self) -> bool {
+        match self {
+            Self::Piston | Self::StickyPiston | Self::PistonHead | Self::Tnt => false,
+            Self::MobSpawner => true,
+            _ => self.is_opaque_cube(),
+        }
+    }
+
     pub fn blocks_movement(self) -> bool {
         definition::properties(self).blocks_movement
     }

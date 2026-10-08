@@ -35,9 +35,6 @@ impl BlockBehavior for Dispenser {
             };
             world.set_metadata(pos, facing);
         }
-        if powered(world, pos) {
-            world.schedule(pos, Block::Dispenser, 4);
-        }
     }
 
     fn neighbor_changed(&self, world: &mut TickWorld, pos: IVec3, neighbor: Block) {

@@ -2,6 +2,7 @@
 use crate::block::blocks::Block;
 use crate::world::block_ticks::BlockBehavior;
 use crate::world::block_ticks::TickWorld;
+use crate::world::block_ticks::behavior;
 use bevy::math::IVec3;
 
 pub struct Rail;
@@ -15,86 +16,267 @@ fn is_rail(block: Block) -> bool {
         Block::Rail | Block::PoweredRail | Block::DetectorRail
     )
 }
-fn connected(world: &TickWorld, cell: IVec3) -> bool {
-    [0, -1, 1]
-        .into_iter()
-        .any(|dy| is_rail(world.block(cell + IVec3::Y * dy)))
+
+fn rail_at(world: &TickWorld, cell: IVec3) -> bool {
+    is_rail(world.block(cell))
 }
-fn shape(world: &TickWorld, pos: IVec3, powered: bool) -> u8 {
-    let north = connected(world, pos + IVec3::NEG_Z);
-    let south = connected(world, pos + IVec3::Z);
-    let east = connected(world, pos + IVec3::X);
-    let west = connected(world, pos + IVec3::NEG_X);
-    let curved = world.block(pos) == Block::Rail;
-    let mut shape = if (north || south) && !(east || west) {
-        0
-    } else if (east || west) && !(north || south) {
-        1
-    } else if curved && south && east && !north && !west {
-        6
-    } else if curved && south && west && !north && !east {
-        7
-    } else if curved && north && west && !south && !east {
-        8
-    } else if curved && north && east && !south && !west {
-        9
-    } else if east || west {
-        1
-    } else {
-        0
-    };
-    if curved && (north || south) && (east || west) {
-        let corners = if powered {
-            [
-                (south && east, 6),
-                (south && west, 7),
-                (north && east, 9),
-                (north && west, 8),
-            ]
-        } else {
-            [
-                (north && west, 8),
-                (north && east, 9),
-                (south && west, 7),
-                (south && east, 6),
-            ]
+
+/// Beta's `RailLogic`: one rail and the cells its shape joins. A rail only
+/// takes a new neighbor while it has a free end, so finished track keeps its
+/// shape when another rail is laid beside it.
+struct RailLogic {
+    position: IVec3,
+    /// Powered and detector rails: straight only, with the power bit above
+    /// the shape.
+    straight_only: bool,
+    connected: Vec<IVec3>,
+}
+
+impl RailLogic {
+    fn new(world: &TickWorld, position: IVec3) -> Self {
+        let straight_only = world.block(position) != Block::Rail;
+        let mut shape = world.metadata(position);
+        if straight_only {
+            shape &= 7;
+        }
+        let mut logic = Self {
+            position,
+            straight_only,
+            connected: Vec::with_capacity(2),
         };
-        for (exists, corner) in corners {
-            if exists {
-                shape = corner;
+        logic.set_connections(shape);
+        logic
+    }
+
+    fn set_connections(&mut self, shape: u8) {
+        let (north, south) = (IVec3::NEG_Z, IVec3::Z);
+        let (west, east) = (IVec3::NEG_X, IVec3::X);
+        let up = IVec3::Y;
+        let ends = match shape {
+            0 => [north, south],
+            1 => [west, east],
+            2 => [west, east + up],
+            3 => [west + up, east],
+            4 => [north + up, south],
+            5 => [north, south + up],
+            6 => [east, south],
+            7 => [west, south],
+            8 => [west, north],
+            9 => [east, north],
+            _ => {
+                self.connected.clear();
+                return;
+            }
+        };
+        self.connected.clear();
+        self.connected
+            .extend(ends.map(|offset| self.position + offset));
+    }
+
+    /// The rail at `cell`, or one step above or below it.
+    fn logic_near(world: &TickWorld, cell: IVec3) -> Option<Self> {
+        [IVec3::ZERO, IVec3::Y, IVec3::NEG_Y]
+            .into_iter()
+            .map(|step| cell + step)
+            .find(|&cell| rail_at(world, cell))
+            .map(|cell| Self::new(world, cell))
+    }
+
+    fn is_track_near(world: &TickWorld, cell: IVec3) -> bool {
+        rail_at(world, cell) || rail_at(world, cell + IVec3::Y) || rail_at(world, cell - IVec3::Y)
+    }
+
+    /// `func_785_b`: keep only the ends that hold a rail joined back to this
+    /// one, at the height that rail really is.
+    fn prune(&mut self, world: &TickWorld) {
+        let mut kept = Vec::with_capacity(2);
+        for &cell in &self.connected {
+            if let Some(other) = Self::logic_near(world, cell)
+                && other.joins(self.position)
+            {
+                kept.push(other.position);
+            }
+        }
+        self.connected = kept;
+    }
+
+    /// `isConnectedTo` and `isInTrack`: columns are compared, not heights.
+    fn joins(&self, cell: IVec3) -> bool {
+        self.connected
+            .iter()
+            .any(|end| end.x == cell.x && end.z == cell.z)
+    }
+
+    /// `getAdjacentTracks`.
+    fn adjacent_tracks(&self, world: &TickWorld) -> usize {
+        [IVec3::NEG_Z, IVec3::Z, IVec3::NEG_X, IVec3::X]
+            .into_iter()
+            .filter(|&offset| Self::is_track_near(world, self.position + offset))
+            .count()
+    }
+
+    /// `handleKeyPress`: joined already, or an end is free.
+    fn accepts(&self, other: IVec3) -> bool {
+        self.joins(other) || self.connected.len() != 2
+    }
+
+    /// `func_786_c`: whether the rail toward `cell` would join this one.
+    fn can_join(&self, world: &TickWorld, cell: IVec3) -> bool {
+        Self::logic_near(world, cell).is_some_and(|mut other| {
+            other.prune(world);
+            other.accepts(self.position)
+        })
+    }
+
+    /// The sloped form of a straight shape with a rail one step up.
+    fn sloped(&self, world: &TickWorld, shape: u8) -> u8 {
+        let above = self.position + IVec3::Y;
+        let mut shape = shape;
+        if shape == 0 {
+            if rail_at(world, above + IVec3::NEG_Z) {
+                shape = 4;
+            }
+            if rail_at(world, above + IVec3::Z) {
+                shape = 5;
+            }
+        } else if shape == 1 {
+            if rail_at(world, above + IVec3::X) {
+                shape = 2;
+            }
+            if rail_at(world, above + IVec3::NEG_X) {
+                shape = 3;
+            }
+        }
+        shape
+    }
+
+    fn write_shape(&self, world: &mut TickWorld, shape: u8) {
+        let metadata = if self.straight_only {
+            world.metadata(self.position) & 8 | shape
+        } else {
+            shape
+        };
+        world.set_metadata_notify(self.position, metadata);
+    }
+
+    /// `func_788_d`: take `other` as an end and reshape around the result.
+    fn join(&mut self, world: &mut TickWorld, other: IVec3) {
+        self.connected.push(other);
+        let north = self.joins(self.position + IVec3::NEG_Z);
+        let south = self.joins(self.position + IVec3::Z);
+        let west = self.joins(self.position + IVec3::NEG_X);
+        let east = self.joins(self.position + IVec3::X);
+        let mut shape = 0;
+        if west || east {
+            shape = 1;
+        }
+        if !self.straight_only {
+            if south && east && !north && !west {
+                shape = 6;
+            }
+            if south && west && !north && !east {
+                shape = 7;
+            }
+            if north && west && !south && !east {
+                shape = 8;
+            }
+            if north && east && !south && !west {
+                shape = 9;
+            }
+        }
+        let shape = self.sloped(world, shape);
+        self.write_shape(world, shape);
+    }
+
+    /// `refreshTrackShape`: pick the shape that joins the neighbors with a
+    /// free end. With three or four of them a plain rail is a switch, and
+    /// `powered` picks which curve it takes.
+    fn refresh(&mut self, world: &mut TickWorld, powered: bool, force: bool) {
+        let north = self.can_join(world, self.position + IVec3::NEG_Z);
+        let south = self.can_join(world, self.position + IVec3::Z);
+        let west = self.can_join(world, self.position + IVec3::NEG_X);
+        let east = self.can_join(world, self.position + IVec3::X);
+        let mut shape = None;
+        if (north || south) && !west && !east {
+            shape = Some(0);
+        }
+        if (west || east) && !north && !south {
+            shape = Some(1);
+        }
+        if !self.straight_only {
+            if south && east && !north && !west {
+                shape = Some(6);
+            }
+            if south && west && !north && !east {
+                shape = Some(7);
+            }
+            if north && west && !south && !east {
+                shape = Some(8);
+            }
+            if north && east && !south && !west {
+                shape = Some(9);
+            }
+        }
+        let shape = shape.unwrap_or_else(|| {
+            let mut shape = 0;
+            if west || east {
+                shape = 1;
+            }
+            if !self.straight_only {
+                let corners = if powered {
+                    [
+                        (south && east, 6),
+                        (west && south, 7),
+                        (east && north, 9),
+                        (north && west, 8),
+                    ]
+                } else {
+                    [
+                        (north && west, 8),
+                        (east && north, 9),
+                        (west && south, 7),
+                        (south && east, 6),
+                    ]
+                };
+                for (exists, corner) in corners {
+                    if exists {
+                        shape = corner;
+                    }
+                }
+            }
+            shape
+        });
+        // With no neighbor to join, Beta skips the slope check too.
+        let shape = if north || south || west || east {
+            self.sloped(world, shape)
+        } else {
+            shape
+        };
+        self.set_connections(shape);
+        let metadata = if self.straight_only {
+            world.metadata(self.position) & 8 | shape
+        } else {
+            shape
+        };
+        if force || world.metadata(self.position) != metadata {
+            world.set_metadata_notify(self.position, metadata);
+            for cell in self.connected.clone() {
+                if let Some(mut other) = Self::logic_near(world, cell) {
+                    other.prune(world);
+                    if other.accepts(self.position) {
+                        other.join(world, self.position);
+                    }
+                }
             }
         }
     }
-    if shape == 0 {
-        if is_rail(world.block(pos + IVec3::NEG_Z + IVec3::Y)) {
-            shape = 4;
-        }
-        if is_rail(world.block(pos + IVec3::Z + IVec3::Y)) {
-            shape = 5;
-        }
-    } else if shape == 1 {
-        if is_rail(world.block(pos + IVec3::X + IVec3::Y)) {
-            shape = 2;
-        }
-        if is_rail(world.block(pos + IVec3::NEG_X + IVec3::Y)) {
-            shape = 3;
-        }
-    }
-    shape
 }
 
-fn update_shape(world: &mut TickWorld, position: IVec3) {
-    let block = world.block(position);
-    let old = world.metadata(position);
+fn refresh_shape(world: &mut TickWorld, position: IVec3, force: bool) {
     let powered = world.block_indirectly_getting_powered(position);
-    let new = shape(world, position, powered) | (old & 8);
-    if new != old {
-        world.set_metadata_notify(position, new);
-    }
-    if block == Block::PoweredRail {
-        update_power(world, position);
-    }
+    RailLogic::new(world, position).refresh(world, powered, force);
 }
+
 fn propagation(world: &mut TickWorld, pos: IVec3, forward: bool, depth: u8) -> bool {
     if depth >= 8 {
         return false;
@@ -147,37 +329,25 @@ fn update_power(world: &mut TickWorld, position: IVec3) {
     if powered != (old & 8 != 0) {
         world.set_metadata_notify(position, (old & 7) | if powered { 8 } else { 0 });
         world.notify_neighbors(position - IVec3::Y, Block::PoweredRail);
+        if matches!(old & 7, 2..=5) {
+            world.notify_neighbors(position + IVec3::Y, Block::PoweredRail);
+        }
     }
 }
 impl BlockBehavior for Rail {
     fn on_added(&self, world: &mut TickWorld, position: IVec3) {
-        if !world.is_normal_cube(position - IVec3::Y) {
-            return;
-        }
-        update_shape(world, position);
-        for dir in [IVec3::X, IVec3::NEG_X, IVec3::Z, IVec3::NEG_Z] {
-            for dy in [-1, 0, 1] {
-                let neighbor = position + dir + IVec3::Y * dy;
-                if is_rail(world.block(neighbor)) {
-                    world.notify_neighbor(neighbor, world.block(position));
-                }
-            }
+        refresh_shape(world, position, true);
+        // Beta leaves a new powered rail dark until a neighbor changes; it
+        // is lit straight away here.
+        if world.block(position) == Block::PoweredRail {
+            update_power(world, position);
         }
     }
-    fn on_removed(&self, world: &mut TickWorld, position: IVec3, _: Block, _: u8) {
-        for dir in [IVec3::X, IVec3::NEG_X, IVec3::Z, IVec3::NEG_Z] {
-            for dy in [-1, 0, 1] {
-                let neighbor = position + dir + IVec3::Y * dy;
-                if is_rail(world.block(neighbor)) {
-                    world.notify_neighbor(neighbor, Block::Rail);
-                }
-            }
-        }
-    }
-    fn neighbor_changed(&self, world: &mut TickWorld, position: IVec3, _: Block) {
+    fn neighbor_changed(&self, world: &mut TickWorld, position: IVec3, neighbor: Block) {
         let block = world.block(position);
         let meta = world.metadata(position);
-        let slope_support = match meta & 7 {
+        let shape = if block == Block::Rail { meta } else { meta & 7 };
+        let slope_support = match shape {
             2 => Some(IVec3::X),
             3 => Some(IVec3::NEG_X),
             4 => Some(IVec3::NEG_Z),
@@ -189,8 +359,14 @@ impl BlockBehavior for Rail {
         {
             world.drop_block_as_item(position, block, meta);
             world.set_block_notify(position, Block::Air);
-        } else {
-            update_shape(world, position);
+        } else if block == Block::PoweredRail {
+            update_power(world, position);
+        } else if block == Block::Rail
+            && behavior(neighbor).can_provide_power()
+            && RailLogic::new(world, position).adjacent_tracks(world) == 3
+        {
+            // A switch: the junction follows the power beside it.
+            refresh_shape(world, position, false);
         }
     }
 }

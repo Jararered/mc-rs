@@ -401,3 +401,268 @@ fn powered_rail_signal_travels_at_most_eight_tracks() {
     assert_ne!(w.metadata(at(13, 64, 8)) & 8, 0);
     assert_eq!(w.metadata(at(14, 64, 8)) & 8, 0);
 }
+
+/// lever -> dust -> stone -> torch on the far side, switched on.
+fn inverter(w: &mut TestWorld) -> (IVec3, IVec3) {
+    w.fill(at(2, 63, 2), at(12, 63, 12), Block::Stone);
+    let lever = at(4, 64, 4);
+    let wire = at(5, 64, 4);
+    let torch = at(7, 64, 4);
+    place_meta(w, lever, Block::Lever, 5);
+    w.place(wire, Block::RedstoneWire);
+    w.place(at(6, 64, 4), Block::Stone);
+    place_meta(w, torch, Block::RedstoneTorch, 1);
+    w.event(BlockEvent::Activated { position: lever });
+    w.run(4);
+    assert_eq!(w.metadata(wire), 15);
+    assert_eq!(w.block(torch), Block::UnlitRedstoneTorch);
+    (wire, torch)
+}
+
+#[test]
+fn breaking_dust_relights_a_torch_behind_the_block_it_powered() {
+    let mut w = TestWorld::new(1);
+    let (wire, torch) = inverter(&mut w);
+    w.place(wire, Block::Air);
+    w.run(4);
+    assert_eq!(w.block(torch), Block::RedstoneTorch);
+}
+
+#[test]
+fn bending_dust_away_from_a_block_updates_the_torch_behind_it() {
+    let mut w = TestWorld::new(1);
+    let (wire, torch) = inverter(&mut w);
+    // A second dust to the south turns the first away from the stone.
+    w.place(wire + IVec3::Z, Block::RedstoneWire);
+    w.run(4);
+    assert_eq!(w.block(torch), Block::RedstoneTorch);
+}
+
+#[test]
+fn dust_broken_by_a_piston_during_a_wire_update_darkens_its_neighbors() {
+    let mut w = TestWorld::new(1);
+    w.fill(at(2, 63, 2), at(14, 63, 14), Block::Stone);
+    let lever = at(4, 64, 8);
+    let piston = at(6, 64, 8);
+    let doomed = piston + IVec3::NEG_Z;
+    let tail = doomed + IVec3::X;
+    place_meta(&mut w, lever, Block::Lever, 5);
+    w.place(at(5, 64, 8), Block::RedstoneWire);
+    place_meta(&mut w, piston, Block::Piston, 2);
+    place_meta(&mut w, doomed + IVec3::NEG_Z, Block::RedstoneTorch, 5);
+    w.place(tail, Block::RedstoneWire);
+    w.place(doomed, Block::RedstoneWire);
+    assert_eq!(w.metadata(tail), 14);
+    w.event(BlockEvent::Activated { position: lever });
+    assert_eq!(w.block(doomed), Block::PistonHead);
+    assert_eq!(w.metadata(tail), 0);
+}
+
+#[test]
+fn dust_connects_to_a_source_on_the_step_below() {
+    let mut w = TestWorld::new(1);
+    w.fill(at(2, 62, 2), at(12, 62, 12), Block::Stone);
+    w.fill(at(5, 63, 2), at(12, 63, 12), Block::Stone);
+    // A torch to the north alone would point the dust south, into the
+    // piston. The lever one step down to the west makes it a corner.
+    let wire = at(5, 64, 6);
+    let piston = wire + IVec3::Z;
+    place_meta(&mut w, at(4, 63, 6), Block::Lever, 5);
+    place_meta(&mut w, wire + IVec3::NEG_Z, Block::RedstoneTorch, 5);
+    w.place(wire, Block::RedstoneWire);
+    assert_eq!(w.metadata(wire), 15);
+    place_meta(&mut w, piston, Block::Piston, 1);
+    assert_eq!(w.metadata(piston) & 8, 0);
+}
+
+#[test]
+fn piston_ignores_dust_pointing_into_its_face() {
+    let mut w = TestWorld::new(1);
+    w.fill(at(2, 63, 2), at(14, 63, 14), Block::Stone);
+    let piston = at(6, 64, 8);
+    place_meta(&mut w, piston, Block::Piston, 2);
+    place_meta(&mut w, at(6, 64, 6), Block::RedstoneTorch, 5);
+    w.place(at(6, 64, 7), Block::RedstoneWire);
+    assert_eq!(w.block(at(6, 64, 7)), Block::RedstoneWire);
+    assert_eq!(w.metadata(piston) & 8, 0);
+}
+
+#[test]
+fn a_piston_is_not_a_cube_to_hang_a_torch_on() {
+    let mut w = TestWorld::new(1);
+    w.fill(at(2, 63, 2), at(14, 63, 14), Block::Stone);
+    // lever -> dust -> piston facing up, with a torch hung on its far side.
+    let lever = at(4, 64, 4);
+    let body = at(6, 64, 4);
+    place_meta(&mut w, lever, Block::Lever, 5);
+    w.place(at(5, 64, 4), Block::RedstoneWire);
+    w.set_with_metadata(body, Block::Piston, 1);
+    w.set_with_metadata(body + IVec3::X, Block::RedstoneTorch, 1);
+    w.event(BlockEvent::Activated { position: lever });
+    assert_eq!(w.metadata(body) & 8, 8, "the dust still powers the piston");
+    assert_eq!(w.block(body + IVec3::X), Block::Air);
+}
+
+fn piston_facing_east(w: &mut TestWorld) -> (IVec3, IVec3) {
+    w.fill(at(2, 63, 2), at(14, 63, 14), Block::Stone);
+    let piston = at(8, 64, 8);
+    let lever = piston + IVec3::NEG_Z;
+    place_meta(w, piston, Block::Piston, 5);
+    place_meta(w, lever, Block::Lever, 5);
+    (piston, lever)
+}
+
+#[test]
+fn piston_breaks_liquids_and_circuit_parts_instead_of_pushing_them() {
+    for (block, metadata) in [(Block::Water, 0), (Block::Lever, 5), (Block::Cactus, 0)] {
+        let mut w = TestWorld::new(1);
+        let (piston, lever) = piston_facing_east(&mut w);
+        let front = piston + IVec3::X;
+        w.set_with_metadata(front, block, metadata);
+        w.drops();
+        w.event(BlockEvent::Activated { position: lever });
+        assert_eq!(w.block(front), Block::PistonHead, "{block:?}");
+        assert_eq!(w.block(front + IVec3::X), Block::Air, "{block:?}");
+        // The block is broken as a natural drop (which is nothing for water).
+        assert!(
+            w.drops().iter().any(|&(_, drop, _)| drop == block),
+            "{block:?}"
+        );
+    }
+}
+
+#[test]
+fn piston_pushes_a_trapdoor_but_not_a_spawner() {
+    let mut w = TestWorld::new(1);
+    let (piston, lever) = piston_facing_east(&mut w);
+    let front = piston + IVec3::X;
+    // Hinged on the block to its south, both before and after the push.
+    w.set(front + IVec3::Z, Block::Stone);
+    w.set(front + IVec3::X + IVec3::Z, Block::Stone);
+    w.set_with_metadata(front, Block::Trapdoor, 0);
+    w.event(BlockEvent::Activated { position: lever });
+    assert_eq!(w.block(front + IVec3::X), Block::Trapdoor);
+
+    let mut w = TestWorld::new(1);
+    let (piston, lever) = piston_facing_east(&mut w);
+    w.set(front, Block::MobSpawner);
+    w.event(BlockEvent::Activated { position: lever });
+    assert_eq!(w.metadata(piston) & 8, 0);
+    assert_eq!(w.block(front), Block::MobSpawner);
+}
+
+#[test]
+fn piston_extension_pushes_bodies_once() {
+    use game::world::block_ticks::TickEffect;
+    let mut w = TestWorld::new(1);
+    let (piston, lever) = piston_facing_east(&mut w);
+    w.set(piston + IVec3::X, Block::Cobblestone);
+    w.effects();
+    w.event(BlockEvent::Activated { position: lever });
+    let pushes = w
+        .effects()
+        .into_iter()
+        .filter(|effect| matches!(effect, TickEffect::PistonPush { .. }))
+        .count();
+    assert_eq!(pushes, 1);
+}
+
+#[test]
+fn breaking_a_piston_head_drops_the_piston() {
+    let mut w = TestWorld::new(1);
+    let (piston, lever) = piston_facing_east(&mut w);
+    w.event(BlockEvent::Activated { position: lever });
+    let head = piston + IVec3::X;
+    assert_eq!(w.block(head), Block::PistonHead);
+    w.drops();
+    w.place(head, Block::Air);
+    assert_eq!(w.block(piston), Block::Air);
+    assert!(
+        w.drops()
+            .iter()
+            .any(|&(_, block, _)| block == Block::Piston)
+    );
+}
+
+#[test]
+fn sticky_piston_head_carries_the_sticky_bit() {
+    let mut w = TestWorld::new(1);
+    w.fill(at(2, 63, 2), at(14, 63, 14), Block::Stone);
+    let piston = at(8, 64, 8);
+    let lever = piston + IVec3::NEG_Z;
+    place_meta(&mut w, piston, Block::StickyPiston, 5);
+    place_meta(&mut w, lever, Block::Lever, 5);
+    w.event(BlockEvent::Activated { position: lever });
+    assert_eq!(w.metadata(piston + IVec3::X), 5 | 8);
+}
+
+#[test]
+fn parallel_rails_stay_straight() {
+    let mut w = TestWorld::new(1);
+    w.fill(at(5, 63, 2), at(11, 63, 12), Block::Stone);
+    for z in 4..=10 {
+        w.place(at(8, 64, z), Block::Rail);
+    }
+    for z in [7, 8, 6] {
+        w.place(at(9, 64, z), Block::Rail);
+    }
+    for (x, z) in [(8, 7), (9, 7), (8, 8), (9, 8), (8, 6)] {
+        assert_eq!(w.metadata(at(x, 64, z)), 0, "rail at {x},{z}");
+    }
+}
+
+#[test]
+fn a_north_east_curve_rejoins_as_a_south_east_curve() {
+    let mut w = TestWorld::new(1);
+    w.fill(at(5, 63, 5), at(11, 63, 11), Block::Stone);
+    let corner = at(8, 64, 8);
+    w.place(corner, Block::Rail);
+    w.place(corner - IVec3::Z, Block::Rail);
+    w.place(corner + IVec3::X, Block::Rail);
+    assert_eq!(w.metadata(corner), 9);
+    // Beta leaves the curve alone when an end is taken away.
+    w.place(corner - IVec3::Z, Block::Air);
+    assert_eq!(w.metadata(corner), 9);
+    w.place(corner + IVec3::Z, Block::Rail);
+    assert_eq!(w.metadata(corner), 6);
+}
+
+#[test]
+fn cart_follows_a_north_east_curve_at_full_speed() {
+    use bevy::math::Vec3;
+    use game::entity::minecart::Minecart;
+    use game::entity::minecart::step_minecart;
+    let mut w = TestWorld::new(1);
+    w.fill(at(5, 63, 5), at(11, 63, 11), Block::Stone);
+    w.set_with_metadata(at(9, 64, 8), Block::Rail, 1);
+    w.set_with_metadata(at(8, 64, 8), Block::Rail, 9);
+    w.set_with_metadata(at(8, 64, 7), Block::Rail, 0);
+    w.set_with_metadata(at(8, 64, 6), Block::Rail, 0);
+    let mut cart = Minecart {
+        motion: Vec3::new(-0.3, 0.0, 0.0),
+    };
+    let mut center = Vec3::new(9.5, 64.35, 8.5);
+    for _ in 0..6 {
+        step_minecart(&mut cart, &mut center, &w.chunks);
+    }
+    assert!(center.z < 8.0, "cart ended at {center}");
+    assert!(cart.motion.z < -0.28, "cart kept {}", cart.motion);
+}
+
+#[test]
+fn standing_on_the_edge_of_a_plate_presses_it() {
+    use game::world::block_ticks::RedstoneOccupant;
+    let mut w = TestWorld::new(1);
+    let plate = at(4, 65, 4);
+    w.set(plate - IVec3::Y, Block::Stone);
+    w.place(plate, Block::WoodenPressurePlate);
+    // The body's center is over the next block east.
+    w.ticks.set_occupants(vec![RedstoneOccupant {
+        min: [4.8, 65.0, 4.2],
+        max: [5.4, 66.8, 4.8],
+        living: true,
+        minecart: false,
+    }]);
+    w.run(1);
+    assert_eq!(w.metadata(plate), 1);
+}

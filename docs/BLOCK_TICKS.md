@@ -263,9 +263,16 @@ instead of Java's runtime-seeded `World.rand`.
   (`behaviors/{redstone,controls,piston,rail,note,tnt,dispenser,fixtures}.rs`).
   Power is queried through `BlockBehavior::{can_provide_power, weak_power,
   strong_power}` and the `TickWorld::block_*_powered` helpers, which mirror
-  `World.isBlockIndirectlyGettingPowered` and friends. Pistons move blocks
+  `World.isBlockIndirectlyGettingPowered` and friends. What relays power
+  and holds dust, torches, and rails is `Block::is_normal_cube`, which is
+  not the mesher's opaque-cube flag: pistons and TNT are excluded and mob
+  spawners included. Pistons move blocks
   immediately and push bodies out of the new head with
-  `TickEffect::PistonPush`, rather than animating `TileEntityPiston`.
+  `TickEffect::PistonPush`, rather than animating `TileEntityPiston`. A
+  piston notified while any piston is mid-move schedules itself for the
+  next tick instead of acting, standing in for `ignoreUpdates`. Rails take
+  their shape from `RailLogic` when placed and keep it afterward, as in
+  Beta; only a three-way junction beside a power source switches.
   Dispensers persist nine slots and fire arrows (as `entity::projectiles`
   arrows) or eject items; eggs and snowballs are ejected as items. Note
   blocks keep their pitch but make no sound until audio is implemented.

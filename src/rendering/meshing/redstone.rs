@@ -34,11 +34,10 @@ impl Mesher<'_> {
         if block == Block::RedstoneWire {
             return true;
         }
-        if side < 0 {
-            return false;
-        }
+        // A source on the step above or below (`side` -1) still connects;
+        // only a repeater has to face the dust.
         if matches!(block, Block::Repeater | Block::PoweredRepeater) {
-            return metadata & 3 == [2, 3, 0, 1][side as usize % 4];
+            return i16::from(side) == [2, 3, 0, 1][usize::from(metadata & 3)];
         }
         behavior(block).can_provide_power()
     }

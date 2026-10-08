@@ -17,8 +17,17 @@ const OFFSETS: [IVec3; 6] = [
     IVec3::NEG_X,
     IVec3::X,
 ];
+/// Metadata bit of an extended base, and of a sticky head.
+const EXTENDED: u8 = 8;
+/// Beta's limit on the blocks one piston pushes.
+const MAX_PUSHED: usize = 12;
+
 fn facing(meta: u8) -> Option<usize> {
     ((meta & 7) < 6).then_some((meta & 7) as usize)
+}
+
+fn is_base(block: Block) -> bool {
+    matches!(block, Block::Piston | Block::StickyPiston)
 }
 
 fn is_powered(world: &mut TickWorld, pos: IVec3, face: usize) -> bool {
@@ -43,88 +52,138 @@ fn is_powered(world: &mut TickWorld, pos: IVec3, face: usize) -> bool {
     false
 }
 
+/// `Block.getMobilityFlag`: 0 is pushed, 1 is broken by the push and cannot
+/// be pulled, 2 never moves. Beta takes it from the material (plants,
+/// circuits, liquids, leaves, fire, snow, cactus, pumpkin, cake, web) with
+/// overrides for beds, doors, and plates; rails override theirs back to 0.
 fn mobility(block: Block) -> u8 {
-    if matches!(
-        block,
+    match block {
         Block::Bedrock
-            | Block::Obsidian
-            | Block::NetherPortal
-            | Block::PistonHead
-            | Block::MovingPiston
-    ) {
-        return 2;
-    }
-    if matches!(
-        block,
+        | Block::Obsidian
+        | Block::NetherPortal
+        | Block::PistonHead
+        | Block::MovingPiston => 2,
         Block::Torch
-            | Block::RedstoneTorch
-            | Block::UnlitRedstoneTorch
-            | Block::RedstoneWire
-            | Block::Repeater
-            | Block::PoweredRepeater
-            | Block::StonePressurePlate
-            | Block::WoodenPressurePlate
-            | Block::StoneButton
-            | Block::WoodenDoor
-            | Block::IronDoor
-            | Block::Trapdoor
-            | Block::Dandelion
-            | Block::Rose
-    ) {
-        return 1;
+        | Block::RedstoneTorch
+        | Block::UnlitRedstoneTorch
+        | Block::RedstoneWire
+        | Block::Repeater
+        | Block::PoweredRepeater
+        | Block::Lever
+        | Block::StoneButton
+        | Block::Ladder
+        | Block::StonePressurePlate
+        | Block::WoodenPressurePlate
+        | Block::WoodenDoor
+        | Block::IronDoor
+        | Block::Bed
+        | Block::Sapling
+        | Block::TallGrass
+        | Block::DeadBush
+        | Block::Dandelion
+        | Block::Rose
+        | Block::BrownMushroom
+        | Block::RedMushroom
+        | Block::Crops
+        | Block::SugarCane
+        | Block::Water
+        | Block::FlowingWater
+        | Block::Lava
+        | Block::FlowingLava
+        | Block::Leaves
+        | Block::Fire
+        | Block::SnowLayer
+        | Block::Cactus
+        | Block::Pumpkin
+        | Block::JackOLantern
+        | Block::Cake
+        | Block::Cobweb => 1,
+        _ => 0,
     }
-    0
 }
+
+/// `BlockPistonBase.canPushBlock` without its mobility 1 case, which the
+/// callers decide: a push breaks such a block and a pull leaves it.
 fn can_push(world: &TickWorld, pos: IVec3, block: Block) -> bool {
     if !world.is_loaded(pos)
         || mobility(block) == 2
+        // Blocks with a tile entity stay put.
         || matches!(
             block,
-            Block::Chest | Block::Dispenser | Block::Furnace | Block::LitFurnace | Block::NoteBlock
+            Block::Chest
+                | Block::Dispenser
+                | Block::Furnace
+                | Block::LitFurnace
+                | Block::NoteBlock
+                | Block::MobSpawner
+                | Block::Jukebox
+                | Block::StandingSign
+                | Block::WallSign
         )
     {
         return false;
     }
-    if matches!(block, Block::Piston | Block::StickyPiston) && world.metadata(pos) & 8 != 0 {
-        return false;
-    }
-    true
+    !(is_base(block) && world.metadata(pos) & EXTENDED != 0)
 }
-fn extend(world: &mut TickWorld, pos: IVec3, dir: IVec3, face: u8) -> bool {
-    let mut pushed = Vec::new();
+
+/// What an extension moves, from `BlockPistonBase.canExtend`.
+struct Push {
+    /// Pushed blocks, nearest the piston first.
+    blocks: Vec<(IVec3, Block, u8)>,
+    /// A block the push breaks at the far end.
+    broken: Option<(IVec3, Block, u8)>,
+    /// The cell past the last pushed block.
+    end: IVec3,
+}
+
+fn plan_push(world: &TickWorld, pos: IVec3, dir: IVec3) -> Option<Push> {
+    let mut blocks = Vec::new();
     let mut next = pos + dir;
-    for _ in 0..=12 {
+    loop {
         if !(1..127).contains(&next.y) || !world.is_loaded(next) {
-            return false;
+            return None;
         }
         let block = world.block(next);
         if block == Block::Air {
-            break;
+            return Some(Push {
+                blocks,
+                broken: None,
+                end: next,
+            });
         }
         if !can_push(world, next, block) {
-            return false;
+            return None;
         }
         if mobility(block) == 1 {
-            world.drop_block_as_item(next, block, world.metadata(next));
-            world.set_block_notify(next, Block::Air);
-            break;
+            return Some(Push {
+                blocks,
+                broken: Some((next, block, world.metadata(next))),
+                end: next,
+            });
         }
-        if pushed.len() == 12 {
-            return false;
+        if blocks.len() == MAX_PUSHED {
+            return None;
         }
-        pushed.push((next, block, world.metadata(next)));
+        blocks.push((next, block, world.metadata(next)));
         next += dir;
     }
-    for &(from, block, metadata) in pushed.iter().rev() {
+}
+
+fn extend(world: &mut TickWorld, pos: IVec3, dir: IVec3, head: u8, push: Push) {
+    if let Some((cell, block, metadata)) = push.broken {
+        world.drop_block_as_item(cell, block, metadata);
+        world.set_block_notify(cell, Block::Air);
+    }
+    for &(from, block, metadata) in push.blocks.iter().rev() {
         world.set_block_and_metadata_notify(from + dir, block, metadata);
         world.set_block_notify(from, Block::Air);
     }
-    world.set_block_and_metadata_notify(pos + dir, Block::PistonHead, face);
+    world.set_block_and_metadata_notify(pos + dir, Block::PistonHead, head);
     // The farthest newly occupied cell was air (or was destroyed). Bodies
     // standing in it must be displaced rather than embedded in the block.
-    world.piston_push(next, dir);
-    true
+    world.piston_push(push.end, dir);
 }
+
 fn retract(world: &mut TickWorld, pos: IVec3, dir: IVec3, sticky: bool) {
     let head = pos + dir;
     if world.block(head) == Block::PistonHead {
@@ -140,30 +199,56 @@ fn retract(world: &mut TickWorld, pos: IVec3, dir: IVec3, sticky: bool) {
         }
     }
 }
-impl BlockBehavior for Piston {
-    fn on_added(&self, world: &mut TickWorld, pos: IVec3) {
-        self.neighbor_changed(world, pos, Block::Air);
+
+/// `BlockPistonBase.updatePistonState`. Beta marks the base first and then
+/// moves the blocks over a few ticks, ignoring neighbor changes while it
+/// starts the move. The move is immediate here, so a change that arrives in
+/// the middle of any piston's move is looked at on the next tick instead.
+fn update_state(world: &mut TickWorld, pos: IVec3) {
+    let block = world.block(pos);
+    if world.piston_moving() {
+        world.schedule(pos, block, 1);
+        return;
     }
-    fn neighbor_changed(&self, world: &mut TickWorld, pos: IVec3, _: Block) {
-        let block = world.block(pos);
-        let meta = world.metadata(pos);
-        let Some(face) = facing(meta) else {
+    let meta = world.metadata(pos);
+    let Some(face) = facing(meta) else {
+        return;
+    };
+    let dir = OFFSETS[face];
+    let sticky = block == Block::StickyPiston;
+    let powered = is_powered(world, pos, face);
+    if powered && meta & EXTENDED == 0 {
+        let Some(push) = plan_push(world, pos, dir) else {
             return;
         };
-        let powered = is_powered(world, pos, face);
-        if powered && meta & 8 == 0 {
-            // Set the base state before notifying neighbors of moving blocks.
-            // The extension is committed only if its whole destination is loaded.
-            if extend(world, pos, OFFSETS[face], face as u8) {
-                world.set_metadata_notify(pos, meta | 8);
-            }
-        } else if !powered && meta & 8 != 0 {
-            world.set_metadata_notify(pos, meta & 7);
-            retract(world, pos, OFFSETS[face], block == Block::StickyPiston);
-        }
+        world.set_metadata(pos, meta | EXTENDED);
+        world.begin_piston_move();
+        let head = face as u8 | if sticky { EXTENDED } else { 0 };
+        extend(world, pos, dir, head, push);
+        world.end_piston_move();
+        world.set_metadata_notify(pos, meta | EXTENDED);
+    } else if !powered && meta & EXTENDED != 0 {
+        world.set_metadata(pos, meta & 7);
+        world.begin_piston_move();
+        retract(world, pos, dir, sticky);
+        world.end_piston_move();
+        world.set_metadata_notify(pos, meta & 7);
+    }
+}
+
+impl BlockBehavior for Piston {
+    fn on_added(&self, world: &mut TickWorld, pos: IVec3) {
+        update_state(world, pos);
+    }
+    fn neighbor_changed(&self, world: &mut TickWorld, pos: IVec3, _: Block) {
+        update_state(world, pos);
+    }
+    /// Only scheduled by [`update_state`], for a change put off during a move.
+    fn update_tick(&self, world: &mut TickWorld, pos: IVec3) {
+        update_state(world, pos);
     }
     fn on_removed(&self, world: &mut TickWorld, pos: IVec3, _: Block, metadata: u8) {
-        if metadata & 8 != 0
+        if metadata & EXTENDED != 0
             && let Some(face) = facing(metadata)
         {
             let head = pos + OFFSETS[face];
@@ -174,12 +259,28 @@ impl BlockBehavior for Piston {
     }
 }
 impl BlockBehavior for PistonHead {
+    /// `BlockPistonExtension.onNeighborBlockChange`: a head without its base
+    /// goes, and otherwise the base hears about the change.
+    fn neighbor_changed(&self, world: &mut TickWorld, pos: IVec3, neighbor: Block) {
+        let Some(face) = facing(world.metadata(pos)) else {
+            return;
+        };
+        let base = pos - OFFSETS[face];
+        if is_base(world.block(base)) {
+            PISTON.neighbor_changed(world, base, neighbor);
+        } else {
+            world.set_block_notify(pos, Block::Air);
+        }
+    }
+    /// `BlockPistonExtension.onBlockRemoval`: breaking the head takes the
+    /// extended base with it, which drops as a piston.
     fn on_removed(&self, world: &mut TickWorld, pos: IVec3, _: Block, metadata: u8) {
         if let Some(face) = facing(metadata) {
             let base = pos - OFFSETS[face];
-            if matches!(world.block(base), Block::Piston | Block::StickyPiston)
-                && world.metadata(base) & 8 != 0
-            {
+            let block = world.block(base);
+            let base_metadata = world.metadata(base);
+            if is_base(block) && base_metadata & EXTENDED != 0 {
+                world.drop_block_as_item(base, block, base_metadata);
                 world.set_block_notify(base, Block::Air);
             }
         }

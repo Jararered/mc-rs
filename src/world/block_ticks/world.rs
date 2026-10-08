@@ -66,7 +66,10 @@ pub struct TickWorld<'a> {
     /// Beta `World.editingBlocks`: suppresses neighbor notifications.
     editing: bool,
     wire_power_enabled: bool,
-    wire_update_active: bool,
+    /// How many pistons are in the middle of moving their blocks. Pistons
+    /// put off neighbor changes meanwhile, like Beta's
+    /// `BlockPistonBase.ignoreUpdates`.
+    piston_moves: u32,
     /// Beta `World.scheduledUpdatesAreImmediate`.
     immediate: bool,
     depth: u32,
@@ -90,7 +93,7 @@ impl<'a> TickWorld<'a> {
             skylight_subtracted,
             editing: false,
             wire_power_enabled: true,
-            wire_update_active: false,
+            piston_moves: 0,
             immediate: false,
             depth: 0,
         }
@@ -197,10 +200,9 @@ impl<'a> TickWorld<'a> {
     }
 
     /// `World.isBlockNormalCube`: a full, opaque cube that torches, ladders,
-    /// and snow can rest against. The block definitions' opaque-cube flag
-    /// already excludes translucent materials and shaped blocks.
+    /// and snow can rest against.
     pub fn is_normal_cube(&self, position: IVec3) -> bool {
-        (self.block(position)).is_opaque_cube()
+        (self.block(position)).is_normal_cube()
     }
 
     /// `World.getBlockMaterial(...).isSolid()`.
@@ -272,17 +274,15 @@ impl<'a> TickWorld<'a> {
             >= 8
     }
 
-    /// Prevent nested neighbor notifications from recursively propagating dust.
-    pub fn begin_wire_update(&mut self) -> bool {
-        if self.wire_update_active {
-            false
-        } else {
-            self.wire_update_active = true;
-            true
-        }
+    /// A piston starts moving its blocks; pair with [`Self::end_piston_move`].
+    pub fn begin_piston_move(&mut self) {
+        self.piston_moves += 1;
     }
-    pub fn end_wire_update(&mut self) {
-        self.wire_update_active = false;
+    pub fn end_piston_move(&mut self) {
+        self.piston_moves = self.piston_moves.saturating_sub(1);
+    }
+    pub fn piston_moving(&self) -> bool {
+        self.piston_moves > 0
     }
 
     /// Beta's inset plate/detector bounding box against current entities.
@@ -305,18 +305,23 @@ impl<'a> TickWorld<'a> {
     }
 
     /// A contact is checked every tick, independently of footstep distance.
+    /// As in `Entity.moveEntity`, every cell the body's box overlaps is
+    /// touched, so standing on the edge of a plate presses it.
     pub fn tick_entity_contacts(&mut self) {
-        let cells: Vec<_> = self
-            .ticks
-            .occupants
-            .iter()
-            .flat_map(|body| {
-                let y = body.min[1].floor() as i32;
-                let x = ((body.min[0] + body.max[0]) * 0.5).floor() as i32;
-                let z = ((body.min[2] + body.max[2]) * 0.5).floor() as i32;
-                [IVec3::new(x, y, z), IVec3::new(x, y - 1, z)]
-            })
-            .collect();
+        let mut cells = Vec::new();
+        for body in &self.ticks.occupants {
+            let y = body.min[1].floor() as i32;
+            let min_x = (body.min[0] + 0.001).floor() as i32;
+            let max_x = (body.max[0] - 0.001).floor() as i32;
+            let min_z = (body.min[2] + 0.001).floor() as i32;
+            let max_z = (body.max[2] - 0.001).floor() as i32;
+            for x in min_x..=max_x {
+                for z in min_z..=max_z {
+                    cells.push(IVec3::new(x, y, z));
+                    cells.push(IVec3::new(x, y - 1, z));
+                }
+            }
+        }
         for position in cells {
             let block = self.block(position);
             if matches!(

@@ -39,6 +39,7 @@ use crate::app::settings::GameSettings;
 use crate::app::state::AppScreen;
 use crate::app::state::PauseMenu;
 use crate::app::state::SettingsReturn;
+use crate::chat::ChatHistory;
 use crate::entity::CollisionState;
 use crate::entity::DroppedItem;
 use crate::entity::EntityDiagnostics;
@@ -57,6 +58,10 @@ use crate::inventory::session::InventorySession;
 use crate::player::Player;
 use crate::player::PlayerInterpolation;
 use crate::player::interaction::overlay::BlockFocus;
+use crate::player::sleep::BED_MISSING_MESSAGE;
+use crate::player::sleep::PlayerSleep;
+use crate::player::sleep::bed_chunks;
+use crate::player::sleep::bed_respawn_feet;
 use crate::rendering::sky::SkyAnchor;
 use crate::rendering::weather::LightningBolt;
 use crate::rendering::weather::SkyFlash;
@@ -138,11 +143,18 @@ struct Arrival {
     changes: Vec<PortalChange>,
     /// Where the player's feet go, or `None` to stay at the scaled position.
     feet: Option<DVec3>,
+    /// A respawn found the player's bed gone or boxed in.
+    bed_missing: bool,
 }
 
 /// An [`Arrival`] waiting for the chain that resumes the world.
 #[derive(Resource)]
-struct PendingArrival(Option<Arrival>);
+struct PendingArrival {
+    arrival: Option<Arrival>,
+    /// Set once the arrival is admitted: it stood the player somewhere.
+    placed: bool,
+    bed_missing: bool,
+}
 
 /// `Entity.yOffset` for the player. `usePortal` calls `setLocationAndAngles`
 /// twice with the player's own `posY`, and each call adds this again, so the
@@ -300,6 +312,7 @@ struct WorldState<'w, 's> {
         ),
         With<Player>,
     >,
+    sleep: Query<'w, 's, &'static PlayerSleep, With<Player>>,
     /// What a change of dimension leaves standing.
     kept: Query<'w, 's, (), Or<(With<Player>, With<SkyAnchor>, With<ShadowOwner>)>>,
     entities: Query<
@@ -361,7 +374,11 @@ fn drive_session(
         // The chain that resumes the world takes it from here.
         if let Some(arrival) = session.arrival.as_mut().and_then(check_ready) {
             session.arrival = None;
-            commands.insert_resource(PendingArrival(Some(arrival)));
+            commands.insert_resource(PendingArrival {
+                arrival: Some(arrival),
+                placed: false,
+                bed_missing: false,
+            });
         }
         return;
     }
@@ -462,6 +479,10 @@ fn drive_session(
                 persistence.set_dimension(target);
             }
             let mut entity = None;
+            // `Minecraft.respawn`: back to the bed the player woke up in.
+            let bed = (travel == Travel::Respawn)
+                .then(|| state.sleep.single().ok().and_then(|sleep| sleep.spawn))
+                .flatten();
             if let Ok((mut transform, mut velocity, mut collision, mut interpolation)) =
                 state.player.single_mut()
             {
@@ -483,8 +504,10 @@ fn drive_session(
                     // The spawn chunk is built around here; the height is
                     // settled once it exists.
                     Travel::Respawn => {
-                        transform.translation.x = 8.5;
-                        transform.translation.z = 8.5;
+                        let (x, z) =
+                            bed.map_or((8.5, 8.5), |bed| (bed.x as f32 + 0.5, bed.z as f32 + 0.5));
+                        transform.translation.x = x;
+                        transform.translation.z = z;
                     }
                 }
                 velocity.0 = Vec3::ZERO;
@@ -503,14 +526,16 @@ fn drive_session(
             // unseeded random.
             let rotation = time.elapsed().subsec_nanos();
             session.arrival = Some(AsyncComputeTaskPool::get().spawn(async move {
-                match entity {
-                    Some(entity) => {
+                match (entity, bed) {
+                    (Some(entity), _) => {
                         teleport(storage.as_deref(), &*generator, target, entity, rotation)
                     }
-                    None => Arrival {
+                    (None, Some(bed)) => respawn_at_bed(storage.as_deref(), target, bed),
+                    (None, None) => Arrival {
                         chunks: Vec::new(),
                         changes: Vec::new(),
                         feet: None,
+                        bed_missing: false,
                     },
                 }
             }));
@@ -651,6 +676,7 @@ fn teleport(
             chunks: Vec::new(),
             changes: Vec::new(),
             feet: Some(feet),
+            bed_missing: false,
         };
     }
 
@@ -680,6 +706,27 @@ fn teleport(
             .collect(),
         changes,
         feet,
+        bed_missing: false,
+    }
+}
+
+/// `EntityPlayer.func_25060_a` in `dimension`, which is not loaded: the final
+/// save before this put the bed's chunks on disk, so they are read from
+/// there. The world then streams in around wherever the player ends up.
+fn respawn_at_bed(storage: Option<&WorldStorage>, dimension: Dimension, bed: IVec3) -> Arrival {
+    let mut chunks = WorldChunks::default();
+    for position in bed_chunks(bed) {
+        if let Some(chunk) = storage.and_then(|storage| storage.load_chunk_in(dimension, position))
+        {
+            chunks.insert(position, chunk);
+        }
+    }
+    let feet = bed_respawn_feet(&chunks, bed);
+    Arrival {
+        chunks: Vec::new(),
+        changes: Vec::new(),
+        feet: feet.map(|feet| feet.as_dvec3()),
+        bed_missing: feet.is_none(),
     }
 }
 
@@ -701,9 +748,18 @@ fn admit_arrival(
         With<Player>,
     >,
 ) {
-    let Some(arrival) = pending.0.take() else {
+    let Some(arrival) = pending.arrival.take() else {
         return;
     };
+    pending.placed = arrival.feet.is_some();
+    pending.bed_missing = arrival.bed_missing;
+    // The world spawn is where the world is built instead.
+    if arrival.bed_missing
+        && let Ok((mut transform, ..)) = player.single_mut()
+    {
+        transform.translation.x = 8.5;
+        transform.translation.z = 8.5;
+    }
     for (position, chunk, unsaved) in arrival.chunks {
         if unsaved && let Some(persistence) = persistence.as_deref_mut() {
             persistence.mark_dirty(position);
@@ -745,13 +801,25 @@ fn finish_arrival(
     mut session: ResMut<WorldSession>,
     mut persistence: Option<ResMut<WorldPersistence>>,
     chunks: Res<WorldChunks>,
-    mut player: Query<(&mut Transform, &mut PlayerInterpolation), With<Player>>,
+    pending: Option<Res<PendingArrival>>,
+    mut chat: Option<ResMut<ChatHistory>>,
+    mut player: Query<(&mut Transform, &mut PlayerInterpolation, &mut PlayerSleep), With<Player>>,
 ) {
+    let placed = pending.as_ref().is_some_and(|pending| pending.placed);
+    let bed_missing = pending.as_ref().is_some_and(|pending| pending.bed_missing);
     if let Some((Travel::Respawn, _)) = session.travelling
-        && let Ok((mut transform, mut interpolation)) = player.single_mut()
+        && let Ok((mut transform, mut interpolation, mut sleep)) = player.single_mut()
     {
-        *transform = crate::player::default_spawn_transform(&chunks);
-        interpolation.previous_position = transform.translation;
+        if !placed {
+            *transform = crate::player::default_spawn_transform(&chunks);
+            interpolation.previous_position = transform.translation;
+        }
+        if bed_missing {
+            sleep.spawn = None;
+            if let Some(chat) = chat.as_deref_mut() {
+                chat.push(BED_MISSING_MESSAGE);
+            }
+        }
     }
     if let Some(persistence) = persistence.as_deref_mut() {
         persistence.resume();

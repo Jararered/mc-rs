@@ -463,6 +463,7 @@ pub fn block_tile(
         Block::JackOLantern if face == 3 => (8, 7),
         Block::JackOLantern => (6, 7),
         Block::Bedrock => (1, 1),
+        Block::Bed => bed_tile(metadata, face),
         Block::Sand => (2, 1),
         Block::Gravel => (3, 1),
         Block::Wood if face == 0 || face == 1 => (5, 1),
@@ -609,6 +610,34 @@ pub fn block_tile(
 }
 
 /// A `terrain.png` tile index as its column and row.
+/// `BlockBed.getBlockTextureFromSideAndMetadata`.
+fn bed_tile(metadata: u8, face: usize) -> (u8, u8) {
+    use crate::block::bed;
+
+    /// `FACES` indices (top, bottom, east, west, south, north) as Java sides.
+    const JAVA_SIDE: [usize; 6] = [1, 0, 5, 4, 3, 2];
+    /// `ModelBed.bedDirection`.
+    const BED_DIRECTION: [[u8; 6]; 4] = [
+        [1, 0, 3, 2, 5, 4],
+        [1, 0, 5, 4, 2, 3],
+        [1, 0, 2, 3, 4, 5],
+        [1, 0, 4, 5, 3, 2],
+    ];
+    let side = JAVA_SIDE[face.min(5)];
+    if side == 0 {
+        return (4, 0);
+    }
+    let turned = BED_DIRECTION[bed::direction(metadata)][side];
+    tile(match (bed::is_foot(metadata), turned) {
+        (true, 2) => 152,
+        (true, 4 | 5) => 151,
+        (true, _) => 135,
+        (false, 3) => 149,
+        (false, 4 | 5) => 150,
+        (false, _) => 134,
+    })
+}
+
 const fn tile(index: u8) -> (u8, u8) {
     (index % 16, index / 16)
 }

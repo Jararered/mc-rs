@@ -5,4 +5,5 @@ pub mod menu;
 pub(crate) mod panorama;
 pub mod pause;
 pub mod portal;
+pub mod sleep;
 pub mod worlds;

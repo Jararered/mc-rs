@@ -323,3 +323,97 @@ fn a_world_saved_in_the_nether_reopens_there() {
         Biome::Hell
     );
 }
+
+#[test]
+fn a_respawn_reloads_the_world_around_the_players_bed() {
+    use game::chat::ChatHistory;
+    use game::player::sleep::BED_MISSING_MESSAGE;
+    use game::player::sleep::PlayerSleep;
+
+    let saves = temp_saves("bed-respawn");
+    let mut app = session_app(&saves);
+    app.init_resource::<ChatHistory>();
+    load_world(
+        &mut app,
+        WorldChoice::New {
+            name: "Bed".to_owned(),
+            seed: 21,
+            difficulty: Difficulty::Peaceful,
+            format: SaveFormat::Binary,
+        },
+    );
+    // A bed on a platform above the terrain, so the seed does not matter.
+    let foot = IVec3::new(5, 121, 6);
+    let edit = |app: &mut App, bed: bool| {
+        let mut chunks = app.world_mut().resource_mut::<WorldChunks>();
+        for x in 3..=7 {
+            for z in 3..=8 {
+                chunks.set_block(x, 120, z, Block::Stone);
+            }
+        }
+        if bed {
+            chunks.set_block_with_metadata(5, 121, 5, Block::Bed, 0);
+            chunks.set_block_with_metadata(5, 121, 6, Block::Bed, 8);
+        } else {
+            chunks.set_block(5, 121, 5, Block::Air);
+            chunks.set_block(5, 121, 6, Block::Air);
+        }
+        app.world_mut()
+            .resource_mut::<WorldPersistence>()
+            .mark_dirty(ChunkPosition::ZERO);
+    };
+    edit(&mut app, true);
+    let player = app
+        .world_mut()
+        .query_filtered::<Entity, With<Player>>()
+        .single(app.world())
+        .unwrap();
+    app.world_mut()
+        .entity_mut(player)
+        .get_mut::<PlayerSleep>()
+        .unwrap()
+        .spawn = Some(foot);
+    // Far from the bed, as a player who died away from home.
+    app.world_mut()
+        .entity_mut(player)
+        .get_mut::<Transform>()
+        .unwrap()
+        .translation = Vec3::new(400.5, 80.0, -240.5);
+
+    travel(&mut app, Travel::Respawn);
+    assert_eq!(
+        app.world().resource::<ActiveDimension>().0,
+        Dimension::Overworld
+    );
+    let stood = player_position(&mut app);
+    assert!(
+        (stood - Vec3::new(4.5, 121.1 + 1.62, 5.5)).length() < 0.01,
+        "{stood}"
+    );
+    assert_eq!(
+        app.world().get::<PlayerSleep>(player).unwrap().spawn,
+        Some(foot)
+    );
+    assert_eq!(
+        app.world()
+            .resource::<WorldChunks>()
+            .block_at(foot.x, foot.y, foot.z),
+        Some(Block::Bed)
+    );
+
+    // Without the bed the world spawn takes over and the player is told.
+    edit(&mut app, false);
+    travel(&mut app, Travel::Respawn);
+    let stood = player_position(&mut app);
+    assert!(
+        (stood.x - 8.5).abs() < 0.01 && (stood.z - 8.5).abs() < 0.01,
+        "{stood}"
+    );
+    assert_eq!(app.world().get::<PlayerSleep>(player).unwrap().spawn, None);
+    assert!(
+        app.world()
+            .resource::<ChatHistory>()
+            .messages()
+            .any(|message| message.text == BED_MISSING_MESSAGE)
+    );
+}

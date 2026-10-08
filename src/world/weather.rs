@@ -71,6 +71,14 @@ impl WorldWeather {
     pub fn is_thundering(&self) -> bool {
         self.weighted_thunder() > 0.9
     }
+    /// `World.stopPrecipitation`, for the morning after a night slept
+    /// through. The strengths fade out on their own.
+    pub fn stop_precipitation(&mut self) {
+        self.rain_time = 0;
+        self.raining = false;
+        self.thunder_time = 0;
+        self.thundering = false;
+    }
     pub fn step(&mut self) {
         let mut rng = JavaRandom::from_state(self.rng_state);
         if self.rain_time == 0 {

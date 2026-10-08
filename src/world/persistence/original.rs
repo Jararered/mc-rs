@@ -963,6 +963,9 @@ fn player_from_nbt(player: &Compound, sidecar: &Sidecar) -> Option<StoredPlayer>
             1.0
         },
         dimension: Dimension::from_id(player.int("Dimension")),
+        spawn: player
+            .contains("SpawnX")
+            .then(|| ["SpawnX", "SpawnY", "SpawnZ"].map(|name| player.int(name))),
     })
 }
 
@@ -1012,8 +1015,8 @@ fn inventory_list(player: &StoredPlayer) -> Vec<Tag> {
     list
 }
 
-/// `player` laid over `base`, so fields this game does not track (a bed spawn,
-/// the score) survive a save.
+/// `player` laid over `base`, so fields this game does not track (the score)
+/// survive a save.
 fn player_to_nbt(player: &StoredPlayer, mut base: Compound) -> Compound {
     base.put_list(
         "Pos",
@@ -1034,9 +1037,17 @@ fn player_to_nbt(player: &StoredPlayer, mut base: Compound) -> Compound {
     base.put_short("AttackTime", 0);
     base.put_int("Dimension", player.dimension.id());
     base.put_list("Inventory", inventory_list(player));
-    if !base.contains("Sleeping") {
-        base.put_bool("Sleeping", false);
-        base.put_short("SleepTimer", 0);
+    // A sleeper is saved awake, as Beta wakes one when it loads.
+    base.put_bool("Sleeping", false);
+    base.put_short("SleepTimer", 0);
+    for (name, value) in ["SpawnX", "SpawnY", "SpawnZ"]
+        .into_iter()
+        .zip(player.spawn.map_or([None; 3], |spawn| spawn.map(Some)))
+    {
+        match value {
+            Some(value) => base.put_int(name, value),
+            None => base.remove(name),
+        }
     }
     base
 }

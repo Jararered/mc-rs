@@ -14,6 +14,7 @@ use crate::ui::InventoryGuiPlugin;
 use crate::ui::MenuPlugin;
 use crate::ui::PauseMenuPlugin;
 use crate::ui::PortalUiPlugin;
+use crate::ui::SleepUiPlugin;
 use crate::ui::UiCameraPlugin;
 use crate::world::persistence::PersistencePlugin;
 use crate::world::plugin::WorldPlugin;
@@ -50,7 +51,7 @@ impl Plugin for GamePlugin {
                 PhysicsPlugin,
                 UiCameraPlugin,
                 (MenuPlugin, PauseMenuPlugin, SessionPlugin),
-                (HudPlugin, PortalUiPlugin),
+                (HudPlugin, PortalUiPlugin, SleepUiPlugin),
                 InventoryGuiPlugin,
                 (ScreenshotPlugin, FullscreenPlugin),
                 (DiagnosticsPlugin, FramePacingPlugin),

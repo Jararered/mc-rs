@@ -28,6 +28,7 @@ use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::SECTION_HEIGHT;
 use crate::world::lighting::Skylight;
 
+mod bed;
 mod fire;
 pub(crate) mod geometry;
 mod greedy;
@@ -923,6 +924,10 @@ impl<'a> Mesher<'a> {
                             grass_tint,
                             light,
                         );
+                        continue;
+                    }
+                    if block == Block::Bed {
+                        self.push_bed(&mut meshes.masked, origin, x, y, z);
                         continue;
                     }
                     if is_box_shape(block) {

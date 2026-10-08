@@ -489,6 +489,7 @@ fn integrate_player(
             Option<&mut StepDistance>,
             Option<&mut PlayerSurvival>,
             Option<&mut crate::player::portal::PortalTravel>,
+            Option<&crate::player::sleep::PlayerSleep>,
         ),
         With<Player>,
     >,
@@ -515,8 +516,15 @@ fn integrate_player(
         mut steps,
         mut survival,
         mut portal,
+        sleep,
     ) in &mut players
     {
+        // `isMovementBlocked`: a sleeper lies where the bed put them.
+        if sleep.is_some_and(|sleep| sleep.sleeping) {
+            velocity.0 = Vec3::ZERO;
+            interpolation.previous_position = transform.translation;
+            continue;
+        }
         if !chunks.contains(ChunkPosition::from_world(
             transform.translation.x,
             transform.translation.z,

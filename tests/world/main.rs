@@ -11,6 +11,7 @@ mod mobs;
 mod pathfinding;
 mod portal;
 mod runtime;
+mod sleep;
 mod weather;
 
 // Share the world test binary to avoid another full Bevy link.

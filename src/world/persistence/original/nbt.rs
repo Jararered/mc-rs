@@ -92,6 +92,10 @@ impl Compound {
         }
     }
 
+    pub fn remove(&mut self, key: &str) {
+        self.0.retain(|(name, _)| name != key);
+    }
+
     pub fn put_byte(&mut self, key: &str, value: i8) {
         self.put(key, Tag::Byte(value));
     }

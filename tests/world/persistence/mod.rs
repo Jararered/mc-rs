@@ -154,9 +154,11 @@ fn weather_and_spawner_mobs_round_trip_without_changing_older_saves() {
     player.air = 120;
     player.fire = 45;
     player.fall_distance = 2.5;
+    player.spawn = Some([4, 65, -7]);
     storage.save_player(&player).unwrap();
     let loaded = reopened.load_player().unwrap();
     assert_eq!(loaded.health, 7);
+    assert_eq!(loaded.spawn, Some([4, 65, -7]));
     assert_eq!(
         (loaded.air, loaded.fire, loaded.fall_distance),
         (120, 45, 2.5)
@@ -164,10 +166,11 @@ fn weather_and_spawner_mobs_round_trip_without_changing_older_saves() {
 
     // A `player.json` from before air and fire were saved loads rested.
     let mut older = serde_json::to_value(&player).unwrap();
-    for key in ["air", "fire", "fall_distance"] {
+    for key in ["air", "fire", "fall_distance", "spawn"] {
         older.as_object_mut().unwrap().remove(key);
     }
     let older: StoredPlayer = serde_json::from_value(older).unwrap();
+    assert_eq!(older.spawn, None);
     assert_eq!(
         (older.air, older.fire, older.fall_distance),
         (300, -20, 0.0)

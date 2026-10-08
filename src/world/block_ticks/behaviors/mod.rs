@@ -12,6 +12,7 @@ use super::behavior::BlockBehavior;
 use super::behavior::inert_table;
 
 pub mod attached;
+pub mod bed;
 pub mod controls;
 pub mod crops;
 pub mod dispenser;
@@ -95,6 +96,7 @@ pub(super) fn table() -> [&'static dyn BlockBehavior; 256] {
     );
     register(&mut table, &[Block::Trapdoor], &fixtures::TRAPDOOR);
     register(&mut table, &[Block::StoneSlab], &fixtures::SLAB);
+    register(&mut table, &[Block::Bed], &bed::BED);
     register(&mut table, &[Block::NetherPortal], &portal::PORTAL);
     register(&mut table, &[Block::RedstoneWire], &redstone::WIRE);
     register(

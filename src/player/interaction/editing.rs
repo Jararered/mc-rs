@@ -68,8 +68,11 @@ use crate::world::tick::WorldTick;
 
 use super::mining::MiningState;
 use super::overlay::BlockFocus;
+use crate::block::bed;
 use crate::player::Player;
 use crate::player::PlayerCamera;
+use crate::player::sleep::BedUse;
+use crate::player::sleep::PlayerSleep;
 
 /// Held-button place repeat, matching Beta's `ticksPerSecond / 4`.
 const PLACE_DELAY_TICKS: i32 = 5;
@@ -111,6 +114,7 @@ pub(crate) fn interact_blocks(
             &mut Hotbar,
             &mut Inventory,
             &Velocity,
+            Option<&PlayerSleep>,
         ),
         With<Player>,
     >,
@@ -129,7 +133,7 @@ pub(crate) fn interact_blocks(
     ),
     mut focus: ResMut<BlockFocus>,
     (mut state, frame): (Local<BlockInteractState>, Res<bevy::diagnostic::FrameCount>),
-    mut inventory_screen: ResMut<InventorySession>,
+    (mut inventory_screen, mut bed_uses): (ResMut<InventorySession>, MessageWriter<BedUse>),
     mut workbench: ResMut<ActiveWorkbench>,
     mut item_rng: Local<ItemRng>,
 ) {
@@ -164,11 +168,18 @@ pub(crate) fn interact_blocks(
     }
     let click_carried = state.wait_for_release;
 
-    let Ok((transform, size, collision, mut hotbar, mut inventory, velocity)) = player.single_mut()
+    let Ok((transform, size, collision, mut hotbar, mut inventory, velocity, sleep)) =
+        player.single_mut()
     else {
         *focus = BlockFocus::default();
         return;
     };
+    // `isMovementBlocked`: a sleeping player's hands are still.
+    if sleep.is_some_and(|sleep| sleep.sleeping) {
+        state.mining.reset();
+        *focus = BlockFocus::default();
+        return;
+    }
 
     if locked
         && !inventory_screen.open
@@ -474,13 +485,21 @@ pub(crate) fn interact_blocks(
                     position: IVec3::new(hit.x, hit.y, hit.z),
                 },
             );
+            // `BlockBed.blockActivated` needs the player, so it is not a
+            // block behavior.
+            if hit.block == Block::Bed {
+                bed_uses.write(BedUse {
+                    position: IVec3::new(hit.x, hit.y, hit.z),
+                });
+            }
         }
         // `Block.blockActivated` returning true keeps the held item unused.
         let activated = hit.is_some_and(|hit| {
             hit.block.is_door()
                 || matches!(
                     hit.block,
-                    Block::Trapdoor
+                    Block::Bed
+                        | Block::Trapdoor
                         | Block::Lever
                         | Block::StoneButton
                         | Block::Repeater
@@ -595,6 +614,34 @@ pub(crate) fn interact_blocks(
                         },
                     );
                     notify_edit(&mut streaming, &mut persistence, hit.x, y, hit.z, false);
+                }
+            } else if stack.item() == Item::Bed
+                && let Some(cells) = place_bed(
+                    &mut chunks,
+                    hit,
+                    furnace_facing_toward_player(transform.rotation * Vec3::NEG_Z),
+                )
+            {
+                let selected = hotbar.selected;
+                hotbar.slots[selected] =
+                    ItemStack::with_data(stack.item(), stack.count() - 1, stack.data()).ok();
+                for cell in cells {
+                    push_event(
+                        &mut block_ticks,
+                        BlockEvent::Changed {
+                            position: cell,
+                            previous: Block::Air,
+                            metadata: 0,
+                        },
+                    );
+                    notify_edit(
+                        &mut streaming,
+                        &mut persistence,
+                        cell.x,
+                        cell.y,
+                        cell.z,
+                        false,
+                    );
                 }
             } else if stack.item() == Item::Seeds && plant_seeds(&mut chunks, hit) {
                 let selected = hotbar.selected;
@@ -1282,6 +1329,36 @@ fn chest_can_place_at(chunks: &WorldChunks, x: i32, y: i32, z: i32) -> bool {
             .is_some_and(|group| !group.is_double()),
         _ => false,
     }
+}
+
+/// `ItemBed.onItemUse`: lay a bed on the top face of a normal cube, pointing
+/// away from the player. `front` is the side facing the player, as furnaces
+/// take it. Returns the two cells written, the clicked one first.
+pub fn place_bed(chunks: &mut WorldChunks, hit: BlockHit, front: Direction) -> Option<[IVec3; 2]> {
+    if hit.face != BlockFace::Up {
+        return None;
+    }
+    // Beta's `yaw * 4 / 360 + 0.5` quadrant: the way the player looks.
+    let direction: u8 = match front {
+        Direction::North => 0,
+        Direction::East => 1,
+        Direction::South => 2,
+        Direction::West => 3,
+    };
+    let near = IVec3::new(hit.x, hit.y + 1, hit.z);
+    let far = near + bed::head_to_foot(direction);
+    let fits = |chunks: &WorldChunks, cell: IVec3| {
+        chunks.block_at(cell.x, cell.y, cell.z) == Some(Block::Air)
+            && chunks
+                .block_at(cell.x, cell.y - 1, cell.z)
+                .is_some_and(Block::is_normal_cube)
+    };
+    if !fits(chunks, near) || !fits(chunks, far) {
+        return None;
+    }
+    chunks.set_block_with_metadata(near.x, near.y, near.z, Block::Bed, direction);
+    chunks.set_block_with_metadata(far.x, far.y, far.z, Block::Bed, direction + bed::FOOT);
+    Some([near, far])
 }
 
 fn furnace_facing_toward_player(player_forward: Vec3) -> Direction {

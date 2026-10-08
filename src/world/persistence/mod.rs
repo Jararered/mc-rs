@@ -156,6 +156,10 @@ pub struct StoredPlayer {
     /// Which dimension the position is in. Beta's `Dimension` tag.
     #[serde(default)]
     pub dimension: Dimension,
+    /// The bed the player respawns at: `PlayerSleep::spawn`, Beta's
+    /// `SpawnX`, `SpawnY` and `SpawnZ`.
+    #[serde(default)]
+    pub spawn: Option<[i32; 3]>,
 }
 
 const fn full_player_health() -> u8 {
@@ -216,6 +220,7 @@ impl StoredPlayer {
             fly_speed: 1.0,
             game_mode: crate::player::GameMode::Survival,
             dimension: Dimension::Overworld,
+            spawn: None,
         }
     }
 
@@ -237,6 +242,13 @@ impl StoredPlayer {
 
     pub fn with_health(mut self, health: u8) -> Self {
         self.health = health;
+        self
+    }
+
+    pub fn with_sleep(mut self, sleep: Option<&crate::player::sleep::PlayerSleep>) -> Self {
+        self.spawn = sleep
+            .and_then(|sleep| sleep.spawn)
+            .map(|spawn| spawn.to_array());
         self
     }
 
@@ -1427,6 +1439,7 @@ impl WorldPersistence {
             crate::player::GameMode,
             u8,
             Option<&crate::player::PlayerSurvival>,
+            Option<&crate::player::sleep::PlayerSleep>,
         )>,
         items: &HashMap<ChunkPosition, Vec<ChunkDroppedItem>>,
         ticks: Option<&BlockTicks>,
@@ -1487,8 +1500,17 @@ impl WorldPersistence {
                 Err(error) => warn!("Failed to save world: {error}"),
             }
         }
-        if let Some((transform, hotbar, inventory, flying, fly_speed, game_mode, health, survival)) =
-            player
+        if let Some((
+            transform,
+            hotbar,
+            inventory,
+            flying,
+            fly_speed,
+            game_mode,
+            health,
+            survival,
+            sleep,
+        )) = player
             && let Err(error) = storage.save_player(
                 &StoredPlayer::from_transform(transform)
                     .with_dimension(storage.dimension())
@@ -1496,6 +1518,7 @@ impl WorldPersistence {
                     .with_game_mode(game_mode)
                     .with_health(health)
                     .with_survival(survival)
+                    .with_sleep(sleep)
                     .with_inventory(
                         hotbar.unwrap_or(&Hotbar::default()),
                         inventory.unwrap_or(&Inventory::default()),
@@ -1631,6 +1654,7 @@ fn flush_persistence(
             &crate::player::GameMode,
             Option<&crate::player::PlayerHealth>,
             Option<&crate::player::PlayerSurvival>,
+            Option<&crate::player::sleep::PlayerSleep>,
         ),
         With<Player>,
     >,
@@ -1750,7 +1774,17 @@ fn flush_persistence(
         persistence.flush(
             &chunks,
             player.single().ok().map(
-                |(transform, hotbar, inventory, flying, fly_speed, game_mode, health, survival)| {
+                |(
+                    transform,
+                    hotbar,
+                    inventory,
+                    flying,
+                    fly_speed,
+                    game_mode,
+                    health,
+                    survival,
+                    sleep,
+                )| {
                     (
                         transform,
                         hotbar,
@@ -1760,6 +1794,7 @@ fn flush_persistence(
                         *game_mode,
                         health.map_or(full_player_health(), |health| health.current),
                         survival,
+                        sleep,
                     )
                 },
             ),
@@ -1788,13 +1823,24 @@ fn flush_persistence(
         .map_or_else(Dimension::default, |storage| storage.dimension());
     let record = if persistence.player_pending {
         player.single().ok().map(
-            |(transform, hotbar, inventory, flying, fly_speed, game_mode, health, survival)| {
+            |(
+                transform,
+                hotbar,
+                inventory,
+                flying,
+                fly_speed,
+                game_mode,
+                health,
+                survival,
+                sleep,
+            )| {
                 StoredPlayer::from_transform(transform)
                     .with_dimension(dimension)
                     .with_flying(flying.is_some(), fly_speed.0)
                     .with_game_mode(*game_mode)
                     .with_health(health.map_or(full_player_health(), |health| health.current))
                     .with_survival(survival)
+                    .with_sleep(sleep)
                     .with_inventory(
                         hotbar.unwrap_or(&Hotbar::default()),
                         inventory.unwrap_or(&Inventory::default()),

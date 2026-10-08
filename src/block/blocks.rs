@@ -344,6 +344,8 @@ impl Block {
             | Self::WoodenDoor
             | Self::IronDoor
             | Self::Trapdoor => metadata,
+            // The occupied bit is not drawn.
+            Self::Bed => metadata & 0b1011,
             _ => 0,
         }
     }

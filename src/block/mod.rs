@@ -1,3 +1,4 @@
+pub mod bed;
 pub mod blocks;
 pub mod definition;
 pub mod direction;

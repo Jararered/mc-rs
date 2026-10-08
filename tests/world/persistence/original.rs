@@ -508,7 +508,19 @@ fn the_player_is_stored_in_level_dat() {
     player.air = 88;
     player.fire = 130;
     player.fall_distance = 4.25;
+    // A bed spawn is Beta's `SpawnX/Y/Z`, and no bed is no tags at all.
+    player.spawn = Some([40, 70, -30]);
     storage.save_player(&player).unwrap();
+    let reopen = || {
+        WorldStorage::open(storage.root().to_path_buf())
+            .unwrap()
+            .load_player()
+            .unwrap()
+    };
+    assert_eq!(reopen().spawn, Some([40, 70, -30]));
+    player.spawn = None;
+    storage.save_player(&player).unwrap();
+    assert_eq!(reopen().spawn, None);
 
     let loaded = WorldStorage::open(storage.root().to_path_buf())
         .unwrap()

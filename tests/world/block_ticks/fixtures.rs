@@ -504,3 +504,134 @@ fn a_door_face_reads_the_same_way_round_from_both_sides() {
     assert_eq!(west, 0);
     assert_eq!(east, 0);
 }
+
+/// Lay a bed the way the item does, then run the placement events.
+fn lay_bed(world: &mut TestWorld, front: Direction) -> Option<[bevy::math::IVec3; 2]> {
+    let cells = game::player::place_bed(
+        &mut world.chunks,
+        hit(8, 63, 8, BlockFace::Up, Block::Stone),
+        front,
+    )?;
+    for cell in cells {
+        world.ticks.block_changed(cell, Block::Air, 0);
+    }
+    world.process_events();
+    Some(cells)
+}
+
+#[test]
+fn a_bed_points_away_from_the_player() {
+    // `front` faces the player; the second half lies beyond the first.
+    for (front, direction, far) in [
+        (Direction::North, 0, at(8, 64, 9)),
+        (Direction::East, 1, at(7, 64, 8)),
+        (Direction::South, 2, at(8, 64, 7)),
+        (Direction::West, 3, at(9, 64, 8)),
+    ] {
+        let mut world = floor();
+        assert_eq!(lay_bed(&mut world, front), Some([at(8, 64, 8), far]));
+        assert_eq!(world.block(at(8, 64, 8)), Block::Bed);
+        assert_eq!(world.metadata(at(8, 64, 8)), direction);
+        assert_eq!(world.block(far), Block::Bed);
+        assert_eq!(world.metadata(far), direction + 8);
+        assert!(world.drops().is_empty(), "placing must not pop the bed");
+    }
+}
+
+#[test]
+fn a_bed_needs_a_top_face_two_free_cells_and_a_floor_under_both() {
+    let mut world = floor();
+    let side = hit(8, 63, 8, BlockFace::North, Block::Stone);
+    assert!(game::player::place_bed(&mut world.chunks, side, Direction::North).is_none());
+
+    world.set(at(8, 64, 9), Block::Stone);
+    assert!(lay_bed(&mut world, Direction::North).is_none());
+    world.set(at(8, 64, 9), Block::Air);
+
+    world.set(at(8, 63, 9), Block::Air);
+    assert!(lay_bed(&mut world, Direction::North).is_none());
+    assert_eq!(world.block(at(8, 64, 8)), Block::Air);
+}
+
+#[test]
+fn a_bed_half_goes_with_its_partner_and_one_item_drops() {
+    use game::entity::drops::blocks::natural_drops_with_metadata;
+
+    // Losing the second half pops the first, which carries the item.
+    let mut world = floor();
+    lay_bed(&mut world, Direction::North).unwrap();
+    world.place(at(8, 64, 9), Block::Air);
+    assert_eq!(world.block(at(8, 64, 8)), Block::Air);
+    assert_eq!(world.drops(), vec![(at(8, 64, 8), Block::Bed, 0)]);
+
+    // Losing the first takes the second with nothing more to drop.
+    let mut world = floor();
+    lay_bed(&mut world, Direction::North).unwrap();
+    world.place(at(8, 64, 8), Block::Air);
+    assert_eq!(world.block(at(8, 64, 9)), Block::Air);
+    assert!(world.drops().is_empty());
+
+    let mut rolls = game::random::ItemRng::default();
+    assert_eq!(
+        natural_drops_with_metadata(Block::Bed, 0, &mut rolls).len(),
+        1
+    );
+    assert!(natural_drops_with_metadata(Block::Bed, 8, &mut rolls).is_empty());
+}
+
+#[test]
+fn a_bed_meshes_as_two_low_halves_without_the_face_between() {
+    let mesh = |chunk: &Chunk| mesh_chunk_with_settings(chunk, &Skylight::from_chunk(chunk), true);
+    let mut chunk = Chunk::new();
+    chunk.set_with_metadata(8, 64, 8, Block::Bed, 0);
+    chunk.set_with_metadata(8, 64, 9, Block::Bed, 8);
+    let meshes = mesh(&chunk);
+    assert_eq!(meshes.opaque.vertex_count(), 0);
+    // Top, raised underside, and three sides each.
+    assert_eq!(meshes.masked.vertex_count(), 2 * 5 * 4);
+    let positions = meshes.masked.positions();
+    let highest = positions.iter().map(|p| p[1]).fold(f32::MIN, f32::max);
+    let lowest_underside = positions.iter().any(|p| p[1] == 64.1875);
+    assert_eq!(highest, 64.5625);
+    assert!(lowest_underside);
+
+    // The pillow half and the blanket half use their own tiles; the
+    // underside is planks.
+    assert_eq!(block_tile(Block::Bed, 0, 0, true), (6, 8));
+    assert_eq!(block_tile(Block::Bed, 8, 0, true), (7, 8));
+    assert_eq!(block_tile(Block::Bed, 0, 1, true), (4, 0));
+    // The occupied bit does not change how a bed is drawn.
+    assert_eq!(
+        Block::Bed.appearance_metadata(8 | 4),
+        Block::Bed.appearance_metadata(8)
+    );
+}
+
+#[test]
+fn a_bed_respawn_needs_the_bed_and_a_free_cell_beside_it() {
+    use game::player::sleep::bed_respawn_feet;
+
+    let mut world = floor();
+    let [_, foot] = lay_bed(&mut world, Direction::North).unwrap();
+    assert_eq!(
+        bed_respawn_feet(&world.chunks, foot),
+        Some(Vec3::new(7.5, 64.1, 8.5))
+    );
+
+    // Boxed in: no cell around either half has two blocks of air.
+    let mut boxed = floor();
+    let [near, foot] = lay_bed(&mut boxed, Direction::North).unwrap();
+    for x in 6..=10 {
+        for z in 6..=11 {
+            let cell = at(x, 65, z);
+            if boxed.block(at(x, 64, z)) != Block::Bed {
+                boxed.set(cell, Block::Stone);
+            }
+        }
+    }
+    assert_eq!(bed_respawn_feet(&boxed.chunks, foot), None);
+    let _ = near;
+
+    world.set(foot, Block::Air);
+    assert_eq!(bed_respawn_feet(&world.chunks, foot), None);
+}

@@ -138,6 +138,8 @@ fn push_natural(drops: &mut Vec<ItemStack>, block: Block, metadata: u8, rolls: &
         Block::WoodenDoor => push_item(drops, Item::WoodenDoor, 0, 1),
         Block::IronDoor => push_item(drops, Item::IronDoor, 0, 1),
         Block::SugarCane => push_item(drops, Item::SugarCane, 0, 1),
+        // `BlockBed.idDropped`: only one half leaves the item.
+        Block::Bed if crate::block::bed::is_foot(metadata) => {}
         Block::Bed => push_item(drops, Item::Bed, 0, 1),
         Block::Repeater | Block::PoweredRepeater => push_item(drops, Item::Repeater, 0, 1),
         Block::TallGrass => {

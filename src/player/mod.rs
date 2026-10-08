@@ -23,11 +23,13 @@ use crate::inventory::Hotbar;
 pub(crate) mod interaction;
 pub(crate) mod model;
 pub mod portal;
+pub mod sleep;
 mod survival;
 
 pub use interaction::editing::PLACED_BLOCK;
 pub use interaction::editing::break_block;
 pub use interaction::editing::pick_up_fluid;
+pub use interaction::editing::place_bed;
 pub use interaction::editing::place_block;
 pub use interaction::editing::place_door;
 pub use interaction::editing::place_fluid;
@@ -109,7 +111,7 @@ impl Plugin for PlayerPlugin {
                     .after(PhysicsSet::Integrate)
                     .run_if(in_state(AppScreen::Playing)),
             )
-            .add_plugins(survival::SurvivalPlugin);
+            .add_plugins((survival::SurvivalPlugin, sleep::SleepPlugin));
     }
 }
 
@@ -128,7 +130,8 @@ impl Plugin for PlayerPlugin {
     PlayerInterpolation,
     PlayerCombat,
     PlayerSurvival,
-    portal::PortalTravel
+    portal::PortalTravel,
+    sleep::PlayerSleep
 )]
 pub struct Player;
 
@@ -325,6 +328,7 @@ pub(crate) fn spawn_player(
         game_mode,
         interpolation,
         transform,
+        sleep::PlayerSleep::with_spawn(saved.as_ref().and_then(|p| p.spawn).map(IVec3::from_array)),
     ));
     if flying {
         entity.insert(Flying);

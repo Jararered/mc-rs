@@ -13,10 +13,15 @@ use super::Player;
 use super::PlayerHealth;
 use super::PlayerInterpolation;
 use super::default_spawn_transform;
+use super::sleep::BED_MISSING_MESSAGE;
+use super::sleep::PlayerSleep;
+use super::sleep::bed_chunks;
+use super::sleep::bed_respawn_feet;
 use crate::app::session::Travel;
 use crate::app::session::WorldSession;
 use crate::app::settings::Difficulty;
 use crate::app::state::AppScreen;
+use crate::chat::ChatHistory;
 use crate::entity::CollisionState;
 use crate::entity::EntitySize;
 use crate::entity::Flying;
@@ -226,9 +231,11 @@ fn tick_player_survival(
             Option<&mut Hotbar>,
             Option<&mut Inventory>,
             &GameMode,
+            &mut PlayerSleep,
         ),
         With<Player>,
     >,
+    mut chat: Option<ResMut<ChatHistory>>,
     mut commands: Commands,
     mut rng: Local<ItemRng>,
     mut spare_armor: Local<[Option<ItemStack>; 4]>,
@@ -246,6 +253,7 @@ fn tick_player_survival(
         mut hotbar,
         mut inventory,
         mode,
+        mut sleep,
     )) = player.single_mut()
     else {
         return;
@@ -293,14 +301,38 @@ fn tick_player_survival(
                     // `Minecraft.respawn`: where `canRespawnHere` is false
                     // the player leaves for the Overworld first, and is put
                     // at the spawn point once it has loaded.
-                    if !environment.dimension().can_respawn()
+                    // A bed whose chunks are not loaded is looked at the same
+                    // way: the world is reloaded around it.
+                    let here = environment.dimension().can_respawn();
+                    let bed = sleep.spawn.filter(|_| here);
+                    let bed_loaded =
+                        bed.is_some_and(|bed| bed_chunks(bed).all(|chunk| chunks.contains(chunk)));
+                    if (!here || (bed.is_some() && !bed_loaded))
                         && let Some(session) = session.as_deref_mut()
                     {
                         session.request_travel(Travel::Respawn);
                     } else {
                         *transform = default_spawn_transform(&chunks);
+                        if let Some(bed) = bed.filter(|_| bed_loaded) {
+                            match bed_respawn_feet(&chunks, bed) {
+                                Some(feet) => {
+                                    *transform = Transform::from_translation(
+                                        feet + Vec3::Y * EntitySize::PLAYER.y_offset,
+                                    )
+                                    .looking_to(Vec3::Z, Vec3::Y);
+                                }
+                                None => {
+                                    sleep.spawn = None;
+                                    if let Some(chat) = chat.as_deref_mut() {
+                                        chat.push(BED_MISSING_MESSAGE);
+                                    }
+                                }
+                            }
+                        }
                         interpolation.previous_position = transform.translation;
                     }
+                    sleep.sleeping = false;
+                    sleep.timer = 0;
                     velocity.0 = Vec3::ZERO;
                     *collision = CollisionState::default();
                     *combat = PlayerCombat::default();
@@ -367,7 +399,8 @@ fn tick_player_survival(
         }
 
         // `EntityLiving.onEntityUpdate`.
-        if inside_opaque_block(eye, EntitySize::PLAYER.width, &chunks) {
+        // `EntityPlayer.isEntityInsideOpaqueBlock`: never while asleep.
+        if !sleep.sleeping && inside_opaque_block(eye, EntitySize::PLAYER.width, &chunks) {
             hurt(1);
         }
         state.head_in_water = eye_in_water(eye, &chunks);

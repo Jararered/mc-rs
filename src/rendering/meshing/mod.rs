@@ -1867,6 +1867,7 @@ fn neighbor_hides_face(block: Block, neighbor: Option<Block>, fancy_graphics: bo
         || neighbor == Block::FlowingLava
         || neighbor == Block::MobSpawner
         || neighbor == Block::NetherPortal
+        || neighbor == Block::Bed
         || neighbor.is_chest()
         || neighbor.is_ladder()
         || neighbor.is_torch()

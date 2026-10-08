@@ -595,6 +595,12 @@ fn a_bed_meshes_as_two_low_halves_without_the_face_between() {
     assert_eq!(highest, 64.5625);
     assert!(lowest_underside);
 
+    // A bed hides nothing: the floor under it and a wall beside it keep
+    // every face, as they would next to air.
+    chunk.set(8, 63, 8, Block::Stone);
+    chunk.set(9, 64, 8, Block::Stone);
+    assert_eq!(mesh(&chunk).opaque.vertex_count(), 2 * 6 * 4);
+
     // The pillow half and the blanket half use their own tiles; the
     // underside is planks.
     assert_eq!(block_tile(Block::Bed, 0, 0, true), (6, 8));

@@ -332,6 +332,16 @@ pub fn beta_recipe_book() -> &'static RecipeBook {
             out(I::Minecart, 1, 0),
         );
         r.add_shaped(
+            &["A", "B"],
+            &[('A', i(b(B::Chest))), ('B', i(I::Minecart))],
+            out(I::ChestMinecart, 1, 0),
+        );
+        r.add_shaped(
+            &["A", "B"],
+            &[('A', i(b(B::Furnace))), ('B', i(I::Minecart))],
+            out(I::FurnaceMinecart, 1, 0),
+        );
+        r.add_shaped(
             &["# #", " # "],
             &[('#', i(I::IronIngot))],
             out(I::Bucket, 1, 0),
@@ -375,6 +385,11 @@ pub fn beta_recipe_book() -> &'static RecipeBook {
                 ('R', i(I::Redstone)),
             ],
             out(b(B::Piston), 1, 0),
+        );
+        r.add_shaped(
+            &["S", "P"],
+            &[('S', i(I::Slimeball)), ('P', i(b(B::Piston)))],
+            out(b(B::StickyPiston), 1, 0),
         );
         r.add_shaped(
             &["###", "XXX"],
@@ -449,6 +464,11 @@ pub fn beta_recipe_book() -> &'static RecipeBook {
             &[" #", "# "],
             &[('#', i(I::IronIngot))],
             out(I::Shears, 1, 0),
+        );
+        r.add_shaped(
+            &["A ", " B"],
+            &[('A', i(I::IronIngot)), ('B', i(I::Flint))],
+            out(I::FlintAndSteel, 1, 0),
         );
         r.add_shaped(
             &["# #", "###", "# #"],

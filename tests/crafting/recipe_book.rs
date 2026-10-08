@@ -89,3 +89,39 @@ fn cake_consumption_leaves_empty_buckets_in_the_grid() {
     assert_eq!(grid.slots().flatten().count(), 3);
     assert!(book.find(&grid).is_none());
 }
+
+#[test]
+fn flint_and_steel_needs_iron_and_flint_on_a_diagonal() {
+    let book = beta_recipe_book();
+    let mut grid = CraftingGrid::player();
+    grid.set(0, 0, Some(stack(Item::IronIngot, 1)));
+    grid.set(1, 1, Some(stack(Item::Flint, 1)));
+    assert_eq!(book.find(&grid), Some(stack(Item::FlintAndSteel, 1)));
+
+    grid.set(1, 1, None);
+    grid.set(1, 0, Some(stack(Item::Flint, 1)));
+    assert_eq!(book.find(&grid), None);
+}
+
+#[test]
+fn minecart_and_piston_upgrades_stack_the_part_above_the_base() {
+    let book = beta_recipe_book();
+    for (top, base, result) in [
+        (block(Block::Chest), Item::Minecart, Item::ChestMinecart),
+        (block(Block::Furnace), Item::Minecart, Item::FurnaceMinecart),
+        (
+            Item::Slimeball,
+            block(Block::Piston),
+            block(Block::StickyPiston),
+        ),
+    ] {
+        let mut grid = CraftingGrid::player();
+        grid.set(0, 0, Some(stack(top, 1)));
+        grid.set(0, 1, Some(stack(base, 1)));
+        assert_eq!(book.find(&grid), Some(stack(result, 1)));
+
+        grid.set(0, 0, Some(stack(base, 1)));
+        grid.set(0, 1, Some(stack(top, 1)));
+        assert_eq!(book.find(&grid), None);
+    }
+}

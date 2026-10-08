@@ -19,7 +19,7 @@ behavior.
 | `src/world/block_ticks/mod.rs` | `BlockTicks` resource, `BlockEvent`, `BlockChange`, `TickEffect`, constants |
 | `src/world/block_ticks/behavior.rs` | The `BlockBehavior` trait and the lookup `behavior(id)` |
 | `src/world/block_ticks/behaviors/mod.rs` | The registration table: which blocks use which behavior |
-| `src/world/block_ticks/behaviors/*.rs` | One module per block family (fluid, falling, soil, crops, plants, leaves, ore, snow, attached, sponge) |
+| `src/world/block_ticks/behaviors/*.rs` | One module per block family (fluid, falling, soil, crops, plants, leaves, ore, snow, attached, sponge, fire, portal, bed, redstone, controls, piston, rail, note, tnt, dispenser, fixtures) |
 | `src/world/block_ticks/world.rs` | `TickWorld`, the world view a behavior reads and writes |
 | `src/world/block_ticks/scheduler.rs` | The scheduled tick queue |
 | `src/world/block_ticks/systems.rs` | ECS systems and `BlockTicksPlugin` |
@@ -43,7 +43,8 @@ before streaming. For every 20 Hz tick the frame consumed:
 3. **Random ticks.** Each finished, lit chunk within 9 chunks of the player
    (capped by the render distance) gets 80 random cells from Beta's LCG.
    Cells whose block `ticks_randomly` run `update_tick`. Each chunk also
-   gets the snowy-biome ice-freezing roll.
+   gets the snowy-biome ice-freezing and snowfall roll (`freeze_column`; snow
+   only settles while it is raining).
 
 Afterwards the system turns the tick pass's `BlockChange`s into remesh and
 relight requests for streaming and dirty chunks for persistence, and
@@ -252,9 +253,6 @@ instead of Java's runtime-seeded `World.rand`.
 
 ## Not implemented yet
 
-- **Weather.** Nothing is rained on, so farmland only hydrates from water
-  and snow never accumulates. Put rain in `TickWorld::rained_on` and the
-  snowfall half of `freeze_column`.
 - **Redstone details.** Dust, torches (with Beta's burnout), repeaters,
   levers, buttons, pressure plates, doors, trapdoors, pistons, rails, note
   blocks, TNT, and dispensers have update behaviors

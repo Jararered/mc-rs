@@ -20,6 +20,18 @@ use super::Hotbar;
 use super::Inventory;
 use super::MAIN_SLOTS;
 
+/// Remove up to `count` items from `slot`, leaving `None` when it empties.
+pub fn take_from_stack(slot: &mut Option<ItemStack>, count: u8) -> Option<ItemStack> {
+    let current = (*slot)?;
+    if count == 0 {
+        return None;
+    }
+    let taken = count.min(current.count());
+    let stack = ItemStack::with_data(current.item(), taken, current.data()).ok()?;
+    *slot = ItemStack::with_data(current.item(), current.count() - taken, current.data()).ok();
+    Some(stack)
+}
+
 /// A slot the inventory screen can address.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SlotId {

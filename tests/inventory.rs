@@ -4,6 +4,7 @@ use game::inventory::Hotbar;
 use game::inventory::collect_matching_stacks;
 use game::inventory::sort_container_slots;
 use game::inventory::sort_main_inventory;
+use game::inventory::take_from_stack;
 use game::item::Item;
 use game::item::ItemStack;
 
@@ -1052,4 +1053,29 @@ fn shift_click_falls_back_to_the_fuel_slot_when_the_input_is_taken() {
 
     assert_eq!(furnace, [Some(ore), Some(logs), None]);
     assert_eq!(inventory.main[0], None);
+}
+
+#[test]
+fn take_from_stack_removes_up_to_the_requested_count() {
+    let mut slot = Some(ItemStack::new(Item::Coal, 5).unwrap());
+    let one = take_from_stack(&mut slot, 1).unwrap();
+    assert_eq!(one.count(), 1);
+    assert_eq!(slot.unwrap().count(), 4);
+
+    let rest = take_from_stack(&mut slot, 200).unwrap();
+    assert_eq!(rest.count(), 4);
+    assert_eq!(rest.item(), one.item());
+    assert_eq!(slot, None);
+
+    assert_eq!(take_from_stack(&mut slot, 1), None);
+}
+
+#[test]
+fn take_from_stack_keeps_item_data_and_ignores_zero() {
+    let mut slot = Some(ItemStack::from_block_state(Block::Wool, 5, 3).unwrap());
+    let taken = take_from_stack(&mut slot, 1).unwrap();
+    assert_eq!(taken.data(), 5);
+    assert_eq!(slot.unwrap().data(), 5);
+    assert_eq!(take_from_stack(&mut slot, 0), None);
+    assert_eq!(slot.unwrap().count(), 2);
 }

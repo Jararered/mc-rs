@@ -13,6 +13,7 @@ use crate::app::state::AppScreen;
 use crate::block::blocks::Block;
 use crate::crafting::CraftingGrid;
 use crate::crafting::beta_recipe_book;
+use crate::entity::drops::items::spawn_thrown_item;
 use crate::inventory::DragPlace;
 use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
@@ -36,6 +37,7 @@ use crate::inventory::shift_click_slot;
 use crate::inventory::slot_accepts_drag;
 use crate::inventory::sort_container_slots;
 use crate::inventory::sort_main_inventory;
+use crate::inventory::take_from_stack;
 use crate::item::ItemData;
 use crate::item::ItemStack;
 use crate::player::Player;
@@ -280,6 +282,9 @@ struct InventoryTexture {
 }
 #[derive(Component)]
 struct InventoryRoot;
+/// The inventory image's node; a click outside it throws the carried stack.
+#[derive(Component)]
+struct InventoryPanel;
 #[derive(Component, Clone, Copy, PartialEq, Eq)]
 enum Slot {
     Hotbar(usize),
@@ -533,6 +538,8 @@ fn spawn(
         ))
         .with_children(|root| {
             root.spawn((
+                InventoryPanel,
+                RelativeCursorPosition::default(),
                 Node {
                     position_type: PositionType::Relative,
                     width: px(176.0 * scale),
@@ -954,12 +961,16 @@ fn take_workbench_result(
 }
 
 fn handle_slots(
+    mut commands: Commands,
+    mut item_rng: Local<ItemRng>,
+    panels: Query<&RelativeCursorPosition, With<InventoryPanel>>,
+    windows: Query<&Window, With<PrimaryWindow>>,
     screen: Res<InventorySession>,
     time: Res<Time>,
     mouse: Res<ButtonInput<MouseButton>>,
     keys: Res<ButtonInput<KeyCode>>,
     slots: Query<(&RelativeCursorPosition, &Slot)>,
-    mut player: Query<(&mut Hotbar, &mut Inventory), With<Player>>,
+    mut player: Query<(&Transform, &mut Hotbar, &mut Inventory), With<Player>>,
     mut workbench: ResMut<ActiveWorkbench>,
     mut chunks: ResMut<WorldChunks>,
     mut persistence: Option<ResMut<WorldPersistence>>,
@@ -971,9 +982,41 @@ fn handle_slots(
         *last_click = LastInventoryClick::default();
         return;
     }
-    let Ok((mut hotbar, mut inventory)) = player.single_mut() else {
+    let Ok((player_transform, mut hotbar, mut inventory)) = player.single_mut() else {
         return;
     };
+    let cursor_outside_panel = windows
+        .single()
+        .is_ok_and(|window| window.cursor_position().is_some())
+        && panels.single().is_ok_and(|panel| !panel.cursor_over());
+    let drop_input = DropInput {
+        key: keys.just_pressed(KeyCode::KeyQ),
+        left: cursor_outside_panel && mouse.just_pressed(MouseButton::Left),
+        right: cursor_outside_panel && mouse.just_pressed(MouseButton::Right),
+        shift: keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight),
+        whole_stack: keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight),
+    };
+    if drag.button.is_none() && drop_input.any() {
+        let hovered = slots
+            .iter()
+            .find_map(|(cursor, slot)| cursor.cursor_over().then_some(*slot));
+        if drop_items(
+            &mut commands,
+            &mut item_rng,
+            player_transform,
+            &screen,
+            hovered,
+            drop_input,
+            &mut hotbar,
+            &mut inventory,
+            &mut workbench,
+            &mut chunks,
+            &mut persistence,
+        ) {
+            last_click.at = None;
+            return;
+        }
+    }
     if screen.chest {
         handle_chest_slots(
             &screen,
@@ -1261,6 +1304,128 @@ fn handle_slots(
             &mut inventory,
             &mut workbench,
         );
+    }
+}
+
+#[derive(Clone, Copy)]
+struct DropInput {
+    /// The drop key was pressed this frame.
+    key: bool,
+    /// A mouse button went down with the cursor outside the inventory image.
+    left: bool,
+    right: bool,
+    shift: bool,
+    /// Control is held: the drop key takes the slot's whole stack.
+    whole_stack: bool,
+}
+
+impl DropInput {
+    fn any(self) -> bool {
+        self.key || self.left || self.right
+    }
+}
+
+/// Throws items out of the open inventory. The drop key takes one item from the
+/// hovered slot, or the whole stack with Control held. A click outside the inventory image throws the carried stack
+/// (left) or one item of it (right). Returns whether input was consumed.
+#[allow(clippy::too_many_arguments)]
+fn drop_items(
+    commands: &mut Commands,
+    rng: &mut ItemRng,
+    player: &Transform,
+    screen: &InventorySession,
+    hovered: Option<Slot>,
+    input: DropInput,
+    hotbar: &mut Hotbar,
+    inventory: &mut Inventory,
+    workbench: &mut ActiveWorkbench,
+    chunks: &mut WorldChunks,
+    persistence: &mut Option<ResMut<WorldPersistence>>,
+) -> bool {
+    let thrown = if input.key {
+        let Some(slot) = hovered else {
+            return false;
+        };
+        let count = if input.whole_stack { u8::MAX } else { 1 };
+        take_from_slot(
+            screen,
+            slot,
+            count,
+            hotbar,
+            inventory,
+            workbench,
+            chunks,
+            persistence,
+        )
+    } else if input.shift || inventory.carried.is_none() || hovered.is_some() {
+        return false;
+    } else if input.left {
+        inventory.carried.take()
+    } else if input.right {
+        take_from_stack(&mut inventory.carried, 1)
+    } else {
+        return false;
+    };
+    let Some(stack) = thrown else {
+        // The key over an empty slot (or the result slot) is still handled.
+        return input.key;
+    };
+    spawn_thrown_item(commands, rng, player, *player.forward(), stack);
+    if let Some(persistence) = persistence.as_deref_mut() {
+        persistence.mark_dirty(ChunkPosition::from_block(
+            player.translation.x.floor() as i32,
+            player.translation.z.floor() as i32,
+        ));
+    }
+    true
+}
+
+#[allow(clippy::too_many_arguments)]
+fn take_from_slot(
+    screen: &InventorySession,
+    slot: Slot,
+    count: u8,
+    hotbar: &mut Hotbar,
+    inventory: &mut Inventory,
+    workbench: &mut ActiveWorkbench,
+    chunks: &mut WorldChunks,
+    persistence: &mut Option<ResMut<WorldPersistence>>,
+) -> Option<ItemStack> {
+    match slot {
+        Slot::Hotbar(i) => take_from_stack(hotbar.slots.get_mut(i)?, count),
+        Slot::Main(i) => take_from_stack(inventory.main.get_mut(i)?, count),
+        Slot::Craft(i) => take_from_stack(inventory.crafting.get_mut(i)?, count),
+        Slot::Armor(i) => take_from_stack(inventory.armor.get_mut(i)?, count),
+        Slot::Workbench(i) if screen.workbench => {
+            let (x, y) = (i % 3, i / 3);
+            let mut value = workbench.grid.get(x, y);
+            let taken = take_from_stack(&mut value, count);
+            workbench.grid.set(x, y, value);
+            taken
+        }
+        Slot::Furnace(i) if screen.furnace => {
+            let position = screen.furnace_position?;
+            let furnace = chunks.furnace_at_mut(position.0, position.1, position.2)?;
+            let taken = take_from_stack(furnace.slots.get_mut(i)?, count);
+            if taken.is_some()
+                && let Some(persistence) = persistence.as_deref_mut()
+            {
+                persistence.mark_dirty(ChunkPosition::from_block(position.0, position.2));
+            }
+            taken
+        }
+        Slot::Chest(i) => {
+            let group = screen.chest_group?;
+            let mut chest_slots = read_chest_group_slots(chunks, group);
+            let taken = take_from_stack(chest_slots.get_mut(i)?, count);
+            if taken.is_some() {
+                write_chest_group_slots(chunks, group, &chest_slots);
+                mark_chest_dirty(persistence, group);
+            }
+            taken
+        }
+        // Throwing the result would skip consuming the ingredients.
+        Slot::CraftResult | Slot::Workbench(_) | Slot::Furnace(_) => None,
     }
 }
 

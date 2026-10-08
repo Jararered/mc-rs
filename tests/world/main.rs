@@ -9,6 +9,7 @@ mod streaming;
 mod combat;
 mod mobs;
 mod pathfinding;
+mod portal;
 mod runtime;
 mod weather;
 

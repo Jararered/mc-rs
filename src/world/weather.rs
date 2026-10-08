@@ -140,7 +140,13 @@ fn tick_weather(
     chunks: Res<WorldChunks>,
     light: Res<LightCache>,
     mut strikes: MessageWriter<LightningStrike>,
+    dimension: Option<Res<crate::world::dimension::ActiveDimension>>,
 ) {
+    // `World.updateWeather` does nothing where `hasNoSky`: the shared rain
+    // and thunder counters hold still while the player is in the Nether.
+    if dimension.is_some_and(|dimension| !dimension.0.has_weather()) {
+        return;
+    }
     let Ok(player) = player.single() else {
         return;
     };
@@ -186,7 +192,7 @@ pub fn can_strike(chunks: &WorldChunks, x: i32, y: i32, z: i32) -> bool {
     if chunks.climate_at(x, z).is_none_or(|c| {
         matches!(
             c.biome,
-            Biome::Taiga | Biome::Tundra | Biome::IceDesert | Biome::Desert
+            Biome::Taiga | Biome::Tundra | Biome::IceDesert | Biome::Desert | Biome::Hell
         )
     }) {
         return false;

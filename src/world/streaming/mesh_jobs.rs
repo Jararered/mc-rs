@@ -58,6 +58,7 @@ pub(super) fn spawn_mesh_job(
     let fancy_graphics = streaming.fancy_graphics;
     let quad_layers = streaming.quad_layers;
     let only = streaming.wireframe_block;
+    let has_sky = streaming.has_sky;
     let previous = streaming
         .rendered
         .get(&position)
@@ -90,7 +91,8 @@ pub(super) fn spawn_mesh_job(
             northeast.as_ref(),
             southwest.as_ref(),
             southeast.as_ref(),
-        );
+        )
+        .for_sky(has_sky);
         let fingerprints = skylight.section_fingerprints();
         let rebuild = previous.map_or(ALL_SECTIONS, |previous| {
             (0..SECTIONS_PER_CHUNK)

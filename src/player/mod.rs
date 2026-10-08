@@ -20,6 +20,7 @@ use crate::entity::combat::PlayerCombat;
 use crate::inventory::Hotbar;
 pub(crate) mod interaction;
 pub(crate) mod model;
+pub mod portal;
 mod survival;
 
 pub use interaction::editing::PLACED_BLOCK;
@@ -71,6 +72,7 @@ impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         interaction::overlay::overlay_plugin(app);
         model::arm::plugin(app);
+        portal::plugin(app);
         app.init_resource::<PauseMenu>()
             .init_resource::<crate::inventory::session::InventorySession>()
             .init_resource::<crate::inventory::session::ActiveWorkbench>()
@@ -122,7 +124,8 @@ impl Plugin for PlayerPlugin {
     PlayerMovementInput,
     PlayerInterpolation,
     PlayerCombat,
-    PlayerSurvival
+    PlayerSurvival,
+    portal::PortalTravel
 )]
 pub struct Player;
 

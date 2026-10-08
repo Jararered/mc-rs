@@ -62,6 +62,8 @@ use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::GeneratedChunk;
 use crate::world::chunk::PendingTick;
 use crate::world::chunk::WorldChunks;
+use crate::world::dimension::ActiveDimension;
+use crate::world::dimension::Dimension;
 use crate::world::lighting::LightCache;
 use crate::world::streaming::setup_streaming;
 
@@ -149,6 +151,9 @@ pub struct StoredPlayer {
     pub flying: bool,
     #[serde(default)]
     pub fly_speed: f32,
+    /// Which dimension the position is in. Beta's `Dimension` tag.
+    #[serde(default)]
+    pub dimension: Dimension,
 }
 
 const fn full_player_health() -> u8 {
@@ -207,7 +212,13 @@ impl StoredPlayer {
             carried: None,
             flying: false,
             fly_speed: 1.0,
+            dimension: Dimension::Overworld,
         }
+    }
+
+    pub fn with_dimension(mut self, dimension: Dimension) -> Self {
+        self.dimension = dimension;
+        self
     }
 
     pub fn with_flying(mut self, flying: bool, fly_speed: f32) -> Self {
@@ -383,6 +394,9 @@ pub struct WorldStorage {
     root: PathBuf,
     manifest: Mutex<WorldManifest>,
     backend: Backend,
+    /// The dimension [`Self::load_chunk`] and chunk writes address. It only
+    /// changes between drains, when nothing is in flight.
+    dimension: Mutex<Dimension>,
 }
 
 impl WorldStorage {
@@ -442,6 +456,7 @@ impl WorldStorage {
             root,
             manifest: Mutex::new(manifest),
             backend,
+            dimension: Mutex::new(Dimension::Overworld),
         })
     }
 
@@ -466,6 +481,7 @@ impl WorldStorage {
             root,
             manifest: Mutex::new(manifest),
             backend,
+            dimension: Mutex::new(Dimension::Overworld),
         })
     }
 
@@ -559,11 +575,41 @@ impl WorldStorage {
         self.touch()
     }
 
-    /// Load a stored chunk, or `None` if it was never saved.
+    /// The dimension chunk reads and writes address.
+    pub fn dimension(&self) -> Dimension {
+        *self.dimension.lock().unwrap()
+    }
+
+    /// Point chunk reads and writes at `dimension`. Call it only while no
+    /// save is in flight: a write that is running finishes where it started,
+    /// but one that has not begun would land in the new dimension.
+    pub fn set_dimension(&self, dimension: Dimension) {
+        *self.dimension.lock().unwrap() = dimension;
+    }
+
+    /// Where a native world keeps `dimension`'s `regions` folder.
+    fn chunk_root(&self, dimension: Dimension) -> PathBuf {
+        match dimension.folder() {
+            Some(folder) => self.root.join(folder),
+            None => self.root.clone(),
+        }
+    }
+
+    /// Load a stored chunk of the active dimension, or `None` if it was never
+    /// saved.
     pub fn load_chunk(&self, position: ChunkPosition) -> Option<GeneratedChunk> {
+        self.load_chunk_in(self.dimension(), position)
+    }
+
+    /// [`Self::load_chunk`] for a named dimension.
+    pub fn load_chunk_in(
+        &self,
+        dimension: Dimension,
+        position: ChunkPosition,
+    ) -> Option<GeneratedChunk> {
         match &self.backend {
-            Backend::Binary => binary::load_chunk(&self.root, position),
-            Backend::Original(store) => store.load_chunk(position),
+            Backend::Binary => binary::load_chunk(&self.chunk_root(dimension), position),
+            Backend::Original(store) => store.load_chunk(dimension, position),
         }
     }
 
@@ -616,9 +662,10 @@ impl WorldStorage {
         if chunks.is_empty() {
             return Ok(0);
         }
+        let dimension = self.dimension();
         match &self.backend {
             Backend::Binary => binary::write_chunks(
-                &self.root,
+                &self.chunk_root(dimension),
                 chunks.iter().filter_map(|(position, chunk)| match chunk {
                     StoredChunkData::Binary(chunk) => Some((*position, chunk)),
                     StoredChunkData::Original(_) => None,
@@ -627,6 +674,7 @@ impl WorldStorage {
             Backend::Original(store) => {
                 let world_time = self.manifest.lock().unwrap().world_time;
                 store.write_chunks(
+                    dimension,
                     chunks.iter().filter_map(|(position, chunk)| match chunk {
                         StoredChunkData::Original(chunk) => Some((*position, chunk)),
                         StoredChunkData::Binary(_) => None,
@@ -1035,6 +1083,28 @@ impl WorldPersistence {
         self.closing
     }
 
+    /// Let the world run again after a final save that did not unload it:
+    /// the save taken before travelling to the other dimension.
+    pub fn resume(&mut self) {
+        self.closing = false;
+    }
+
+    /// Point chunk loads and saves at `dimension`. Only valid once
+    /// [`Self::is_idle`] with nothing unsaved, since the bookkeeping here is
+    /// keyed by chunk position alone.
+    pub fn set_dimension(&mut self, dimension: Dimension) {
+        debug_assert!(self.is_idle() && !self.has_unsaved_chunks());
+        if let Some(storage) = &self.storage {
+            storage.set_dimension(dimension);
+        }
+    }
+
+    pub fn dimension(&self) -> Dimension {
+        self.storage
+            .as_ref()
+            .map_or_else(Dimension::default, |storage| storage.dimension())
+    }
+
     /// Start a save on the next frame instead of waiting for the autosave
     /// timer, which then restarts. The save drains like an autosave, so it
     /// never blocks a frame.
@@ -1411,6 +1481,7 @@ impl WorldPersistence {
         if let Some((transform, hotbar, inventory, flying, fly_speed, health, survival)) = player
             && let Err(error) = storage.save_player(
                 &StoredPlayer::from_transform(transform)
+                    .with_dimension(storage.dimension())
                     .with_flying(flying, fly_speed)
                     .with_health(health)
                     .with_survival(survival)
@@ -1492,6 +1563,12 @@ fn install_world(
     client_difficulty: Option<&mut crate::app::settings::ClientDifficulty>,
 ) {
     let manifest = storage.manifest();
+    // A world saved in the Nether opens there.
+    let dimension = storage
+        .load_player()
+        .map_or_else(Dimension::default, |player| player.dimension);
+    storage.set_dimension(dimension);
+    commands.insert_resource(ActiveDimension(dimension));
     info!(
         "World '{}' loaded from {}",
         manifest.name,
@@ -1507,6 +1584,7 @@ fn install_world(
         // the ones loaded before the first world tick would all be overdue.
         let previous = block_ticks.time();
         block_ticks.rebase_time(previous, manifest.world_time);
+        block_ticks.set_dimension(dimension);
     }
     if let Some(weather) = weather {
         *weather = manifest.weather;
@@ -1691,10 +1769,14 @@ fn flush_persistence(
         .as_deref()
         .map(BlockTicks::pending_ticks_by_chunk)
         .unwrap_or_default();
+    let dimension = persistence
+        .storage()
+        .map_or_else(Dimension::default, |storage| storage.dimension());
     let record = if persistence.player_pending {
         player.single().ok().map(
             |(transform, hotbar, inventory, flying, fly_speed, health, survival)| {
                 StoredPlayer::from_transform(transform)
+                    .with_dimension(dimension)
                     .with_flying(flying.is_some(), fly_speed.0)
                     .with_health(health.map_or(full_player_health(), |health| health.current))
                     .with_survival(survival)

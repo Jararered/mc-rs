@@ -40,14 +40,12 @@ use crate::random::JavaRandom;
 use crate::world::biome::Biome;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::WorldChunks;
-use crate::world::environment::celestial_angle;
 use crate::world::lighting::LightCache;
 use crate::world::lighting::beta_brightness;
 use crate::world::lighting::column_channels;
 use crate::world::lighting::combined_light;
 use crate::world::tick::WorldTick;
 use crate::world::weather::LightningStrike;
-use crate::world::weather::WorldWeather;
 
 const WEATHER_SHADER_HANDLE: Handle<Shader> = uuid_handle!("7c1e52a4-3b0d-4f86-9a57-d2e84b6f1c39");
 
@@ -86,7 +84,7 @@ impl Precipitation {
     pub fn of(biome: Biome) -> Option<Self> {
         match biome {
             Biome::Taiga | Biome::Tundra | Biome::IceDesert => Some(Self::Snow),
-            Biome::Desert => None,
+            Biome::Desert | Biome::Hell => None,
             _ => Some(Self::Rain),
         }
     }
@@ -122,7 +120,10 @@ pub fn precipitation_columns(
 ) {
     let center = eye.floor().as_ivec3();
     // Rain is lit from above the world, where only the sky's own light counts.
-    let rain_brightness = beta_brightness(15u8.saturating_sub(skylight_subtracted)) * 0.85 + 0.15;
+    // Precipitation only falls in a dimension with a sky.
+    let ambient = crate::world::dimension::Dimension::Overworld.ambient_light();
+    let rain_brightness =
+        beta_brightness(15u8.saturating_sub(skylight_subtracted), ambient) * 0.85 + 0.15;
     for x in center.x - radius..=center.x + radius {
         for z in center.z - radius..=center.z + radius {
             let Some(kind) = Precipitation::at(chunks, x, z) else {
@@ -148,7 +149,7 @@ pub fn precipitation_columns(
                             .and_then(|light| light.channels(x, y, z))
                             .unwrap_or_else(|| column_channels(chunks, x, y, z))
                     };
-                    beta_brightness(combined_light(sky, block, skylight_subtracted))
+                    beta_brightness(combined_light(sky, block, skylight_subtracted), ambient)
                 }
             };
             columns.push(PrecipitationColumn {
@@ -431,7 +432,7 @@ fn prepare(
 
 fn update_precipitation(
     tick: Res<WorldTick>,
-    weather: Option<Res<WorldWeather>>,
+    environment: crate::world::dimension::Environment,
     settings: Option<Res<GameSettings>>,
     chunks: Res<WorldChunks>,
     light: Option<Res<LightCache>>,
@@ -448,9 +449,7 @@ fn update_precipitation(
         Without<Player>,
     >,
 ) {
-    let strength = weather
-        .as_ref()
-        .map_or(0.0, |weather| weather.rain_strength);
+    let (strength, _) = environment.weather_strength();
     let (Ok(player), true) = (player.single(), strength > 0.0) else {
         for (_, _, mut visibility, _) in &mut sheets {
             visibility.set_if_neq(Visibility::Hidden);
@@ -470,10 +469,7 @@ fn update_precipitation(
     let stale = state.columns.is_empty() || state.origin != origin || tick.ticks_this_frame() > 0;
     let mut rebuild = false;
     if stale {
-        let subtracted = crate::world::weather::skylight_subtracted(
-            weather.as_deref(),
-            celestial_angle(tick.world_time(), tick.partial()),
-        );
+        let subtracted = environment.skylight_subtracted(tick.partial());
         state.scratch.clear();
         precipitation_columns(
             &chunks,

@@ -30,7 +30,7 @@ use super::world::is_water;
 use crate::world::biome::Biome;
 
 /// `populate`'s chunk random: the world seed salted by the chunk position.
-pub(super) fn source_random(seed: u64, source: ChunkPosition) -> JavaRandom {
+pub(in crate::world::generation) fn source_random(seed: u64, source: ChunkPosition) -> JavaRandom {
     let mut random = JavaRandom::new(seed);
     let salt_x = random.next_long() / 2 * 2 + 1;
     let salt_z = random.next_long() / 2 * 2 + 1;

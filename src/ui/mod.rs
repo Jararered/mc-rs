@@ -15,6 +15,7 @@ pub use screens::hud::HudPlugin;
 pub use screens::inventory::InventoryGuiPlugin;
 pub use screens::menu::MenuPlugin;
 pub use screens::pause::PauseMenuPlugin;
+pub use screens::portal::PortalUiPlugin;
 
 /// Composites all HUD and menu nodes after the world and first-person arm.
 pub struct UiCameraPlugin;

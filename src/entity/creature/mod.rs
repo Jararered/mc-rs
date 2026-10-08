@@ -81,13 +81,11 @@ use crate::world::block_ticks::BlockTicks;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
-use crate::world::environment::celestial_angle;
 use crate::world::lighting::LightCache;
 use crate::world::lighting::beta_brightness;
 use crate::world::lighting::combined_light;
 use crate::world::tick::TICK_SECONDS;
 use crate::world::tick::WorldTick;
-use crate::world::weather::WorldWeather;
 
 /// `EntityLiving.jump`.
 const JUMP_MOTION: f32 = 0.42;
@@ -250,6 +248,8 @@ pub(crate) struct Surroundings<'a> {
     light: &'a LightCache,
     raining: bool,
     skylight_subtracted: u8,
+    /// `Dimension::ambient_light`.
+    ambient: f32,
     difficulty: Difficulty,
     player: Option<Target>,
     /// Pushable bodies at the start of the frame, for `applyEntityCollision`.
@@ -283,7 +283,7 @@ impl Surroundings<'_> {
 
     /// `World.getLightBrightness`.
     fn brightness(&self, x: i32, y: i32, z: i32) -> f32 {
-        beta_brightness(self.light_value(x, y, z))
+        beta_brightness(self.light_value(x, y, z), self.ambient)
     }
 
     /// `World.isDaytime`.
@@ -379,7 +379,7 @@ pub(crate) fn tick_creatures(
     tick: Res<WorldTick>,
     chunks: Res<WorldChunks>,
     light: Res<LightCache>,
-    weather: Option<Res<WorldWeather>>,
+    environment: crate::world::dimension::Environment,
     settings: Option<Res<GameSettings>>,
     mut block_ticks: Option<ResMut<BlockTicks>>,
     mut explosion_writer: MessageWriter<Explosion>,
@@ -427,11 +427,9 @@ pub(crate) fn tick_creatures(
     let world = Surroundings {
         chunks: &chunks,
         light: &light,
-        raining: weather.as_ref().is_some_and(|weather| weather.is_raining()),
-        skylight_subtracted: crate::world::weather::skylight_subtracted(
-            weather.as_deref(),
-            celestial_angle(tick.world_time(), 0.0),
-        ),
+        raining: environment.is_raining(),
+        skylight_subtracted: environment.skylight_subtracted(0.0),
+        ambient: environment.ambient_light(),
         difficulty,
         player: target,
         crowd: crowd.as_slice(),

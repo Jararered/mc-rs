@@ -41,6 +41,8 @@ pub struct Skylight {
     /// occlusion sample that ring. A full-sky fallback keeps isolated chunks
     /// renderable during startup.
     cells: Box<[u8]>,
+    /// Whether the cells above the world are sunlit.
+    has_sky: bool,
 }
 
 pub const fn pack(sky: u8, block: u8) -> u8 {
@@ -177,7 +179,10 @@ impl Skylight {
                 }
             }
         }
-        Self { cells }
+        Self {
+            cells,
+            has_sky: true,
+        }
     }
 
     fn from_chunk_with_neighbors_and_corners_impl(
@@ -422,7 +427,10 @@ impl Skylight {
                 }
             }
         }
-        Self { cells }
+        Self {
+            cells,
+            has_sky: true,
+        }
     }
 
     /// Combined Beta light value at a block, after taking the brighter channel.
@@ -441,6 +449,22 @@ impl Skylight {
 
     pub fn block(&self, x: usize, y: usize, z: usize) -> Option<u8> {
         self.center(x, y, z).map(|(_, block)| block)
+    }
+
+    /// The same light in a dimension with no sky (`hasNoSky`): the sky
+    /// channel is dark everywhere, above the world included. The two channels
+    /// never mix while they spread, so clearing one afterward is exact.
+    pub fn without_sky(mut self) -> Self {
+        for cell in &mut self.cells {
+            *cell &= 0x0f;
+        }
+        self.has_sky = false;
+        self
+    }
+
+    /// [`Self::without_sky`] unless `has_sky`.
+    pub fn for_sky(self, has_sky: bool) -> Self {
+        if has_sky { self } else { self.without_sky() }
     }
 
     fn center(&self, x: usize, y: usize, z: usize) -> Option<(u8, u8)> {
@@ -462,7 +486,7 @@ impl Skylight {
             return 0;
         }
         if y >= CHUNK_HEIGHT as i32 {
-            return OPEN_SKY;
+            return if self.has_sky { OPEN_SKY } else { 0 };
         }
         let x = x.clamp(-1, CHUNK_SIZE as i32);
         let z = z.clamp(-1, CHUNK_SIZE as i32);
@@ -511,12 +535,24 @@ impl Skylight {
 /// from that pass, so a lookup costs one map probe instead of a relight. A
 /// cached value lags an edit until the edited chunk's mesh job finishes, as
 /// Beta's queued lighting updates lag its block changes.
-#[derive(Resource, Default)]
+#[derive(Resource)]
 pub struct LightCache {
     chunks: HashMap<ChunkPosition, Arc<[u8]>>,
+    /// False in the Nether, where the sky channel is dark everywhere.
+    has_sky: bool,
     /// Streaming fills the cache from mesh jobs. A reader that misses then
     /// estimates the light instead of relighting a chunk on the main thread.
     streamed: bool,
+}
+
+impl Default for LightCache {
+    fn default() -> Self {
+        Self {
+            chunks: HashMap::new(),
+            has_sky: true,
+            streamed: false,
+        }
+    }
 }
 
 impl LightCache {
@@ -543,6 +579,16 @@ impl LightCache {
 
     pub fn is_streamed(&self) -> bool {
         self.streamed
+    }
+
+    /// Whether the loaded dimension has sunlight. Mesh jobs light chunks to
+    /// match, and so does [`Self::relight`].
+    pub fn set_has_sky(&mut self, has_sky: bool) {
+        self.has_sky = has_sky;
+    }
+
+    pub fn has_sky(&self) -> bool {
+        self.has_sky
     }
 
     pub fn clear(&mut self) {
@@ -578,7 +624,7 @@ impl LightCache {
             neighbor(-1, 1),
             neighbor(1, 1),
         );
-        self.insert(position, light.chunk_cells());
+        self.insert(position, light.for_sky(self.has_sky).chunk_cells());
     }
 
     /// Sky and block light at a world cell, or `None` when its chunk has not
@@ -588,7 +634,7 @@ impl LightCache {
             return Some((0, 0));
         }
         if y >= CHUNK_HEIGHT as i32 {
-            return Some((MAX_LIGHT, 0));
+            return Some((if self.has_sky { MAX_LIGHT } else { 0 }, 0));
         }
         let cells = self.chunks.get(&ChunkPosition::from_block(x, z))?;
         let local_x = x.rem_euclid(CHUNK_SIZE as i32) as usize;
@@ -675,10 +721,13 @@ pub fn combined_light(sky: u8, block: u8, skylight_subtracted: u8) -> u8 {
 /// Vertex brightness for a light level. This is Beta's
 /// `WorldProvider.lightBrightnessTable`, which the block shader evaluates per
 /// sample so the time of day never requires rebuilding a mesh.
-pub fn beta_brightness(level: u8) -> f32 {
+///
+/// `ambient` is the brightness of light level 0, which the dimension sets
+/// ([`Dimension::ambient_light`](crate::world::dimension::Dimension::ambient_light)).
+pub fn beta_brightness(level: u8, ambient: f32) -> f32 {
     let level = level.min(MAX_LIGHT) as f32;
     let darkness = 1.0 - level / 15.0;
-    let base = 0.05;
+    let base = ambient;
     (1.0 - darkness) / (darkness * 3.0 + 1.0) * (1.0 - base) + base
 }
 

@@ -20,6 +20,7 @@ pub mod fluid;
 pub mod leaves;
 pub mod ore;
 pub mod plants;
+pub mod portal;
 pub mod snow;
 pub mod soil;
 pub mod sponge;
@@ -87,5 +88,6 @@ pub(super) fn table() -> [&'static dyn BlockBehavior; 256] {
     );
     register(&mut table, &[Block::Trapdoor], &fixtures::TRAPDOOR);
     register(&mut table, &[Block::StoneSlab], &fixtures::SLAB);
+    register(&mut table, &[Block::NetherPortal], &portal::PORTAL);
     table
 }

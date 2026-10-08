@@ -5,7 +5,7 @@ struct BlockShadingSettings {
     skylight_subtracted: f32,
     flags: u32,
     wiggle_amplitude: f32,
-    _padding: f32,
+    ambient: f32,
 }
 
 const SMOOTH_LIGHTING: u32 = 2u;
@@ -54,16 +54,16 @@ fn decode_normal(bits: vec2<u32>) -> vec3<f32> {
 }
 
 /// `WorldProvider.lightBrightnessTable`, matching `beta_brightness`.
-fn beta_brightness(level: f32) -> f32 {
+fn beta_brightness(level: f32, ambient: f32) -> f32 {
     let darkness = 1.0 - level / 15.0;
-    return (1.0 - darkness) / (darkness * 3.0 + 1.0) * 0.95 + 0.05;
+    return (1.0 - darkness) / (darkness * 3.0 + 1.0) * (1.0 - ambient) + ambient;
 }
 
 /// One `sky << 4 | block` sample after `Chunk.getBlockLightValue`.
-fn sample_brightness(sample: u32, skylight_subtracted: f32) -> f32 {
+fn sample_brightness(sample: u32, skylight_subtracted: f32, ambient: f32) -> f32 {
     let sky = f32((sample >> 4u) & 15u);
     let block = f32(sample & 15u);
-    return beta_brightness(max(max(sky - skylight_subtracted, 0.0), block));
+    return beta_brightness(max(max(sky - skylight_subtracted, 0.0), block), ambient);
 }
 
 /// Beta's per-face shade, by the normal's dominant axis.
@@ -194,13 +194,14 @@ fn block_color(
     var light = 1.0;
     {
         let subtracted = settings.skylight_subtracted;
+        let ambient = settings.ambient;
         if smooth_lighting {
-            light = 0.25 * (sample_brightness(light_samples & 0xffu, subtracted)
-                + sample_brightness((light_samples >> 8u) & 0xffu, subtracted)
-                + sample_brightness((light_samples >> 16u) & 0xffu, subtracted)
-                + sample_brightness(light_samples >> 24u, subtracted));
+            light = 0.25 * (sample_brightness(light_samples & 0xffu, subtracted, ambient)
+                + sample_brightness((light_samples >> 8u) & 0xffu, subtracted, ambient)
+                + sample_brightness((light_samples >> 16u) & 0xffu, subtracted, ambient)
+                + sample_brightness(light_samples >> 24u, subtracted, ambient));
         } else {
-            light = sample_brightness(light_samples & 0xffu, subtracted);
+            light = sample_brightness(light_samples & 0xffu, subtracted, ambient);
         }
         if shade {
             light *= face_shade(normal);

@@ -21,6 +21,9 @@ pub struct InventorySession {
     pub chest: bool,
     pub chest_position: Option<(i32, i32, i32)>,
     pub chest_group: Option<ChestGroup>,
+    /// Gameplay wants whatever screen is open closed, as a charging portal
+    /// does. The GUI closes it the way the player would.
+    pub close_requested: bool,
 }
 
 /// Reusable workbench inputs and the position of the currently open table.

@@ -18,6 +18,7 @@ impl Plugin for WorldPlugin {
         ))
         .init_resource::<WorldChunks>()
         .init_resource::<WorldTick>()
+        .init_resource::<super::dimension::ActiveDimension>()
         .add_plugins(BlockTicksPlugin)
         .add_systems(First, super::tick::advance_world_tick)
         .add_systems(Update, super::furnace::tick_furnaces);

@@ -202,7 +202,10 @@ impl RainParticles {
                 let (sky, block) = light
                     .and_then(|light| light.channels(cell.x, cell.y, cell.z))
                     .unwrap_or_else(|| column_channels(chunks, cell.x, cell.y, cell.z));
-                particle.brightness = beta_brightness(combined_light(sky, block, subtracted));
+                particle.brightness = beta_brightness(
+                    combined_light(sky, block, subtracted),
+                    crate::world::dimension::Dimension::Overworld.ambient_light(),
+                );
                 true
             }
         });

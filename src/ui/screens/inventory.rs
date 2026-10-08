@@ -73,6 +73,7 @@ impl Plugin for InventoryGuiPlugin {
             .add_systems(
                 Update,
                 (
+                    close_when_requested,
                     validate_workbench,
                     validate_furnace,
                     validate_chest,
@@ -171,6 +172,44 @@ fn validate_furnace(
         close_crafting_session(
             &mut commands,
             transform,
+            &mut item_rng,
+            &mut hotbar,
+            &mut inventory,
+            &mut workbench,
+        );
+    }
+    for root in &roots {
+        commands.entity(root).despawn();
+    }
+    if let Ok(mut cursor) = windows.single_mut() {
+        cursor.visible = false;
+        cursor.grab_mode = CursorGrabMode::Locked;
+    }
+}
+
+/// Close the open screen when gameplay asks for it
+/// ([`InventorySession::close_requested`]).
+fn close_when_requested(
+    mut commands: Commands,
+    mut screen: ResMut<InventorySession>,
+    mut player: Query<(&Transform, &mut Hotbar, &mut Inventory), With<Player>>,
+    mut workbench: ResMut<ActiveWorkbench>,
+    roots: Query<Entity, With<InventoryRoot>>,
+    mut windows: Query<&mut CursorOptions, With<PrimaryWindow>>,
+    mut item_rng: Local<ItemRng>,
+) {
+    if !screen.close_requested {
+        return;
+    }
+    let was_open = screen.open;
+    *screen = InventorySession::default();
+    if !was_open {
+        return;
+    }
+    if let Ok((player_transform, mut hotbar, mut inventory)) = player.single_mut() {
+        close_crafting_session(
+            &mut commands,
+            player_transform,
             &mut item_rng,
             &mut hotbar,
             &mut inventory,

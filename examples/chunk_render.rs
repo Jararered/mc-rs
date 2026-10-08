@@ -7,6 +7,7 @@
 //! cargo run --features render_harness --example chunk_render -- --diff quads.png vertices.png
 //! ```
 //!
+//! `DIMENSION=nether` renders the Nether instead of the Overworld.
 //! `VIEW=1` and up pick other camera positions, and `SMOOTH=off` turns smooth lighting off. `DISTANCE` sets the
 //! render distance (8), `SIZE=2560x1440` the window's physical size, and
 //! `MSAA=off` turns anti-aliasing off, and
@@ -121,6 +122,13 @@ fn main() {
             seconds: 0.0,
             hold: None,
         })
+        .insert_resource(game::world::dimension::ActiveDimension(
+            if std::env::var("DIMENSION").is_ok_and(|value| value == "nether") {
+                game::world::dimension::Dimension::Nether
+            } else {
+                game::world::dimension::Dimension::Overworld
+            },
+        ))
         .add_plugins((WorldPlugin, WorldRenderingPlugin))
         .add_systems(Startup, set_weather)
         .add_systems(Startup, spawn_view)

@@ -10,7 +10,6 @@ use crate::block::blocks::species;
 use crate::rendering::chunk_quads::ChunkQuads;
 use crate::rendering::meshing::BlockLighting;
 use crate::rendering::meshing::WATER_ALPHA;
-use crate::world::environment::celestial_angle;
 use crate::world::tick::WorldTick;
 
 /// `terrain.png` is a 16×16 grid of square tiles.
@@ -41,6 +40,8 @@ pub use water::FlowingWaterTexture;
 pub use water::LAVA_FLOW_TILE;
 pub use water::LAVA_STILL_TILE;
 pub use water::LavaTexture;
+pub use water::PORTAL_TILE;
+pub use water::PortalTexture;
 pub use water::StillWaterTexture;
 pub use water::WATER_FLOW_TILE;
 pub use water::WATER_STILL_TILE;
@@ -319,26 +320,26 @@ fn sync_quad_buffer(
 /// block material uniforms once; no mesh is rebuilt.
 fn update_block_lighting(
     tick: Option<Res<WorldTick>>,
-    weather: Option<Res<crate::world::weather::WorldWeather>>,
+    environment: crate::world::dimension::Environment,
     handles: BlockMaterials,
     mut materials: ResMut<Assets<BlockMaterial>>,
 ) {
     let Some(tick) = tick else {
         return;
     };
-    let subtracted = crate::world::weather::skylight_subtracted(
-        weather.as_deref(),
-        celestial_angle(tick.world_time(), tick.partial()),
-    );
+    let subtracted = environment.skylight_subtracted(tick.partial());
+    let ambient = environment.ambient_light();
     for handle in handles.handles() {
         let unchanged = materials.get(handle).is_none_or(|material| {
-            material.extension.settings.lighting().skylight_subtracted == subtracted
+            let settings = &material.extension.settings;
+            settings.lighting().skylight_subtracted == subtracted && settings.ambient == ambient
         });
         if unchanged {
             continue;
         }
         if let Some(mut material) = materials.get_mut(handle) {
             material.extension.settings.skylight_subtracted = f32::from(subtracted);
+            material.extension.settings.ambient = ambient;
         }
     }
 }
@@ -520,6 +521,7 @@ pub fn block_tile(
         }
         Block::Lava | Block::FlowingLava => (13, 14),
         Block::Netherrack => (7, 6),
+        Block::NetherPortal => water::PORTAL_TILE,
         Block::Glowstone => (9, 6),
         Block::Torch => (0, 5),
         Block::Dandelion => (13, 0),

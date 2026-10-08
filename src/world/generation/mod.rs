@@ -14,11 +14,20 @@ use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::GeneratedChunk;
 
 pub mod math;
+pub mod nether;
 pub mod noise;
 pub mod overworld;
 mod world;
 
 pub use world::PopulationWorld;
+
+/// Raw block bytes of one chunk in [`Chunk::index`] order, the working form
+/// of Beta's `byte[]` during base generation.
+pub(crate) type RawBlocks = Vec<u8>;
+
+pub(crate) const fn raw_index(x: usize, y: usize, z: usize) -> usize {
+    (y * crate::world::chunk::CHUNK_SIZE + z) * crate::world::chunk::CHUNK_SIZE + x
+}
 
 /// Base terrain generation and decoration of a source plus its +x/+z neighbors.
 /// Implementations must be safe to share across background generation jobs.

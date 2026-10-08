@@ -29,6 +29,7 @@ use render::RenderedChunk;
 
 pub use render::ChunkCulling;
 pub(crate) use systems::SpawnAreaTask;
+pub(crate) use systems::admit_chunk;
 pub(crate) use systems::setup_streaming;
 pub(crate) use systems::start_spawn_area;
 pub(crate) use systems::stream_chunks;
@@ -163,6 +164,8 @@ pub struct WorldStreaming {
     max_in_flight: usize,
     /// The world is unloading: finished jobs still land, but none start.
     halted: bool,
+    /// False in the Nether: mesh jobs light chunks with a dark sky channel.
+    has_sky: bool,
 }
 
 impl WorldStreaming {

@@ -21,6 +21,12 @@ use game::world::chunk::Heightmap;
 use game::world::chunk::WorldChunks;
 
 #[test]
+fn parses_heal_without_arguments() {
+    assert_eq!(parse_command("/heal").unwrap(), ChatCommand::HealCommand);
+    assert!(parse_command("/heal now").is_err());
+}
+
+#[test]
 fn parses_numeric_beta_ids_and_three_commands() {
     assert_eq!(
         parse_command("/summon skeleton").unwrap(),
@@ -354,6 +360,7 @@ fn submitted_commands_change_player_inventory_and_world() {
         .id();
     app.world_mut().spawn((
         Player,
+        game::player::PlayerHealth::default(),
         Hotbar::default(),
         Inventory::default(),
         Transform::from_xyz(8.0, 70.0, 8.0),
@@ -942,6 +949,7 @@ fn suggestions_complete_command_names_then_their_arguments() {
         items(&registry, "/"),
         [
             "/give",
+            "/heal",
             "/help",
             "/setblock",
             "/summon",

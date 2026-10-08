@@ -30,6 +30,7 @@ pub enum ChatCommand {
     },
     TeleportCommand(Vec3),
     SummonCommand(MobType),
+    HealCommand,
     WeatherCommand {
         raining: bool,
         thundering: bool,
@@ -62,6 +63,14 @@ pub(super) fn register_builtin_commands(registry: &mut CommandRegistry) {
             complete_summon,
         )
         .expect("valid summon command");
+    registry
+        .register(
+            "heal",
+            "Restore the player's health.",
+            ["/heal"],
+            parse_heal,
+        )
+        .expect("valid heal command");
     registry
         .register_with_completions(
             "weather",
@@ -136,6 +145,14 @@ fn parse_summon(_: &CommandRegistry, args: &[&str]) -> Result<ChatCommand, Comma
     MobType::parse(name)
         .map(ChatCommand::SummonCommand)
         .ok_or_else(|| format!("Unknown mob: {name}").into())
+}
+
+fn parse_heal(_: &CommandRegistry, args: &[&str]) -> Result<ChatCommand, CommandParseError> {
+    if args.is_empty() {
+        Ok(ChatCommand::HealCommand)
+    } else {
+        Err(CommandParseError::Usage)
+    }
 }
 
 fn parse_weather(_: &CommandRegistry, args: &[&str]) -> Result<ChatCommand, CommandParseError> {

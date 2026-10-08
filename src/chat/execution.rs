@@ -11,7 +11,9 @@ use crate::entity::mobs::Mob;
 use crate::entity::mobs::spawn;
 use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
+use crate::player::MAX_PLAYER_HEALTH;
 use crate::player::Player;
+use crate::player::PlayerHealth;
 use crate::player::PlayerInterpolation;
 use crate::random::ItemRng;
 use crate::rendering::textures::BlockMaterial;
@@ -50,6 +52,7 @@ pub(super) struct CommandContext<'w, 's> {
             &'static mut Hotbar,
             &'static mut Inventory,
             &'static EntitySize,
+            &'static mut PlayerHealth,
         ),
         With<Player>,
     >,
@@ -203,6 +206,7 @@ impl CommandContext<'_, '_> {
             mut hotbar,
             mut inventory,
             size,
+            mut health,
         )) = player.single_mut()
         else {
             chat.push("Player is unavailable");
@@ -248,6 +252,14 @@ impl CommandContext<'_, '_> {
                     "Teleported to {}, {}, {}",
                     destination.x, destination.y, destination.z
                 )
+            }
+            ChatCommand::HealCommand => {
+                if health.current == 0 {
+                    "You are dead".to_owned()
+                } else {
+                    health.current = MAX_PLAYER_HEALTH;
+                    "Restored health".to_owned()
+                }
             }
             ChatCommand::SummonCommand(kind) => {
                 let feet =

@@ -71,6 +71,7 @@ use super::overlay::BlockFocus;
 use crate::block::bed;
 use crate::player::Player;
 use crate::player::PlayerCamera;
+use crate::player::PlayerHealth;
 use crate::player::sleep::BedUse;
 use crate::player::sleep::PlayerSleep;
 
@@ -115,6 +116,7 @@ pub(crate) fn interact_blocks(
             &mut Inventory,
             &Velocity,
             Option<&PlayerSleep>,
+            &mut PlayerHealth,
         ),
         With<Player>,
     >,
@@ -168,7 +170,7 @@ pub(crate) fn interact_blocks(
     }
     let click_carried = state.wait_for_release;
 
-    let Ok((transform, size, collision, mut hotbar, mut inventory, velocity, sleep)) =
+    let Ok((transform, size, collision, mut hotbar, mut inventory, velocity, sleep, mut health)) =
         player.single_mut()
     else {
         *focus = BlockFocus::default();
@@ -508,6 +510,23 @@ pub(crate) fn interact_blocks(
                 )
         });
         if activated {
+        } else if right_click
+            && let Some(heal) = hotbar
+                .selected_stack()
+                .and_then(|stack| stack.item().heal_amount())
+        {
+            // `ItemFood.onItemRightClick`: eaten at once, whatever is clicked.
+            health.heal(heal);
+            if hotbar
+                .selected_stack()
+                .is_some_and(|stack| stack.item() == Item::MushroomStew)
+            {
+                // `ItemSoup`: the bowl stays behind.
+                let selected = hotbar.selected;
+                hotbar.slots[selected] = ItemStack::new(Item::Bowl, 1).ok();
+            } else {
+                hotbar.take_selected(1);
+            }
         } else if let Some(hit) = hit
             && matches!(
                 hit.block,

@@ -196,6 +196,22 @@ impl Item {
         block.has_item_id().then_some(block)
     }
 
+    /// `ItemFood.healAmount`: half-hearts restored when eaten.
+    pub fn heal_amount(self) -> Option<u8> {
+        Some(match self {
+            Self::Apple => 4,
+            Self::Bread => 5,
+            Self::RawPorkchop => 3,
+            Self::CookedPorkchop => 8,
+            Self::GoldenApple => 42,
+            Self::RawFish => 2,
+            Self::CookedFish => 5,
+            Self::MushroomStew => 10,
+            Self::Cookie => 1,
+            _ => return None,
+        })
+    }
+
     /// `SlotArmor.isItemValid`: the armor slot this item is worn in, counting
     /// helmet, chestplate, leggings, boots. A pumpkin is worn as a helmet.
     pub fn armor_slot(self) -> Option<usize> {

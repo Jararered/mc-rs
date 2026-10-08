@@ -509,3 +509,11 @@ fn armor_pieces_name_the_slot_they_are_worn_in() {
     assert_eq!(Item::from_block(Block::Dirt).unwrap().armor_slot(), None);
     assert_eq!(Item::Stick.armor_slot(), None);
 }
+
+#[test]
+fn food_heal_amounts_follow_item_food() {
+    assert_eq!(Item::CookedPorkchop.heal_amount(), Some(8));
+    assert_eq!(Item::RawPorkchop.heal_amount(), Some(3));
+    assert_eq!(Item::Bread.heal_amount(), Some(5));
+    assert_eq!(Item::Stick.heal_amount(), None);
+}

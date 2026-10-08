@@ -248,6 +248,11 @@ pub enum HeartFill {
 }
 
 impl PlayerHealth {
+    /// `EntityPlayer.heal`: restore half-hearts up to the maximum.
+    pub fn heal(&mut self, amount: u8) {
+        self.current = self.current.saturating_add(amount).min(MAX_PLAYER_HEALTH);
+    }
+
     pub fn heart_fill(self, index: usize) -> HeartFill {
         let health = self.current.min(MAX_PLAYER_HEALTH);
         let start = (index as u8).saturating_mul(2);

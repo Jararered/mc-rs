@@ -807,3 +807,12 @@ fn placed_redstone_controls_keep_their_support_side() {
         Direction::East,
     ));
 }
+
+#[test]
+fn healing_caps_at_maximum_health() {
+    let mut health = PlayerHealth { current: 6 };
+    health.heal(8);
+    assert_eq!(health.current, 14);
+    health.heal(42);
+    assert_eq!(health.current, game::player::MAX_PLAYER_HEALTH);
+}

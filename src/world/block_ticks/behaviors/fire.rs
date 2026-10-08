@@ -8,18 +8,7 @@ use bevy::math::IVec3;
 pub struct Fire;
 pub static FIRE: Fire = Fire;
 
-fn rates(block: Block) -> (u32, u32) {
-    match block {
-        Block::WoodenPlanks | Block::Fence | Block::WoodenStairs => (5, 20),
-        Block::Wood => (5, 5),
-        Block::Leaves => (30, 60),
-        Block::Bookshelf => (30, 20),
-        Block::Tnt => (15, 100),
-        Block::TallGrass => (60, 100),
-        Block::Wool => (30, 60),
-        _ => (0, 0),
-    }
-}
+use crate::block::properties::burn_rates as rates;
 
 fn nearby(world: &TickWorld, pos: IVec3) -> bool {
     for delta in [
@@ -165,9 +154,15 @@ impl BlockBehavior for Fire {
                     }
                     let chance = 100 + (dy - 1).max(0) as u32 * 100;
                     let probability = (strength + 40) / (u32::from(age) + 30);
+                    // Beta's first side check reads the fire's own z, not
+                    // the target's.
                     if probability > 0
                         && world.random().next_int(chance) <= probability
                         && !world.rained_on(target)
+                        && !world.rained_on(IVec3::new(target.x - 1, target.y, pos.z))
+                        && !world.rained_on(target + IVec3::X)
+                        && !world.rained_on(target - IVec3::Z)
+                        && !world.rained_on(target + IVec3::Z)
                     {
                         let age = age
                             .saturating_add((world.random().next_int(5) / 4) as u8)

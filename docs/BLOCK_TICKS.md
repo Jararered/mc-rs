@@ -252,8 +252,6 @@ instead of Java's runtime-seeded `World.rand`.
 
 ## Not implemented yet
 
-- **Fire.** Still lava's random tick walks toward flammable blocks as Beta's
-  does, but places fire only once `Id::Fire` is in the world.
 - **Weather.** Nothing is rained on, so farmland only hydrates from water
   and snow never accumulates. Put rain in `TickWorld::rained_on` and the
   snowfall half of `freeze_column`.

@@ -195,6 +195,8 @@ fn busy_chunk(position: ChunkPosition) -> GeneratedChunk {
         pickup_delay_ticks: 0,
         hover_start: 0.0,
         rng_state: 1,
+        health: 3,
+        fire: 40,
     });
     generated
 }
@@ -258,6 +260,7 @@ fn assert_busy_chunk_loaded(
     let item = &loaded.items[0];
     assert_eq!(item.stack, stack(Item::Stick, 3));
     assert_eq!(item.age_ticks, 100);
+    assert_eq!((item.health, item.fire), (3, 40));
     assert!((item.position[0] - (position.x as f32 * 16.0 + 4.5)).abs() < 0.001);
 }
 

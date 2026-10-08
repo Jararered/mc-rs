@@ -29,4 +29,13 @@ pub struct ChunkDroppedItem {
     pub pickup_delay_ticks: u16,
     pub hover_start: f32,
     pub rng_state: u64,
+    /// `EntityItem.health`: what fire, lava, and cactus wear down.
+    pub health: u8,
+    /// `Entity.fire`: ticks left burning, or negative while not alight.
+    pub fire: i16,
+}
+
+impl ChunkDroppedItem {
+    /// The health a new `EntityItem` starts with.
+    pub const FULL_HEALTH: u8 = 5;
 }

@@ -36,6 +36,9 @@ pub use block_material::LEAF_WIGGLE_AMPLITUDE;
 pub use instance_tint::InstanceTint;
 pub use instance_tint::TintedMaterial;
 pub use instance_tint::tint_tag;
+pub use water::FIRE_TILE;
+pub use water::FIRE_TILE_ALT;
+pub use water::FlamesTexture;
 pub use water::FlowingWaterTexture;
 pub use water::LAVA_FLOW_TILE;
 pub use water::LAVA_STILL_TILE;
@@ -507,7 +510,7 @@ pub fn block_tile(
         Block::SugarCane => (9, 4),
         Block::Clay => (8, 4),
         Block::MobSpawner => (1, 4),
-        Block::Fire => (15, 1),
+        Block::Fire => water::FIRE_TILE,
         Block::Chest if face == 0 || face == 1 => (9, 1),
         Block::Chest => {
             if block

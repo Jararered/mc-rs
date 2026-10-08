@@ -32,6 +32,26 @@ pub fn plant_ground_can_hold(plant: Block, ground: Block) -> bool {
     }
 }
 
+/// `BlockFire.setBurnRate`: `chanceToEncourageFire` (how readily fire appears
+/// beside the block) and `abilityToCatchFire` (how readily it burns away).
+pub fn burn_rates(block: Block) -> (u32, u32) {
+    match block {
+        Block::WoodenPlanks | Block::Fence | Block::WoodenStairs => (5, 20),
+        Block::Wood => (5, 5),
+        Block::Leaves => (30, 60),
+        Block::Bookshelf => (30, 20),
+        Block::Tnt => (15, 100),
+        Block::TallGrass => (60, 100),
+        Block::Wool => (30, 60),
+        _ => (0, 0),
+    }
+}
+
+/// `BlockFire.canBlockCatchFire`.
+pub fn can_catch_fire(block: Block) -> bool {
+    burn_rates(block).0 > 0
+}
+
 const TORCH_TILT: f32 = 0.55;
 
 /// Rotate the floor torch's local geometry into its wall pose. `facing` is

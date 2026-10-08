@@ -699,3 +699,153 @@ fn a_double_slab_drops_two_slabs_of_its_own_material() {
     assert_eq!(drops, vec![wooden; 2]);
     assert_eq!(wooden.data(), 2);
 }
+
+#[test]
+fn fire_wears_an_item_down_a_point_a_tick() {
+    use game::entity::drops::items::DroppedItemState;
+
+    let mut state = DroppedItemState::new(0, 0.0, 1);
+    for _ in 0..4 {
+        state.update_hazards(false, false);
+        state.contact_hazards(false, true, false);
+        assert!(!state.is_destroyed());
+    }
+    assert!(state.fire > 0, "standing in fire sets the item alight");
+    state.update_hazards(false, false);
+    state.contact_hazards(false, true, false);
+    assert!(state.is_destroyed());
+}
+
+#[test]
+fn lava_destroys_an_item_at_once_and_cactus_in_five_ticks() {
+    use game::entity::drops::items::DroppedItemState;
+
+    // `setOnFireFromLava` takes four, and the lava it sits in the fifth.
+    let mut state = DroppedItemState::new(0, 0.0, 1);
+    state.update_hazards(false, true);
+    assert_eq!((state.health, state.fire), (1, 600));
+    state.contact_hazards(false, true, false);
+    assert!(state.is_destroyed());
+
+    let mut state = DroppedItemState::new(0, 0.0, 1);
+    for _ in 0..4 {
+        state.update_hazards(false, false);
+        state.contact_hazards(true, false, false);
+        assert!(!state.is_destroyed());
+    }
+    state.contact_hazards(true, false, false);
+    assert!(state.is_destroyed());
+}
+
+#[test]
+fn a_burning_item_keeps_burning_until_water_puts_it_out() {
+    use game::entity::drops::items::DroppedItemState;
+
+    let mut state = DroppedItemState::new(0, 0.0, 1);
+    state.fire = 45;
+    // Out of the fire it still loses a point each time the count passes a
+    // multiple of twenty.
+    for _ in 0..10 {
+        state.update_hazards(false, false);
+        state.contact_hazards(false, false, false);
+    }
+    assert_eq!((state.health, state.fire), (4, 35));
+    state.update_hazards(true, false);
+    state.contact_hazards(false, false, true);
+    assert!(state.fire <= 0);
+    assert_eq!(state.health, 4);
+}
+
+#[test]
+fn an_item_dropped_into_fire_or_onto_a_cactus_is_destroyed() {
+    use bevy::asset::AssetPlugin;
+    use bevy::mesh::MeshPlugin;
+    use bevy::prelude::*;
+    use bevy::state::app::StatesPlugin;
+    use game::app::settings::GameSettings;
+    use game::app::state::AppScreen;
+    use game::entity::CollisionState;
+    use game::entity::DroppedItem;
+    use game::entity::PreviousTick;
+    use game::entity::drops::items::DroppedItemPlugin;
+    use game::entity::drops::items::DroppedItemState;
+    use game::entity::drops::items::ItemMotion;
+    use game::world::biome::Biome;
+    use game::world::biome::BiomeMap;
+    use game::world::biome::Climate;
+    use game::world::chunk::Chunk;
+    use game::world::chunk::ChunkPosition;
+    use game::world::chunk::GeneratedChunk;
+    use game::world::chunk::Heightmap;
+    use game::world::chunk::WorldChunks;
+    use game::world::tick::WorldTick;
+
+    let mut chunk = Chunk::new();
+    for x in 2..14 {
+        for z in 2..14 {
+            chunk.set(x, 64, z, Block::Stone);
+        }
+    }
+    chunk.set(4, 65, 4, Block::Fire);
+    chunk.set(8, 64, 8, Block::Sand);
+    chunk.set(8, 65, 8, Block::Cactus);
+    let mut chunks = WorldChunks::default();
+    chunks.insert(
+        ChunkPosition::ZERO,
+        GeneratedChunk {
+            heightmap: Heightmap::from_chunk(&chunk),
+            chunk,
+            biomes: BiomeMap::from_cells(
+                [Climate {
+                    temperature: 0.5,
+                    humidity: 0.5,
+                    biome: Biome::Plains,
+                }; 16 * 16],
+            ),
+            items: Vec::new(),
+            populated: true,
+        },
+    );
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        AssetPlugin::default(),
+        MeshPlugin,
+        StatesPlugin,
+    ))
+    .init_asset::<StandardMaterial>()
+    .init_state::<AppScreen>()
+    .init_resource::<GameSettings>()
+    .init_resource::<WorldTick>()
+    .insert_resource(chunks)
+    .add_plugins(DroppedItemPlugin);
+    app.update();
+    app.world_mut()
+        .resource_mut::<NextState<AppScreen>>()
+        .set(AppScreen::Playing);
+    app.update();
+
+    let spawn = |app: &mut App, position: Vec3| {
+        app.world_mut()
+            .spawn((
+                DroppedItem(ItemStack::from_block(Block::Cobblestone, 1).unwrap()),
+                DroppedItemState::new(100, 0.0, 3),
+                Transform::from_translation(position),
+                PreviousTick(position),
+                ItemMotion(Vec3::ZERO),
+                CollisionState::default(),
+                EntitySize::DROPPED_ITEM,
+            ))
+            .id()
+    };
+    let burning = spawn(&mut app, Vec3::new(4.5, 65.2, 4.5));
+    let pricked = spawn(&mut app, Vec3::new(8.5, 66.2, 8.5));
+    let safe = spawn(&mut app, Vec3::new(11.5, 65.2, 11.5));
+    for _ in 0..30 {
+        app.world_mut().resource_mut::<WorldTick>().advance(0.05);
+        app.update();
+    }
+    assert!(app.world().get_entity(burning).is_err());
+    assert!(app.world().get_entity(pricked).is_err());
+    assert!(app.world().get_entity(safe).is_ok());
+}

@@ -341,6 +341,8 @@ fn dropped_items_round_trip_inside_their_chunk() {
         pickup_delay_ticks: 10,
         hover_start: 1.25,
         rng_state: 99,
+        health: 2,
+        fire: 120,
     });
     storage.save_chunk(position, &generated).unwrap();
     let loaded = storage.load_chunk(position).unwrap();
@@ -353,6 +355,7 @@ fn dropped_items_round_trip_inside_their_chunk() {
     assert_eq!(item.pickup_delay_ticks, 10);
     assert!((item.hover_start - 1.25).abs() < 1e-5);
     assert_eq!(item.rng_state, 99);
+    assert_eq!((item.health, item.fire), (2, 120));
 
     let path = storage
         .root()

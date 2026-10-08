@@ -459,8 +459,80 @@ impl PortalTexture {
     }
 }
 
+/// The tile Beta's `Block.fire` draws, and the one a row below it that
+/// `renderBlockFire` alternates with. Each has its own `TextureFlamesFX`.
+pub const FIRE_TILE: (u8, u8) = (15, 1);
+pub const FIRE_TILE_ALT: (u8, u8) = (15, 2);
+
+const FLAME_ROWS: usize = 20;
+const FLAME_CELLS: usize = TILE * FLAME_ROWS;
+
+/// Beta `TextureFlamesFX`: heat seeded along a row below the tile and
+/// averaged upward, cooling as it climbs. Only the top sixteen rows are shown.
+#[derive(Clone)]
+pub struct FlamesTexture {
+    current: [f32; FLAME_CELLS],
+    next: [f32; FLAME_CELLS],
+    rgba: [u8; TILE_PIXELS * 4],
+    random: UnitRandom,
+}
+
+impl FlamesTexture {
+    pub fn new(seed: u64) -> Self {
+        Self {
+            current: [0.0; FLAME_CELLS],
+            next: [0.0; FLAME_CELLS],
+            rgba: [0; TILE_PIXELS * 4],
+            random: UnitRandom::new(seed),
+        }
+    }
+
+    pub fn tick(&mut self) {
+        for x in 0..TILE {
+            for y in 0..FLAME_ROWS {
+                // The weight counts every cell of the 3×2 window, including
+                // those off the edge, so the sides burn lower.
+                let mut weight = 18;
+                let mut sum = self.current[x + (y + 1) % FLAME_ROWS * TILE] * weight as f32;
+                for nx in x as i32 - 1..=x as i32 + 1 {
+                    for ny in y..=y + 1 {
+                        if (0..TILE as i32).contains(&nx) && ny < FLAME_ROWS {
+                            sum += self.current[nx as usize + ny * TILE];
+                        }
+                        weight += 1;
+                    }
+                }
+                self.next[x + y * TILE] = sum / (weight as f32 * 1.06);
+                if y >= FLAME_ROWS - 1 {
+                    let random = &mut self.random;
+                    self.next[x + y * TILE] =
+                        (random.next_double() * random.next_double() * random.next_double() * 4.0
+                            + random.next_double() * 0.1f32 as f64
+                            + 0.2f32 as f64) as f32;
+                }
+            }
+        }
+        std::mem::swap(&mut self.current, &mut self.next);
+
+        for index in 0..TILE_PIXELS {
+            let heat = (self.current[index] * 1.8).clamp(0.0, 1.0);
+            let offset = index * 4;
+            self.rgba[offset] = (heat * 155.0 + 100.0) as u8;
+            self.rgba[offset + 1] = (heat * heat * 255.0) as u8;
+            self.rgba[offset + 2] = (heat.powi(10) * 255.0) as u8;
+            self.rgba[offset + 3] = if heat < 0.5 { 0 } else { 255 };
+        }
+    }
+
+    pub fn rgba(&self) -> &[u8] {
+        &self.rgba
+    }
+}
+
 #[derive(Resource)]
 pub(super) struct WaterAnimator {
+    fire: FlamesTexture,
+    fire_alt: FlamesTexture,
     portal: PortalTexture,
     still: StillWaterTexture,
     flow: FlowingWaterTexture,
@@ -468,10 +540,24 @@ pub(super) struct WaterAnimator {
     lava_flow: LavaTexture,
 }
 
+impl WaterAnimator {
+    fn tick(&mut self) {
+        self.still.tick();
+        self.flow.tick();
+        self.lava.tick();
+        self.lava_flow.tick();
+        self.portal.tick();
+        self.fire.tick();
+        self.fire_alt.tick();
+    }
+}
+
 /// Frames in [`FluidFrames::frames`] and the atlas tiles each one fills.
 /// Flowing water and lava repeat one frame over a 2×2 block of tiles, like
 /// Beta's `tileSize = 2` texture effects.
-const FLUID_TILES: [(usize, (u8, u8)); 11] = [
+const FLUID_TILES: [(usize, (u8, u8)); 13] = [
+    (5, FIRE_TILE),
+    (6, FIRE_TILE_ALT),
     (4, PORTAL_TILE),
     (0, WATER_STILL_TILE),
     (1, WATER_FLOW_TILE),
@@ -493,7 +579,7 @@ const FLUID_TILES: [(usize, (u8, u8)); 11] = [
 pub(super) struct FluidFrames {
     atlas: AssetId<Image>,
     stride: u32,
-    frames: [Vec<u8>; 5],
+    frames: [Vec<u8>; 7],
     version: u64,
 }
 
@@ -524,6 +610,8 @@ impl FluidFrames {
             padded_frame(layout, animator.lava.rgba())?,
             padded_frame(layout, animator.lava_flow.rgba())?,
             padded_frame(layout, animator.portal.rgba())?,
+            padded_frame(layout, animator.fire.rgba())?,
+            padded_frame(layout, animator.fire_alt.rgba())?,
         ];
         self.version += 1;
         Some(())
@@ -540,17 +628,15 @@ pub(super) fn start_fluid_animation(
     image: &mut Image,
 ) {
     let mut animator = WaterAnimator {
+        fire: FlamesTexture::new(0x464C414D4553),
+        fire_alt: FlamesTexture::new(0x464C414D4532),
         portal: PortalTexture::new(),
         still: StillWaterTexture::new(),
         flow: FlowingWaterTexture::new(),
         lava: LavaTexture::still(),
         lava_flow: LavaTexture::flowing(),
     };
-    animator.still.tick();
-    animator.flow.tick();
-    animator.lava.tick();
-    animator.lava_flow.tick();
-    animator.portal.tick();
+    animator.tick();
     // The first frame goes out with the atlas upload itself; later frames are
     // tile writes from the render world.
     for (frame, (tile_x, tile_y)) in FLUID_TILES {
@@ -559,7 +645,9 @@ pub(super) fn start_fluid_animation(
             1 => animator.flow.rgba(),
             2 => animator.lava.rgba(),
             3 => animator.lava_flow.rgba(),
-            _ => animator.portal.rgba(),
+            4 => animator.portal.rgba(),
+            5 => animator.fire.rgba(),
+            _ => animator.fire_alt.rgba(),
         };
         write_atlas_tile(image, tile_x, tile_y, rgba);
     }
@@ -586,11 +674,7 @@ pub(super) fn animate_fluid_textures(
         return;
     }
     for _ in 0..ticks {
-        animator.still.tick();
-        animator.flow.tick();
-        animator.lava.tick();
-        animator.lava_flow.tick();
-        animator.portal.tick();
+        animator.tick();
     }
     if let (Some(layout), Some(mut frames)) = (layout, frames) {
         frames.update(layout.0, &animator);

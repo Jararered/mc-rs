@@ -28,6 +28,7 @@ use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::SECTION_HEIGHT;
 use crate::world::lighting::Skylight;
 
+mod fire;
 pub(crate) mod geometry;
 mod greedy;
 mod piston;
@@ -906,6 +907,10 @@ impl<'a> Mesher<'a> {
                         meshes
                             .masked
                             .push_crops(origin, chunk.metadata(x, y, z), light);
+                        continue;
+                    }
+                    if block == Block::Fire {
+                        self.push_fire(&mut meshes.masked, origin, x, y, z);
                         continue;
                     }
                     if block.is_crossed_plant() || block == Block::Cobweb {

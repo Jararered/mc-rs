@@ -206,6 +206,14 @@ struct StoredDroppedItem {
     pickup_delay_ticks: u16,
     hover_start: f32,
     rng_state: u64,
+    #[serde(default = "full_item_health")]
+    health: u8,
+    #[serde(default)]
+    fire: i16,
+}
+
+fn full_item_health() -> u8 {
+    ChunkDroppedItem::FULL_HEALTH
 }
 
 /// Climate quantized to a byte per field. Temperature and humidity only feed the
@@ -254,6 +262,8 @@ impl StoredChunk {
                     pickup_delay_ticks: item.pickup_delay_ticks,
                     hover_start: item.hover_start,
                     rng_state: item.rng_state,
+                    health: item.health,
+                    fire: item.fire,
                 })
                 .collect(),
             mobs: generated.chunk.mob_records().to_vec(),
@@ -466,6 +476,8 @@ impl StoredChunk {
                         pickup_delay_ticks: item.pickup_delay_ticks,
                         hover_start: item.hover_start,
                         rng_state: item.rng_state,
+                        health: item.health,
+                        fire: item.fire,
                     })
                 })
                 .collect(),

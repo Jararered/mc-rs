@@ -14,6 +14,7 @@ use bevy::render::render_resource::PrimitiveTopology;
 use crate::app::settings::GameSettings;
 use crate::app::state::AppScreen;
 use crate::block::blocks::Block;
+use crate::block::fluids::is_lava;
 use crate::entity::CollisionState;
 use crate::entity::DroppedItem;
 use crate::entity::EntitySize;
@@ -23,9 +24,13 @@ use crate::entity::shadow::Shadow;
 use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
 use crate::item::ItemStack;
+use crate::physics::Aabb;
 use crate::physics::PhysicsSet;
 use crate::physics::WATER_CURRENT_PER_TICK;
+use crate::physics::burning_in;
+use crate::physics::lava_contains;
 use crate::physics::move_entity;
+use crate::physics::touches_cactus;
 use crate::physics::water_current;
 use crate::player::Player;
 use crate::random::ItemRng;
@@ -41,6 +46,7 @@ use crate::rendering::textures::GrassColors;
 use crate::rendering::textures::GrassOverlayMaterial;
 use crate::rendering::textures::TerrainMaterial;
 use crate::world::chunk::CHUNK_SIZE;
+use crate::world::chunk::ChunkDroppedItem;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
 use crate::world::persistence::WorldPersistence;
@@ -85,6 +91,11 @@ pub struct DroppedItemState {
     pub pickup_delay_ticks: u16,
     pub age_ticks: u32,
     pub hover_start: f32,
+    /// `EntityItem.health`: fire, lava, and cactus wear it down, and the item
+    /// is gone at zero.
+    pub health: u8,
+    /// `Entity.fire`: ticks left burning, or negative while not alight.
+    pub fire: i16,
     rng: JavaRandom,
 }
 
@@ -94,8 +105,60 @@ impl DroppedItemState {
             pickup_delay_ticks,
             age_ticks: 0,
             hover_start,
+            health: ChunkDroppedItem::FULL_HEALTH,
+            fire: 0,
             rng: JavaRandom::new(rng_seed),
         }
+    }
+
+    /// `EntityItem.attackEntityFrom`.
+    fn hurt(&mut self, amount: u8) {
+        self.health = self.health.saturating_sub(amount);
+    }
+
+    /// The fire and lava part of `Entity.onEntityUpdate`, before the item
+    /// moves: water puts it out, a burning item loses a point every second,
+    /// and lava costs four and sets it alight.
+    pub fn update_hazards(&mut self, in_water: bool, in_lava: bool) {
+        if in_water {
+            self.fire = 0;
+        }
+        if self.fire > 0 {
+            if self.fire % 20 == 0 {
+                self.hurt(1);
+            }
+            self.fire -= 1;
+        }
+        if in_lava {
+            self.hurt(4);
+            self.fire = 600;
+        }
+    }
+
+    /// The tail of `Entity.moveEntity`, after the item has moved: a cactus it
+    /// touches and any fire or lava its box reaches each cost a point.
+    pub fn contact_hazards(&mut self, touches_cactus: bool, burning: bool, wet: bool) {
+        if touches_cactus {
+            self.hurt(1);
+        }
+        if burning {
+            self.hurt(1);
+            if !wet {
+                self.fire += 1;
+                if self.fire == 0 {
+                    self.fire = 300;
+                }
+            }
+        } else if self.fire <= 0 {
+            self.fire = -1;
+        }
+        if wet && self.fire > 0 {
+            self.fire = -1;
+        }
+    }
+
+    pub fn is_destroyed(&self) -> bool {
+        self.health == 0
     }
 
     pub fn from_saved(
@@ -108,8 +171,16 @@ impl DroppedItemState {
             pickup_delay_ticks,
             age_ticks,
             hover_start,
+            health: ChunkDroppedItem::FULL_HEALTH,
+            fire: 0,
             rng: JavaRandom::from_state(rng_state),
         }
+    }
+
+    pub fn with_hazards(mut self, health: u8, fire: i16) -> Self {
+        self.health = health;
+        self.fire = fire;
+        self
     }
 
     pub fn rng_state(&self) -> u64 {
@@ -319,7 +390,8 @@ pub fn spawn_saved_item(commands: &mut Commands, item: crate::world::chunk::Chun
             item.age_ticks,
             item.hover_start,
             item.rng_state,
-        ),
+        )
+        .with_hazards(item.health, item.fire),
         Transform::from_translation(Vec3::from_array(item.position)),
         PreviousTick(Vec3::from_array(item.position)),
         ItemMotion(Vec3::from_array(item.motion)),
@@ -347,6 +419,8 @@ pub fn chunk_record(
         pickup_delay_ticks: state.pickup_delay_ticks,
         hover_start: state.hover_start,
         rng_state: state.rng_state(),
+        health: state.health,
+        fire: state.fire,
     }
 }
 
@@ -633,9 +707,21 @@ fn tick_dropped_items(
                 commands.entity(entity).despawn();
                 break;
             }
-            motion.0 +=
-                water_current(size.aabb(transform.translation), &chunks).1 * WATER_CURRENT_PER_TICK;
+            let aabb = size.aabb(transform.translation);
+            let (in_water, current) = water_current(aabb, &chunks);
+            state.update_hazards(in_water, lava_contains(aabb, &chunks));
+            motion.0 += current * WATER_CURRENT_PER_TICK;
             motion.0 = apply_item_gravity(motion.0);
+            // `EntityItem.onUpdate`: an item in lava is spat back out.
+            let cell = transform.translation.floor().as_ivec3();
+            if chunks.block_at(cell.x, cell.y, cell.z).is_some_and(is_lava) {
+                let rng = &mut state.rng;
+                motion.0 = Vec3::new(
+                    (rng.next_float() - rng.next_float()) * 0.2,
+                    0.2,
+                    (rng.next_float() - rng.next_float()) * 0.2,
+                );
+            }
             push_out_of_blocks(&chunks, &mut transform.translation, &mut motion.0);
             let movement = move_entity(
                 size.aabb(transform.translation),
@@ -646,6 +732,20 @@ fn tick_dropped_items(
             );
             transform.translation = size.position_from_aabb(movement.aabb);
             *collision = movement.collision;
+            let inset = Aabb::new(
+                movement.aabb.min + Vec3::splat(0.001),
+                movement.aabb.max - Vec3::splat(0.001),
+            );
+            state.contact_hazards(
+                touches_cactus(movement.aabb, &chunks),
+                burning_in(inset, &chunks),
+                in_water,
+            );
+            if state.is_destroyed() {
+                mark_chunk(&mut persistence, transform.translation);
+                commands.entity(entity).despawn();
+                break;
+            }
             let slip = item_slipperiness(block_under_item(&chunks, transform.translation, *size));
             motion.0 = item_motion_after_collision(
                 motion.0,

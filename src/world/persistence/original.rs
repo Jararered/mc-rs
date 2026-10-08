@@ -108,8 +108,6 @@ const ARMOR_SLOTS: usize = 4;
 const INVENTORY_SLOTS: usize = HOTBAR_SLOTS + MAIN_SLOTS;
 /// Beta numbers armor slots from 100, boots first.
 const ARMOR_SLOT_BASE: i8 = 100;
-/// `EntityItem`'s health, which is only ever damaged by fire and cactus.
-const ITEM_HEALTH: i16 = 5;
 /// A zombie pigman's `angerLevel` when it has just been angered.
 const PIGMAN_ANGER: i16 = 400;
 /// Where a new world's spawn point goes; the player appears over this column.
@@ -292,7 +290,8 @@ fn entity_base(id: &str, position: [f32; 3], motion: [f32; 3], yaw: f32) -> Comp
 
 fn item_entity(item: &ChunkDroppedItem) -> Compound {
     let mut entity = entity_base("Item", item.position, item.motion, 0.0);
-    entity.put_short("Health", ITEM_HEALTH);
+    entity.put_short("Fire", item.fire);
+    entity.put_short("Health", i16::from(item.health));
     entity.put_short("Age", item.age_ticks.min(i16::MAX as u32) as i16);
     entity.put_compound("Item", stack_compound(item.stack));
     entity
@@ -352,6 +351,13 @@ fn read_item_entity(entity: &Compound, position: [f64; 3]) -> Option<ChunkDroppe
         pickup_delay_ticks: 0,
         hover_start: 0.0,
         rng_state: JavaRandom::new(seed_from_position(position.map(f64::from), 1)).state(),
+        // `EntityItem.readEntityFromNBT` masks the short to a byte.
+        health: if entity.contains("Health") {
+            (entity.short("Health") & 255) as u8
+        } else {
+            ChunkDroppedItem::FULL_HEALTH
+        },
+        fire: entity.short("Fire"),
     })
 }
 

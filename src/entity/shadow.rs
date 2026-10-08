@@ -177,7 +177,10 @@ fn spawn_shadow_quads(
                 NoFrustumCulling,
             ))
             .id();
-        commands.entity(owner).insert(ShadowQuad(quad));
+        // The owner can be despawned by a system that ran alongside this one
+        // (an item burning up on its first tick); the quad is then an orphan
+        // for `despawn_orphaned_shadow_quads`.
+        commands.entity(owner).try_insert(ShadowQuad(quad));
     }
 }
 

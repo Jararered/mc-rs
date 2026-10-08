@@ -841,6 +841,17 @@ fn an_item_dropped_into_fire_or_onto_a_cactus_is_destroyed() {
     let burning = spawn(&mut app, Vec3::new(4.5, 65.2, 4.5));
     let pricked = spawn(&mut app, Vec3::new(8.5, 66.2, 8.5));
     let safe = spawn(&mut app, Vec3::new(11.5, 65.2, 11.5));
+    // An item on its last point is destroyed on its first tick, before it
+    // has been given a chunk home; nothing may be queued on the entity after
+    // its despawn.
+    let spent = spawn(&mut app, Vec3::new(4.5, 65.2, 4.5));
+    app.world_mut()
+        .get_mut::<DroppedItemState>(spent)
+        .unwrap()
+        .health = 1;
+    app.world_mut().resource_mut::<WorldTick>().advance(0.05);
+    app.update();
+    assert!(app.world().get_entity(spent).is_err());
     for _ in 0..30 {
         app.world_mut().resource_mut::<WorldTick>().advance(0.05);
         app.update();

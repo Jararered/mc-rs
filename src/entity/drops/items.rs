@@ -696,6 +696,7 @@ fn tick_dropped_items(
         )) {
             continue;
         }
+        let mut removed = false;
         for _ in 0..steps {
             previous_tick.0 = transform.translation;
             state.age_ticks += 1;
@@ -705,6 +706,7 @@ fn tick_dropped_items(
             if state.age_ticks >= ITEM_LIFETIME_TICKS {
                 mark_chunk(&mut persistence, transform.translation);
                 commands.entity(entity).despawn();
+                removed = true;
                 break;
             }
             let aabb = size.aabb(transform.translation);
@@ -744,6 +746,7 @@ fn tick_dropped_items(
             if state.is_destroyed() {
                 mark_chunk(&mut persistence, transform.translation);
                 commands.entity(entity).despawn();
+                removed = true;
                 break;
             }
             let slip = item_slipperiness(block_under_item(&chunks, transform.translation, *size));
@@ -755,6 +758,9 @@ fn tick_dropped_items(
                 collision.on_ground,
                 slip,
             );
+        }
+        if removed {
+            continue;
         }
         let now = ChunkPosition::from_block(
             transform.translation.x.floor() as i32,

@@ -16,6 +16,7 @@ use game::entity::mobs::Mob;
 use game::entity::mobs::MobType;
 use game::entity::projectiles::Arrow;
 use game::entity::projectiles::ArrowDamage;
+use game::entity::projectiles::Projectile;
 use game::entity::projectiles::hand_origin;
 use game::entity::projectiles::spawn_arrow_with;
 use game::entity::projectiles::spawn_player_arrow;
@@ -30,6 +31,7 @@ use game::item::Item;
 use game::item::ItemStack;
 use game::player::Player;
 use game::player::PlayerHealth;
+use game::player::draw_fov_scale;
 use game::player::draw_power;
 use game::random::ItemRng;
 use game::random::JavaRandom;
@@ -131,7 +133,14 @@ fn a_stuck_arrow_the_player_owns_is_picked_up() {
         .unwrap()
         .translation = Vec3::new(lodged.x - 0.5, 5.0 + 1.62, lodged.z);
     run_ticks(&mut app, 1);
+    // It is in the inventory at once and flies to the player for three ticks.
+    assert_eq!(arrows_held(&app, player), 1);
+    assert_eq!(app.world().get::<Arrow>(arrow).unwrap().taken, Some(0));
+    assert_eq!(feet_of(&app, arrow), lodged);
+    assert!(app.world().get::<Projectile>(arrow).is_none());
+    run_ticks(&mut app, 3);
     assert!(app.world().get_entity(arrow).is_err());
+    // One arrow, however long the player stood on it.
     assert_eq!(arrows_held(&app, player), 1);
 }
 
@@ -505,4 +514,13 @@ fn a_hooked_mob_is_dragged_toward_the_angler() {
         .unwrap();
     let pull = app.world().get::<Velocity>(pig).unwrap().0;
     assert!(pull.x < 0.0 && pull.y > 0.0, "{pull}");
+}
+
+#[test]
+fn drawing_the_bow_narrows_the_view_by_up_to_fifteen_percent() {
+    assert_eq!(draw_fov_scale(0.0), 1.0);
+    // It starts slowly: a quarter of the way in at half a second.
+    assert!((draw_fov_scale(10.0) - (1.0 - 0.25 * 0.15)).abs() < 1e-6);
+    assert!((draw_fov_scale(20.0) - 0.85).abs() < 1e-6);
+    assert!((draw_fov_scale(400.0) - 0.85).abs() < 1e-6);
 }

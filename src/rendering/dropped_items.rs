@@ -21,6 +21,8 @@ use crate::entity::drops::items::pickup_dropped_items;
 use crate::entity::drops::items::pickup_position;
 use crate::item::ItemStack;
 use crate::player::Player;
+use crate::player::PlayerInterpolation;
+use crate::player::rendered_eye;
 use crate::random::JavaRandom;
 use crate::rendering::appearance::Shape;
 use crate::rendering::appearance::block_appearance;
@@ -191,7 +193,10 @@ fn sync_item_rendering(
     tick: Res<WorldTick>,
     world: ItemRenderResources,
     camera: Query<&GlobalTransform, With<crate::player::PlayerCamera>>,
-    player: Query<&Transform, (With<Player>, Without<DroppedItem>, Without<ItemPilePiece>)>,
+    player: Query<
+        (&Transform, Option<&PlayerInterpolation>),
+        (With<Player>, Without<DroppedItem>, Without<ItemPilePiece>),
+    >,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     icon_material: Option<Res<ItemDropMaterial>>,
@@ -236,7 +241,13 @@ fn sync_item_rendering(
             Some(handle)
         });
 
-    let player_eye = player.single().ok().map(|transform| transform.translation);
+    // The eyes as drawn this frame. The simulated position only moves on a
+    // tick, and a flight aimed at it would step 20 times a second against
+    // the smoothly moving view.
+    let player_eye = player
+        .single()
+        .ok()
+        .map(|(at, interpolation)| rendered_eye(at, interpolation, tick.partial()));
     for (entity, mut transform, dropped, state, previous_tick, visual, children, pickup) in
         &mut items
     {
@@ -257,13 +268,15 @@ fn sync_item_rendering(
         let spin = item_spin_yaw(state.age_ticks as f32, tick.partial(), state.hover_start);
         // Physics keeps the post-tick position. The mesh is a child, so this
         // local slide shows the in-between point without moving the simulation.
-        // Pickup flight is already continuous and has no `PreviousTick`.
+        // Pickup flight is already continuous: an item taken whole still
+        // carries the `PreviousTick` of where it lay, which must not pull it
+        // back toward the ground at the start of every tick.
         let slide = match previous_tick {
-            Some(previous_tick) => {
+            Some(previous_tick) if pickup.is_none() => {
                 interpolated_item_position(previous_tick.0, transform.translation, tick.partial())
                     - transform.translation
             }
-            None => Vec3::ZERO,
+            _ => Vec3::ZERO,
         };
         let yaw = item_visual_yaw(cube, spin, camera_yaw);
         let scale = if cube { CUBE_SCALE } else { SPRITE_SCALE };

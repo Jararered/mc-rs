@@ -60,6 +60,9 @@ pub const FIREBALL_SIZE: EntitySize = EntitySize {
     y_offset: 0.0,
 };
 
+/// `EntityPickupFX` lasts three ticks.
+pub const PICKUP_FLIGHT_TICKS: u32 = 3;
+
 /// Marks a body that is neither living nor an item but still presses a
 /// wooden pressure plate: arrows, thrown snowballs and eggs, and bobbers.
 #[derive(Component, Clone, Copy, Debug, Default)]
@@ -103,6 +106,9 @@ pub struct Arrow {
     pub shooter: Option<Shooter>,
     /// `doesArrowBelongToPlayer`: the player can pick it up once it sticks.
     pub pickup: bool,
+    /// Ticks since a player picked it up. `EntityPickupFX` flies it to them
+    /// from where it stuck for [`PICKUP_FLIGHT_TICKS`], and then it is gone.
+    pub taken: Option<u32>,
     pub damage: ArrowDamage,
     /// `motionX/Y/Z`, in blocks per tick.
     pub motion: Vec3,
@@ -236,6 +242,7 @@ pub fn spawn_arrow_with(
             Arrow {
                 shooter,
                 pickup,
+                taken: None,
                 damage,
                 motion,
                 yaw,
@@ -462,6 +469,15 @@ pub(crate) fn tick_projectiles(
             previous.0 = position;
             arrow.prev_yaw = arrow.yaw;
             arrow.prev_pitch = arrow.pitch;
+            if let Some(age) = arrow.taken.as_mut() {
+                // Flying to the player who picked it up.
+                *age += 1;
+                if *age >= PICKUP_FLIGHT_TICKS {
+                    gone = true;
+                    break;
+                }
+                continue;
+            }
             arrow.shake = (arrow.shake - 1).max(0);
             if let Some((cell, block, metadata)) = arrow.stuck {
                 if chunks.block_at(cell.x, cell.y, cell.z) == Some(block)
@@ -665,11 +681,12 @@ pub(crate) fn tick_projectiles(
 
 /// `EntityArrow.onCollideWithPlayer`: an arrow that has stuck and stopped
 /// quivering, shot by the player or a dispenser, goes back into the inventory
-/// of a player who touches it. It stays where it is if there is no room.
+/// of a player who touches it, flying to them as a picked-up item does
+/// (`EntityPickupFX`). It stays where it is if there is no room.
 pub(crate) fn pickup_arrows(
     mut commands: Commands,
     mut player: Query<(&Transform, &EntitySize, &mut Hotbar, &mut Inventory), With<Player>>,
-    arrows: Query<(Entity, &Arrow, &Transform), Without<Player>>,
+    mut arrows: Query<(Entity, &mut Arrow, &Transform), Without<Player>>,
 ) {
     let Ok((at, size, mut hotbar, mut inventory)) = player.single_mut() else {
         return;
@@ -678,8 +695,9 @@ pub(crate) fn pickup_arrows(
     let mut reach = size.aabb(at.translation);
     reach.min -= Vec3::new(1.0, 0.0, 1.0);
     reach.max += Vec3::new(1.0, 0.0, 1.0);
-    for (entity, arrow, transform) in &arrows {
+    for (entity, mut arrow, transform) in &mut arrows {
         if !arrow.pickup
+            || arrow.taken.is_some()
             || !arrow.is_stuck()
             || arrow.shake > 0
             || !reach.intersects(ARROW_SIZE.aabb(transform.translation))
@@ -698,7 +716,10 @@ pub(crate) fn pickup_arrows(
         {
             inventory.set_changed();
             hotbar.set_changed();
-            commands.entity(entity).despawn();
+            // The flight's last tick removes the arrow.
+            arrow.pickup = false;
+            arrow.taken = Some(0);
+            commands.entity(entity).remove::<Projectile>();
         }
     }
 }

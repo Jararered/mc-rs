@@ -20,13 +20,17 @@ use super::CreatureMaterial;
 use super::creature_tag;
 use super::entity_brightness;
 use crate::entity::PreviousTick;
+use crate::entity::drops::items::pickup_position;
 use crate::entity::fishing::Bobber;
 use crate::entity::projectiles::Arrow;
 use crate::entity::projectiles::Fireball;
 use crate::entity::thrown::Thrown;
 use crate::entity::thrown::ThrownKind;
 use crate::item::Item;
+use crate::player::Player;
 use crate::player::PlayerCamera;
+use crate::player::PlayerInterpolation;
+use crate::player::rendered_eye;
 use crate::rendering::appearance::item_tile;
 use crate::world::chunk::WorldChunks;
 use crate::world::lighting::LightCache;
@@ -104,6 +108,7 @@ impl Quads {
 }
 
 /// `RenderArrow`'s geometry in the arrow's frame: +X points along its flight.
+/// Three two-sided quads: the fletching and a crossed pair along the shaft.
 pub fn arrow_mesh() -> Mesh {
     let mut quads = Quads::new();
     let frame = Mat4::from_rotation_x(45f32.to_radians())
@@ -120,17 +125,11 @@ pub fn arrow_mesh() -> Mesh {
         ],
         Vec3::X,
     );
-    quads.quad(
-        frame,
-        [
-            ([-7.0, 2.0, -2.0], [0.0, fletch_top]),
-            ([-7.0, 2.0, 2.0], [0.156_25, fletch_top]),
-            ([-7.0, -2.0, 2.0], [0.156_25, fletch_bottom]),
-            ([-7.0, -2.0, -2.0], [0.0, fletch_bottom]),
-        ],
-        Vec3::NEG_X,
-    );
-    for turn in 1..=4 {
+    // `RenderArrow` draws the fletching again from behind and the shaft at
+    // four quarter turns, each quad culled from one side. The material here
+    // draws both sides of a face, so those copies would lie in the same
+    // plane and fight: one fletching quad and two crossed shaft quads do.
+    for turn in 1..=2 {
         let shaft = frame * Mat4::from_rotation_x((90.0 * turn as f32).to_radians());
         quads.quad(
             shaft,
@@ -314,13 +313,18 @@ pub(super) fn pose_projectiles(
     light: Option<Res<LightCache>>,
     environment: crate::world::dimension::Environment,
     camera: Query<&GlobalTransform, With<PlayerCamera>>,
+    player: Query<(&Transform, Option<&PlayerInterpolation>), With<Player>>,
     bodies: Query<
         (&Transform, &PreviousTick, Option<&Arrow>, &Children),
         Or<(With<Arrow>, With<Fireball>, With<Thrown>, With<Bobber>)>,
     >,
     mut models: Query<
         (&mut Transform, &mut MeshTag),
-        (With<ProjectileModel>, Without<PreviousTick>),
+        (
+            With<ProjectileModel>,
+            Without<PreviousTick>,
+            Without<Player>,
+        ),
     >,
 ) {
     let partial = tick.partial();
@@ -330,6 +334,10 @@ pub(super) fn pose_projectiles(
     let facing = camera
         .single()
         .map_or(Quat::IDENTITY, |camera| camera.rotation());
+    let eye = player
+        .single()
+        .ok()
+        .map(|(at, interpolation)| rendered_eye(at, interpolation, partial));
     for (body, previous, arrow, children) in &bodies {
         let rotation = if let Some(arrow) = arrow {
             let shake = f32::from(arrow.shake) - partial;
@@ -344,7 +352,12 @@ pub(super) fn pose_projectiles(
         } else {
             facing
         };
-        let slide = previous.0.lerp(body.translation, partial) - body.translation;
+        // `EntityPickupFX`: a picked-up arrow flies to the player.
+        let shown = match (arrow.and_then(|arrow| arrow.taken), eye) {
+            (Some(age), Some(eye)) => pickup_position(body.translation, eye, age as f32, partial),
+            _ => previous.0.lerp(body.translation, partial),
+        };
+        let slide = shown - body.translation;
         let brightness = entity_brightness(
             &chunks,
             light.as_deref(),

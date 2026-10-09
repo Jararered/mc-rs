@@ -295,12 +295,17 @@ fn animate_arm(
     else {
         return;
     };
+    let holding_bow = hotbar
+        .selected_stack()
+        .is_some_and(|stack| stack.item() == Item::Bow);
     for (mut arm, mut transform, mut arm_visibility) in &mut arms {
         let start_swing = locked
             && ((!carried
                 && (mouse.just_pressed(MouseButton::Left)
                     || (mouse.pressed(MouseButton::Left) && !arm.swinging)))
-                || mouse.just_pressed(MouseButton::Right));
+                // `ItemBow` never calls `swingItem`: shooting and drawing
+                // leave the arm still.
+                || (mouse.just_pressed(MouseButton::Right) && !holding_bow));
         if !locked {
             arm.swinging = false;
             arm.swing_tick = 0;

@@ -16,7 +16,9 @@ mod state;
 mod survival;
 
 pub use camera::PlayerCamera;
+pub use camera::draw_fov_scale;
 pub use camera::hurt_roll_degrees;
+pub(crate) use camera::rendered_eye;
 pub(crate) use controls::SPRINT_ACCELERATION_MULTIPLIER;
 pub use interaction::editing::PLACED_BLOCK;
 pub use interaction::editing::break_block;

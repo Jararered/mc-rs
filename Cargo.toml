@@ -12,16 +12,25 @@ dev_dynamic_linking = ["bevy/dynamic_linking"]
 # so `cargo test` does not pay for it.
 render_harness = []
 
-# Optimize game code enough for representative local play sessions. Line tables
-# keep backtraces pointing at file and line, and because `test` inherits this
-# profile unchanged, `cargo run` and `cargo test` share one set of artifacts.
+# Game code is unoptimized with full debug info, so a debugger shows every
+# local and a one-line edit rebuilds in about 2 s. `test` inherits this profile
+# unchanged, so `cargo run` and `cargo test` share one set of artifacts.
 [profile.dev]
-opt-level = 1
-debug = "line-tables-only"
+opt-level = 0
+debug = true
 
-# Enable a large amount of optimization in the dev profile for dependencies.
+# Dependencies are optimized, or Bevy is unplayably slow, and keep only line
+# tables: full debug info for Bevy makes every link slower and much larger.
 [profile.dev.package."*"]
 opt-level = 3
+debug = "line-tables-only"
+
+# Release favors runtime performance over build time: whole-program LTO in a
+# single codegen unit.
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
 
 [dependencies]
 # Only what the game uses. Bevy's defaults also start audio, gamepads, glTF,

@@ -22,8 +22,8 @@ To compare power and performance, use the same saved world, graphics quality,
 render distance, window size, and camera direction. Wait for loading to finish.
 Compare standing still with inventory closed and open, then compare 60 FPS
 with VSync. Also check menus and an unfocused window. Use a release build for
-runtime profiling (`cargo run --release`); development game code uses a lower
-optimization level. Record CPU utilization, actual FPS, CPU/GPU frame time,
+runtime profiling (`cargo run --release`); development game code is
+unoptimized. Record CPU utilization, actual FPS, CPU/GPU frame time,
 and power if the available profiler supports it. A frame cap alone changes
 how often work runs, so compare per-frame costs at equal FPS as well.
 
@@ -186,15 +186,17 @@ October 2026.
 - `cargo test` used to build 31 test binaries plus two empty unit-test
   harnesses, each statically linking Bevy. It is now one binary: 794 tests
   build and run in about 8 s warm.
-- The game crate alone compiles from scratch in about 17 s at `opt-level = 1`
-  (12 s at 0). The static link is about 3 s.
-- A one-line edit rebuilds in 3 to 11 s at `opt-level = 1`, depending on how
-  many codegen units the edit reaches; inserting a line costs more than
-  changing a value because it shifts the line tables below it. The same edits
-  take about 2.2 s at `opt-level = 0` (`CARGO_PROFILE_DEV_OPT_LEVEL=0 cargo
-  build`), which is the cheap lever when iterating on something that does not
-  need representative frame times.
-- `dev_dynamic_linking` (11.4 s against 10.8 s for the same edit) and
+- Development builds compile game code at `opt-level = 0` with full debug info
+  (dependencies stay at 3 with line tables only). A one-line edit rebuilds in
+  about 2.6 s, the game crate from scratch in about 12 s, and a cold build with
+  the test run takes about 3.5 minutes. At `opt-level = 1` the same edits took
+  3 to 11 s.
+- The cost is runtime: the test suite runs in about 27 s instead of 3.5 s, and
+  generation and meshing are slower in a dev build. Judge frame times and
+  stutter in `cargo run --release` only.
+- Release uses fat LTO in one codegen unit; a cold `cargo build --release`
+  takes about 6 minutes.
+- `dev_dynamic_linking` (11.4 s against 10.8 s for the same edit at `opt-level = 1`) and
   `-Zthreads=8` did not help, so neither is configured.
 - Changing `RUSTFLAGS`, features, or profile settings rebuilds Bevy (1.5 to 2
   minutes here, far longer cold). Keep them the same across `run` and `test`.

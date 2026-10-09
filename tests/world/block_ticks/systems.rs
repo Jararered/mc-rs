@@ -6,12 +6,23 @@ use game::entity::DroppedItem;
 use game::entity::EntitySize;
 use game::entity::explosion::PrimedTnt;
 use game::entity::falling_block::FallingBlock;
+use game::entity::minecart::Cargo;
+use game::entity::minecart::CartKind;
 use game::entity::minecart::Minecart;
+use game::entity::minecart::break_cart;
+use game::entity::minecart::spawn_cart;
 use game::entity::minecart::spawn_minecart;
+use game::entity::mobs::Mob;
+use game::entity::mobs::MobType;
+use game::entity::mobs::spawn as spawn_mob;
+use game::entity::mount::Mounted;
+use game::entity::mount::dismount;
+use game::entity::mount::mount;
 use game::entity::projectiles::Arrow;
 use game::item::Item;
 use game::item::ItemStack;
 use game::player::Player;
+use game::random::ItemRng;
 use game::world::biome::Biome;
 use game::world::block_ticks::BlockEvent;
 use game::world::block_ticks::BlockTicks;
@@ -230,4 +241,181 @@ fn extending_piston_pushes_a_player_out_of_the_new_head() {
     step(&mut app);
     assert_eq!(block(&app, 9, 61, 8), Some(Block::PistonHead));
     assert!(app.world().get::<Transform>(player).unwrap().translation.x > 10.3);
+}
+
+/// A straight track along z = 8 over the floor, and a cart on it.
+fn laid_cart(app: &mut App, kind: CartKind) -> Entity {
+    for x in 4..=30 {
+        app.world_mut()
+            .resource_mut::<WorldChunks>()
+            .set_block_with_metadata(x, 61, 8, Block::Rail, 1);
+    }
+    let cart = spawn_cart(&mut app.world_mut().commands(), at(8, 61, 8), kind);
+    app.world_mut().flush();
+    cart
+}
+
+fn cart_of(app: &App, cart: Entity) -> Minecart {
+    app.world().get::<Minecart>(cart).unwrap().clone()
+}
+
+fn player(app: &mut App, feet: Vec3) -> Entity {
+    app.world_mut()
+        .spawn((
+            Player,
+            Transform::from_translation(feet + Vec3::Y * EntitySize::PLAYER.y_offset),
+        ))
+        .id()
+}
+
+#[test]
+fn a_rider_goes_where_the_cart_goes_and_steps_off_onto_it() {
+    let mut app = app();
+    let cart = laid_cart(&mut app, CartKind::Empty);
+    let rider = player(&mut app, Vec3::new(20.5, 61.0, 20.5));
+    mount(&mut app.world_mut().commands(), rider, cart);
+    app.world_mut().flush();
+    assert_eq!(cart_of(&app, cart).rider, Some(rider));
+    app.world_mut().get_mut::<Minecart>(cart).unwrap().motion.x = 0.3;
+    for _ in 0..10 {
+        step(&mut app);
+    }
+    let at_cart = app.world().get::<Transform>(cart).unwrap().translation;
+    let at_rider = app.world().get::<Transform>(rider).unwrap().translation;
+    assert!(at_cart.x > 10.0, "the cart rolled to {at_cart}");
+    // Sitting 0.3 below the cart's centre, at the player's eye height less
+    // half a block.
+    let lift = Vec3::Y * (-0.3 + 1.62 - 0.5);
+    assert!((at_rider - (at_cart + lift)).length() < 0.001, "{at_rider}");
+
+    dismount(&mut app.world_mut().commands(), rider);
+    app.world_mut().flush();
+    assert!(app.world().get::<Mounted>(rider).is_none());
+    assert_eq!(cart_of(&app, cart).rider, None);
+    let at_rider = app.world().get::<Transform>(rider).unwrap().translation;
+    assert!((at_rider.y - (at_cart.y + 0.35 + 1.62)).abs() < 0.001);
+}
+
+#[test]
+fn a_rider_is_let_go_when_its_cart_is_gone() {
+    let mut app = app();
+    let cart = laid_cart(&mut app, CartKind::Empty);
+    let rider = player(&mut app, Vec3::new(20.5, 61.0, 20.5));
+    mount(&mut app.world_mut().commands(), rider, cart);
+    app.world_mut().flush();
+    app.world_mut().despawn(cart);
+    step(&mut app);
+    step(&mut app);
+    assert!(app.world().get::<Mounted>(rider).is_none());
+}
+
+#[test]
+fn a_new_rider_takes_the_cart_from_the_old_one() {
+    let mut app = app();
+    let cart = laid_cart(&mut app, CartKind::Empty);
+    let first = player(&mut app, Vec3::new(20.5, 61.0, 20.5));
+    let second = player(&mut app, Vec3::new(22.5, 61.0, 20.5));
+    mount(&mut app.world_mut().commands(), first, cart);
+    app.world_mut().flush();
+    mount(&mut app.world_mut().commands(), second, cart);
+    app.world_mut().flush();
+    assert_eq!(cart_of(&app, cart).rider, Some(second));
+    assert!(app.world().get::<Mounted>(first).is_none());
+    assert!(app.world().get::<Mounted>(second).is_some());
+}
+
+#[test]
+fn a_moving_empty_cart_scoops_up_a_creature_in_its_way_but_a_resting_one_does_not() {
+    let mut app = app();
+    let cart = laid_cart(&mut app, CartKind::Empty);
+    let zombie = spawn_mob(
+        &mut app.world_mut().commands(),
+        Mob::new(MobType::Zombie, 1),
+        Vec3::new(9.0, 61.0, 8.5),
+    );
+    app.world_mut().flush();
+    step(&mut app);
+    assert!(
+        app.world().get::<Mounted>(zombie).is_none(),
+        "a cart at rest only pushes"
+    );
+    app.world_mut().get_mut::<Minecart>(cart).unwrap().motion.x = 0.2;
+    step(&mut app);
+    step(&mut app);
+    assert_eq!(cart_of(&app, cart).rider, Some(zombie));
+    assert_eq!(
+        app.world()
+            .get::<Mounted>(zombie)
+            .map(|mounted| mounted.vehicle),
+        Some(cart)
+    );
+}
+
+#[test]
+fn a_player_walking_into_a_cart_shoves_it_along() {
+    let mut app = app();
+    let cart = laid_cart(&mut app, CartKind::Empty);
+    // Overlapping the cart's western edge.
+    player(&mut app, Vec3::new(7.9, 61.0, 8.5));
+    step(&mut app);
+    assert!(cart_of(&app, cart).motion.x > 0.0);
+    assert!(app.world().get::<Mounted>(cart).is_none());
+}
+
+#[test]
+fn a_broken_chest_cart_leaves_its_parts_and_spills_its_cargo() {
+    let mut app = app();
+    let cart = laid_cart(&mut app, CartKind::Chest);
+    let mut cargo = app
+        .world()
+        .get::<Cargo>(cart)
+        .expect("a chest cart")
+        .clone();
+    cargo.0[3] = Some(ItemStack::new(Item::Stick, 5).unwrap());
+    app.world_mut().entity_mut(cart).insert(cargo.clone());
+    let rider = player(&mut app, Vec3::new(20.5, 61.0, 20.5));
+    let broken = cart_of(&app, cart);
+    break_cart(
+        &mut app.world_mut().commands(),
+        &mut ItemRng::default(),
+        cart,
+        &broken,
+        Vec3::new(8.5, 61.5, 8.5),
+        Some(&cargo),
+    );
+    app.world_mut().flush();
+    assert!(app.world().get_entity(cart).is_err(), "the cart is gone");
+    assert!(app.world().get::<Mounted>(rider).is_none());
+    let mut found: Vec<_> = app
+        .world_mut()
+        .query::<&DroppedItem>()
+        .iter(app.world())
+        .map(|item| (item.0.item(), item.0.count()))
+        .collect();
+    found.sort_by_key(|(item, _)| item.as_u16());
+    let total = |wanted: Item| -> u32 {
+        found
+            .iter()
+            .filter(|(item, _)| *item == wanted)
+            .map(|(_, count)| u32::from(*count))
+            .sum()
+    };
+    assert_eq!(total(Item::Minecart), 1);
+    assert_eq!(total(Item::from_block(Block::Chest).unwrap()), 1);
+    assert_eq!(total(Item::Stick), 5);
+}
+
+#[test]
+fn a_chest_cart_has_a_cargo_and_the_others_do_not() {
+    let mut app = app();
+    let chest = laid_cart(&mut app, CartKind::Chest);
+    let furnace = spawn_cart(
+        &mut app.world_mut().commands(),
+        at(12, 61, 8),
+        CartKind::Furnace,
+    );
+    app.world_mut().flush();
+    assert_eq!(app.world().get::<Cargo>(chest), Some(&Cargo::default()),);
+    assert!(app.world().get::<Cargo>(furnace).is_none());
+    assert_eq!(cart_of(&app, furnace).kind, CartKind::Furnace);
 }

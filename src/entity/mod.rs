@@ -12,6 +12,8 @@ use crate::entity::explosion::PrimedTnt;
 use crate::entity::explosion::prime_tnt;
 use crate::entity::falling_block::FallingBlock;
 use crate::entity::falling_block::spawn_falling;
+use crate::entity::minecart::Cargo;
+use crate::entity::minecart::CartKind;
 use crate::entity::minecart::Minecart;
 use crate::entity::pathfinding::SearchStats;
 use crate::item::ItemStack;
@@ -24,6 +26,7 @@ pub mod explosion;
 pub mod falling_block;
 pub mod minecart;
 pub mod mobs;
+pub mod mount;
 pub mod particles;
 pub mod pathfinding;
 pub mod projectiles;
@@ -74,7 +77,62 @@ pub enum SavedBody {
         fuse: u16,
     },
     /// A minecart on or off its rail, with its speed in blocks per tick.
-    Minecart { center: [f32; 3], motion: [f32; 3] },
+    Minecart {
+        center: [f32; 3],
+        motion: [f32; 3],
+        /// Absent in saves from before chest and furnace carts.
+        #[serde(default)]
+        kind: CartKind,
+        #[serde(default)]
+        fuel: i32,
+        #[serde(default)]
+        push: [f32; 2],
+        /// The occupied slots of a chest cart.
+        #[serde(default)]
+        cargo: Vec<SavedSlot>,
+    },
+}
+
+/// One occupied slot of a chest cart's cargo.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SavedSlot {
+    pub slot: u8,
+    pub item: u16,
+    pub count: u8,
+    #[serde(default)]
+    pub data: u16,
+}
+
+impl SavedSlot {
+    pub fn pack(cargo: &Cargo) -> Vec<Self> {
+        cargo
+            .0
+            .iter()
+            .enumerate()
+            .filter_map(|(slot, stack)| {
+                let stack = (*stack)?;
+                Some(Self {
+                    slot: slot as u8,
+                    item: stack.item().as_u16(),
+                    count: stack.count(),
+                    data: stack.data(),
+                })
+            })
+            .collect()
+    }
+
+    pub fn unpack(slots: &[Self]) -> Cargo {
+        let mut cargo = Cargo::default();
+        for saved in slots {
+            if let Some(item) = crate::item::Item::from_u16(saved.item)
+                && let Ok(stack) = ItemStack::with_data(item, saved.count, saved.data)
+                && let Some(slot) = cargo.0.get_mut(usize::from(saved.slot))
+            {
+                *slot = Some(stack);
+            }
+        }
+        cargo
+    }
 }
 
 /// The components [`SavedBody::capture`] reads, for a query filtered by
@@ -86,6 +144,7 @@ pub type SavedBodyData = (
     Option<&'static PrimedTnt>,
     Option<&'static Velocity>,
     Option<&'static Minecart>,
+    Option<&'static Cargo>,
 );
 pub type SavedBodyFilter = Or<(With<FallingBlock>, With<PrimedTnt>, With<Minecart>)>;
 
@@ -96,12 +155,17 @@ impl SavedBody {
         tnt: Option<&PrimedTnt>,
         velocity: Option<&Velocity>,
         minecart: Option<&Minecart>,
+        cargo: Option<&Cargo>,
     ) -> Option<Self> {
         let position = transform.translation.to_array();
         if let Some(cart) = minecart {
             return Some(Self::Minecart {
                 center: position,
                 motion: cart.motion.to_array(),
+                kind: cart.kind,
+                fuel: cart.fuel,
+                push: cart.push.to_array(),
+                cargo: cargo.map(SavedSlot::pack).unwrap_or_default(),
             });
         }
         if let Some(falling) = falling {
@@ -150,11 +214,26 @@ impl SavedBody {
                     .entity(entity)
                     .insert(Velocity(Vec3::from_array(velocity)));
             }
-            Self::Minecart { center, motion } => {
-                let entity = minecart::spawn_minecart_at(commands, Vec3::from_array(center));
-                commands.entity(entity).insert(Minecart {
-                    motion: Vec3::from_array(motion),
-                });
+            Self::Minecart {
+                center,
+                motion,
+                kind,
+                fuel,
+                push,
+                cargo,
+            } => {
+                minecart::spawn_cart_at(
+                    commands,
+                    Vec3::from_array(center),
+                    Minecart {
+                        kind,
+                        motion: Vec3::from_array(motion),
+                        fuel,
+                        push: Vec2::from_array(push),
+                        ..Minecart::default()
+                    },
+                    (kind == CartKind::Chest).then(|| SavedSlot::unpack(&cargo)),
+                );
             }
         }
     }

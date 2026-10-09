@@ -14,6 +14,8 @@ use crate::block::blocks::Block;
 use crate::crafting::CraftingGrid;
 use crate::crafting::beta_recipe_book;
 use crate::entity::drops::items::spawn_thrown_item;
+use crate::entity::minecart::Cargo;
+use crate::entity::minecart::Minecart;
 use crate::inventory::DragPlace;
 use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
@@ -81,6 +83,7 @@ impl Plugin for InventoryGuiPlugin {
                     validate_chest,
                     toggle,
                     handle_slots,
+                    sync_open_cart,
                     highlight_slots,
                     refresh,
                 )
@@ -227,10 +230,32 @@ fn close_when_requested(
     }
 }
 
+/// Carry a chest cart screen's edits back to the cart, and let go of the
+/// copy once the screen is not on that cart any more.
+fn sync_open_cart(
+    screen: Res<InventorySession>,
+    mut chunks: ResMut<WorldChunks>,
+    mut carts: Query<&mut Cargo>,
+) {
+    let Some(open) = chunks.open_cart.as_ref() else {
+        return;
+    };
+    let cart = open.cart;
+    if let Ok(mut cargo) = carts.get_mut(cart)
+        && cargo.0 != open.slots
+    {
+        cargo.0 = open.slots;
+    }
+    if !(screen.open && screen.chest && screen.cart == Some(cart)) {
+        chunks.open_cart = None;
+    }
+}
+
 fn validate_chest(
     mut commands: Commands,
     mut screen: ResMut<InventorySession>,
     chunks: Res<WorldChunks>,
+    carts: Query<&Transform, (With<Minecart>, Without<Player>)>,
     player_transform: Query<&Transform, With<Player>>,
     mut player: Query<(&Transform, &mut Hotbar, &mut Inventory), With<Player>>,
     mut workbench: ResMut<ActiveWorkbench>,
@@ -247,14 +272,29 @@ fn validate_chest(
     let Ok(transform) = player_transform.single() else {
         return;
     };
-    let delta = transform.translation - Vec3::new(x as f32 + 0.5, y as f32 + 0.5, z as f32 + 0.5);
-    if chunks.container_group_at(x, y, z) == screen.chest_group && delta.length_squared() <= 64.0 {
-        return;
+    if let Some(cart) = screen.cart {
+        // `EntityMinecart.canInteractWith`: the cart is still there and within
+        // eight blocks.
+        if carts
+            .get(cart)
+            .is_ok_and(|at| at.translation.distance_squared(transform.translation) <= 64.0)
+        {
+            return;
+        }
+    } else {
+        let delta =
+            transform.translation - Vec3::new(x as f32 + 0.5, y as f32 + 0.5, z as f32 + 0.5);
+        if chunks.container_group_at(x, y, z) == screen.chest_group
+            && delta.length_squared() <= 64.0
+        {
+            return;
+        }
     }
     screen.open = false;
     screen.chest = false;
     screen.chest_position = None;
     screen.chest_group = None;
+    screen.cart = None;
     if let Ok((player_transform, mut hotbar, mut inventory)) = player.single_mut() {
         close_crafting_session(
             &mut commands,
@@ -408,6 +448,7 @@ fn toggle(
                 .chest_group
                 .map_or(0, ChestGroup::slot_count)
                 .div_ceil(9),
+            screen.cart.is_some(),
             &texture.container,
         );
         if let Ok((_, mut cursor)) = windows.single_mut() {
@@ -437,6 +478,7 @@ fn toggle(
         screen.chest = false;
         screen.chest_position = None;
         screen.chest_group = None;
+        screen.cart = None;
     }
     if let Ok((window, mut cursor)) = windows.single_mut() {
         cursor.visible = screen.open;
@@ -468,6 +510,7 @@ fn toggle(
                 .chest_group
                 .map_or(0, ChestGroup::slot_count)
                 .div_ceil(9),
+            screen.cart.is_some(),
             &texture.container,
         );
     } else {
@@ -502,6 +545,7 @@ fn close(
     screen.chest = false;
     screen.chest_position = None;
     screen.chest_group = None;
+    screen.cart = None;
     for root in &roots {
         commands.entity(root).despawn();
     }
@@ -516,6 +560,7 @@ fn spawn(
     workbench: bool,
     furnace: bool,
     chest_rows: usize,
+    cart: bool,
     container: &Handle<Image>,
 ) {
     let chest = chest_rows > 0;
@@ -590,6 +635,8 @@ fn spawn(
                         font,
                         if chest_rows == 1 {
                             "Dispenser"
+                        } else if cart {
+                            "Minecart"
                         } else if chest_rows == 3 {
                             "Chest"
                         } else {
@@ -1764,6 +1811,12 @@ fn collect_open_inventory(
 
 fn read_chest_group_slots(chunks: &WorldChunks, group: ChestGroup) -> Vec<Option<ItemStack>> {
     let mut slots = vec![None; group.slot_count()];
+    if group.cart {
+        if let Some(open) = &chunks.open_cart {
+            slots.copy_from_slice(&open.slots);
+        }
+        return slots;
+    }
     if group.dispenser {
         if let Some(dispenser) = chunks.dispenser_at(group.first.0, group.first.1, group.first.2) {
             slots.copy_from_slice(&dispenser.slots);
@@ -1786,6 +1839,12 @@ fn write_chest_group_slots(
     group: ChestGroup,
     slots: &[Option<ItemStack>],
 ) {
+    if group.cart {
+        if let Some(open) = &mut chunks.open_cart {
+            open.slots.copy_from_slice(slots);
+        }
+        return;
+    }
     if group.dispenser {
         if let Some(dispenser) =
             chunks.dispenser_at_mut(group.first.0, group.first.1, group.first.2)

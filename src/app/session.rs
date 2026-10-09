@@ -324,6 +324,7 @@ struct WorldState<'w, 's> {
             With<DroppedItem>,
             With<FallingBlock>,
             With<PrimedTnt>,
+            With<crate::entity::minecart::Minecart>,
             With<Arrow>,
             With<Fireball>,
             With<LightningBolt>,

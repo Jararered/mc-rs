@@ -21,6 +21,8 @@ pub struct InventorySession {
     pub chest: bool,
     pub chest_position: Option<(i32, i32, i32)>,
     pub chest_group: Option<ChestGroup>,
+    /// The chest minecart behind `chest_group`, when it is a cart's.
+    pub cart: Option<Entity>,
     /// Gameplay wants whatever screen is open closed, as a charging portal
     /// does. The GUI closes it the way the player would.
     pub close_requested: bool,

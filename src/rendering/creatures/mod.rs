@@ -7,6 +7,7 @@
 //! between mobs, and per-mob brightness, hurt flashes, and creeper flashes
 //! ride in each box's `MeshTag`. Arrows and fireballs are in [`projectiles`].
 
+mod cart;
 pub mod models;
 mod projectiles;
 mod shading;
@@ -56,7 +57,7 @@ pub use shading::Pass;
 pub use shading::creature_tag;
 
 /// Skins with a flat color to stand in when the reference texture is absent.
-const SKINS: [(&str, [u8; 3]); 19] = [
+const SKINS: [(&str, [u8; 3]); 20] = [
     ("mob/pig.png", [237, 167, 175]),
     ("mob/saddle.png", [112, 72, 40]),
     ("mob/cow.png", [124, 93, 74]),
@@ -76,6 +77,7 @@ const SKINS: [(&str, [u8; 3]); 19] = [
     ("mob/pigzombie.png", [222, 150, 150]),
     ("gui/items.png", [180, 180, 180]),
     ("item/arrows.png", [156, 125, 82]),
+    ("item/cart.png", [127, 127, 127]),
 ];
 
 /// `EntitySheep.fleeceColorTable`, by wool color.
@@ -160,6 +162,8 @@ pub(super) fn plugin(app: &mut App) {
                 pose_creatures,
                 projectiles::add_projectile_models,
                 projectiles::pose_projectiles,
+                cart::add_cart_models,
+                cart::pose_carts,
             )
                 .chain()
                 .before(TransformSystems::Propagate)

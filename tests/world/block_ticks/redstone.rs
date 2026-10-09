@@ -372,6 +372,7 @@ fn powered_rail_launches_cart_away_from_a_solid_block() {
     use bevy::math::Vec3;
     use game::entity::minecart::Minecart;
     use game::entity::minecart::step_minecart;
+    use game::random::JavaRandom;
 
     let mut w = TestWorld::new(1);
     w.set(at(7, 64, 8), Block::Stone);
@@ -379,9 +380,10 @@ fn powered_rail_launches_cart_away_from_a_solid_block() {
         w.set_with_metadata(at(x, 64, 8), Block::PoweredRail, 9);
     }
     let mut cart = Minecart::default();
-    let mut center = Vec3::new(8.5, 64.35, 8.5);
+    let mut center = Vec3::new(8.5, 64.5, 8.5);
+    let mut rng = JavaRandom::new(1);
     for _ in 0..6 {
-        step_minecart(&mut cart, &mut center, &w.chunks);
+        step_minecart(&mut cart, &mut center, &w.chunks, &mut rng);
     }
     assert!(cart.motion.x > 0.01);
     assert!(center.x > 8.7);
@@ -628,10 +630,11 @@ fn a_north_east_curve_rejoins_as_a_south_east_curve() {
 }
 
 #[test]
-fn cart_follows_a_north_east_curve_at_full_speed() {
+fn cart_follows_a_north_east_curve_losing_only_friction() {
     use bevy::math::Vec3;
     use game::entity::minecart::Minecart;
     use game::entity::minecart::step_minecart;
+    use game::random::JavaRandom;
     let mut w = TestWorld::new(1);
     w.fill(at(5, 63, 5), at(11, 63, 11), Block::Stone);
     w.set_with_metadata(at(9, 64, 8), Block::Rail, 1);
@@ -640,13 +643,22 @@ fn cart_follows_a_north_east_curve_at_full_speed() {
     w.set_with_metadata(at(8, 64, 6), Block::Rail, 0);
     let mut cart = Minecart {
         motion: Vec3::new(-0.3, 0.0, 0.0),
+        ..Minecart::default()
     };
-    let mut center = Vec3::new(9.5, 64.35, 8.5);
+    let mut center = Vec3::new(9.5, 64.5, 8.5);
+    let mut rng = JavaRandom::new(1);
     for _ in 0..6 {
-        step_minecart(&mut cart, &mut center, &w.chunks);
+        step_minecart(&mut cart, &mut center, &w.chunks, &mut rng);
     }
     assert!(center.z < 8.0, "cart ended at {center}");
-    assert!(cart.motion.z < -0.28, "cart kept {}", cart.motion);
+    // An empty cart keeps its speed round a bend and loses 4% a tick.
+    let expected = 0.3 * 0.96f32.powi(6);
+    assert!(
+        (cart.motion.length() - expected).abs() < 0.01,
+        "cart kept {}",
+        cart.motion
+    );
+    assert!(cart.motion.z < -0.2, "cart kept {}", cart.motion);
 }
 
 #[test]

@@ -26,8 +26,14 @@ use crate::entity::drops::items::spawn_block_drop;
 use crate::entity::drops::items::spawn_chest_drops;
 use crate::entity::drops::items::spawn_thrown_item;
 use crate::entity::minecart::CART_SIZE;
+use crate::entity::minecart::Cargo;
+use crate::entity::minecart::CartKind;
+use crate::entity::minecart::FUEL_PER_COAL;
 use crate::entity::minecart::Minecart;
-use crate::entity::minecart::spawn_minecart;
+use crate::entity::minecart::break_cart;
+use crate::entity::minecart::spawn_cart;
+use crate::entity::mount::dismount;
+use crate::entity::mount::mount;
 use crate::entity::particles::block::BlockParticles;
 use crate::entity::projectiles::FIREBALL_SIZE;
 use crate::entity::projectiles::Fireball;
@@ -40,6 +46,7 @@ use crate::item::Item;
 use crate::item::ItemStack;
 use crate::item::tools::break_durability;
 use crate::item::tools::can_harvest;
+use crate::item::tools::damage_vs_entity;
 use crate::item::tools::is_hoe;
 use crate::physics::Aabb;
 use crate::physics::BLOCK_REACH;
@@ -59,7 +66,9 @@ use crate::world::block_ticks::BlockEvent;
 use crate::world::block_ticks::BlockTicks;
 use crate::world::block_ticks::behaviors::leaves::CHECK_DECAY;
 use crate::world::chunk::CHUNK_HEIGHT;
+use crate::world::chunk::ChestGroup;
 use crate::world::chunk::ChunkPosition;
+use crate::world::chunk::OpenCart;
 use crate::world::chunk::WorldChunks;
 use crate::world::chunk::remesh_chunks_touching;
 use crate::world::persistence::WorldPersistence;
@@ -109,6 +118,7 @@ pub(crate) fn interact_blocks(
     mut windows: Query<(&Window, &mut CursorOptions), With<PrimaryWindow>>,
     mut player: Query<
         (
+            Entity,
             &Transform,
             &EntitySize,
             &CollisionState,
@@ -127,11 +137,11 @@ pub(crate) fn interact_blocks(
         Option<ResMut<WorldPersistence>>,
         Option<ResMut<BlockTicks>>,
     ),
-    (mut particles, mut mobs, mut fireballs, carts): (
+    (mut particles, mut mobs, mut fireballs, mut carts): (
         Option<ResMut<BlockParticles>>,
         Query<MobTarget, Without<Player>>,
         Query<(Entity, &mut Fireball, &Transform), Without<Player>>,
-        Query<(Entity, &Transform), With<Minecart>>,
+        Query<(Entity, &Transform, &mut Minecart, Option<&Cargo>), Without<Player>>,
     ),
     mut focus: ResMut<BlockFocus>,
     (mut state, frame): (Local<BlockInteractState>, Res<bevy::diagnostic::FrameCount>),
@@ -170,8 +180,17 @@ pub(crate) fn interact_blocks(
     }
     let click_carried = state.wait_for_release;
 
-    let Ok((transform, size, collision, mut hotbar, mut inventory, velocity, sleep, mut health)) =
-        player.single_mut()
+    let Ok((
+        player_entity,
+        transform,
+        size,
+        collision,
+        mut hotbar,
+        mut inventory,
+        velocity,
+        sleep,
+        mut health,
+    )) = player.single_mut()
     else {
         *focus = BlockFocus::default();
         return;
@@ -247,9 +266,9 @@ pub(crate) fn interact_blocks(
                     let aabb = FIREBALL_SIZE.aabb(transform.translation);
                     (Pointed::Fireball(entity), bordered(aabb, FIREBALL_BORDER))
                 }))
-                .chain(carts.iter().map(|(entity, transform)| {
+                .chain(carts.iter().map(|(entity, transform, ..)| {
                     let aabb = CART_SIZE.aabb(transform.translation);
-                    (Pointed::Minecart(entity), bordered(aabb, 0.0))
+                    (Pointed::Minecart(entity), bordered(aabb, MOB_BORDER))
                 })),
         );
         if let Some(pointed) = pointed {
@@ -276,23 +295,82 @@ pub(crate) fn interact_blocks(
                         fireball.deflect(look);
                     }
                 }
-                // `EntityMinecart.attackEntityFrom`: a punch breaks the cart
-                // and leaves a minecart item.
-                Pointed::Minecart(target) => {
-                    if left_click && let Ok((_, cart)) = carts.get(target) {
-                        let position = cart.translation;
-                        commands.entity(target).despawn();
-                        if let Ok(stack) = ItemStack::new(Item::Minecart, 1) {
-                            spawn_block_drop(
-                                &mut commands,
-                                &mut item_rng,
-                                position.floor().as_ivec3(),
-                                stack,
-                            );
-                        }
+                Pointed::Minecart(target) if left_click => {
+                    // `EntityMinecart.attackEntityFrom`: the blow's damage
+                    // (a point more when falling) shakes the cart, and enough
+                    // of it breaks the cart.
+                    let amount = i32::from(damage_vs_entity(hotbar.selected_stack()))
+                        + i32::from(velocity.0.y < 0.0);
+                    if let Ok((_, at, mut cart, cargo)) = carts.get_mut(target)
+                        && cart.hurt(amount)
+                    {
+                        let position = at.translation;
+                        break_cart(&mut commands, &mut item_rng, target, &cart, position, cargo);
                         if let Some(persistence) = persistence.as_deref_mut() {
                             persistence
                                 .mark_dirty(ChunkPosition::from_world(position.x, position.z));
+                        }
+                    }
+                }
+                Pointed::Minecart(target) => {
+                    // `EntityMinecart.interact`.
+                    if let Ok((_, at, mut cart, cargo)) = carts.get_mut(target) {
+                        match cart.kind {
+                            CartKind::Empty => {
+                                // Riding again steps off, as `mountEntity` does.
+                                if cart.rider == Some(player_entity) {
+                                    dismount(&mut commands, player_entity);
+                                } else {
+                                    mount(&mut commands, player_entity, target);
+                                }
+                            }
+                            CartKind::Chest => {
+                                close_crafting_session(
+                                    &mut commands,
+                                    transform,
+                                    &mut item_rng,
+                                    &mut hotbar,
+                                    &mut inventory,
+                                    &mut workbench,
+                                );
+                                let cell = at.translation.floor().as_ivec3();
+                                chunks.open_cart = Some(OpenCart {
+                                    cart: target,
+                                    slots: cargo.map_or([None; 27], |cargo| cargo.0),
+                                });
+                                inventory_screen.open = true;
+                                inventory_screen.workbench = false;
+                                inventory_screen.furnace = false;
+                                inventory_screen.furnace_position = None;
+                                inventory_screen.chest = true;
+                                inventory_screen.chest_position = Some((cell.x, cell.y, cell.z));
+                                inventory_screen.chest_group = Some(ChestGroup {
+                                    first: (cell.x, cell.y, cell.z),
+                                    second: None,
+                                    dispenser: false,
+                                    cart: true,
+                                });
+                                inventory_screen.cart = Some(target);
+                                if let Ok((_, mut cursor)) = windows.single_mut() {
+                                    cursor.visible = true;
+                                    cursor.grab_mode = CursorGrabMode::None;
+                                }
+                            }
+                            CartKind::Furnace => {
+                                // Coal fuels it, and any click shoves it away
+                                // from the player.
+                                if hotbar
+                                    .selected_stack()
+                                    .is_some_and(|stack| stack.item() == Item::Coal)
+                                {
+                                    hotbar.take_selected(1);
+                                    cart.fuel += FUEL_PER_COAL;
+                                }
+                                cart.push = Vec2::new(
+                                    at.translation.x - transform.translation.x,
+                                    at.translation.z - transform.translation.z,
+                                );
+                            }
                         }
                     }
                 }
@@ -319,6 +397,7 @@ pub(crate) fn interact_blocks(
         inventory_screen.chest = false;
         inventory_screen.chest_position = None;
         inventory_screen.chest_group = None;
+        inventory_screen.cart = None;
         if let Ok((_, mut cursor)) = windows.single_mut() {
             cursor.visible = true;
             cursor.grab_mode = CursorGrabMode::None;
@@ -398,6 +477,7 @@ pub(crate) fn interact_blocks(
         inventory_screen.chest = false;
         inventory_screen.chest_position = None;
         inventory_screen.chest_group = None;
+        inventory_screen.cart = None;
         workbench.position = Some((hit.x, hit.y, hit.z));
         if let Ok((_, mut cursor)) = windows.single_mut() {
             cursor.visible = true;
@@ -532,12 +612,12 @@ pub(crate) fn interact_blocks(
                 hit.block,
                 Block::Rail | Block::PoweredRail | Block::DetectorRail
             )
-            && hotbar
+            && let Some(kind) = hotbar
                 .selected_stack()
-                .is_some_and(|stack| stack.item() == Item::Minecart)
+                .and_then(|stack| CartKind::from_item(stack.item()))
         {
             // `ItemMinecart.onItemUse`: a cart on the clicked rail.
-            spawn_minecart(&mut commands, IVec3::new(hit.x, hit.y, hit.z));
+            spawn_cart(&mut commands, IVec3::new(hit.x, hit.y, hit.z), kind);
             let selected = hotbar.selected;
             hotbar.slots[selected] = hotbar.slots[selected].and_then(|stack| {
                 ItemStack::with_data(stack.item(), stack.count() - 1, stack.data()).ok()

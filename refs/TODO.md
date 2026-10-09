@@ -30,13 +30,15 @@ The items are registered, craftable and stack correctly, but right-click does no
 - **Records and jukebox** (`ItemRecord`, `BlockJukeBox`, `TileEntityRecordPlayer`): no insert, eject or playback.
 - **Compass, clock and map** (`ItemMap`, `ItemMapBase`, `RenderItem` icon animation): no animated compass or clock
   icon, and no map item, map data or map rendering.
-- **Chest and furnace minecarts**: both are craftable, but nothing places them and no cart carries a chest or a furnace.
 
 ## Riding
 
-- **Minecart riding** (`EntityMinecart.interact`): the cart follows rails but the player cannot board it, ride it,
-  collide with it, or break it by hitting it.
-- **Saddled pigs** (`EntityPig.interact`, `Entity.mountEntity`): saddling works, mounting and steering do not.
+- **Saddled pigs** (`EntityPig.interact`, `Entity.mountEntity`): saddling works, mounting and steering do not. The
+  mount mechanism (`entity/mount.rs`: `Mounted`, `snap_riders`, `release_orphans`) is general; a pig needs its own
+  `getMountedYOffset` (`height * 0.75`, `EntityPig`) and steering from the rider's look.
+- **Boats** (see above) can reuse the same mount.
+- **Minecart leftovers**: no furnace-cart smoke (`largesmoke`, needs particles), no cart sounds (needs audio), no
+  rider yaw drift (`Entity.updateRidden`), and no lying/sitting third-person rider pose (needs the F5 camera).
 
 ## Mobs and combat
 

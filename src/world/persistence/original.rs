@@ -20,6 +20,8 @@
 //! dropped, which is also what Beta does with ids it does not know. Falling
 //! blocks and primed TNT in flight are not written, so one caught mid-fall or
 //! mid-fuse by a save is lost with its block; the native format keeps them.
+//! Minecarts are written as Beta's `Minecart` entity (type, a furnace cart's
+//! push and fuel, a chest cart's items); who rides one is not kept.
 //! Neither format keeps arrows or fireballs. The format
 //! is described by `ChunkLoader`, `McRegionChunkLoader`, `RegionFile`, `WorldInfo`
 //! and `NBTBase` in the reference source.
@@ -58,6 +60,11 @@ use super::StoredStack;
 use super::WorldManifest;
 use crate::app::settings::Difficulty;
 use crate::block::blocks::Block;
+use crate::entity::SavedBody;
+use crate::entity::SavedSlot;
+use crate::entity::minecart::CARGO_SLOTS;
+use crate::entity::minecart::Cargo;
+use crate::entity::minecart::CartKind;
 use crate::entity::mobs::Mob;
 use crate::entity::mobs::MobRecord;
 use crate::entity::mobs::MobSpawner;
@@ -288,6 +295,64 @@ fn entity_base(id: &str, position: [f32; 3], motion: [f32; 3], yaw: f32) -> Comp
     entity
 }
 
+/// `EntityMinecart.writeEntityToNBT`: the type, then a furnace cart's push and
+/// fuel or a chest cart's items. Riding and damage are not kept.
+fn minecart_entity(body: &SavedBody) -> Option<Compound> {
+    let SavedBody::Minecart {
+        center,
+        motion,
+        kind,
+        fuel,
+        push,
+        cargo,
+    } = body
+    else {
+        return None;
+    };
+    let mut entity = entity_base("Minecart", *center, *motion, 0.0);
+    entity.put_int("Type", kind.type_id());
+    match kind {
+        CartKind::Empty => {}
+        CartKind::Furnace => {
+            entity.put_double("PushX", f64::from(push[0]));
+            entity.put_double("PushZ", f64::from(push[1]));
+            entity.put_short(
+                "Fuel",
+                (*fuel).clamp(i32::from(i16::MIN), i32::from(i16::MAX)) as i16,
+            );
+        }
+        CartKind::Chest => {
+            entity.put_list("Items", items_list(&SavedSlot::unpack(cargo).0));
+        }
+    }
+    Some(entity)
+}
+
+fn read_minecart_entity(entity: &Compound, position: [f64; 3]) -> SavedBody {
+    let kind = CartKind::from_type_id(entity.int("Type"));
+    let motion = entity.numbers::<3>("Motion").unwrap_or([0.0; 3]);
+    SavedBody::Minecart {
+        center: position.map(|value| value as f32),
+        motion: motion.map(|value| value as f32),
+        kind,
+        fuel: if kind == CartKind::Furnace {
+            i32::from(entity.short("Fuel"))
+        } else {
+            0
+        },
+        push: if kind == CartKind::Furnace {
+            [entity.double("PushX") as f32, entity.double("PushZ") as f32]
+        } else {
+            [0.0; 2]
+        },
+        cargo: if kind == CartKind::Chest {
+            SavedSlot::pack(&Cargo(read_items::<CARGO_SLOTS>(entity)))
+        } else {
+            Vec::new()
+        },
+    }
+}
+
 fn item_entity(item: &ChunkDroppedItem) -> Compound {
     let mut entity = entity_base("Item", item.position, item.motion, 0.0);
     entity.put_short("Fire", item.fire);
@@ -501,6 +566,13 @@ impl ChunkSnapshot {
                 .iter()
                 .map(|record| Tag::Compound(mob_entity(record))),
         );
+        entities.extend(
+            chunk
+                .saved_bodies()
+                .iter()
+                .filter_map(minecart_entity)
+                .map(Tag::Compound),
+        );
         level.put_list("Entities", entities);
 
         let tile_entity = |id: &str, index: usize| {
@@ -673,12 +745,14 @@ fn decode_chunk(
 
     let mut items = Vec::new();
     let mut mobs = Vec::new();
+    let mut carts = Vec::new();
     for entity in level.compounds("Entities") {
         let Some(position) = entity.numbers::<3>("Pos") else {
             continue;
         };
         match entity.string("id") {
             "Item" => items.extend(read_item_entity(entity, position)),
+            "Minecart" => carts.push(read_minecart_entity(entity, position)),
             id => {
                 if let Some(kind) = mob_type(id) {
                     mobs.extend(read_mob_entity(entity, kind, position));
@@ -687,6 +761,7 @@ fn decode_chunk(
         }
     }
     chunk.set_mob_records(mobs);
+    chunk.set_saved_bodies(carts);
 
     Some(GeneratedChunk {
         heightmap: Heightmap::from_chunk(&chunk),

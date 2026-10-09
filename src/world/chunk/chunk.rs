@@ -5,6 +5,7 @@ use bevy::platform::collections::HashMap as FastHashMap;
 use bevy::prelude::Resource;
 
 use crate::block::blocks::Block;
+use crate::item::ItemStack;
 use crate::world::biome::Climate;
 use crate::world::chest::Chest;
 use crate::world::chunk::GeneratedChunk;
@@ -30,6 +31,10 @@ pub struct ChestGroup {
     pub second: Option<(i32, i32, i32)>,
     /// A single nine-slot dispenser uses the same container GUI path.
     pub dispenser: bool,
+    /// A chest minecart: its slots are checked out into
+    /// [`WorldChunks::open_cart`] while the screen is open, and `first` is
+    /// the cell the cart was in.
+    pub cart: bool,
 }
 
 impl ChestGroup {
@@ -40,6 +45,8 @@ impl ChestGroup {
     pub const fn slot_count(self) -> usize {
         if self.dispenser {
             9
+        } else if self.cart {
+            27
         } else if self.is_double() {
             54
         } else {
@@ -468,8 +475,18 @@ impl Default for Chunk {
     }
 }
 
+/// The contents of the chest cart whose screen is open.
+#[derive(Clone, Debug)]
+pub struct OpenCart {
+    pub cart: bevy::prelude::Entity,
+    pub slots: [Option<ItemStack>; 27],
+}
+
 #[derive(Resource, Default)]
 pub struct WorldChunks {
+    /// The chest cart being looked into, if any. The cart keeps its own
+    /// cargo; the screen edits this copy and the cart is updated from it.
+    pub open_cart: Option<OpenCart>,
     /// Every `block_at` probes this map, so it uses Bevy's fixed foldhash
     /// rather than SipHash. That also keeps iteration order the same between
     /// runs.
@@ -682,6 +699,7 @@ impl WorldChunks {
                 first: (x, y, z),
                 second: None,
                 dispenser: true,
+                cart: false,
             })
         } else {
             self.chest_group_at(x, y, z)
@@ -732,6 +750,7 @@ impl WorldChunks {
                 first: (x, y, z),
                 second: None,
                 dispenser: false,
+                cart: false,
             });
         };
 
@@ -766,6 +785,7 @@ impl WorldChunks {
             first,
             second: Some(second),
             dispenser: false,
+            cart: false,
         })
     }
 

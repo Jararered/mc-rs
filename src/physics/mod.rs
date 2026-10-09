@@ -490,6 +490,7 @@ fn integrate_player(
             Option<&mut PlayerSurvival>,
             Option<&mut crate::player::portal::PortalTravel>,
             Option<&crate::player::sleep::PlayerSleep>,
+            Option<&crate::entity::mount::Mounted>,
         ),
         With<Player>,
     >,
@@ -517,8 +518,18 @@ fn integrate_player(
         mut survival,
         mut portal,
         sleep,
+        mounted,
     ) in &mut players
     {
+        // A rider goes where its vehicle goes (`updateRidden`); the vehicle
+        // system puts it there.
+        if mounted.is_some() {
+            velocity.0 = Vec3::ZERO;
+            if let Some(survival) = survival.as_deref_mut() {
+                survival.fall_distance = 0.0;
+            }
+            continue;
+        }
         // `isMovementBlocked`: a sleeper lies where the bed put them.
         if sleep.is_some_and(|sleep| sleep.sleeping) {
             velocity.0 = Vec3::ZERO;

@@ -120,6 +120,10 @@ impl Compound {
         self.put(key, Tag::Float(value));
     }
 
+    pub fn put_double(&mut self, key: &str, value: f64) {
+        self.put(key, Tag::Double(value));
+    }
+
     pub fn put_string(&mut self, key: &str, value: &str) {
         self.put(key, Tag::String(value.to_owned()));
     }
@@ -172,6 +176,10 @@ impl Compound {
 
     pub fn float(&self, key: &str) -> f32 {
         self.get(key).and_then(Tag::as_f64).unwrap_or(0.0) as f32
+    }
+
+    pub fn double(&self, key: &str) -> f64 {
+        self.get(key).and_then(Tag::as_f64).unwrap_or(0.0)
     }
 
     pub fn string(&self, key: &str) -> &str {

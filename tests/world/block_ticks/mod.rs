@@ -7,6 +7,7 @@ mod fire;
 mod fixtures;
 mod fluids;
 mod leaves;
+mod minecart;
 mod misc;
 mod plants;
 mod portal;

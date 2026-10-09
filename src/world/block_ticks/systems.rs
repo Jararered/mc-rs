@@ -17,6 +17,7 @@ use crate::entity::explosion::PrimedTnt;
 use crate::entity::falling_block;
 use crate::entity::minecart;
 use crate::entity::minecart::Minecart;
+use crate::entity::mount;
 use crate::entity::projectiles::spawn_arrow;
 use crate::item::Item;
 use crate::physics::Aabb;
@@ -54,13 +55,22 @@ impl Plugin for BlockTicksPlugin {
                 Update,
                 (
                     minecart::tick_minecarts,
+                    minecart::bump_carts,
                     run_block_ticks,
                     falling_block::tick_falling_blocks,
                     apply_tick_effects,
-                    minecart::sync_minecart_rendering,
                 )
                     .chain()
                     .in_set(BlockTickSet)
+                    .run_if(block_ticks_should_run),
+            )
+            .add_systems(
+                Update,
+                (mount::snap_riders, mount::release_orphans)
+                    .chain()
+                    .after(BlockTickSet)
+                    .after(minecart::tick_minecarts)
+                    .after(crate::entity::creature::tick_creatures)
                     .run_if(block_ticks_should_run),
             );
     }

@@ -274,7 +274,8 @@ instead of Java's runtime-seeded `World.rand`.
   blocks keep their pitch but make no sound until audio is implemented.
   Plates and detector rails read a per-tick snapshot of nearby bodies
   (`BlockTicks::set_occupants`); arrows do not trigger wooden plates yet.
-  Minecarts (`entity::minecart`) follow rails and are saved with their chunk;
-  chest and furnace carts do not exist.
+  Minecarts (`entity::minecart`) are a transcription of `EntityMinecart.onUpdate`
+  (empty, chest, and furnace carts), are saved with their chunk, and can be
+  ridden by the player or a creature (`entity::mount`).
 - Presentation-only hooks: `randomDisplayTick`, redstone ore sparkles, lava
   fizz and smoke, and fluid sounds.

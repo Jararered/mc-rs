@@ -221,6 +221,7 @@ fn tick_player_survival(
     environment: Environment,
     mut player: Query<
         (
+            Entity,
             &mut Transform,
             &mut PlayerHealth,
             &mut PlayerCombat,
@@ -243,6 +244,7 @@ fn tick_player_survival(
     mut session: Option<ResMut<WorldSession>>,
 ) {
     let Ok((
+        player_entity,
         mut transform,
         mut health,
         mut combat,
@@ -331,6 +333,8 @@ fn tick_player_survival(
                         }
                         interpolation.previous_position = transform.translation;
                     }
+                    // The new body is not on the old one's cart.
+                    crate::entity::mount::detach(&mut commands, player_entity);
                     sleep.sleeping = false;
                     sleep.timer = 0;
                     velocity.0 = Vec3::ZERO;

@@ -13,6 +13,10 @@ use flate2::read::ZlibDecoder;
 use game::app::settings::Difficulty;
 use game::block::blocks::Block;
 use game::block::direction::Direction;
+use game::entity::SavedBody;
+use game::entity::SavedSlot;
+use game::entity::minecart::Cargo;
+use game::entity::minecart::CartKind;
 use game::entity::mobs::Mob;
 use game::entity::mobs::MobRecord;
 use game::entity::mobs::MobSpawner;
@@ -183,6 +187,35 @@ fn busy_chunk(position: ChunkPosition) -> GeneratedChunk {
         },
     ]);
 
+    let mut cargo = Cargo::default();
+    cargo.0[3] = Some(stack(Item::Stick, 5));
+    chunk.set_saved_bodies(vec![
+        SavedBody::Minecart {
+            center: [
+                position.x as f32 * 16.0 + 6.5,
+                64.5,
+                position.z as f32 * 16.0 + 6.5,
+            ],
+            motion: [0.25, 0.0, 0.0],
+            kind: CartKind::Chest,
+            fuel: 0,
+            push: [0.0; 2],
+            cargo: SavedSlot::pack(&cargo),
+        },
+        SavedBody::Minecart {
+            center: [
+                position.x as f32 * 16.0 + 7.5,
+                64.5,
+                position.z as f32 * 16.0 + 6.5,
+            ],
+            motion: [0.0; 3],
+            kind: CartKind::Furnace,
+            fuel: 600,
+            push: [1.0, 0.0],
+            cargo: Vec::new(),
+        },
+    ]);
+
     generated.items.push(ChunkDroppedItem {
         stack: stack(Item::Stick, 3),
         position: [
@@ -255,6 +288,33 @@ fn assert_busy_chunk_loaded(
     assert!(wolf.mob.tamed && wolf.mob.sitting && !wolf.mob.angry);
     assert_eq!(wolf.mob.owner.as_deref(), Some("Steve"));
     assert!((wolf.velocity[0] - 0.1).abs() < 0.001);
+
+    let carts = loaded.chunk.saved_bodies();
+    assert_eq!(carts.len(), 2);
+    let cart = |wanted: CartKind| {
+        carts.iter().find_map(|body| match body {
+            SavedBody::Minecart {
+                center,
+                motion,
+                kind,
+                fuel,
+                push,
+                cargo,
+            } if *kind == wanted => Some((*center, *motion, *fuel, *push, cargo.clone())),
+            _ => None,
+        })
+    };
+    let (center, motion, _, _, cargo) = cart(CartKind::Chest).expect("chest cart");
+    assert!((center[0] - (position.x as f32 * 16.0 + 6.5)).abs() < 0.001);
+    assert!((motion[0] - 0.25).abs() < 0.001);
+    assert_eq!(
+        SavedSlot::unpack(&cargo).0[3],
+        Some(stack(Item::Stick, 5)),
+        "cargo"
+    );
+    let (_, _, fuel, push, cargo) = cart(CartKind::Furnace).expect("furnace cart");
+    assert_eq!((fuel, push), (600, [1.0, 0.0]));
+    assert!(cargo.is_empty());
 
     assert_eq!(loaded.items.len(), 1);
     let item = &loaded.items[0];

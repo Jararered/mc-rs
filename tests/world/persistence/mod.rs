@@ -16,6 +16,7 @@ use bevy::prelude::*;
 use game::block::blocks::Block;
 use game::block::direction::Direction;
 use game::entity::SavedBody;
+use game::entity::minecart::CartKind;
 use game::entity::mobs::Mob;
 use game::entity::mobs::MobRecord;
 use game::entity::mobs::MobSpawner;
@@ -1366,9 +1367,29 @@ fn dispenser_inventory_and_note_state_round_trip_with_their_blocks() {
 #[test]
 fn a_saved_minecart_returns_with_its_speed() {
     let body = SavedBody::Minecart {
-        center: [8.5, 64.35, 8.5],
+        center: [8.5, 64.5, 8.5],
         motion: [0.2, 0.0, 0.0],
+        kind: CartKind::Furnace,
+        fuel: 900,
+        push: [1.0, 0.0],
+        cargo: Vec::new(),
     };
     let json = serde_json::to_string(&body).unwrap();
     assert_eq!(serde_json::from_str::<SavedBody>(&json).unwrap(), body);
+}
+
+#[test]
+fn a_cart_saved_before_chest_and_furnace_carts_loads_as_an_empty_one() {
+    let json = r#"{"Minecart":{"center":[8.5,64.5,8.5],"motion":[0.2,0.0,0.0]}}"#;
+    assert_eq!(
+        serde_json::from_str::<SavedBody>(json).unwrap(),
+        SavedBody::Minecart {
+            center: [8.5, 64.5, 8.5],
+            motion: [0.2, 0.0, 0.0],
+            kind: CartKind::Empty,
+            fuel: 0,
+            push: [0.0, 0.0],
+            cargo: Vec::new(),
+        }
+    );
 }

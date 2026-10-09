@@ -98,7 +98,17 @@ impl Boat {
 
     /// `updateRiderPosition`: where the rider sits, from the boat's centre.
     pub fn seat(&self) -> Vec3 {
-        let (sin, cos) = self.yaw.to_radians().sin_cos();
+        Self::seat_at(self.yaw)
+    }
+
+    /// The seat as it was at the start of the last tick, which the rider's
+    /// view is drawn from on the way to [`Self::seat`].
+    pub fn previous_seat(&self) -> Vec3 {
+        Self::seat_at(self.prev_yaw)
+    }
+
+    fn seat_at(yaw: f32) -> Vec3 {
+        let (sin, cos) = yaw.to_radians().sin_cos();
         Vec3::new(cos * SEAT_DISTANCE, MOUNTED_OFFSET, sin * SEAT_DISTANCE)
     }
 }

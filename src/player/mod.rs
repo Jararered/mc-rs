@@ -105,6 +105,10 @@ impl Plugin for PlayerPlugin {
                     // `partial`; running first pairs them one tick apart and
                     // the roll steps back and forth on every tick.
                     .after(tick_player_combat)
+                    // A rider's position is its vehicle's, written after the
+                    // vehicle's tick; reading it first draws the view a tick
+                    // behind on every frame that ticks.
+                    .after(crate::entity::mount::snap_riders)
                     .run_if(in_state(AppScreen::Playing)),
             )
             .add_plugins((survival::SurvivalPlugin, sleep::SleepPlugin));

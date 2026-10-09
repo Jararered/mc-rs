@@ -159,16 +159,20 @@ pub(crate) fn snap_riders(
         };
         let size = size.copied().unwrap_or_default();
         let vehicle_size = vehicle_size.copied().unwrap_or_default();
-        let lift = seat_offset(cart, boat, &vehicle_size) + Vec3::Y * rider_offset(&size, player);
+        let own = Vec3::Y * rider_offset(&size, player);
+        let lift = seat_offset(cart, boat, &vehicle_size) + own;
+        // A turning boat swings its seat; the rider is drawn from where the
+        // seat was a tick ago, as the boat is.
+        let previous_lift = boat.map_or(lift, |boat| boat.previous_seat() + own);
         transform.translation = vehicle.translation + lift;
         if let Some(mut previous) = previous {
-            previous.0 = vehicle_previous.0 + lift;
+            previous.0 = vehicle_previous.0 + previous_lift;
         }
         if let Some(mut velocity) = velocity {
             velocity.0 = Vec3::ZERO;
         }
         if let Some(mut interpolation) = interpolation {
-            interpolation.previous_position = vehicle_previous.0 + lift;
+            interpolation.previous_position = vehicle_previous.0 + previous_lift;
         }
     }
 }

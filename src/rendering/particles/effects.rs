@@ -231,6 +231,33 @@ impl EffectParticles {
         }
     }
 
+    /// `EntityBoat.onUpdate`'s wake: splashes along the hull once it moves
+    /// faster than 0.15 blocks a tick. `yaw` is the boat's heading in degrees.
+    pub fn boat_wake(&mut self, center: Vec3, yaw: f32, speed: f32, motion: Vec3) {
+        if speed <= 0.15 {
+            return;
+        }
+        let (sin, cos) = yaw.to_radians().sin_cos();
+        let mut index = 0.0;
+        while index < 1.0 + speed * 60.0 {
+            index += 1.0;
+            let along = self.random.next_float() * 2.0 - 1.0;
+            let side = (self.random.next_int(2) as f32 * 2.0 - 1.0) * 0.7;
+            let (x, z) = if self.random.next_int(2) == 0 {
+                (
+                    center.x - cos * along * 0.8 + sin * side,
+                    center.z - sin * along * 0.8 - cos * side,
+                )
+            } else {
+                (
+                    center.x + cos + sin * along * 0.7,
+                    center.z + sin - cos * along * 0.7,
+                )
+            };
+            self.spawn(FxKind::Splash, Vec3::new(x, center.y - 0.125, z), motion);
+        }
+    }
+
     /// `EntityLiving.onEntityUpdate`'s last gasp: eight bubbles round the
     /// body as it takes a drowning hit.
     pub fn drown(&mut self, position: Vec3, motion: Vec3) {

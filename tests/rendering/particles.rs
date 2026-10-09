@@ -581,3 +581,18 @@ fn torches_furnaces_and_portals_make_display_particles() {
         assert_eq!(display_count(&chunks, 200), 0, "{block:?} should be quiet");
     }
 }
+
+#[test]
+fn a_fast_boat_throws_a_wake_and_a_slow_one_does_not() {
+    let mut particles = EffectParticles::default();
+    particles.boat_wake(Vec3::new(8.0, 64.0, 8.0), 90.0, 0.10, Vec3::ZERO);
+    assert_eq!(particles.active_count(), 0);
+    // 1 + 0.3 * 60 = 19 splashes at a top speed of 0.3.
+    particles.boat_wake(
+        Vec3::new(8.0, 64.0, 8.0),
+        90.0,
+        0.30,
+        Vec3::new(0.3, 0.0, 0.0),
+    );
+    assert_eq!(particles.active_count(), 19);
+}

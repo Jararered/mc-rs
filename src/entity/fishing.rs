@@ -9,7 +9,7 @@
 //!
 //! Beta never records which block a bobber struck, so one that has landed in
 //! a block stays there for its full minute even if the block is dug out. The
-//! bite's splash sound and its bubble and splash particles are not played.
+//! bite's splash sound is not played.
 
 use bevy::prelude::*;
 
@@ -39,6 +39,7 @@ use crate::player::Player;
 use crate::player::PlayerHealth;
 use crate::random::ItemRng;
 use crate::random::JavaRandom;
+use crate::rendering::particles::effects::EffectParticles;
 use crate::world::biome::Biome;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::ChunkPosition;
@@ -244,6 +245,7 @@ pub(crate) fn tick_bobbers(
         ),
         Without<Player>,
     >,
+    mut particles: Option<ResMut<EffectParticles>>,
 ) {
     let ticks = tick.ticks_this_frame();
     let raining = environment.is_raining();
@@ -368,6 +370,14 @@ pub(crate) fn tick_bobbers(
                             // splash particles: six of each.
                             for _ in 0..30 {
                                 bobber.rng.next_float();
+                            }
+                            if let Some(particles) = particles.as_deref_mut() {
+                                particles.water_entry(
+                                    position,
+                                    movement.aabb.min.y.floor(),
+                                    BOBBER_SIZE.width,
+                                    bobber.motion,
+                                );
                             }
                         }
                     }

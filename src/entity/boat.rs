@@ -29,6 +29,7 @@ use crate::physics::water_within;
 use crate::player::Player;
 use crate::player::PlayerMovementInput;
 use crate::random::ItemRng;
+use crate::rendering::particles::effects::EffectParticles;
 use crate::world::block_ticks::BlockTicks;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
@@ -447,6 +448,7 @@ pub(crate) fn tick_boats(
         Without<Player>,
     >,
     riders: Query<(&Transform, &PlayerMovementInput), With<Player>>,
+    mut particles: Option<ResMut<EffectParticles>>,
     mut rng: Local<ItemRng>,
     mut order: Local<Vec<Entity>>,
     mut wrecked: Local<Vec<Entity>>,
@@ -491,6 +493,13 @@ pub(crate) fn tick_boats(
             let mut center = transform.translation;
             let step = step_boat(&mut boat, &mut center, push, rules, &chunks);
             transform.translation = center;
+            if !step.wrecked
+                && let Some(particles) = particles.as_deref_mut()
+            {
+                // The speed Beta measures is before the 0.99 drag.
+                let speed = boat.motion.xz().length() / 0.99;
+                particles.boat_wake(center, boat.yaw, speed, boat.motion);
+            }
             if step.wrecked {
                 break_boat(&mut commands, &mut rng, entity, seat.rider, center);
                 wrecked.push(entity);

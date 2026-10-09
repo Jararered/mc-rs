@@ -26,7 +26,7 @@ The items are registered, craftable and stack correctly, but right-click does no
 
 ## Riding
 
-- **Boat leftovers** (`EntityBoat`): no `splash` particles from a fast boat (`EntityBoat`; particles now exist, the call is not wired), and a boat is not
+- **Boat leftovers** (`EntityBoat`): and a boat is not
   solid to other entities (`getCollisionBox`), so nothing can stand on one.
 - **Pig leftovers**: the `flyPig` achievement (needs achievements). Steering is the Pig Steering feature, not Beta.
 - **Portals while riding**: a mounted player never touches blocks, so a rider cannot charge a portal; Beta
@@ -54,8 +54,7 @@ jukebox discs, and the volume options. Sound assets must come from the player's 
 
 Smoke, flames, lava pops, redstone dust, portal swirls, explosion puffs, bubbles, splashes, hearts and note
 particles are implemented (`rendering/particles/`). Still missing: the slime drops (`EntitySlimeFX`) and the
-`snowballpoof` burst of a snowball or egg (both item-sprite particles rather than `particles.png`), the fishing-bite
-and boat splashes, the wolf shaking spray (wolves do not shake dry yet), and the `spawnExplosionParticle` puffs when
+`snowballpoof` burst of a snowball or egg (both item-sprite particles rather than `particles.png`), the wolf shaking spray (wolves do not shake dry yet), and the `spawnExplosionParticle` puffs when
 a spawner releases a mob. Creative and spectator players make no water splash.
 
 ## Projectile leftovers

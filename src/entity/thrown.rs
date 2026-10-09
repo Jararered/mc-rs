@@ -41,6 +41,8 @@ use crate::player::Player;
 use crate::player::PlayerHealth;
 use crate::random::ItemRng;
 use crate::random::JavaRandom;
+use crate::rendering::particles::effects::EffectParticles;
+use crate::rendering::particles::effects::FxKind;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
 use crate::world::difficulty::Difficulty;
@@ -191,6 +193,7 @@ pub(crate) fn tick_thrown(
         With<Player>,
     >,
     player_entity: Query<Entity, With<Player>>,
+    mut particles: Option<ResMut<EffectParticles>>,
     mut loot: Local<ItemRng>,
     mut rng: Local<ProjectileRandom>,
     mut spare_armor: Local<[Option<ItemStack>; 4]>,
@@ -283,6 +286,11 @@ pub(crate) fn tick_thrown(
             position += ball.motion;
             ball.yaw = heading_angles(ball.motion).0;
             let drag = if water_movement(THROWN_SIZE.aabb(position), &chunks).0 {
+                if let Some(particles) = particles.as_deref_mut() {
+                    for _ in 0..4 {
+                        particles.spawn(FxKind::Bubble, position - ball.motion * 0.25, ball.motion);
+                    }
+                }
                 0.8
             } else {
                 0.99

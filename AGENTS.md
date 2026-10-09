@@ -10,6 +10,7 @@ Compatibility with original Minecraft Beta 1.7.3 worlds and servers is a **secon
 - `refs/mc_b1.7.3_release` is a nested git repo recorded as a gitlink with no `.gitmodules`, so it may be missing in a fresh clone; `refs/` is otherwise not ignored.
 - `.../1.7.3-LTS/jars/world` (server, seed `-5779659068535663308`) and `.../jars/saves/New World` (client) are worlds the real game generated, in McRegion format. They are the ground truth for generation output; `tests/world/generation/beta_reference.rs` pins chunks from the server world. Both ran briefly after generating, so gravel has fallen and springs have flowed.
 - `docs/PLAN.md` is an aspirational layout sketch; this file and the code are authoritative.
+- `CHANGELOG.md` tracks player-visible changes as a checklist to test in game, under Blocks, Items, Mobs and Generation, each split into Additions, Interactions and Fixes. Add to its Unreleased entry with every gameplay change.
 - `docs/BLOCK_TICKS.md` explains the block tick system and how to give a block update behavior. Read it before adding or changing any block that flows, falls, grows, decays, or reacts to its neighbors.
 - The feature/settings workflow lives in `.grok/skills/implement-feature/SKILL.md` (when a `GameSettings` toggle is warranted, menu wiring, when to remesh, and tests). Read it before adding a graphics option.
 

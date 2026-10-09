@@ -4,8 +4,8 @@
 //! Leaf metadata bit [`CHECK_DECAY`] asks the next random tick to look for a
 //! log. Removing a log flags the leaves within four blocks, and removing a
 //! leaf flags the leaves touching it. A flagged leaf that cannot reach a log
-//! through at most four leaves decays. Generated leaves start unflagged;
-//! player-placed ones start flagged, so they decay unless a log is near.
+//! through at most four leaves decays. Leaves a player places carry
+//! [`PLAYER_PLACED`] and never decay.
 
 use bevy::math::IVec3;
 
@@ -15,6 +15,8 @@ use crate::world::block_ticks::TickWorld;
 
 /// Leaf metadata bit: check for a supporting log on the next random tick.
 pub const CHECK_DECAY: u8 = 8;
+/// Leaf metadata bit: placed by a player, so the leaf never decays.
+pub const PLAYER_PLACED: u8 = 4;
 /// How far through leaves a log supports them.
 const SUPPORT_REACH: i32 = 4;
 const SPAN: usize = (SUPPORT_REACH * 2 + 1) as usize;
@@ -100,7 +102,10 @@ impl BlockBehavior for Leaves {
 
     fn update_tick(&self, world: &mut TickWorld, position: IVec3) {
         let metadata = world.metadata(position);
-        if metadata & CHECK_DECAY == 0 || !world.area_loaded(position, SUPPORT_REACH + 1) {
+        if metadata & PLAYER_PLACED != 0
+            || metadata & CHECK_DECAY == 0
+            || !world.area_loaded(position, SUPPORT_REACH + 1)
+        {
             return;
         }
         if supported(world, position) {

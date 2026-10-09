@@ -64,7 +64,7 @@ use crate::player::interaction::attack::interact;
 use crate::random::ItemRng;
 use crate::world::block_ticks::BlockEvent;
 use crate::world::block_ticks::BlockTicks;
-use crate::world::block_ticks::behaviors::leaves::CHECK_DECAY;
+use crate::world::block_ticks::behaviors::leaves::PLAYER_PLACED;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::ChestGroup;
 use crate::world::chunk::ChunkPosition;
@@ -667,11 +667,10 @@ pub(crate) fn interact_blocks(
                 hotbar.slots[selected] =
                     ItemStack::with_data(stack.item(), stack.count() - 1, stack.data()).ok();
                 let (x, y, z) = target;
-                // `ItemLeaves.getPlacedBlockMetadata`: placed leaves check
-                // for a log on their next random tick.
+                // Placed leaves are persistent: they never decay.
                 if chunks.block_at(x, y, z).is_some_and(Block::is_leaves) {
                     let species = chunks.metadata_at(x, y, z);
-                    chunks.set_metadata(x, y, z, species | CHECK_DECAY);
+                    chunks.set_metadata(x, y, z, species | PLAYER_PLACED);
                 }
                 if let Some(replaced) = replaced {
                     push_event(

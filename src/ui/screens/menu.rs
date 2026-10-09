@@ -111,11 +111,11 @@ pub(super) enum SettingLabel {
 
 #[derive(Component, Clone, Copy, PartialEq, Eq)]
 enum SettingsTab {
+    Gameplay,
+    Controls,
+    Video,
     /// Deliberate departures from Beta 1.7.3.
     Features,
-    Video,
-    Controls,
-    Gameplay,
 }
 
 #[derive(Component)]
@@ -364,16 +364,8 @@ fn spawn_settings_menu(commands: &mut Commands, textures: &MenuTextures, setting
                     spawn_button(
                         tabs,
                         textures,
-                        "Features",
-                        MenuAction::Tab(SettingsTab::Features),
-                        160.0,
-                        None,
-                    );
-                    spawn_button(
-                        tabs,
-                        textures,
-                        "Video",
-                        MenuAction::Tab(SettingsTab::Video),
+                        "Gameplay",
+                        MenuAction::Tab(SettingsTab::Gameplay),
                         160.0,
                         None,
                     );
@@ -388,8 +380,16 @@ fn spawn_settings_menu(commands: &mut Commands, textures: &MenuTextures, setting
                     spawn_button(
                         tabs,
                         textures,
-                        "Gameplay",
-                        MenuAction::Tab(SettingsTab::Gameplay),
+                        "Video",
+                        MenuAction::Tab(SettingsTab::Video),
+                        160.0,
+                        None,
+                    );
+                    spawn_button(
+                        tabs,
+                        textures,
+                        "Features",
+                        MenuAction::Tab(SettingsTab::Features),
                         160.0,
                         None,
                     );

@@ -4,7 +4,6 @@
 use bevy::prelude::*;
 
 use crate::app::settings::GameSettings;
-use crate::app::state::AppScreen;
 use crate::entity::DroppedItem;
 use crate::entity::EntitySize;
 use crate::entity::creature::Living;
@@ -62,7 +61,7 @@ impl Plugin for BlockTicksPlugin {
                 )
                     .chain()
                     .in_set(BlockTickSet)
-                    .run_if(block_ticks_should_run),
+                    .run_if(crate::world::tick::playing),
             )
             .add_systems(
                 Update,
@@ -71,13 +70,9 @@ impl Plugin for BlockTicksPlugin {
                     .after(BlockTickSet)
                     .after(minecart::tick_minecarts)
                     .after(crate::entity::creature::tick_creatures)
-                    .run_if(block_ticks_should_run),
+                    .run_if(crate::world::tick::playing),
             );
     }
-}
-
-fn block_ticks_should_run(screen: Option<Res<State<AppScreen>>>) -> bool {
-    screen.is_none_or(|screen| *screen.get() == AppScreen::Playing)
 }
 
 /// Chunks random ticks reach this frame: loaded and finished chunks within

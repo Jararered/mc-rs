@@ -1,8 +1,8 @@
 use bevy::prelude::*;
 use game::block::blocks::Block;
 use game::entity::EntitySize;
-use game::entity::shadow::Shadow;
-use game::entity::shadow::place_shadow;
+use game::entity::Shadow;
+use game::rendering::shadow::place_shadow;
 use game::world::biome::Biome;
 use game::world::biome::BiomeMap;
 use game::world::biome::Climate;

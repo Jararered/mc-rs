@@ -3,8 +3,6 @@ use bevy::prelude::*;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::app::settings::Difficulty;
-use crate::app::state::AppScreen;
 use crate::block::blocks::Block;
 use crate::entity::Velocity;
 use crate::entity::combat::Hit;
@@ -26,6 +24,7 @@ use crate::random::JavaRandom;
 use crate::world::biome::Biome;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::WorldChunks;
+use crate::world::difficulty::Difficulty;
 use crate::world::environment::skylight_subtracted_in_weather;
 use crate::world::lighting::LightCache;
 use crate::world::tick::WorldTick;
@@ -134,9 +133,7 @@ impl Plugin for WeatherPlugin {
                 (tick_weather, apply_lightning)
                     .chain()
                     .before(crate::world::block_ticks::BlockTickSet)
-                    .run_if(|state: Option<Res<State<AppScreen>>>| {
-                        state.is_none_or(|s| *s.get() == AppScreen::Playing)
-                    }),
+                    .run_if(crate::world::tick::playing),
             );
     }
 }

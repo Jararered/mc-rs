@@ -11,7 +11,6 @@
 
 use bevy::prelude::*;
 
-use crate::app::settings::Difficulty;
 use crate::entity::Velocity;
 use crate::entity::creature::Living;
 use crate::entity::drops::items::spawn_entity_drop;
@@ -24,6 +23,7 @@ use crate::physics::Aabb;
 use crate::physics::segment_entry;
 use crate::player::PlayerHealth;
 use crate::random::ItemRng;
+use crate::world::difficulty::Difficulty;
 use crate::world::tick::TICK_SECONDS;
 use crate::world::tick::WorldTick;
 

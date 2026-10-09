@@ -8,12 +8,12 @@ use bevy::time::TimeUpdateStrategy;
 
 use game::app::state::AppScreen;
 use game::block::blocks::Block;
-use game::entity::particles::block::BlockParticlePlugin;
-use game::entity::particles::block::BlockParticles;
-use game::entity::particles::rain::RainParticles;
-use game::entity::particles::registry::ParticleSprite;
 use game::physics::BlockFace;
 use game::physics::BlockHit;
+use game::rendering::particles::block::BlockParticlePlugin;
+use game::rendering::particles::block::BlockParticles;
+use game::rendering::particles::rain::RainParticles;
+use game::rendering::particles::registry::ParticleSprite;
 use game::rendering::textures::FoliageColors;
 use game::rendering::textures::GrassColors;
 use game::rendering::textures::PALETTE_SIZE;

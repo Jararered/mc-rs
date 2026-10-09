@@ -14,7 +14,6 @@ use std::collections::HashSet;
 
 use bevy::prelude::*;
 
-use crate::app::settings::Difficulty;
 use crate::app::settings::GameSettings;
 use crate::block::blocks::Block;
 use crate::entity::CollisionState;
@@ -45,6 +44,7 @@ use crate::random::JavaRandom;
 use crate::world::block_ticks::BlockTicks;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
+use crate::world::difficulty::Difficulty;
 use crate::world::persistence::WorldPersistence;
 use crate::world::streaming::WorldStreaming;
 use crate::world::tick::TICK_SECONDS;

@@ -4,6 +4,7 @@ pub mod biome;
 pub mod block_ticks;
 pub mod chest;
 pub mod chunk;
+pub mod difficulty;
 pub mod dimension;
 pub mod dispenser;
 pub mod environment;

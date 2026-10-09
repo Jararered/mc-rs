@@ -23,10 +23,10 @@ use crate::rendering::appearance::item_tile;
 use crate::world::tick::WorldTick;
 
 use super::mesh;
-use crate::player::CameraBobbing;
 use crate::player::Player;
-use crate::player::camera_bob_pose;
-use crate::player::update_camera_bobbing;
+use crate::player::camera::CameraBobbing;
+use crate::player::camera::camera_bob_pose;
+use crate::player::camera::update_camera_bobbing;
 
 const ARM_LAYER: usize = 1;
 /// Beta `EntityPlayer.swingItem` counts eight ticks.

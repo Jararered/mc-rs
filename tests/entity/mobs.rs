@@ -1,5 +1,4 @@
 use bevy::prelude::*;
-use game::app::settings::Difficulty;
 use game::entity::EntitySize;
 use game::entity::StepDistance;
 use game::entity::creature::Bounce;
@@ -21,6 +20,7 @@ use game::world::biome::Biome;
 use game::world::chunk::Chunk;
 use game::world::chunk::ChunkPosition;
 use game::world::chunk::WorldChunks;
+use game::world::difficulty::Difficulty;
 use game::world::plugin::WorldPlugin;
 use game::world::tick::WorldTick;
 

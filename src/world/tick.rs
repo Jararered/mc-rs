@@ -83,6 +83,12 @@ impl WorldTick {
     }
 }
 
+/// Run condition for simulation that holds still on a menu screen. An app
+/// with no [`AppScreen`] state, such as a headless test, always simulates.
+pub fn playing(screen: Option<Res<State<AppScreen>>>) -> bool {
+    screen.is_none_or(|screen| *screen.get() == AppScreen::Playing)
+}
+
 pub fn advance_world_tick(
     mut tick: ResMut<WorldTick>,
     time: Res<Time>,

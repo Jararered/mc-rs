@@ -2,12 +2,13 @@ use bevy::prelude::*;
 
 use crate::chat::ChatPlugin;
 use crate::entity::drops::items::DroppedItemPlugin;
-use crate::entity::particles::block::BlockParticlePlugin;
-use crate::entity::particles::rain::RainParticlePlugin;
-use crate::entity::particles::registry::ParticleRegistryPlugin;
-use crate::entity::shadow::plugin as entity_shadow_plugin;
 use crate::physics::PhysicsPlugin;
 use crate::player::PlayerPlugin;
+use crate::rendering::dropped_items::DroppedItemRenderPlugin;
+use crate::rendering::particles::block::BlockParticlePlugin;
+use crate::rendering::particles::rain::RainParticlePlugin;
+use crate::rendering::particles::registry::ParticleRegistryPlugin;
+use crate::rendering::shadow::plugin as entity_shadow_plugin;
 use crate::ui::ChatUiPlugin;
 use crate::ui::HudPlugin;
 use crate::ui::InventoryGuiPlugin;
@@ -45,7 +46,7 @@ impl Plugin for GamePlugin {
                 PersistencePlugin::default().deferred(),
                 PlayerPlugin,
                 (BlockParticlePlugin, RainParticlePlugin),
-                DroppedItemPlugin,
+                (DroppedItemPlugin, DroppedItemRenderPlugin),
                 entity_shadow_plugin,
                 ParticleRegistryPlugin,
                 PhysicsPlugin,

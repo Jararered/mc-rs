@@ -900,7 +900,7 @@ fn a_chunk_unloaded_while_its_write_is_in_flight_keeps_the_newer_edit() {
 
 #[test]
 fn list_worlds_returns_every_world_newest_played_first_with_its_difficulty() {
-    use game::app::settings::Difficulty;
+    use game::world::difficulty::Difficulty;
     use game::world::persistence::list_worlds;
 
     let saves = temp_saves("list");
@@ -1084,8 +1084,8 @@ fn session_app(saves: &Path) -> App {
     .init_asset::<StandardMaterial>()
     .init_state::<game::app::state::AppScreen>()
     .init_resource::<game::app::settings::GameSettings>()
-    .init_resource::<game::app::settings::ClientDifficulty>()
-    .init_resource::<game::entity::particles::block::BlockParticles>()
+    .init_resource::<game::world::difficulty::ClientDifficulty>()
+    .init_resource::<game::rendering::particles::block::BlockParticles>()
     .add_plugins((WorldPlugin, game::rendering::WorldRenderingPlugin))
     .add_plugins(PersistencePlugin::new(saves.to_path_buf()).deferred())
     .add_plugins((
@@ -1134,8 +1134,8 @@ fn leave_world(app: &mut App) {
 fn opening_a_world_builds_its_spawn_area_in_the_background() {
     use game::app::session::WorldChoice;
     use game::app::session::WorldSession;
-    use game::app::settings::Difficulty;
     use game::player::Player;
+    use game::world::difficulty::Difficulty;
     use game::world::persistence::SaveFormat;
 
     let saves = temp_saves("session-background-spawn");
@@ -1184,9 +1184,9 @@ fn opening_a_world_builds_its_spawn_area_in_the_background() {
 fn leaving_a_world_saves_its_edits_and_unloads_it_before_the_next_load() {
     use game::app::session::WorldChoice;
     use game::app::session::WorldSession;
-    use game::app::settings::ClientDifficulty;
-    use game::app::settings::Difficulty;
     use game::app::settings::GameSettings;
+    use game::world::difficulty::ClientDifficulty;
+    use game::world::difficulty::Difficulty;
     use game::world::persistence::SaveFormat;
 
     let saves = temp_saves("session");

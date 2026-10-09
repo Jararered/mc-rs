@@ -68,7 +68,7 @@ impl Plugin for WorldRenderingPlugin {
                 (
                     choose_chunk_culling.run_if(resource_added::<RenderDevice>),
                     apply_graphics_pipeline,
-                    crate::entity::falling_block::sync_falling_block_rendering.after(BlockTickSet),
+                    super::falling_block::sync_falling_block_rendering.after(BlockTickSet),
                     stream_chunks
                         .chain()
                         .after(PhysicsSet::ApplyInput)

@@ -6,11 +6,8 @@
 //! each write as a [`BlockEvent`](crate::world::block_ticks::BlockEvent) so the tick pass runs Beta's neighbor
 //! updates for it on the next frame.
 
-use bevy::camera::visibility::NoFrustumCulling;
-use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 
-use crate::app::settings::GameSettings;
 use crate::block::blocks::Block;
 use crate::entity::PreviousTick;
 use crate::entity::drops::items::spawn_block_drop;
@@ -20,8 +17,6 @@ use crate::physics::WATER_CURRENT_PER_TICK;
 use crate::physics::move_entity;
 use crate::physics::water_current;
 use crate::random::ItemRng;
-use crate::rendering::meshing::dropped_block_meshes;
-use crate::rendering::textures::TerrainMaterial;
 use crate::world::block_ticks::BlockTicks;
 use crate::world::block_ticks::behaviors::falling::can_fall_below;
 use crate::world::block_ticks::behaviors::falling::can_land_in;
@@ -49,9 +44,6 @@ pub struct FallingBlock {
     pub motion: Vec3,
     pub on_ground: bool,
 }
-
-#[derive(Component)]
-pub(crate) struct FallingBlockVisual;
 
 /// Spawn a falling block centered in the cell it leaves.
 pub fn spawn_falling_block(commands: &mut Commands, position: IVec3, block: Block) {
@@ -218,69 +210,6 @@ pub(crate) fn tick_falling_blocks(
         }
         if let Some(streaming) = streaming.as_deref_mut() {
             streaming.request_block_update(cell.x, cell.y, cell.z);
-        }
-    }
-}
-
-/// Give each new falling block the world cube mesh, and slide it between
-/// ticks like other entities.
-pub(crate) fn sync_falling_block_rendering(
-    mut commands: Commands,
-    tick: Res<WorldTick>,
-    settings: Option<Res<GameSettings>>,
-    terrain: Option<Res<TerrainMaterial>>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut cache: Local<HashMap<(Block, bool), Handle<Mesh>>>,
-    falling: Query<(), With<FallingBlock>>,
-    new_blocks: Query<(Entity, &FallingBlock), Without<FallingBlockVisual>>,
-    mut visuals: Query<
-        (&Transform, &PreviousTick, &Children),
-        (With<FallingBlock>, With<FallingBlockVisual>),
-    >,
-    mut pieces: Query<&mut Transform, Without<FallingBlock>>,
-) {
-    let Some(terrain) = terrain else {
-        return;
-    };
-    let fancy = settings.is_some_and(|settings| settings.graphics.fancy_leaves());
-    // A collapse spawns many blocks of one kind: they share a mesh, which is
-    // let go once nothing is falling.
-    if falling.is_empty() {
-        cache.clear();
-    }
-    for (entity, falling) in &new_blocks {
-        let mesh = cache
-            .entry((falling.block, fancy))
-            .or_insert_with(|| {
-                let built = dropped_block_meshes(
-                    falling.block,
-                    0,
-                    fancy,
-                    [0.55, 0.8, 0.4],
-                    [0.28, 0.71, 0.09],
-                );
-                meshes.add(built.body.into_mesh())
-            })
-            .clone();
-        let child = commands
-            .spawn((
-                Mesh3d(mesh),
-                MeshMaterial3d(terrain.0.clone()),
-                Transform::default(),
-                NoFrustumCulling,
-            ))
-            .id();
-        commands
-            .entity(entity)
-            .add_child(child)
-            .insert(FallingBlockVisual);
-    }
-    for (transform, previous, children) in &mut visuals {
-        let slide = previous.0.lerp(transform.translation, tick.partial()) - transform.translation;
-        for child in children.iter() {
-            if let Ok(mut piece) = pieces.get_mut(child) {
-                piece.translation = slide;
-            }
         }
     }
 }

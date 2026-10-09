@@ -1,7 +1,6 @@
 //! Beta damage rules, monsters attacking the player, projectiles, and blasts.
 
 use bevy::prelude::*;
-use game::app::settings::Difficulty;
 use game::block::blocks::Block;
 use game::entity::DroppedItem;
 use game::entity::Velocity;
@@ -38,6 +37,7 @@ use game::player::SurvivalPlugin;
 use game::random::ItemRng;
 use game::random::JavaRandom;
 use game::world::chunk::WorldChunks;
+use game::world::difficulty::Difficulty;
 
 use super::mobs::creature_app;
 use super::mobs::feet_of;

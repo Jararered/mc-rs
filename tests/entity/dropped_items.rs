@@ -7,19 +7,11 @@ use game::entity::drops::blocks::natural_drops;
 use game::entity::drops::blocks::natural_drops_with_metadata;
 use game::entity::drops::blocks::player_break_drops_with_metadata;
 use game::entity::drops::items::block_drop_position;
-use game::entity::drops::items::dropped_block_model;
 use game::entity::drops::items::hotbar_icon_scale;
-use game::entity::drops::items::interpolated_item_position;
-use game::entity::drops::items::item_bob_offset;
 use game::entity::drops::items::item_constructor_motion;
 use game::entity::drops::items::item_motion_after_collision;
-use game::entity::drops::items::item_piece_transform;
-use game::entity::drops::items::item_pile_offsets;
 use game::entity::drops::items::item_reaches_player;
 use game::entity::drops::items::item_slipperiness;
-use game::entity::drops::items::item_spin_yaw;
-use game::entity::drops::items::item_stack_copies;
-use game::entity::drops::items::item_visual_yaw;
 use game::entity::drops::items::pickup_position;
 use game::entity::drops::items::thrown_item_motion;
 use game::inventory::Hotbar;
@@ -27,6 +19,14 @@ use game::inventory::Inventory;
 use game::inventory::MAIN_SLOTS;
 use game::item::Item;
 use game::item::ItemStack;
+use game::rendering::dropped_items::dropped_block_model;
+use game::rendering::dropped_items::interpolated_item_position;
+use game::rendering::dropped_items::item_bob_offset;
+use game::rendering::dropped_items::item_piece_transform;
+use game::rendering::dropped_items::item_pile_offsets;
+use game::rendering::dropped_items::item_spin_yaw;
+use game::rendering::dropped_items::item_stack_copies;
+use game::rendering::dropped_items::item_visual_yaw;
 use game::rendering::meshing::BlockGeometry;
 use game::rendering::meshing::BlockLighting;
 use game::rendering::meshing::dropped_block_meshes;
@@ -580,7 +580,10 @@ fn dropped_items_drift_with_water_once_per_world_tick() {
     .init_resource::<GameSettings>()
     .init_resource::<WorldTick>()
     .insert_resource(chunks)
-    .add_plugins(DroppedItemPlugin);
+    .add_plugins((
+        DroppedItemPlugin,
+        game::rendering::dropped_items::DroppedItemRenderPlugin,
+    ));
     app.update();
     app.world_mut()
         .resource_mut::<NextState<AppScreen>>()
@@ -660,7 +663,10 @@ fn zero_hotbar_pop_does_not_signal_a_change_and_active_pop_still_finishes() {
     .init_resource::<WorldTick>()
     .init_resource::<WorldChunks>()
     .init_resource::<Changes>()
-    .add_plugins(DroppedItemPlugin)
+    .add_plugins((
+        DroppedItemPlugin,
+        game::rendering::dropped_items::DroppedItemRenderPlugin,
+    ))
     .add_systems(Last, observe);
     let entity = app.world_mut().spawn(Hotbar::default()).id();
     app.world_mut()
@@ -818,7 +824,10 @@ fn an_item_dropped_into_fire_or_onto_a_cactus_is_destroyed() {
     .init_resource::<GameSettings>()
     .init_resource::<WorldTick>()
     .insert_resource(chunks)
-    .add_plugins(DroppedItemPlugin);
+    .add_plugins((
+        DroppedItemPlugin,
+        game::rendering::dropped_items::DroppedItemRenderPlugin,
+    ));
     app.update();
     app.world_mut()
         .resource_mut::<NextState<AppScreen>>()

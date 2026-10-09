@@ -10,7 +10,6 @@
 
 use bevy::prelude::*;
 
-use crate::app::settings::Difficulty;
 use crate::app::settings::GameSettings;
 use crate::block::blocks::Block;
 use crate::entity::EntitySize;
@@ -39,6 +38,7 @@ use crate::random::ItemRng;
 use crate::random::JavaRandom;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
+use crate::world::difficulty::Difficulty;
 use crate::world::tick::WorldTick;
 
 /// `EntityArrow.setSize(0.5, 0.5)`.

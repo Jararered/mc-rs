@@ -3,9 +3,7 @@ use bevy::prelude::*;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::app::settings::Difficulty;
 use crate::app::settings::GameSettings;
-use crate::app::state::AppScreen;
 use crate::block::blocks::Block;
 use crate::entity::CollisionState;
 use crate::entity::EntityDiagnostics;
@@ -40,6 +38,7 @@ use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
+use crate::world::difficulty::Difficulty;
 use crate::world::environment::celestial_angle;
 use crate::world::lighting::LightCache;
 use crate::world::lighting::combined_light;
@@ -337,7 +336,7 @@ impl Plugin for MobPlugin {
                 )
                     .chain()
                     .after(PhysicsSet::Integrate)
-                    .run_if(mobs_active),
+                    .run_if(crate::world::tick::playing),
             );
     }
 }
@@ -456,10 +455,6 @@ fn tick_spawners(
             }
         }
     }
-}
-
-fn mobs_active(screen: Option<Res<State<AppScreen>>>) -> bool {
-    screen.is_none_or(|s| *s.get() == AppScreen::Playing)
 }
 
 /// Spawn a new mob facing a random direction, as `SpawnerAnimals` places them.

@@ -27,10 +27,8 @@ pub mod falling_block;
 pub mod minecart;
 pub mod mobs;
 pub mod mount;
-pub mod particles;
 pub mod pathfinding;
 pub mod projectiles;
-pub mod shadow;
 
 /// Mob simulation and rendering costs collected since the last performance
 /// print.
@@ -374,3 +372,20 @@ impl StepDistance {
 /// Marker for entities that are flying (no gravity, noclip movement).
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct Flying;
+
+/// `Render.shadowSize`/`field_194_c` for one entity type: the blob's radius
+/// in blocks, and a maximum opacity multiplier applied on top of distance
+/// fade.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Shadow {
+    pub radius: f32,
+    pub opacity_scale: f32,
+}
+
+impl Shadow {
+    /// `RenderItem`.
+    pub const DROPPED_ITEM: Self = Self {
+        radius: 0.15,
+        opacity_scale: 0.75,
+    };
+}

@@ -14,6 +14,7 @@ use crate::ui::slider::SliderDrag;
 use crate::ui::slider::SliderSkin;
 use crate::ui::slider::spawn_slider;
 use crate::ui::slider::update_sliders;
+use crate::world::difficulty::Difficulty;
 use bevy::ui::FocusPolicy;
 
 use crate::app::state::AppScreen;

@@ -22,6 +22,7 @@ use crate::app::settings::GameSettings;
 use crate::app::state::AppScreen;
 use crate::entity::EntitySize;
 use crate::entity::PreviousTick;
+use crate::entity::Shadow;
 use crate::physics::PhysicsSet;
 use crate::player::Player;
 use crate::rendering::textures::TintedMaterial;
@@ -39,23 +40,6 @@ const FADE_DISTANCE_SQUARED: f32 = 256.0;
 const SURFACE_OFFSET: f32 = 1.0 / 64.0;
 /// `misc/shadow.png`, the same blob texture Beta binds in `renderShadow`.
 const SHADOW_TEXTURE: &str = "misc/shadow.png";
-
-/// `Render.shadowSize`/`field_194_c` for one entity type: the blob's radius
-/// in blocks, and a maximum opacity multiplier applied on top of distance
-/// fade.
-#[derive(Component, Clone, Copy, Debug)]
-pub struct Shadow {
-    pub radius: f32,
-    pub opacity_scale: f32,
-}
-
-impl Shadow {
-    /// `RenderItem`.
-    pub const DROPPED_ITEM: Self = Self {
-        radius: 0.15,
-        opacity_scale: 0.75,
-    };
-}
 
 /// Links a shadow-casting entity to the quad that renders its blob. Not a
 /// scene-graph parent/child: the quad sits on the ground, not wherever the

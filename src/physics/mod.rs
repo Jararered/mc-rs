@@ -17,7 +17,6 @@ pub use raycast::segment_entry;
 
 use bevy::prelude::*;
 
-use crate::app::state::AppScreen;
 use crate::block::fluids::Fluid;
 use crate::block::fluids::flow_vector;
 use crate::block::fluids::is_lava;
@@ -75,13 +74,9 @@ impl Plugin for PhysicsPlugin {
                 Update,
                 (integrate_bodies, integrate_player)
                     .in_set(PhysicsSet::Integrate)
-                    .run_if(physics_should_run),
+                    .run_if(crate::world::tick::playing),
             );
     }
-}
-
-fn physics_should_run(screen: Option<Res<State<AppScreen>>>) -> bool {
-    screen.is_none_or(|screen| *screen.get() == AppScreen::Playing)
 }
 
 /// Axis-aligned box used for entity-vs-block collision.

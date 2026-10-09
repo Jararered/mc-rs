@@ -35,7 +35,6 @@ use std::time::Instant;
 use bevy::ecs::query::QueryData;
 use bevy::prelude::*;
 
-use crate::app::settings::Difficulty;
 use crate::app::settings::GameSettings;
 use crate::block::blocks::Block;
 use crate::entity::CollisionState;
@@ -81,6 +80,7 @@ use crate::world::block_ticks::BlockTicks;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
+use crate::world::difficulty::Difficulty;
 use crate::world::lighting::LightCache;
 use crate::world::lighting::beta_brightness;
 use crate::world::lighting::combined_light;

@@ -13,7 +13,6 @@ use bevy::state::app::StatesPlugin;
 use game::app::settings::DEFAULT_CLOUD_HEIGHT;
 use game::app::settings::DEFAULT_FOV;
 use game::app::settings::DEFAULT_GUI_SCALE;
-use game::app::settings::Difficulty;
 use game::app::settings::GameSettings;
 use game::app::settings::GraphicsQuality;
 use game::app::settings::MAX_CLOUD_HEIGHT;
@@ -34,6 +33,7 @@ use game::rendering::meshing::WATER_ALPHA;
 use game::rendering::textures::BlockMaterial;
 use game::ui::UiCameraPlugin;
 use game::world::chunk::WorldChunks;
+use game::world::difficulty::Difficulty;
 use game::world::environment::celestial_angle;
 use game::world::environment::skylight_subtracted;
 use game::world::plugin::WorldPlugin;
@@ -748,9 +748,9 @@ fn one_unreadable_field_does_not_reset_the_other_settings() {
 
 #[test]
 fn settings_plugin_saves_after_the_options_settle_and_keeps_the_players_difficulty() {
-    use game::app::settings::ClientDifficulty;
-    use game::app::settings::Difficulty;
     use game::app::settings::SAVE_DELAY_SECONDS;
+    use game::world::difficulty::ClientDifficulty;
+    use game::world::difficulty::Difficulty;
 
     let path = temp_settings_path("debounce");
     let mut app = App::new();
@@ -1557,7 +1557,7 @@ fn type_text(app: &mut App, key_code: KeyCode, text: Option<&str>) {
 fn new_world_form_collects_name_seed_and_difficulty() {
     use game::app::session::WorldChoice;
     use game::app::session::WorldSession;
-    use game::app::settings::Difficulty;
+    use game::world::difficulty::Difficulty;
 
     let mut app = world_screen_app();
     click_menu_button(&mut app, "Play");

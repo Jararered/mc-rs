@@ -76,7 +76,7 @@ fn mob_app() -> App {
     app.add_plugins(MinimalPlugins).add_plugins(WorldPlugin);
     app.world_mut().resource_mut::<WorldChunks>().insert(
         ChunkPosition::ZERO,
-        super::block_ticks::generated(Chunk::new(), Biome::Plains),
+        crate::world::block_ticks::generated(Chunk::new(), Biome::Plains),
     );
     app.world_mut().spawn((
         Player,

@@ -53,7 +53,7 @@ use super::assert_same_blocks;
 use super::persistence_app;
 use super::run_until;
 use super::temp_saves;
-use crate::generation::overworld::beta_reference;
+use crate::world::generation::overworld::beta_reference;
 
 const SEED: u64 = 7;
 

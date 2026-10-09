@@ -41,7 +41,7 @@ fn each_format_keeps_the_nether_apart_from_the_overworld() {
 
         let mut overworld = Chunk::new();
         overworld.set(1, 1, 1, Block::GoldBlock);
-        let overworld = crate::block_ticks::generated(overworld, Biome::Plains);
+        let overworld = crate::world::block_ticks::generated(overworld, Biome::Plains);
         storage.save_chunk(position, &overworld).unwrap();
 
         let nether = NetherGenerator::new(11).generate_base(position);

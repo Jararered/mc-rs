@@ -177,3 +177,24 @@ scene exercised creature skin/hurt/flash, glow, charge, instance tint, and
 multiply blending without shader or render validation errors. The normal
 application also started without rendering errors; this did not include a
 full interactive gameplay session.
+
+# Build times
+
+Measured on an Apple M5 Pro (18 cores) with dependencies already built,
+October 2026.
+
+- `cargo test` used to build 31 test binaries plus two empty unit-test
+  harnesses, each statically linking Bevy. It is now one binary: 794 tests
+  build and run in about 8 s warm.
+- The game crate alone compiles from scratch in about 17 s at `opt-level = 1`
+  (12 s at 0). The static link is about 3 s.
+- A one-line edit rebuilds in 3 to 11 s at `opt-level = 1`, depending on how
+  many codegen units the edit reaches; inserting a line costs more than
+  changing a value because it shifts the line tables below it. The same edits
+  take about 2.2 s at `opt-level = 0` (`CARGO_PROFILE_DEV_OPT_LEVEL=0 cargo
+  build`), which is the cheap lever when iterating on something that does not
+  need representative frame times.
+- `dev_dynamic_linking` (11.4 s against 10.8 s for the same edit) and
+  `-Zthreads=8` did not help, so neither is configured.
+- Changing `RUSTFLAGS`, features, or profile settings rebuilds Bevy (1.5 to 2
+  minutes here, far longer cold). Keep them the same across `run` and `test`.

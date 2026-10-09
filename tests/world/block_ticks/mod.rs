@@ -1,18 +1,24 @@
 //! Block ticks: the scheduler, random ticks, neighbor notifications, and each
 //! block family's behavior, run against small hand-built worlds.
 
+mod cactus;
+mod dead_bush;
 mod engine;
 mod falling;
+mod farmland;
 mod fire;
 mod fixtures;
 mod fluids;
 mod leaves;
 mod minecart;
 mod misc;
+mod mushrooms;
 mod plants;
 mod portal;
 mod redstone;
+mod snow;
 mod soil;
+mod sugar_cane;
 mod systems;
 
 use bevy::math::IVec3;

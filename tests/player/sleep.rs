@@ -20,9 +20,9 @@ use game::world::dimension::Dimension;
 use game::world::tick::DAY_LENGTH;
 use game::world::tick::WorldTick;
 
-use super::mobs::creature_app;
-use super::mobs::run_ticks;
-use super::pathfinding::field;
+use crate::entity::mobs::creature_app;
+use crate::entity::mobs::run_ticks;
+use crate::entity::pathfinding::field;
 
 const NOON: u64 = 6000;
 const MIDNIGHT: u64 = 18_000;

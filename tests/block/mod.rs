@@ -4,6 +4,9 @@
 //! voxel block is made of. The engine is started headlessly (no window or
 //! renderer) so the test can run in CI.
 
+mod pumpkin;
+mod sandstone;
+
 use bevy::asset::AssetPlugin;
 use bevy::mesh::MeshPlugin;
 use bevy::prelude::*;

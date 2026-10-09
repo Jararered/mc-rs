@@ -29,7 +29,7 @@ fn floor_world(biome: Biome, edit: impl FnOnce(&mut Chunk)) -> WorldChunks {
     let mut chunks = WorldChunks::default();
     chunks.insert(
         ChunkPosition::ZERO,
-        crate::block_ticks::generated(chunk, biome),
+        crate::world::block_ticks::generated(chunk, biome),
     );
     chunks
 }

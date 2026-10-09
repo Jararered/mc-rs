@@ -15,8 +15,8 @@ Compatibility with original Minecraft Beta 1.7.3 worlds and servers is a **secon
 
 # Commands
 
-- `cargo run` — start the game. `cargo run --features dev_dynamic_linking` links faster while iterating.
-- `cargo test` — all tests. Focus one target with `cargo test --test <name>` (for example `--test world`) or one test with `cargo test <filter>`. Each target is its own binary that links all of Bevy, so the cost is in linking, not in running the tests: `.cargo/config.toml` caps `build.jobs`, and `[profile.test]` uses `line-tables-only` debug info to keep linker memory down. Adding another top-level `tests/<name>.rs` adds another full Bevy link, so prefer adding to an existing target.
+- `cargo run` — start the game. `--features dev_dynamic_linking` exists but measured no faster here (the static link is about 3 s on an M5 Pro), and it builds a second copy of Bevy.
+- `cargo test` — all tests, in one binary rooted at `tests/main.rs` (`autotests = false`; the lib and bin unit-test and doctest harnesses are off too). Focus a subsystem or one test with a path filter: `cargo test world::block_ticks::` or `cargo test <filter>`. Every extra test target would statically link all of Bevy again, so add a module under `tests/` instead of a target. `[profile.dev]` uses `line-tables-only` debug info and `test` inherits it unchanged, so `cargo run` and `cargo test` share one set of dependency and library artifacts; do not give `[profile.test]` its own settings. See "Build times" in `docs/PERFORMANCE.md`.
 - Bevy is built with `default-features = false` and an explicit feature list in `Cargo.toml`: no audio, gamepads, glTF, animation, scenes, sprites, post-processing, or anti-aliasing passes. Add a feature there when a system needs it (`audio` when sound is implemented) rather than restoring the defaults; each one costs link time and runtime memory.
 - `cargo check` / `cargo fmt` for a quick pass. `cargo fmt` must run on nightly: `rust-toolchain.toml` pins nightly and `rustfmt.toml` enables unstable `imports_granularity = "Item"`.
 - Only build the repo into the main repo's cached `target/` directory (for example by setting `CARGO_TARGET_DIR` to the main checkout's `target/` when working in a worktree), never into a fresh per-worktree `target/`. A cold Bevy build uses a huge amount of CPU, memory, and disk.
@@ -146,7 +146,7 @@ The game starts with no world: `GamePlugin` uses `PersistencePlugin::deferred()`
 - Keep changes focused and avoid filling planned modules with placeholders. Run `cargo fmt` and relevant checks or tests for code changes, and report any verification limits.
 - Preserve the user's in-progress changes. The existing source files and tests may be mid-implementation.
 - Treat `assets/` as local, reference-only Minecraft Beta content (`terrain.png`, `misc/grasscolor.png`, `misc/foliagecolor.png`, the `gui/` textures, `font/minecraft.otf`). Do not add more files from the original game, and keep the game able to start when these reference files are absent. Prefer not to touch `assets/` in commits unless the task requires it.
-- Tests are split between flat files (`tests/<name>.rs`) and multi-file targets rooted at `tests/<name>/main.rs` (for example `tests/world/main.rs`, target `world`) that mirror the matching `src/<name>/` tree. Engine tests build a headless `App` with `MinimalPlugins` + `AssetPlugin` (and `MeshPlugin`), not `DefaultPlugins`, so they run without a GPU or window.
+- `tests/` mirrors `src/`: `tests/main.rs` declares one module per subsystem (`tests/world/block_ticks/fluids.rs` tests `src/world/block_ticks/`), and a test goes where the code it exercises lives. Helpers shared across subsystems are `pub(crate)` and reached by path (`crate::world::block_ticks::generated`, `crate::entity::mobs::summon`). Engine tests build a headless `App` with `MinimalPlugins` + `AssetPlugin` (and `MeshPlugin`), not `DefaultPlugins`, so they run without a GPU or window.
 - `settings.json`, `saves/`, and `screenshots/` are gitignored runtime output. In-game F2 writes to `screenshots/`.
 
 ## Module boundaries
@@ -154,4 +154,4 @@ The game starts with no world: `GamePlugin` uses `PersistencePlugin::deferred()`
 - Compose plugins in `src/app/plugin.rs`. World simulation and chat backends must remain usable in a headless app without UI or render asset plugins.
 - Shared world data lives in `world::chunk` and `world::biome`; generators, storage, lighting, and meshes consume it. A generator backend owns base generation and a four-chunk population pass, while streaming owns job scheduling and chunk lifecycle.
 - `world::streaming` is the client integration boundary: it coordinates reusable generation/storage with rendering jobs. Keep concrete dimension algorithms out of its scheduler.
-- See `docs/ARCHITECTURE.md` for composition and the remaining dimension-specific work. Rendering tests under `tests/rendering/` are included in the existing `world` test target to avoid another Bevy link.
+- See `docs/ARCHITECTURE.md` for composition and the remaining dimension-specific work.

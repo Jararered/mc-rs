@@ -1,6 +1,9 @@
+mod block_icons;
 mod clouds;
 mod creatures;
 mod fire;
+mod icon_appearance;
+mod meshing;
 mod redstone;
 mod sky;
 mod textures;

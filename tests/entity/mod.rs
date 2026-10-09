@@ -1,3 +1,10 @@
+mod combat;
+mod dropped_items;
+pub(crate) mod mobs;
+mod particles;
+pub(crate) mod pathfinding;
+mod shadow;
+
 use bevy::prelude::*;
 use game::entity::CollisionState;
 use game::entity::EntitySize;

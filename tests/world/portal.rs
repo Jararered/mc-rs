@@ -14,7 +14,7 @@ use game::world::portal::create_portal;
 use game::world::portal::find_exit;
 use game::world::portal::place_in_portal;
 
-use crate::block_ticks::generated;
+use crate::world::block_ticks::generated;
 
 /// Chunks within `radius` of the origin, each built by `fill`.
 fn area(radius: i32, fill: impl Fn(&mut Chunk)) -> PortalArea {

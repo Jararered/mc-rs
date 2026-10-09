@@ -1,5 +1,3 @@
-#![recursion_limit = "256"]
-
 use bevy::asset::AssetPlugin;
 use bevy::prelude::*;
 use bevy::render::camera::camera_system;

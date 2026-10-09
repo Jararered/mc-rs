@@ -27,7 +27,7 @@ pub fn field(y: usize) -> WorldChunks {
             }
             chunks.insert(
                 ChunkPosition { x: cx, z: cz },
-                super::block_ticks::generated(chunk, Biome::Plains),
+                crate::world::block_ticks::generated(chunk, Biome::Plains),
             );
         }
     }
@@ -270,7 +270,7 @@ fn only_edits_inside_the_searched_region_count() {
     let far = ChunkPosition { x: 6, z: 0 };
     chunks.insert(
         far,
-        super::block_ticks::generated(Chunk::new(), Biome::Plains),
+        crate::world::block_ticks::generated(Chunk::new(), Biome::Plains),
     );
     let player = pillar(&mut chunks);
     let zombie = Vec3::new(6.5, 5.0, 0.5);

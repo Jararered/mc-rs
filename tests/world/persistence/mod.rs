@@ -766,7 +766,7 @@ fn a_chunk_unloads_without_the_mobs_that_left_it_since_the_autosave() {
                 .is_some_and(|block| block != Block::Air)
         })
         .unwrap();
-    super::mobs::summon(
+    crate::entity::mobs::summon(
         &mut app,
         Mob::new(MobType::Pig, 1),
         Vec3::new(8.5, (ground + 1) as f32, 8.5),

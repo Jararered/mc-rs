@@ -102,8 +102,8 @@ storage do not assume there are only two.
 
 ## Verification
 
-Tests remain under `tests/`. The existing `world` binary includes the rendering
-suite from `tests/rendering/` so reorganizing it does not add another Bevy link.
+Tests remain under `tests/`, as one binary (`tests/main.rs`) whose modules mirror
+`src/`, so reorganizing them never adds another Bevy link.
 Regression coverage includes pinned Beta chunks from both dimensions, portal
 frames, the teleporter, dimension travel through a real session, save/resume behavior, input
 focus, headless chat dispatch, headless world composition, and an alternate

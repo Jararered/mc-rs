@@ -2,6 +2,8 @@
 name = "game"
 version = "0.1.0"
 edition = "2024"
+# One test binary (`tests/main.rs`); every extra target links all of Bevy again.
+autotests = false
 
 [features]
 # Opt in for faster linking while iterating; normal builds favor runtime performance.
@@ -10,21 +12,16 @@ dev_dynamic_linking = ["bevy/dynamic_linking"]
 # so `cargo test` does not pay for it.
 render_harness = []
 
-# Optimize game code enough for representative local play sessions.
+# Optimize game code enough for representative local play sessions. Line tables
+# keep backtraces pointing at file and line, and because `test` inherits this
+# profile unchanged, `cargo run` and `cargo test` share one set of artifacts.
 [profile.dev]
 opt-level = 1
+debug = "line-tables-only"
 
 # Enable a large amount of optimization in the dev profile for dependencies.
 [profile.dev.package."*"]
 opt-level = 3
-
-# Every test target is a separate binary that statically links all of Bevy.
-# Full debug info makes each of those links emit a ~1 GB PDB and needs several
-# GB of linker memory, so `cargo test` runs out of RAM long before it runs out
-# of CPU. Line tables are enough to keep panic backtraces pointing at file and
-# line. `cargo run` still builds with the full dev profile.
-[profile.test]
-debug = "line-tables-only"
 
 [dependencies]
 # Only what the game uses. Bevy's defaults also start audio, gamepads, glTF,
@@ -72,6 +69,21 @@ libc = "0.2"
 [lints.clippy]
 all = "warn"
 pedantic = "warn"
+
+# Tests live under `tests/`, never in `src/`, so skip the empty unit-test and
+# doctest harnesses; each one would be another Bevy link.
+[lib]
+test = false
+doctest = false
+
+[[bin]]
+name = "game"
+path = "src/main.rs"
+test = false
+
+[[test]]
+name = "game"
+path = "tests/main.rs"
 
 [[example]]
 name = "chunk_render"

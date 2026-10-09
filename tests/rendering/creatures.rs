@@ -408,3 +408,35 @@ fn held_items_sit_in_the_right_hand() {
         assert!(center.length() < 16.0 && center.y > 4.0, "{center}");
     }
 }
+
+#[test]
+fn the_boat_is_model_boat_s_floor_and_four_sides() {
+    use game::rendering::creatures::boat::BOXES;
+    use game::rendering::creatures::boat::boat_rotation;
+
+    assert_eq!(BOXES.len(), 5);
+    let (skin, origin, size, pivot, rotation) = BOXES[0];
+    assert_eq!((skin, size), ([0, 8], [24, 16, 4]));
+    assert_eq!((origin, pivot), ([-12.0, -8.0, -3.0], [0.0, 4.0, 0.0]));
+    assert!((rotation[0] - std::f32::consts::FRAC_PI_2).abs() < 1e-6);
+    for (skin, origin, size, pivot, _) in &BOXES[1..] {
+        assert_eq!((*skin, *size), ([0, 0], [20, 6, 2]));
+        assert_eq!(*origin, [-10.0, -7.0, -1.0]);
+        assert_eq!(pivot[1], 4.0);
+    }
+    // The sides stand 11 out along x and 9 out along z.
+    let pivots: Vec<_> = BOXES[1..]
+        .iter()
+        .map(|part| (part.3[0], part.3[2]))
+        .collect();
+    assert_eq!(
+        pivots,
+        vec![(-11.0, 0.0), (11.0, 0.0), (0.0, -9.0), (0.0, 9.0)]
+    );
+
+    // `glRotatef(180 - yaw, 0, 1, 0)`, then the rock about x.
+    let facing = boat_rotation(90.0, 0.0) * Vec3::X;
+    assert!((facing - Vec3::NEG_Z).length() < 1e-5, "{facing}");
+    let rocked = boat_rotation(180.0, 90.0) * Vec3::Y;
+    assert!((rocked - Vec3::Z).length() < 1e-5, "{rocked}");
+}

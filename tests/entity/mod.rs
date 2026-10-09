@@ -1,3 +1,4 @@
+mod boat;
 mod combat;
 mod dropped_items;
 pub(crate) mod mobs;

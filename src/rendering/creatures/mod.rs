@@ -8,6 +8,7 @@
 //! ride in each box's `MeshTag`. Arrows, fireballs, thrown
 //! snowballs and eggs, and the fishing bobber are in [`projectiles`].
 
+pub mod boat;
 mod cart;
 pub mod models;
 mod projectiles;
@@ -58,7 +59,7 @@ pub use shading::Pass;
 pub use shading::creature_tag;
 
 /// Skins with a flat color to stand in when the reference texture is absent.
-const SKINS: [(&str, [u8; 3]); 21] = [
+const SKINS: [(&str, [u8; 3]); 22] = [
     ("mob/pig.png", [237, 167, 175]),
     ("mob/saddle.png", [112, 72, 40]),
     ("mob/cow.png", [124, 93, 74]),
@@ -80,6 +81,7 @@ const SKINS: [(&str, [u8; 3]); 21] = [
     ("item/arrows.png", [156, 125, 82]),
     ("particles.png", [200, 60, 50]),
     ("item/cart.png", [127, 127, 127]),
+    ("item/boat.png", [150, 118, 70]),
 ];
 
 /// `EntitySheep.fleeceColorTable`, by wool color.
@@ -167,6 +169,8 @@ pub(super) fn plugin(app: &mut App) {
                 projectiles::pose_fishing_lines,
                 cart::add_cart_models,
                 cart::pose_carts,
+                boat::add_boat_models,
+                boat::pose_boats,
             )
                 .chain()
                 .before(TransformSystems::Propagate)

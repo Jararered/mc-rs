@@ -14,6 +14,10 @@ use crate::block::fluids::is_water;
 use crate::entity::CollisionState;
 use crate::entity::EntitySize;
 use crate::entity::Velocity;
+use crate::entity::boat::BOAT_SIZE;
+use crate::entity::boat::Boat;
+use crate::entity::boat::break_boat;
+use crate::entity::boat::spawn_boat;
 use crate::entity::combat::bordered;
 use crate::entity::combat::pick;
 use crate::entity::drops::items::spawn_thrown_item;
@@ -24,6 +28,7 @@ use crate::entity::minecart::FUEL_PER_COAL;
 use crate::entity::minecart::Minecart;
 use crate::entity::minecart::break_cart;
 use crate::entity::minecart::spawn_cart;
+use crate::entity::mount::Seat;
 use crate::entity::mount::dismount;
 use crate::entity::mount::mount;
 use crate::entity::projectiles::FIREBALL_SIZE;
@@ -39,6 +44,7 @@ use crate::item::tools::damage_vs_entity;
 use crate::physics::BLOCK_REACH;
 use crate::physics::block_hit_distance;
 use crate::physics::raycast_blocks;
+use crate::physics::raycast_blocks_or_liquid;
 use crate::player::interaction::attack::ENTITY_REACH;
 use crate::player::interaction::attack::FIREBALL_BORDER;
 use crate::player::interaction::attack::MOB_BORDER;
@@ -105,12 +111,16 @@ pub(crate) struct BlockInteractState {
     last_frame: Option<u32>,
 }
 
+/// `ItemBoat`'s own reach.
+const BOAT_REACH: f32 = 5.0;
+
 /// What the crosshair rests on.
 #[derive(Clone, Copy)]
 enum Pointed {
     Mob(Entity),
     Fireball(Entity),
     Minecart(Entity),
+    Boat(Entity),
 }
 
 pub(crate) fn interact_blocks(
@@ -140,11 +150,12 @@ pub(crate) fn interact_blocks(
         Option<ResMut<WorldPersistence>>,
         Option<ResMut<BlockTicks>>,
     ),
-    (mut particles, mut mobs, mut fireballs, mut carts): (
+    (mut particles, mut mobs, mut fireballs, mut carts, mut boats): (
         Option<ResMut<BlockParticles>>,
         Query<MobTarget, Without<Player>>,
         Query<(Entity, &mut Fireball, &Transform), Without<Player>>,
         Query<(Entity, &Transform, &mut Minecart, Option<&Cargo>), Without<Player>>,
+        Query<(Entity, &Transform, &mut Boat, &Seat), Without<Player>>,
     ),
     mut focus: ResMut<BlockFocus>,
     (mut state, frame): (Local<BlockInteractState>, Res<bevy::diagnostic::FrameCount>),
@@ -276,6 +287,10 @@ pub(crate) fn interact_blocks(
                 .chain(carts.iter().map(|(entity, transform, ..)| {
                     let aabb = CART_SIZE.aabb(transform.translation);
                     (Pointed::Minecart(entity), bordered(aabb, MOB_BORDER))
+                }))
+                .chain(boats.iter().map(|(entity, transform, ..)| {
+                    let aabb = BOAT_SIZE.aabb(transform.translation);
+                    (Pointed::Boat(entity), bordered(aabb, MOB_BORDER))
                 })),
         );
         if let Some(pointed) = pointed {
@@ -295,6 +310,7 @@ pub(crate) fn interact_blocks(
                         &mut item_rng,
                         &mut mobs,
                         target,
+                        player_entity,
                         &mut hotbar,
                         &mut inventory,
                     );
@@ -313,6 +329,32 @@ pub(crate) fn interact_blocks(
                 Pointed::Fireball(target) => {
                     if left_click && let Ok((_, mut fireball, _)) = fireballs.get_mut(target) {
                         fireball.deflect(look);
+                    }
+                }
+                Pointed::Boat(target) if left_click => {
+                    // `EntityBoat.attackEntityFrom`.
+                    let amount = i32::from(damage_vs_entity(hotbar.selected_stack()))
+                        + i32::from(velocity.0.y < 0.0);
+                    if let Ok((_, at, mut boat, seat)) = boats.get_mut(target)
+                        && boat.hurt(amount)
+                    {
+                        let position = at.translation;
+                        break_boat(&mut commands, &mut item_rng, target, seat.rider, position);
+                        if let Some(persistence) = persistence.as_deref_mut() {
+                            persistence
+                                .mark_dirty(ChunkPosition::from_world(position.x, position.z));
+                        }
+                    }
+                }
+                Pointed::Boat(target) => {
+                    // `EntityBoat.interact`: board, or step off again
+                    // (`mountEntity` toggles).
+                    if let Ok((_, _, _, seat)) = boats.get(target) {
+                        if seat.rider == Some(player_entity) {
+                            dismount(&mut commands, player_entity);
+                        } else {
+                            mount(&mut commands, player_entity, target);
+                        }
                     }
                 }
                 Pointed::Minecart(target) if left_click => {
@@ -637,6 +679,29 @@ pub(crate) fn interact_blocks(
                 eye: transform.translation,
                 look: view_rotation * Vec3::NEG_Z,
             });
+        } else if hotbar
+            .selected_stack()
+            .is_some_and(|stack| stack.item() == Item::Boat)
+        {
+            // `ItemBoat.onItemRightClick`: a boat on the block or the water
+            // in view, within five blocks. One set on a snow layer rests on
+            // the block under it.
+            if let Some(hit) = raycast_blocks_or_liquid(
+                &chunks,
+                view_origin,
+                view_rotation * Vec3::NEG_Z,
+                BOAT_REACH,
+            ) {
+                let mut cell = IVec3::new(hit.x, hit.y, hit.z);
+                if hit.block == Block::SnowLayer {
+                    cell.y -= 1;
+                }
+                spawn_boat(&mut commands, cell);
+                hotbar.take_selected(1);
+                if let Some(persistence) = persistence.as_deref_mut() {
+                    persistence.mark_dirty(ChunkPosition::from_block(cell.x, cell.z));
+                }
+            }
         } else if let Some(hit) = hit
             && matches!(
                 hit.block,

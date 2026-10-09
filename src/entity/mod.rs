@@ -8,6 +8,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::block::blocks::Block;
+use crate::entity::boat::Boat;
 use crate::entity::explosion::PrimedTnt;
 use crate::entity::explosion::prime_tnt;
 use crate::entity::falling_block::FallingBlock;
@@ -19,6 +20,7 @@ use crate::entity::pathfinding::SearchStats;
 use crate::item::ItemStack;
 use crate::world::streaming::TimingStats;
 
+pub mod boat;
 pub mod combat;
 pub mod creature;
 pub mod drops;
@@ -92,6 +94,13 @@ pub enum SavedBody {
         #[serde(default)]
         cargo: Vec<SavedSlot>,
     },
+    /// A boat, with its speed in blocks per tick and its yaw in degrees.
+    Boat {
+        center: [f32; 3],
+        motion: [f32; 3],
+        #[serde(default)]
+        yaw: f32,
+    },
 }
 
 /// One occupied slot of a chest cart's cargo.
@@ -146,8 +155,14 @@ pub type SavedBodyData = (
     Option<&'static Velocity>,
     Option<&'static Minecart>,
     Option<&'static Cargo>,
+    Option<&'static Boat>,
 );
-pub type SavedBodyFilter = Or<(With<FallingBlock>, With<PrimedTnt>, With<Minecart>)>;
+pub type SavedBodyFilter = Or<(
+    With<FallingBlock>,
+    With<PrimedTnt>,
+    With<Minecart>,
+    With<Boat>,
+)>;
 
 impl SavedBody {
     pub fn capture(
@@ -157,8 +172,16 @@ impl SavedBody {
         velocity: Option<&Velocity>,
         minecart: Option<&Minecart>,
         cargo: Option<&Cargo>,
+        boat: Option<&Boat>,
     ) -> Option<Self> {
         let position = transform.translation.to_array();
+        if let Some(boat) = boat {
+            return Some(Self::Boat {
+                center: position,
+                motion: boat.motion.to_array(),
+                yaw: boat.yaw,
+            });
+        }
         if let Some(cart) = minecart {
             return Some(Self::Minecart {
                 center: position,
@@ -234,6 +257,22 @@ impl SavedBody {
                         ..Minecart::default()
                     },
                     (kind == CartKind::Chest).then(|| SavedSlot::unpack(&cargo)),
+                );
+            }
+            Self::Boat {
+                center,
+                motion,
+                yaw,
+            } => {
+                boat::spawn_boat_at(
+                    commands,
+                    Vec3::from_array(center),
+                    Boat {
+                        motion: Vec3::from_array(motion),
+                        yaw,
+                        prev_yaw: yaw,
+                        ..Boat::default()
+                    },
                 );
             }
         }

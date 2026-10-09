@@ -94,6 +94,9 @@ pub struct GameSettings {
     /// Features tab: the bow is drawn and released as in Beta 1.8, instead of
     /// 1.7.3's instant shot.
     pub bow_charging: bool,
+    /// Features tab: a ridden pig goes where its rider looks while forward
+    /// is held. Beta's pig wanders wherever it likes.
+    pub pig_steering: bool,
 }
 
 impl Default for GameSettings {
@@ -114,6 +117,7 @@ impl Default for GameSettings {
             fullscreen: false,
             floating_items: true,
             bow_charging: false,
+            pig_steering: true,
         }
     }
 }
@@ -262,6 +266,7 @@ struct StoredSettings {
     fullscreen: bool,
     floating_items: bool,
     bow_charging: bool,
+    pig_steering: bool,
 }
 
 impl Default for StoredSettings {
@@ -289,6 +294,7 @@ impl From<&GameSettings> for StoredSettings {
             fullscreen: settings.fullscreen,
             floating_items: settings.floating_items,
             bow_charging: settings.bow_charging,
+            pig_steering: settings.pig_steering,
         }
     }
 }
@@ -311,6 +317,7 @@ impl From<StoredSettings> for GameSettings {
             fullscreen: stored.fullscreen,
             floating_items: stored.floating_items,
             bow_charging: stored.bow_charging,
+            pig_steering: stored.pig_steering,
         };
         settings.clamp();
         settings

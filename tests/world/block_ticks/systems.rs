@@ -4,6 +4,9 @@ use bevy::prelude::*;
 use game::block::blocks::Block;
 use game::entity::DroppedItem;
 use game::entity::EntitySize;
+use game::entity::boat::Boat;
+use game::entity::boat::spawn_boat;
+use game::entity::boat::spawn_boat_at;
 use game::entity::explosion::PrimedTnt;
 use game::entity::falling_block::FallingBlock;
 use game::entity::minecart::Cargo;
@@ -16,6 +19,7 @@ use game::entity::mobs::Mob;
 use game::entity::mobs::MobType;
 use game::entity::mobs::spawn as spawn_mob;
 use game::entity::mount::Mounted;
+use game::entity::mount::Seat;
 use game::entity::mount::dismount;
 use game::entity::mount::mount;
 use game::entity::projectiles::ARROW_SIZE;
@@ -500,4 +504,131 @@ fn a_chest_cart_has_a_cargo_and_the_others_do_not() {
     assert_eq!(app.world().get::<Cargo>(chest), Some(&Cargo::default()),);
     assert!(app.world().get::<Cargo>(furnace).is_none());
     assert_eq!(cart_of(&app, furnace).kind, CartKind::Furnace);
+}
+
+fn seat_of(app: &App, vehicle: Entity) -> Option<Entity> {
+    app.world().get::<Seat>(vehicle).unwrap().rider
+}
+
+#[test]
+fn a_boat_s_rider_sits_behind_its_centre_and_steps_off_onto_it() {
+    let mut app = app();
+    let boat = spawn_boat(&mut app.world_mut().commands(), at(8, 60, 8));
+    let rider = player(&mut app, Vec3::new(20.5, 61.0, 20.5));
+    mount(&mut app.world_mut().commands(), rider, boat);
+    app.world_mut().flush();
+    assert_eq!(seat_of(&app, boat), Some(rider));
+    for _ in 0..5 {
+        step(&mut app);
+    }
+    let at_boat = app.world().get::<Transform>(boat).unwrap().translation;
+    let at_rider = app.world().get::<Transform>(rider).unwrap().translation;
+    assert!(
+        (at_boat.y - 61.3).abs() < 0.001,
+        "rests on the floor: {at_boat}"
+    );
+    // 0.4 along the yaw and 0.3 below the centre, at the player's eye height
+    // less half a block.
+    let seat = Vec3::new(0.4, -0.3 + 1.62 - 0.5, 0.0);
+    assert!((at_rider - (at_boat + seat)).length() < 0.001, "{at_rider}");
+
+    dismount(&mut app.world_mut().commands(), rider);
+    app.world_mut().flush();
+    assert!(app.world().get::<Mounted>(rider).is_none());
+    assert_eq!(seat_of(&app, boat), None);
+    let at_rider = app.world().get::<Transform>(rider).unwrap().translation;
+    assert!((at_rider - (at_boat + Vec3::Y * (0.3 + 1.62))).length() < 0.001);
+}
+
+#[test]
+fn a_boat_that_scrapes_a_wall_at_speed_breaks_into_planks_and_sticks() {
+    let mut app = app();
+    for y in 61..=63 {
+        for z in 0..16 {
+            app.world_mut()
+                .resource_mut::<WorldChunks>()
+                .set_block(9, y, z, Block::Stone);
+        }
+    }
+    // Just short of the wall, sliding into and along it.
+    let boat = spawn_boat_at(
+        &mut app.world_mut().commands(),
+        Vec3::new(8.2, 61.3, 8.5),
+        Boat {
+            motion: Vec3::new(0.3, 0.0, 0.3),
+            ..Boat::default()
+        },
+    );
+    let rider = player(&mut app, Vec3::new(20.5, 61.0, 20.5));
+    mount(&mut app.world_mut().commands(), rider, boat);
+    app.world_mut().flush();
+    step(&mut app);
+    step(&mut app);
+    assert!(app.world().get_entity(boat).is_err(), "the boat is gone");
+    assert!(app.world().get::<Mounted>(rider).is_none());
+    let mut found: Vec<_> = app
+        .world_mut()
+        .query::<&DroppedItem>()
+        .iter(app.world())
+        .map(|item| item.0.item())
+        .collect();
+    found.sort_by_key(|item| item.as_u16());
+    let planks = Item::from_block(Block::WoodenPlanks).unwrap();
+    assert_eq!(
+        found,
+        vec![planks, planks, planks, Item::Stick, Item::Stick]
+    );
+}
+
+#[test]
+fn a_boat_clears_snow_layers_it_rests_on() {
+    let mut app = app();
+    app.world_mut()
+        .resource_mut::<WorldChunks>()
+        .set_block(8, 61, 8, Block::SnowLayer);
+    spawn_boat(&mut app.world_mut().commands(), at(8, 60, 8));
+    app.world_mut().flush();
+    step(&mut app);
+    assert_eq!(block(&app, 8, 61, 8), Some(Block::Air));
+}
+
+#[test]
+fn a_pig_carries_its_rider_three_quarters_up_and_lets_go_when_it_is_gone() {
+    let mut app = app();
+    let mut saddled = Mob::new(MobType::Pig, 1);
+    saddled.saddled = true;
+    let pig = spawn_mob(
+        &mut app.world_mut().commands(),
+        saddled,
+        Vec3::new(8.5, 61.0, 8.5),
+    );
+    let rider = player(&mut app, Vec3::new(20.5, 61.0, 20.5));
+    mount(&mut app.world_mut().commands(), rider, pig);
+    app.world_mut().flush();
+    assert_eq!(seat_of(&app, pig), Some(rider));
+    step(&mut app);
+    let at_pig = app.world().get::<Transform>(pig).unwrap().translation;
+    let at_rider = app.world().get::<Transform>(rider).unwrap().translation;
+    // `height * 0.75` above the pig's feet.
+    let seat = Vec3::Y * (0.9 * 0.75 + 1.62 - 0.5);
+    assert!((at_rider - (at_pig + seat)).length() < 0.001, "{at_rider}");
+
+    app.world_mut().despawn(pig);
+    step(&mut app);
+    step(&mut app);
+    assert!(app.world().get::<Mounted>(rider).is_none());
+}
+
+#[test]
+fn only_vehicles_can_be_mounted() {
+    let mut app = app();
+    let cow = spawn_mob(
+        &mut app.world_mut().commands(),
+        Mob::new(MobType::Cow, 1),
+        Vec3::new(8.5, 61.0, 8.5),
+    );
+    let rider = player(&mut app, Vec3::new(20.5, 61.0, 20.5));
+    mount(&mut app.world_mut().commands(), rider, cow);
+    app.world_mut().flush();
+    assert!(app.world().get::<Mounted>(rider).is_none());
 }

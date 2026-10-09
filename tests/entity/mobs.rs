@@ -14,8 +14,11 @@ use game::entity::mobs::MobType;
 use game::entity::mobs::SpawnCategory;
 use game::entity::mobs::spawn;
 use game::entity::mobs::spawn_table;
+use game::entity::mount::Mounted;
+use game::entity::mount::mount;
 use game::player::Player;
 use game::player::PlayerHealth;
+use game::player::PlayerMovementInput;
 use game::world::biome::Biome;
 use game::world::chunk::Chunk;
 use game::world::chunk::ChunkPosition;
@@ -395,4 +398,94 @@ fn the_player_shoves_creatures_aside() {
     let wolf = summon(&mut app, sitter, Vec3::new(0.5, 5.0, 0.5));
     run_ticks(&mut app, 10);
     assert!(feet_of(&app, wolf).x < 0.2, "{}", feet_of(&app, wolf));
+}
+
+/// A saddled pig under the player, who looks east.
+fn ridden_pig(app: &mut App, feet: Vec3) -> (Entity, Entity) {
+    let mut saddled = Mob::new(MobType::Pig, 42);
+    saddled.saddled = true;
+    let pig = summon(app, saddled, feet);
+    let rider = app
+        .world_mut()
+        .query_filtered::<Entity, With<Player>>()
+        .single(app.world())
+        .unwrap();
+    app.world_mut()
+        .get_mut::<Transform>(rider)
+        .unwrap()
+        .rotation = Quat::from_rotation_y(-std::f32::consts::FRAC_PI_2);
+    mount(&mut app.world_mut().commands(), rider, pig);
+    app.world_mut().flush();
+    (pig, rider)
+}
+
+fn hold_forward(app: &mut App, rider: Entity, forward: f32) {
+    app.world_mut()
+        .entity_mut(rider)
+        .insert(PlayerMovementInput {
+            forward,
+            ..PlayerMovementInput::default()
+        });
+}
+
+#[test]
+fn a_steered_pig_walks_where_its_rider_looks_while_forward_is_held() {
+    let start = Vec3::new(-10.5, 5.0, 0.5);
+    let mut app = creature_app(super::pathfinding::field(4), start);
+    let (pig, rider) = ridden_pig(&mut app, start);
+    hold_forward(&mut app, rider, 1.0);
+    run_ticks(&mut app, 80);
+    let moved = feet_of(&app, pig) - start;
+    assert!(moved.x > 3.0, "the pig went {moved}");
+    assert!(moved.z.abs() < moved.x * 0.5, "the pig went {moved}");
+    assert!(app.world().get::<Living>(pig).unwrap().path().is_none());
+    // The rider is carried along, three quarters of the way up the pig.
+    let seat = Vec3::Y * (0.9 * 0.75 + EntitySize::PLAYER.y_offset - 0.5);
+    let eye = feet_of(&app, rider);
+    assert!(
+        (eye - (feet_of(&app, pig) + seat)).length() < 0.001,
+        "{eye}"
+    );
+
+    hold_forward(&mut app, rider, 0.0);
+    run_ticks(&mut app, 20);
+    let stopped = feet_of(&app, pig);
+    run_ticks(&mut app, 40);
+    assert!((feet_of(&app, pig) - stopped).length() < 0.05);
+}
+
+#[test]
+fn with_pig_steering_off_a_ridden_pig_wanders_as_in_beta() {
+    let start = Vec3::new(0.5, 5.0, 0.5);
+    let mut app = creature_app(super::pathfinding::field(4), start);
+    app.insert_resource(game::app::settings::GameSettings {
+        pig_steering: false,
+        ..Default::default()
+    });
+    let (pig, rider) = ridden_pig(&mut app, start);
+    hold_forward(&mut app, rider, 1.0);
+    let mut walked_a_path = false;
+    for _ in 0..600 {
+        run_ticks(&mut app, 1);
+        walked_a_path |= app.world().get::<Living>(pig).unwrap().path().is_some();
+    }
+    assert!(walked_a_path, "the pig chose its own way");
+    assert_eq!(
+        app.world()
+            .get::<Mounted>(rider)
+            .map(|mounted| mounted.vehicle),
+        Some(pig)
+    );
+}
+
+#[test]
+fn a_rider_lands_as_hard_as_its_pig() {
+    let start = Vec3::new(0.5, 15.0, 0.5);
+    let mut app = creature_app(super::pathfinding::field(4), start);
+    let (pig, rider) = ridden_pig(&mut app, start);
+    run_ticks(&mut app, 60);
+    assert!((feet_of(&app, pig).y - 5.0).abs() < 1e-3);
+    let health = app.world().get::<PlayerHealth>(rider).unwrap().current;
+    // Ten blocks: three free, then a point a block.
+    assert!((12..=14).contains(&health), "the rider has {health}");
 }

@@ -509,10 +509,11 @@ pub(crate) fn stream_chunks(
                 }
                 let mut saved_bodies = Vec::new();
                 for entity in bodies_in.remove(&position).unwrap_or_default() {
-                    if let Ok((_, transform, falling, tnt, velocity, minecart, cargo)) =
+                    if let Ok((_, transform, falling, tnt, velocity, minecart, cargo, boat)) =
                         bodies.get(entity)
-                        && let Some(body) =
-                            SavedBody::capture(transform, falling, tnt, velocity, minecart, cargo)
+                        && let Some(body) = SavedBody::capture(
+                            transform, falling, tnt, velocity, minecart, cargo, boat,
+                        )
                     {
                         saved_bodies.push(body);
                         commands.entity(entity).despawn();

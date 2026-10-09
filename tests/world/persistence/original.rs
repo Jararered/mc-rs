@@ -214,6 +214,15 @@ fn busy_chunk(position: ChunkPosition) -> GeneratedChunk {
             push: [1.0, 0.0],
             cargo: Vec::new(),
         },
+        SavedBody::Boat {
+            center: [
+                position.x as f32 * 16.0 + 9.5,
+                63.25,
+                position.z as f32 * 16.0 + 6.5,
+            ],
+            motion: [0.0, 0.0, 0.125],
+            yaw: 90.0,
+        },
     ]);
 
     generated.items.push(ChunkDroppedItem {
@@ -290,7 +299,19 @@ fn assert_busy_chunk_loaded(
     assert!((wolf.velocity[0] - 0.1).abs() < 0.001);
 
     let carts = loaded.chunk.saved_bodies();
-    assert_eq!(carts.len(), 2);
+    assert_eq!(carts.len(), 3);
+    let boat = carts.iter().find_map(|body| match body {
+        SavedBody::Boat {
+            center,
+            motion,
+            yaw,
+        } => Some((*center, *motion, *yaw)),
+        _ => None,
+    });
+    let (center, motion, yaw) = boat.expect("boat");
+    assert!((center[1] - 63.25).abs() < 0.001);
+    assert!((motion[2] - 0.125).abs() < 0.001);
+    assert!((yaw - 90.0).abs() < 0.001);
     let cart = |wanted: CartKind| {
         carts.iter().find_map(|body| match body {
             SavedBody::Minecart {

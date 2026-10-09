@@ -26,6 +26,7 @@ use crate::entity::explosion::ExplosionRandom;
 use crate::entity::explosion::apply_explosions;
 use crate::entity::explosion::tick_tnt;
 use crate::entity::fishing::tick_bobbers;
+use crate::entity::mount::Seat;
 use crate::entity::projectiles::pickup_arrows;
 use crate::entity::projectiles::tick_projectiles;
 use crate::entity::thrown::tick_thrown;
@@ -503,6 +504,10 @@ pub fn spawn_facing(commands: &mut Commands, mut mob: Mob, feet: Vec3, yaw: f32)
         }
         MobType::Ghast => {
             entity_commands.insert(Hover::default());
+        }
+        // Ridden once saddled (`EntityPig.interact`).
+        MobType::Pig => {
+            entity_commands.insert(Seat::default());
         }
         _ => {}
     }

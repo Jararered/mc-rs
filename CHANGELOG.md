@@ -73,8 +73,32 @@ from `git log --date=format:'%Y-%m-%d %H:%M'`). A commit cannot name its own has
 - [ ] The line drops if you switch away from the rod or move more than 32 blocks from the bobber.
       `a22f8d3 · 2026-10-09 07:55`
 
+##### Boat
+
+- [ ] Right-click with a boat places it on the block or the water you are looking at, up to five blocks away; one
+      set on a snow layer rests on the block beneath.
+      `pending`
+- [ ] A boat floats at the surface of water, rises when pushed under, and falls and grinds to a halt on land.
+      `pending`
+- [ ] Right-click a boat to sit in it and right-click it again to step out. W, A, S and D push it the way you
+      look, sneaking pushes more gently, and the boat turns to trail its wake.
+      `pending`
+- [ ] A boat that scrapes along a wall or shore at speed breaks into three planks and two sticks and puts its
+      rider off; a square hit or a slow one only stops it.
+      `pending`
+- [ ] Five quick punches break a boat into the same planks and sticks; it rocks with each hit and the damage wears
+      off if you stop.
+      `pending`
+- [ ] Walking into a boat pushes it, two boats push each other apart, and a boat clears the snow layers under it.
+      `pending`
+- [ ] A boat is still there, with its heading, after saving and reloading, in both save formats.
+      `pending`
+
 ##### Settings
 
+- [ ] Features, Pig steering (on by default): a ridden pig turns to where you look and walks while W is held,
+      hopping up blocks in its way. Off, the pig wanders wherever it likes, as in Beta.
+      `pending`
 - [ ] Settings has a new Features tab for deliberate departures from Beta. Both options survive a restart.
       `a22f8d3 · 2026-10-09 07:55`
 - [ ] The settings tabs read Gameplay, Controls, Video, Features.
@@ -102,6 +126,15 @@ from `git log --date=format:'%Y-%m-%d %H:%M'`). A commit cannot name its own has
 ### Mobs
 
 #### Additions
+
+##### Pig
+
+- [ ] Right-click a saddled pig to ride it and right-click it again to get off. An unsaddled pig cannot be ridden.
+      `pending`
+- [ ] You sit on the pig's back and are carried wherever it goes; a pig that dies or unloads lets you go.
+      `pending`
+- [ ] A pig that falls with you on it hurts you as much as the fall hurts the pig.
+      `pending`
 
 ##### Chicken
 

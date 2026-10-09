@@ -21,7 +21,8 @@
 //! blocks and primed TNT in flight are not written, so one caught mid-fall or
 //! mid-fuse by a save is lost with its block; the native format keeps them.
 //! Minecarts are written as Beta's `Minecart` entity (type, a furnace cart's
-//! push and fuel, a chest cart's items); who rides one is not kept.
+//! push and fuel, a chest cart's items) and boats as its `Boat`, which has no
+//! fields of its own; who rides one is not kept.
 //! Neither format keeps arrows (a stuck one that could have been picked up
 //! included), fireballs, thrown snowballs and eggs, or bobbers. The format
 //! is described by `ChunkLoader`, `McRegionChunkLoader`, `RegionFile`, `WorldInfo`
@@ -329,6 +330,29 @@ fn minecart_entity(body: &SavedBody) -> Option<Compound> {
     Some(entity)
 }
 
+/// `EntityBoat` writes nothing of its own: the base entity is the whole boat.
+fn boat_entity(body: &SavedBody) -> Option<Compound> {
+    let SavedBody::Boat {
+        center,
+        motion,
+        yaw,
+    } = body
+    else {
+        return None;
+    };
+    Some(entity_base("Boat", *center, *motion, *yaw))
+}
+
+fn read_boat_entity(entity: &Compound, position: [f64; 3]) -> SavedBody {
+    let motion = entity.numbers::<3>("Motion").unwrap_or([0.0; 3]);
+    let rotation = entity.numbers::<2>("Rotation").unwrap_or([0.0; 2]);
+    SavedBody::Boat {
+        center: position.map(|value| value as f32),
+        motion: motion.map(|value| value as f32),
+        yaw: rotation[0] as f32,
+    }
+}
+
 fn read_minecart_entity(entity: &Compound, position: [f64; 3]) -> SavedBody {
     let kind = CartKind::from_type_id(entity.int("Type"));
     let motion = entity.numbers::<3>("Motion").unwrap_or([0.0; 3]);
@@ -571,7 +595,7 @@ impl ChunkSnapshot {
             chunk
                 .saved_bodies()
                 .iter()
-                .filter_map(minecart_entity)
+                .filter_map(|body| minecart_entity(body).or_else(|| boat_entity(body)))
                 .map(Tag::Compound),
         );
         level.put_list("Entities", entities);
@@ -754,6 +778,7 @@ fn decode_chunk(
         match entity.string("id") {
             "Item" => items.extend(read_item_entity(entity, position)),
             "Minecart" => carts.push(read_minecart_entity(entity, position)),
+            "Boat" => carts.push(read_boat_entity(entity, position)),
             id => {
                 if let Some(kind) = mob_type(id) {
                     mobs.extend(read_mob_entity(entity, kind, position));

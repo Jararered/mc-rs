@@ -54,6 +54,7 @@ use crate::entity::combat::remove_dead;
 use crate::entity::mobs::Explosion;
 use crate::entity::mobs::Mob;
 use crate::entity::mobs::MobType;
+use crate::entity::mount::Mounted;
 use crate::entity::pathfinding::LastSearch;
 use crate::entity::pathfinding::Path;
 use crate::entity::pathfinding::Pathfinder;
@@ -75,6 +76,7 @@ use crate::physics::water_movement;
 use crate::physics::web_slowed;
 use crate::player::Player;
 use crate::player::PlayerHealth;
+use crate::player::PlayerMovementInput;
 use crate::random::ItemRng;
 use crate::world::block_ticks::BlockTicks;
 use crate::world::chunk::CHUNK_SIZE;
@@ -242,6 +244,17 @@ impl Target {
     }
 }
 
+/// The player, when it is riding a creature.
+#[derive(Clone, Copy)]
+pub(crate) struct Rider {
+    /// The creature it sits on.
+    pub vehicle: Entity,
+    /// Beta `rotationYaw`, in degrees.
+    pub yaw: f32,
+    /// The forward key is held.
+    pub forward: bool,
+}
+
 /// World state shared by every creature this frame.
 pub(crate) struct Surroundings<'a> {
     chunks: &'a WorldChunks,
@@ -252,6 +265,10 @@ pub(crate) struct Surroundings<'a> {
     ambient: f32,
     difficulty: Difficulty,
     player: Option<Target>,
+    /// The player's mount (`riddenByEntity`, from the creature's side).
+    rider: Option<Rider>,
+    /// `GameSettings::pig_steering`.
+    pig_steering: bool,
     /// Pushable bodies at the start of the frame, for `applyEntityCollision`.
     crowd: &'a [(Entity, Aabb)],
 }
@@ -393,7 +410,10 @@ pub(crate) fn tick_creatures(
         ),
         With<Player>,
     >,
-    mut creatures: Query<CreatureItem, Without<Player>>,
+    (riders, mut creatures): (
+        Query<(&Transform, &Mounted, Option<&PlayerMovementInput>), With<Player>>,
+        Query<CreatureItem, Without<Player>>,
+    ),
     mut pathfinder: Local<Pathfinder>,
     mut crowd: Local<Vec<(Entity, Aabb)>>,
     mut loot: Local<ItemRng>,
@@ -437,6 +457,19 @@ pub(crate) fn tick_creatures(
         ambient: environment.ambient_light(),
         difficulty,
         player: target,
+        rider: riders.single().ok().map(|(look, mounted, input)| {
+            // Bevy's camera looks along local -Z; Beta's yaw 0 points
+            // along +Z.
+            let (bevy_yaw, _, _) = look.rotation.to_euler(EulerRot::YXZ);
+            Rider {
+                vehicle: mounted.vehicle,
+                yaw: (std::f32::consts::PI - bevy_yaw).to_degrees(),
+                forward: input.is_some_and(|input| input.forward > 0.0),
+            }
+        }),
+        pig_steering: settings
+            .as_ref()
+            .is_none_or(|settings| settings.pig_steering),
         crowd: crowd.as_slice(),
     };
     let victim = victim(&mut player, &mut spare_armor);
@@ -655,6 +688,9 @@ impl Body<'_> {
                 MobType::Squid => self.squid_action(world, traits.swim.as_deref_mut()),
                 MobType::Slime => self.slime_action(world, traits.bounce.as_deref_mut()),
                 MobType::Ghast => self.ghast_action(world, traits.hover.as_deref_mut(), fx),
+                MobType::Pig if world.pig_steering && self.rider(world).is_some() => {
+                    self.steered_action(world);
+                }
                 _ => {
                     let has_attacked = self.creature_action(world, pathfinder, traits, fx);
                     if self.is(MobType::Wolf) {
@@ -696,6 +732,33 @@ impl Body<'_> {
         } else {
             Fate::Alive
         }
+    }
+
+    /// The player, while it rides this creature.
+    fn rider(&self, world: &Surroundings) -> Option<Rider> {
+        world.rider.filter(|rider| rider.vehicle == self.entity)
+    }
+
+    /// The Pig Steering feature, in place of `updatePlayerActionState`: a
+    /// ridden pig turns to where its rider looks and walks while the rider
+    /// holds forward, hopping up what blocks its way. Beta's pig wanders on
+    /// regardless of its rider.
+    fn steered_action(&mut self, world: &Surroundings) {
+        let Some(rider) = self.rider(world) else {
+            return;
+        };
+        let speed = self.move_speed();
+        let blocked = self.collision.collided_x || self.collision.collided_z;
+        let in_liquid = self.living.in_water || lava_contains(self.aabb(), world.chunks);
+        let living = &mut *self.living;
+        living.path = None;
+        living.looking = None;
+        living.random_yaw_velocity = 0.0;
+        living.yaw = update_rotation(living.yaw, rider.yaw, 20.0);
+        living.pitch = 0.0;
+        living.move_strafing = 0.0;
+        living.move_forward = if rider.forward { speed } else { 0.0 };
+        living.jumping = in_liquid || rider.forward && blocked;
     }
 
     /// `Entity.isEntityInsideOpaqueBlock`.
@@ -1151,7 +1214,7 @@ impl Body<'_> {
         // `updateFallState`.
         if movement.collision.on_ground {
             if self.living.fall_distance > 0.0 {
-                self.fall(fx);
+                self.fall(world, fx);
             }
         } else if movement.displacement.y < 0.0 {
             self.living.fall_distance -= movement.displacement.y;
@@ -1196,8 +1259,15 @@ impl Body<'_> {
 
     /// `EntityLiving.fall`: three blocks free, then a point per block.
     /// Chickens and ghasts never take it.
-    fn fall(&mut self, fx: &mut Effects) {
+    /// A rider lands with its mount (`Entity.fall`).
+    fn fall(&mut self, world: &Surroundings, fx: &mut Effects) {
         let distance = std::mem::take(&mut self.living.fall_distance);
+        if self.rider(world).is_some() {
+            let damage = (distance - 3.0).ceil() as i16;
+            if damage > 0 {
+                self.strike(world, Hit::environment(damage), fx);
+            }
+        }
         if matches!(self.mob.kind, MobType::Chicken | MobType::Ghast) {
             return;
         }
@@ -1211,8 +1281,13 @@ impl Body<'_> {
     /// updates push the pair apart, so each feels the push twice a tick.
     fn push_apart(&mut self, world: &Surroundings) {
         let area = grow(self.aabb(), Vec3::new(0.2, 0.0, 0.2));
+        // A mount and its rider do not push each other.
+        let ridden = self.rider(world).is_some();
         for &(other, aabb) in world.crowd {
-            if other == self.entity || !aabb.intersects(area) {
+            if other == self.entity
+                || ridden && other == Entity::PLACEHOLDER
+                || !aabb.intersects(area)
+            {
                 continue;
             }
             let mut dx = (aabb.min.x + aabb.max.x) * 0.5 - self.feet.x;

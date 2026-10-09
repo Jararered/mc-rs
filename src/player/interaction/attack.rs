@@ -21,6 +21,9 @@ use crate::entity::drops::items::spawn_block_drop;
 use crate::entity::mobs::Mob;
 use crate::entity::mobs::MobType;
 use crate::entity::mobs::drop_item;
+use crate::entity::mount::Seat;
+use crate::entity::mount::dismount;
+use crate::entity::mount::mount;
 use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
 use crate::item::Item;
@@ -46,6 +49,7 @@ pub(crate) struct MobTarget {
     pub velocity: &'static mut Velocity,
     pub transform: &'static Transform,
     pub size: &'static EntitySize,
+    pub seat: Option<&'static Seat>,
 }
 
 /// `attackTargetEntityWithCurrentItem`. Falling adds a point, as any
@@ -130,13 +134,14 @@ pub(crate) fn attack<F: bevy::ecs::query::QueryFilter>(
     }
 }
 
-/// Each mob's `interact`: shear a sheep, saddle a pig, milk a cow, or tame,
-/// feed, and seat a wolf.
+/// Each mob's `interact`: shear a sheep, saddle or ride a pig, milk a cow, or
+/// tame, feed, and seat a wolf. `rider` is the player.
 pub(crate) fn interact<F: bevy::ecs::query::QueryFilter>(
     commands: &mut Commands,
     loot: &mut ItemRng,
     mobs: &mut Query<MobTarget, F>,
     target: Entity,
+    rider: Entity,
     hotbar: &mut Hotbar,
     inventory: &mut Inventory,
 ) {
@@ -144,6 +149,7 @@ pub(crate) fn interact<F: bevy::ecs::query::QueryFilter>(
         return;
     };
     let feet = struck.transform.translation;
+    let seated = struck.seat.and_then(|seat| seat.rider);
     let held = hotbar.selected_stack().map(ItemStack::item);
     let mob = &mut *struck.mob;
     match mob.kind {
@@ -159,6 +165,15 @@ pub(crate) fn interact<F: bevy::ecs::query::QueryFilter>(
         MobType::Pig if held == Some(Item::Saddle) && !mob.saddled => {
             mob.saddled = true;
             hotbar.take_selected(1);
+        }
+        // `EntityPig.interact`: climb on, or off again (`mountEntity`
+        // toggles). Somebody else's pig stays theirs.
+        MobType::Pig if mob.saddled && mob.health > 0 => {
+            if seated == Some(rider) {
+                dismount(commands, rider);
+            } else if seated.is_none() {
+                mount(commands, rider, target);
+            }
         }
         MobType::Cow if held == Some(Item::Bucket) => {
             let milk = ItemStack::new(Item::MilkBucket, 1).expect("registered bucket");

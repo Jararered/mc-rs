@@ -87,6 +87,7 @@ enum MenuAction {
     Fullscreen,
     FloatingItems,
     BowCharging,
+    PigSteering,
     Tab(SettingsTab),
 }
 
@@ -106,6 +107,7 @@ pub(super) enum SettingLabel {
     ViewBobbing,
     FloatingItems,
     BowCharging,
+    PigSteering,
     Fullscreen,
 }
 
@@ -524,6 +526,13 @@ fn spawn_settings_menu(commands: &mut Commands, textures: &MenuTextures, setting
                                 MenuAction::BowCharging,
                                 SettingLabel::BowCharging,
                             );
+                            spawn_setting_button(
+                                parent,
+                                textures,
+                                pig_steering_text(settings),
+                                MenuAction::PigSteering,
+                                SettingLabel::PigSteering,
+                            );
                         });
                     content
                         .spawn((
@@ -842,6 +851,7 @@ fn handle_buttons(
             MenuAction::Fullscreen => settings.fullscreen = !settings.fullscreen,
             MenuAction::FloatingItems => settings.floating_items = !settings.floating_items,
             MenuAction::BowCharging => settings.bow_charging = !settings.bow_charging,
+            MenuAction::PigSteering => settings.pig_steering = !settings.pig_steering,
             MenuAction::Tab(selected) => {
                 drag.0 = None;
                 for (tab, mut node) in &mut panels {
@@ -884,6 +894,7 @@ fn refresh_settings_labels(
             SettingLabel::Fullscreen => fullscreen_text(&settings),
             SettingLabel::FloatingItems => floating_items_text(&settings),
             SettingLabel::BowCharging => bow_charging_text(&settings),
+            SettingLabel::PigSteering => pig_steering_text(&settings),
         };
         if let Ok(mut text) = texts.get_mut(entity) {
             **text = value;
@@ -958,6 +969,13 @@ fn bow_charging_text(settings: &GameSettings) -> String {
     format!(
         "Bow charging: {}",
         if settings.bow_charging { "ON" } else { "OFF" }
+    )
+}
+
+fn pig_steering_text(settings: &GameSettings) -> String {
+    format!(
+        "Pig steering: {}",
+        if settings.pig_steering { "ON" } else { "OFF" }
     )
 }
 

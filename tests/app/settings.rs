@@ -397,6 +397,7 @@ fn settings_round_trip_through_json() {
         difficulty: Difficulty::Hard,
         floating_items: false,
         bow_charging: true,
+        pig_steering: false,
     };
     save_settings(&path, &settings).unwrap();
     assert_eq!(load_settings(&path), settings);

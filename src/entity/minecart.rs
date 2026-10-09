@@ -17,6 +17,7 @@ use crate::entity::drops::items::spawn_chest_drops;
 use crate::entity::drops::items::spawn_entity_drop;
 use crate::entity::mobs::Mob;
 use crate::entity::mount::Mounted;
+use crate::entity::mount::Seat;
 use crate::entity::mount::dismount;
 use crate::entity::mount::mount;
 use crate::item::Item;
@@ -192,6 +193,7 @@ pub fn spawn_cart_at(
     let mut entity = commands.spawn((
         Name::new("Minecart"),
         cart,
+        Seat::default(),
         CART_SIZE,
         PreviousTick(center),
         Transform::from_translation(center),
@@ -555,7 +557,7 @@ pub struct CartBody<'a> {
 
 /// The scaled offset `applyEntityCollision` pushes along, or `None` when the
 /// two are too close to tell apart. `from` is the pusher.
-fn push_offset(this: Vec3, from: Vec3) -> Option<Vec2> {
+pub(crate) fn push_offset(this: Vec3, from: Vec3) -> Option<Vec2> {
     let mut x = from.x - this.x;
     let mut z = from.z - this.z;
     let distance_squared = x * x + z * z;

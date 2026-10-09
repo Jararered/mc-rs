@@ -7,13 +7,12 @@ Each entry names the Beta class to transcribe. Order inside a section is roughly
 Implemented since the previous audit and no longer listed: the Nether and portals, redstone (dust, torches, repeaters,
 levers, buttons, plates, pistons, dispensers, note-block state), rails and minecarts, beds and spawn points, flint and
 steel (recipe, fire, lit TNT, durability), food and soup, double chests, game modes, weather, fire rendering, the bow
-and arrow pickup, thrown snowballs and eggs, the fishing rod.
+and arrow pickup, thrown snowballs and eggs, the fishing rod, boats, riding saddled pigs.
 
 ## Items with no use behavior
 
 The items are registered, craftable and stack correctly, but right-click does nothing.
 
-- **Boat** (`ItemBoat`, `EntityBoat`): no entity, placement, riding or drop.
 - **Painting** (`ItemPainting`, `EntityPainting`, `EnumArt`): no entity, placement or art selection.
 - **Sign** (`ItemSign`, `BlockSign`, `TileEntitySign`, `GuiEditSign`): the blocks have no shape, text storage or edit
   screen, and `Block::placed` returns `None` for them.
@@ -27,11 +26,12 @@ The items are registered, craftable and stack correctly, but right-click does no
 
 ## Riding
 
-- **Saddled pigs** (`EntityPig.interact`, `Entity.mountEntity`): saddling works, mounting and steering do not. The
-  mount mechanism (`entity/mount.rs`: `Mounted`, `snap_riders`, `release_orphans`) is general; a pig needs its own
-  `getMountedYOffset` (`height * 0.75`, `EntityPig`) and steering from the rider's look.
-- **Boats** (see above) can reuse the same mount.
-- **Minecart leftovers**: no furnace-cart smoke (`largesmoke`, needs particles), no cart sounds (needs audio), no
+- **Boat leftovers** (`EntityBoat`): no `splash` particles from a fast boat (needs particles), and a boat is not
+  solid to other entities (`getCollisionBox`), so nothing can stand on one.
+- **Pig leftovers**: the `flyPig` achievement (needs achievements). Steering is the Pig Steering feature, not Beta.
+- **Portals while riding**: a mounted player never touches blocks, so a rider cannot charge a portal; Beta
+  dismounts the player inside one (`EntityPlayerSP.onLivingUpdate`).
+- **Minecart leftovers** (the last two apply to boats and pigs too): no furnace-cart smoke (`largesmoke`, needs particles), no cart sounds (needs audio), no
   rider yaw drift (`Entity.updateRidden`), and no lying/sitting third-person rider pose (needs the F5 camera).
 
 ## Mobs and combat

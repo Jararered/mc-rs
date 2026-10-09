@@ -6,6 +6,8 @@ use bevy::prelude::*;
 use crate::app::settings::GameSettings;
 use crate::entity::DroppedItem;
 use crate::entity::EntitySize;
+use crate::entity::boat;
+use crate::entity::boat::Boat;
 use crate::entity::creature::Living;
 use crate::entity::drops::blocks::natural_drops_with_metadata;
 use crate::entity::drops::items::dispenser_direction;
@@ -59,6 +61,8 @@ impl Plugin for BlockTicksPlugin {
                 (
                     minecart::tick_minecarts,
                     minecart::bump_carts,
+                    boat::tick_boats,
+                    boat::bump_boats,
                     run_block_ticks,
                     falling_block::tick_falling_blocks,
                     apply_tick_effects,
@@ -73,6 +77,7 @@ impl Plugin for BlockTicksPlugin {
                     .chain()
                     .after(BlockTickSet)
                     .after(minecart::tick_minecarts)
+                    .after(boat::tick_boats)
                     .after(crate::entity::creature::tick_creatures)
                     .run_if(crate::world::tick::playing),
             );
@@ -116,6 +121,7 @@ pub(super) fn run_block_ticks(
     creatures: Query<(&Transform, &EntitySize), With<Living>>,
     primed: Query<(&Transform, &EntitySize), With<PrimedTnt>>,
     carts: Query<(&Transform, &EntitySize), With<Minecart>>,
+    boats: Query<(&Transform, &EntitySize), With<Boat>>,
     projectiles: Query<(&Transform, &EntitySize), With<Projectile>>,
 ) {
     let count = tick.ticks_this_frame();
@@ -137,6 +143,7 @@ pub(super) fn run_block_ticks(
     occupants.extend(dropped.iter().map(|(t, s)| occupant(t, s, false)));
     occupants.extend(creatures.iter().map(|(t, s)| occupant(t, s, true)));
     occupants.extend(primed.iter().map(|(t, s)| occupant(t, s, false)));
+    occupants.extend(boats.iter().map(|(t, s)| occupant(t, s, false)));
     // `EnumMobType.everything`: an arrow lying on a wooden plate holds it down.
     occupants.extend(projectiles.iter().map(|(t, s)| occupant(t, s, false)));
     occupants.extend(carts.iter().map(|(t, s)| {

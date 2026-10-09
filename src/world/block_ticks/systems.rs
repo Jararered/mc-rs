@@ -30,6 +30,8 @@ use crate::physics::PhysicsSet;
 use crate::player::Player;
 use crate::random::ItemRng;
 use crate::random::JavaRandom;
+use crate::rendering::particles::effects::EffectParticles;
+use crate::rendering::particles::effects::FxKind;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
 use crate::world::lighting::LightCache;
@@ -208,6 +210,7 @@ fn apply_tick_effects(
     mut ticks: ResMut<BlockTicks>,
     mut rng: Local<ItemRng>,
     mut bodies: Query<(&mut Transform, &EntitySize)>,
+    mut particles: Option<ResMut<EffectParticles>>,
 ) {
     for effect in ticks.take_effects() {
         match effect {
@@ -298,7 +301,26 @@ fn apply_tick_effects(
                 }
             }
             // Note blocks have no sound to play until audio is implemented.
-            TickEffect::Note { .. } => {}
+            TickEffect::Note {
+                position, pitch, ..
+            } => {
+                if let Some(particles) = particles.as_deref_mut() {
+                    particles.spawn(
+                        FxKind::Note,
+                        position.as_vec3() + bevy::math::Vec3::new(0.5, 1.2, 0.5),
+                        bevy::math::Vec3::new(f32::from(pitch) / 24.0, 0.0, 0.0),
+                    );
+                }
+            }
+            TickEffect::LavaMix { position } => {
+                if let Some(particles) = particles.as_deref_mut() {
+                    for _ in 0..8 {
+                        let at =
+                            position.as_vec3() + bevy::math::Vec3::new(rng.unit(), 1.2, rng.unit());
+                        particles.spawn(FxKind::LargeSmoke, at, bevy::math::Vec3::ZERO);
+                    }
+                }
+            }
         }
     }
 }

@@ -12,7 +12,9 @@ use game::physics::BlockFace;
 use game::physics::BlockHit;
 use game::rendering::particles::block::BlockParticlePlugin;
 use game::rendering::particles::block::BlockParticles;
-use game::rendering::particles::rain::RainParticles;
+use game::rendering::particles::display::random_display_updates;
+use game::rendering::particles::effects::EffectParticles;
+use game::rendering::particles::effects::FxKind;
 use game::rendering::particles::registry::ParticleSprite;
 use game::rendering::textures::FoliageColors;
 use game::rendering::textures::GrassColors;
@@ -393,8 +395,8 @@ fn rain_world(biome: Biome, roofed: bool) -> WorldChunks {
 }
 
 fn splashes(chunks: &WorldChunks, strength: f32, fancy: bool) -> usize {
-    let mut rain = RainParticles::default();
-    rain.spawn(chunks, Vec3::new(8.5, 65.6, 8.5), strength, fancy);
+    let mut rain = EffectParticles::default();
+    rain.spawn_rain(chunks, Vec3::new(8.5, 65.6, 8.5), strength, fancy);
     rain.active_count()
 }
 
@@ -412,4 +414,170 @@ fn rain_splashes_land_on_exposed_ground_in_raining_biomes() {
     assert_eq!(splashes(&rain_world(Biome::Forest, true), 1.0, true), 0);
     assert_eq!(splashes(&rain_world(Biome::Desert, false), 1.0, true), 0);
     assert_eq!(splashes(&rain_world(Biome::Tundra, false), 1.0, true), 0);
+}
+
+/// A chunk with a stone floor at y=63 and `block` (with `metadata`) on top.
+fn world_with(block: Block, metadata: u8, position: (usize, usize, usize)) -> WorldChunks {
+    let mut chunk = Chunk::new();
+    for x in 0..16 {
+        for z in 0..16 {
+            chunk.set(x, 63, z, Block::Stone);
+        }
+    }
+    chunk.set(position.0, position.1, position.2, block);
+    chunk.set_metadata(position.0, position.1, position.2, metadata);
+    let mut chunks = WorldChunks::default();
+    chunks.insert(
+        game::world::chunk::ChunkPosition::ZERO,
+        GeneratedChunk {
+            heightmap: Heightmap::from_chunk(&chunk),
+            chunk,
+            biomes: BiomeMap::from_cells(
+                [Climate {
+                    temperature: 0.5,
+                    humidity: 0.5,
+                    biome: Biome::Forest,
+                }; 16 * 16],
+            ),
+            items: Vec::new(),
+            populated: true,
+        },
+    );
+    chunks
+}
+
+#[test]
+fn spawn_ignores_effects_beyond_sixteen_blocks_of_the_viewer() {
+    let mut particles = EffectParticles::default();
+    particles.set_viewer(Some(Vec3::ZERO));
+    particles.spawn(FxKind::Smoke, Vec3::new(15.9, 0.0, 0.0), Vec3::ZERO);
+    assert_eq!(particles.active_count(), 1);
+    particles.spawn(FxKind::Smoke, Vec3::new(16.1, 0.0, 0.0), Vec3::ZERO);
+    particles.spawn(FxKind::Flame, Vec3::new(0.0, 0.0, -20.0), Vec3::ZERO);
+    assert_eq!(particles.active_count(), 1);
+    particles.set_viewer(None);
+    particles.spawn(FxKind::Flame, Vec3::new(0.0, 0.0, -20.0), Vec3::ZERO);
+    assert_eq!(particles.active_count(), 2);
+}
+
+#[test]
+fn every_effect_kind_spawns_and_eventually_dies() {
+    let chunks = WorldChunks::default();
+    for kind in [
+        FxKind::Bubble,
+        FxKind::Smoke,
+        FxKind::LargeSmoke,
+        FxKind::Note,
+        FxKind::Portal,
+        FxKind::Explode,
+        FxKind::Flame,
+        FxKind::Lava,
+        FxKind::Splash,
+        FxKind::Reddust,
+        FxKind::Heart,
+    ] {
+        let mut particles = EffectParticles::default();
+        particles.spawn(kind, Vec3::new(8.0, 70.0, 8.0), Vec3::new(0.0, 0.1, 0.0));
+        assert!(particles.active_count() >= 1, "{kind:?} did not spawn");
+        for _ in 0..400 {
+            particles.tick(&chunks, None, 0);
+        }
+        assert_eq!(particles.active_count(), 0, "{kind:?} outlived its age");
+    }
+}
+
+#[test]
+fn bubbles_pop_when_they_leave_the_water() {
+    let mut particles = EffectParticles::default();
+    let chunks = world_with(Block::Water, 0, (8, 64, 8));
+    particles.spawn(FxKind::Bubble, Vec3::new(8.5, 64.5, 8.5), Vec3::ZERO);
+    particles.tick(&chunks, None, 0);
+    assert_eq!(particles.active_count(), 1);
+    // Nothing but air above the single water block: it floats out and dies.
+    for _ in 0..40 {
+        particles.tick(&chunks, None, 0);
+    }
+    assert_eq!(particles.active_count(), 0);
+}
+
+#[test]
+fn lava_pops_throw_smoke_while_they_fall() {
+    let mut particles = EffectParticles::default();
+    let chunks = world_with(Block::Air, 0, (0, 70, 0));
+    particles.spawn(FxKind::Lava, Vec3::new(8.5, 70.0, 8.5), Vec3::ZERO);
+    let mut most = 0;
+    for _ in 0..40 {
+        particles.tick(&chunks, None, 0);
+        most = most.max(particles.active_count());
+    }
+    assert!(most > 1, "a lava pop should leave smoke behind");
+}
+
+#[test]
+fn explosions_leave_a_puff_and_smoke_for_each_destroyed_cell() {
+    let mut particles = EffectParticles::default();
+    particles.blast_cell(IVec3::new(8, 65, 8), Vec3::new(8.5, 64.5, 8.5), 4.0);
+    assert_eq!(particles.active_count(), 2);
+}
+
+#[test]
+fn entity_bursts_match_beta_counts() {
+    let mut particles = EffectParticles::default();
+    particles.death_puffs(Vec3::new(8.0, 65.0, 8.0), 0.6, 1.8);
+    assert_eq!(particles.active_count(), 20);
+    let mut particles = EffectParticles::default();
+    particles.tame_burst(Vec3::new(8.0, 65.0, 8.0), 0.6, 0.8, true);
+    assert_eq!(particles.active_count(), 7);
+    let mut particles = EffectParticles::default();
+    particles.drown(Vec3::new(8.0, 65.0, 8.0), Vec3::ZERO);
+    assert_eq!(particles.active_count(), 8);
+    let mut particles = EffectParticles::default();
+    // 1 + 0.6 * 20 = 13 bubbles and as many splashes.
+    particles.water_entry(
+        Vec3::new(8.0, 65.0, 8.0),
+        64.0,
+        0.6,
+        Vec3::new(0.0, -0.3, 0.0),
+    );
+    assert_eq!(particles.active_count(), 26);
+}
+
+fn display_count(chunks: &WorldChunks, ticks: usize) -> usize {
+    let mut particles = EffectParticles::default();
+    for _ in 0..ticks {
+        random_display_updates(&mut particles, chunks, IVec3::new(8, 65, 8));
+    }
+    particles.active_count()
+}
+
+#[test]
+fn torches_furnaces_and_portals_make_display_particles() {
+    assert_eq!(display_count(&world_with(Block::Air, 0, (0, 70, 0)), 50), 0);
+    for (block, metadata) in [
+        (Block::Torch, 0),
+        (Block::Torch, 1),
+        (Block::LitFurnace, 4),
+        (Block::Fire, 0),
+        (Block::NetherPortal, 0),
+        (Block::RedstoneTorch, 0),
+        (Block::LitRedstoneOre, 0),
+        (Block::RedstoneWire, 15),
+        (Block::PoweredRepeater, 0),
+    ] {
+        let chunks = world_with(block, metadata, (8, 64, 8));
+        assert!(
+            display_count(&chunks, 200) > 0,
+            "{block:?} made no display particles"
+        );
+    }
+    // An unlit furnace, an unpowered wire and a plain stone block stay quiet.
+    for (block, metadata) in [
+        (Block::Furnace, 4),
+        (Block::RedstoneWire, 0),
+        (Block::Cobblestone, 0),
+        (Block::UnlitRedstoneTorch, 0),
+    ] {
+        let chunks = world_with(block, metadata, (8, 64, 8));
+        assert_eq!(display_count(&chunks, 200), 0, "{block:?} should be quiet");
+    }
 }

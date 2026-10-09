@@ -45,12 +45,14 @@ use crate::physics::lava_contains;
 use crate::physics::touches_cactus;
 use crate::physics::water_movement;
 use crate::random::ItemRng;
+use crate::rendering::particles::effects::EffectParticles;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
 use crate::world::difficulty::Difficulty;
 use crate::world::dimension::Environment;
 use crate::world::persistence::WorldPersistence;
+use crate::world::tick::TICK_SECONDS;
 use crate::world::tick::WorldTick;
 
 /// `EntityPlayer.fireResistance`: `fire` rests this far below zero, so a fire
@@ -100,6 +102,8 @@ pub struct PlayerSurvival {
     /// `isInsideOfMaterial(Material.water)` as of the last tick. The HUD
     /// shows the bubble row only while this holds.
     pub head_in_water: bool,
+    /// `Entity.inWater` as of the last tick, to catch the splash on entry.
+    in_water: bool,
     death_ticks: u16,
 }
 
@@ -111,6 +115,7 @@ impl Default for PlayerSurvival {
             fall_distance: 0.0,
             landed: 0.0,
             head_in_water: false,
+            in_water: false,
             death_ticks: 0,
         }
     }
@@ -242,6 +247,7 @@ fn tick_player_survival(
     mut spare_armor: Local<[Option<ItemStack>; 4]>,
     mut persistence: Option<ResMut<WorldPersistence>>,
     mut session: Option<ResMut<WorldSession>>,
+    mut effects: Option<ResMut<EffectParticles>>,
 ) {
     let Ok((
         player_entity,
@@ -357,6 +363,7 @@ fn tick_player_survival(
         let aabb = EntitySize::PLAYER.aabb(position);
         let eye = position + Vec3::Y * PLAYER_EYE_HEIGHT;
         let (bevy_yaw, _, _) = transform.rotation.to_euler(EulerRot::YXZ);
+        let motion = velocity.0 * TICK_SECONDS;
         let mut victim = Victim {
             health,
             combat: &mut combat,
@@ -386,8 +393,19 @@ fn tick_player_survival(
         );
         let (in_water, _) = water_movement(band, &chunks);
         if in_water {
+            if !state.in_water
+                && let Some(effects) = effects.as_deref_mut()
+            {
+                effects.water_entry(
+                    position,
+                    aabb.min.y.floor(),
+                    EntitySize::PLAYER.width,
+                    motion,
+                );
+            }
             state.fire = 0;
         }
+        state.in_water = in_water;
         if state.fire > 0 {
             if state.fire % 20 == 0 {
                 hurt(1);
@@ -412,6 +430,9 @@ fn tick_player_survival(
             state.air -= 1;
             if state.air == DROWNING_AIR {
                 state.air = 0;
+                if let Some(effects) = effects.as_deref_mut() {
+                    effects.drown(eye, motion);
+                }
                 hurt(2);
             }
             state.fire = 0;

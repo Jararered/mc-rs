@@ -53,6 +53,8 @@ use crate::player::interaction::attack::attack;
 use crate::player::interaction::attack::interact;
 use crate::random::ItemRng;
 use crate::rendering::particles::block::BlockParticles;
+use crate::rendering::particles::effects::EffectParticles;
+use crate::rendering::particles::effects::FxKind;
 use crate::world::block_ticks::BlockEvent;
 use crate::world::block_ticks::BlockTicks;
 use crate::world::block_ticks::behaviors::leaves::PLAYER_PLACED;
@@ -150,8 +152,9 @@ pub(crate) fn interact_blocks(
         Option<ResMut<WorldPersistence>>,
         Option<ResMut<BlockTicks>>,
     ),
-    (mut particles, mut mobs, mut fireballs, mut carts, mut boats): (
+    (mut particles, mut effects, mut mobs, mut fireballs, mut carts, mut boats): (
         Option<ResMut<BlockParticles>>,
+        Option<ResMut<EffectParticles>>,
         Query<MobTarget, Without<Player>>,
         Query<(Entity, &mut Fireball, &Transform), Without<Player>>,
         Query<(Entity, &Transform, &mut Minecart, Option<&Cargo>), Without<Player>>,
@@ -313,6 +316,7 @@ pub(crate) fn interact_blocks(
                         player_entity,
                         &mut hotbar,
                         &mut inventory,
+                        effects.as_deref_mut(),
                     );
                     // `Minecraft.clickMouse` goes on to `sendUseItem` after
                     // `interactWithEntity`.
@@ -897,6 +901,17 @@ pub(crate) fn interact_blocks(
                     .block_at(x, y, z)
                     .is_some_and(|block| !block.is_solid_material())
                 {
+                    if let Some(effects) = effects.as_deref_mut() {
+                        for _ in 0..8 {
+                            let jitter =
+                                Vec3::new(item_rng.unit(), item_rng.unit(), item_rng.unit());
+                            effects.spawn(
+                                FxKind::LargeSmoke,
+                                IVec3::new(x, y, z).as_vec3() + jitter,
+                                Vec3::ZERO,
+                            );
+                        }
+                    }
                     let selected = hotbar.selected;
                     hotbar.slots[selected] = ItemStack::new(Item::Bucket, 1).ok();
                 }

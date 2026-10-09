@@ -41,6 +41,8 @@ use crate::player::Player;
 use crate::player::PlayerHealth;
 use crate::random::ItemRng;
 use crate::random::JavaRandom;
+use crate::rendering::particles::effects::EffectParticles;
+use crate::rendering::particles::effects::FxKind;
 use crate::world::block_ticks::BlockTicks;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
@@ -94,6 +96,7 @@ pub(crate) fn tick_tnt(
     tick: Res<WorldTick>,
     mut tnt: Query<(Entity, &mut PrimedTnt, &Transform)>,
     mut explosions: MessageWriter<Explosion>,
+    mut particles: Option<ResMut<EffectParticles>>,
 ) {
     let ticks = tick.ticks_this_frame();
     if ticks == 0 {
@@ -102,6 +105,16 @@ pub(crate) fn tick_tnt(
     for (entity, mut tnt, transform) in &mut tnt {
         if u32::from(tnt.fuse) > ticks {
             tnt.fuse -= ticks as u16;
+            if let Some(particles) = particles.as_deref_mut() {
+                // `EntityTNTPrimed.onUpdate`: a puff above it every tick.
+                for _ in 0..ticks {
+                    particles.spawn(
+                        FxKind::Smoke,
+                        transform.translation + Vec3::Y * 0.5,
+                        Vec3::ZERO,
+                    );
+                }
+            }
         } else {
             explosions.write(Explosion {
                 center: transform.translation,
@@ -247,6 +260,7 @@ pub(crate) fn apply_explosions(
         (With<PrimedTnt>, Without<Living>, Without<Player>),
     >,
     mut rng: ResMut<ExplosionRandom>,
+    mut particles: Option<ResMut<EffectParticles>>,
     mut loot: Local<ItemRng>,
     mut spare_armor: Local<[Option<ItemStack>; 4]>,
 ) {
@@ -320,6 +334,9 @@ pub(crate) fn apply_explosions(
             }
         }
         for &cell in cells.iter().rev() {
+            if let Some(particles) = particles.as_deref_mut() {
+                particles.blast_cell(cell, center, blast.strength);
+            }
             let Some(block) = chunks.block_at(cell.x, cell.y, cell.z) else {
                 continue;
             };

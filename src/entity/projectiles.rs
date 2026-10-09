@@ -42,6 +42,8 @@ use crate::player::Player;
 use crate::player::PlayerHealth;
 use crate::random::ItemRng;
 use crate::random::JavaRandom;
+use crate::rendering::particles::effects::EffectParticles;
+use crate::rendering::particles::effects::FxKind;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
 use crate::world::difficulty::Difficulty;
@@ -154,7 +156,7 @@ impl Fireball {
 }
 
 /// Java's `nextGaussian` by the polar method, without its cached second value.
-fn gaussian(rng: &mut JavaRandom) -> f32 {
+pub(crate) fn gaussian(rng: &mut JavaRandom) -> f32 {
     loop {
         let a = 2.0 * rng.next_double() - 1.0;
         let b = 2.0 * rng.next_double() - 1.0;
@@ -444,6 +446,7 @@ pub(crate) fn tick_projectiles(
     >,
     player_entity: Query<Entity, With<Player>>,
     mut explosions: MessageWriter<Explosion>,
+    mut particles: Option<ResMut<EffectParticles>>,
     mut loot: Local<ItemRng>,
     mut rng: Local<ProjectileRandom>,
     mut spare_armor: Local<[Option<ItemStack>; 4]>,
@@ -592,6 +595,15 @@ pub(crate) fn tick_projectiles(
             arrow.pitch = smooth_angle(&mut arrow.prev_pitch, pitch);
             arrow.yaw = smooth_angle(&mut arrow.prev_yaw, yaw);
             let drag = if water_movement(ARROW_SIZE.aabb(position), &chunks).0 {
+                if let Some(particles) = particles.as_deref_mut() {
+                    for _ in 0..4 {
+                        particles.spawn(
+                            FxKind::Bubble,
+                            position - arrow.motion * 0.25,
+                            arrow.motion,
+                        );
+                    }
+                }
                 0.8
             } else {
                 0.99
@@ -665,12 +677,24 @@ pub(crate) fn tick_projectiles(
             }
             position += fireball.motion;
             let drag = if water_movement(FIREBALL_SIZE.aabb(position), &chunks).0 {
+                if let Some(particles) = particles.as_deref_mut() {
+                    for _ in 0..4 {
+                        particles.spawn(
+                            FxKind::Bubble,
+                            position - fireball.motion * 0.25,
+                            fireball.motion,
+                        );
+                    }
+                }
                 0.8
             } else {
                 0.95
             };
             let acceleration = fireball.acceleration;
             fireball.motion = (fireball.motion + acceleration) * drag;
+            if let Some(particles) = particles.as_deref_mut() {
+                particles.spawn(FxKind::Smoke, position + Vec3::Y * 0.5, Vec3::ZERO);
+            }
         }
         transform.translation = position;
         if exploded {

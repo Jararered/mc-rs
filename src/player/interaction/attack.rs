@@ -32,6 +32,7 @@ use crate::item::tools::damage_vs_entity;
 use crate::item::tools::hit_durability;
 use crate::physics::Aabb;
 use crate::random::ItemRng;
+use crate::rendering::particles::effects::EffectParticles;
 
 /// Beta's survival entity reach.
 pub const ENTITY_REACH: f32 = 3.0;
@@ -144,12 +145,14 @@ pub(crate) fn interact<F: bevy::ecs::query::QueryFilter>(
     rider: Entity,
     hotbar: &mut Hotbar,
     inventory: &mut Inventory,
+    mut effects: Option<&mut EffectParticles>,
 ) {
     let Ok(mut struck) = mobs.get_mut(target) else {
         return;
     };
     let feet = struck.transform.translation;
     let seated = struck.seat.and_then(|seat| seat.rider);
+    let (width, height) = (struck.size.width, struck.size.height);
     let held = hotbar.selected_stack().map(ItemStack::item);
     let mob = &mut *struck.mob;
     match mob.kind {
@@ -200,12 +203,16 @@ pub(crate) fn interact<F: bevy::ecs::query::QueryFilter>(
         }
         MobType::Wolf if held == Some(Item::Bone) && !mob.angry => {
             hotbar.take_selected(1);
-            if mob.rng.next_int(3) == 0 {
+            let tamed = mob.rng.next_int(3) == 0;
+            if tamed {
                 mob.tamed = true;
                 mob.sitting = true;
                 mob.health = 20;
                 mob.owner = Some("Player".to_owned());
                 struck.living.chasing = false;
+            }
+            if let Some(effects) = effects.as_deref_mut() {
+                effects.tame_burst(feet, width, height, tamed);
             }
         }
         _ => {}

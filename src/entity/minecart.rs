@@ -27,6 +27,8 @@ use crate::physics::move_entity;
 use crate::player::Player;
 use crate::random::ItemRng;
 use crate::random::JavaRandom;
+use crate::rendering::particles::effects::EffectParticles;
+use crate::rendering::particles::effects::FxKind;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
 use crate::world::tick::WorldTick;
@@ -332,13 +334,14 @@ fn move_cart(cart: &mut Minecart, center: &mut Vec3, delta: Vec3, chunks: &World
     }
 }
 
-/// `EntityMinecart.onUpdate` for one world tick (the server branch).
+/// `EntityMinecart.onUpdate` for one world tick (the server branch). Returns
+/// whether a furnace cart burned fuel this tick, which puffs `largesmoke`.
 pub fn step_minecart(
     cart: &mut Minecart,
     center: &mut Vec3,
     chunks: &WorldChunks,
     rng: &mut JavaRandom,
-) {
+) -> bool {
     if cart.time_since_hit > 0 {
         cart.time_since_hit -= 1;
     }
@@ -539,12 +542,14 @@ pub fn step_minecart(
         cart.yaw += 180.0;
         cart.in_reverse = !cart.in_reverse;
     }
-    if pushing && rng.next_int(4) == 0 {
+    let burned = pushing && rng.next_int(4) == 0;
+    if burned {
         cart.fuel -= 1;
         if cart.fuel < 0 {
             cart.push = Vec2::ZERO;
         }
     }
+    burned
 }
 
 /// The cart state `applyEntityCollision` reads and writes.
@@ -726,6 +731,7 @@ pub(crate) fn tick_minecarts(
     mut carts: Query<(Entity, &mut Minecart, &mut Transform, &mut PreviousTick)>,
     mut random: Local<CartRandom>,
     mut order: Local<Vec<Entity>>,
+    mut particles: Option<ResMut<EffectParticles>>,
 ) {
     let ticks = tick.ticks_this_frame();
     if ticks == 0 {
@@ -747,7 +753,10 @@ pub(crate) fn tick_minecarts(
             }
             previous.0 = transform.translation;
             let mut center = transform.translation;
-            step_minecart(&mut cart, &mut center, &chunks, &mut random.0);
+            let smoked = step_minecart(&mut cart, &mut center, &chunks, &mut random.0);
+            if smoked && let Some(particles) = particles.as_deref_mut() {
+                particles.spawn(FxKind::LargeSmoke, center + Vec3::Y * 0.8, Vec3::ZERO);
+            }
             transform.translation = center;
             let reach = grow(CART_SIZE.aabb(center), Vec3::new(0.2, 0.0, 0.2));
             let before = previous.0;

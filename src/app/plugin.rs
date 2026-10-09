@@ -6,7 +6,7 @@ use crate::physics::PhysicsPlugin;
 use crate::player::PlayerPlugin;
 use crate::rendering::dropped_items::DroppedItemRenderPlugin;
 use crate::rendering::particles::block::BlockParticlePlugin;
-use crate::rendering::particles::rain::RainParticlePlugin;
+use crate::rendering::particles::effects::EffectParticlePlugin;
 use crate::rendering::particles::registry::ParticleRegistryPlugin;
 use crate::rendering::shadow::plugin as entity_shadow_plugin;
 use crate::ui::ChatUiPlugin;
@@ -45,7 +45,7 @@ impl Plugin for GamePlugin {
                 // the seed recorded in its own `level.json`.
                 PersistencePlugin::default().deferred(),
                 PlayerPlugin,
-                (BlockParticlePlugin, RainParticlePlugin),
+                (BlockParticlePlugin, EffectParticlePlugin),
                 (DroppedItemPlugin, DroppedItemRenderPlugin),
                 entity_shadow_plugin,
                 ParticleRegistryPlugin,

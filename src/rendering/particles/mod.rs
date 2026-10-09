@@ -1,3 +1,4 @@
 pub mod block;
-pub mod rain;
+pub mod display;
+pub mod effects;
 pub mod registry;

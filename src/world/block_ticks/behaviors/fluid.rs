@@ -15,6 +15,7 @@ pub use crate::block::fluids::is_lava;
 pub use crate::block::fluids::is_liquid;
 pub use crate::block::fluids::is_water;
 use crate::world::block_ticks::BlockBehavior;
+use crate::world::block_ticks::TickEffect;
 use crate::world::block_ticks::TickWorld;
 
 /// `BlockFluid.getFlowDecay`: the cell's metadata if it holds `fluid`,
@@ -46,6 +47,7 @@ fn check_for_harden(world: &mut TickWorld, position: IVec3, block: Block) {
     } else if metadata <= 4 {
         world.set_block_notify(position, Block::Cobblestone);
     }
+    world.emit(TickEffect::LavaMix { position });
 }
 
 /// `BlockFlowing.blockBlocksFlow`: doors, signs, ladders, and reeds hold
@@ -161,9 +163,13 @@ fn flow_into(world: &mut TickWorld, position: IVec3, fluid: Fluid, decay: i32) {
         return;
     }
     let block = world.block(position);
-    if block != Block::Air && fluid == Fluid::Water {
-        let metadata = world.metadata(position);
-        world.drop_block_as_item(position, block, metadata);
+    if block != Block::Air {
+        if fluid == Fluid::Water {
+            let metadata = world.metadata(position);
+            world.drop_block_as_item(position, block, metadata);
+        } else {
+            world.emit(TickEffect::LavaMix { position });
+        }
     }
     world.set_block_and_metadata_notify(position, fluid.flowing(), decay as u8);
 }

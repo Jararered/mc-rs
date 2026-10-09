@@ -156,6 +156,9 @@ pub enum TickEffect {
     },
     /// A block-local inventory was broken by an explosion.
     DropStack { position: IVec3, stack: ItemStack },
+    /// `BlockFluid.triggerLavaMixEffects`: lava met water or a block it burns
+    /// away, and steam rises from the cell.
+    LavaMix { position: IVec3 },
     /// Move an entity out of the cell newly occupied by a piston extension.
     PistonPush { position: IVec3, direction: IVec3 },
 }

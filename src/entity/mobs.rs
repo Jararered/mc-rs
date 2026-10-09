@@ -37,6 +37,7 @@ use crate::player::Player;
 use crate::player::default_spawn_feet;
 use crate::random::ItemRng;
 use crate::random::JavaRandom;
+use crate::rendering::particles::effects::EffectParticles;
 use crate::world::biome::Biome;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;
@@ -358,6 +359,7 @@ fn tick_spawners(
     settings: Option<Res<GameSettings>>,
     mut persistence: Option<ResMut<WorldPersistence>>,
     weather: Option<Res<crate::world::weather::WorldWeather>>,
+    mut effects: Option<ResMut<EffectParticles>>,
     mut candidates: Local<Vec<(ChunkPosition, usize, MobSpawner)>>,
 ) {
     if tick.ticks_this_frame() == 0
@@ -398,6 +400,9 @@ fn tick_spawners(
         }
         let before = spawner;
         for _ in 0..tick.ticks_this_frame() {
+            if let Some(effects) = effects.as_deref_mut() {
+                effects.spawner_idle(IVec3::new(x, y, z));
+            }
             if spawner.delay > 0 {
                 spawner.delay -= 1;
                 continue;
@@ -443,6 +448,9 @@ fn tick_spawners(
                         variant: 0,
                     });
                     spawned += 1;
+                    if let Some(effects) = effects.as_deref_mut() {
+                        effects.spawner_burst(IVec3::new(x, y, z));
+                    }
                     spawner.delay = 200 + rng.next_int(600) as u16;
                 }
             }

@@ -60,7 +60,7 @@ use crate::player::sleep::PlayerSleep;
 use crate::player::sleep::bed_chunks;
 use crate::player::sleep::bed_respawn_feet;
 use crate::rendering::particles::block::BlockParticles;
-use crate::rendering::particles::rain::RainParticles;
+use crate::rendering::particles::effects::EffectParticles;
 use crate::rendering::shadow::ShadowOwner;
 use crate::rendering::sky::SkyAnchor;
 use crate::rendering::weather::LightningBolt;
@@ -290,7 +290,7 @@ struct WorldState<'w, 's> {
     light: ResMut<'w, LightCache>,
     ticks: ResMut<'w, BlockTicks>,
     particles: ResMut<'w, BlockParticles>,
-    rain_particles: Option<ResMut<'w, RainParticles>>,
+    rain_particles: Option<ResMut<'w, EffectParticles>>,
     weather: Option<ResMut<'w, WorldWeather>>,
     sky_flash: Option<ResMut<'w, SkyFlash>>,
     inventory: ResMut<'w, InventorySession>,
@@ -559,7 +559,7 @@ fn drive_session(
         *state.ticks = BlockTicks::default();
         *state.particles = BlockParticles::default();
         if let Some(rain) = state.rain_particles.as_deref_mut() {
-            *rain = RainParticles::default();
+            *rain = EffectParticles::default();
         }
         if let Some(weather) = state.weather.as_deref_mut() {
             *weather = WorldWeather::default();

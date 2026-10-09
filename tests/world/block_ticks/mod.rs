@@ -192,6 +192,7 @@ impl TestWorld {
                 | TickEffect::Note { .. }
                 | TickEffect::Dispense { .. }
                 | TickEffect::DropStack { .. }
+                | TickEffect::LavaMix { .. }
                 | TickEffect::PistonPush { .. } => None,
             })
             .collect()

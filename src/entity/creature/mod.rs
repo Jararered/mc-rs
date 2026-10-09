@@ -78,6 +78,7 @@ use crate::player::Player;
 use crate::player::PlayerHealth;
 use crate::player::PlayerMovementInput;
 use crate::random::ItemRng;
+use crate::rendering::particles::effects::EffectParticles;
 use crate::world::block_ticks::BlockTicks;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::ChunkPosition;
@@ -338,6 +339,7 @@ pub(crate) struct Effects<'a, 'w, 's> {
     pub explosions: &'a mut Vec<Explosion>,
     pub block_ticks: Option<&'a mut BlockTicks>,
     pub victim: Option<Victim<'a>>,
+    pub particles: Option<&'a mut EffectParticles>,
 }
 
 /// The optional, kind-specific components a creature carries.
@@ -389,6 +391,13 @@ pub(crate) struct CreatureItem {
     steps: Option<&'static mut StepDistance>,
 }
 
+/// The client-side resources a creature tick feeds when they exist.
+#[derive(bevy::ecs::system::SystemParam)]
+pub(crate) struct CreatureExtras<'w> {
+    diagnostics: Option<ResMut<'w, EntityDiagnostics>>,
+    particles: Option<ResMut<'w, EffectParticles>>,
+}
+
 /// Run each mob's Beta update once per world tick this frame.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn tick_creatures(
@@ -419,7 +428,7 @@ pub(crate) fn tick_creatures(
     mut loot: Local<ItemRng>,
     mut explosions: Local<Vec<Explosion>>,
     mut spare_armor: Local<[Option<ItemStack>; 4]>,
-    mut diagnostics: Option<ResMut<EntityDiagnostics>>,
+    mut extras: CreatureExtras,
 ) {
     let ticks = tick.ticks_this_frame();
     if ticks == 0 {
@@ -480,6 +489,7 @@ pub(crate) fn tick_creatures(
         explosions: &mut explosions,
         block_ticks: block_ticks.as_deref_mut(),
         victim,
+        particles: extras.particles.as_deref_mut(),
     };
 
     for mut item in &mut creatures {
@@ -539,7 +549,7 @@ pub(crate) fn tick_creatures(
         }
     }
     explosion_writer.write_batch(explosions.drain(..));
-    if let Some(diagnostics) = diagnostics.as_deref_mut() {
+    if let Some(diagnostics) = extras.diagnostics.as_deref_mut() {
         diagnostics.creatures.record(start.elapsed());
         diagnostics.ticks += u64::from(ticks);
         diagnostics.searches.add(pathfinder.take_stats());
@@ -624,7 +634,12 @@ impl Body<'_> {
         // `Entity.onEntityUpdate`.
         let band = grow(self.aabb(), Vec3::new(-0.001, -0.401, -0.001));
         let (in_water, current) = water_movement(band, world.chunks);
+        let entered_water = in_water && !self.living.in_water && self.mob.age > 1;
         self.living.in_water = in_water;
+        if entered_water && let Some(particles) = fx.particles.as_deref_mut() {
+            let motion = self.motion;
+            particles.water_entry(self.feet, self.feet.y.floor(), self.size.width, motion);
+        }
         self.motion += current * WATER_CURRENT_PER_TICK;
         if in_water {
             self.living.fall_distance = 0.0;
@@ -656,6 +671,9 @@ impl Body<'_> {
             self.living.air -= 1;
             if self.living.air == -20 {
                 self.living.air = 0;
+                if let Some(particles) = fx.particles.as_deref_mut() {
+                    particles.drown(self.feet, self.motion);
+                }
                 self.hurt(Hit::environment(2), fx);
             }
             self.mob.fire_ticks = 0;
@@ -670,6 +688,9 @@ impl Body<'_> {
         if !alive {
             living.death_time += 1;
             if living.death_time > DEATH_TICKS {
+                if let Some(particles) = fx.particles.as_deref_mut() {
+                    particles.death_puffs(self.feet, self.size.width, self.size.height);
+                }
                 return Fate::Removed;
             }
         }

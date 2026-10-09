@@ -26,12 +26,12 @@ The items are registered, craftable and stack correctly, but right-click does no
 
 ## Riding
 
-- **Boat leftovers** (`EntityBoat`): no `splash` particles from a fast boat (needs particles), and a boat is not
+- **Boat leftovers** (`EntityBoat`): no `splash` particles from a fast boat (`EntityBoat`; particles now exist, the call is not wired), and a boat is not
   solid to other entities (`getCollisionBox`), so nothing can stand on one.
 - **Pig leftovers**: the `flyPig` achievement (needs achievements). Steering is the Pig Steering feature, not Beta.
 - **Portals while riding**: a mounted player never touches blocks, so a rider cannot charge a portal; Beta
   dismounts the player inside one (`EntityPlayerSP.onLivingUpdate`).
-- **Minecart leftovers** (the last two apply to boats and pigs too): no furnace-cart smoke (`largesmoke`, needs particles), no cart sounds (needs audio), no
+- **Minecart leftovers** (the last two apply to boats and pigs too): no cart sounds (needs audio), no
   rider yaw drift (`Entity.updateRidden`), and no lying/sitting third-person rider pose (needs the F5 camera).
 
 ## Mobs and combat
@@ -52,11 +52,11 @@ jukebox discs, and the volume options. Sound assets must come from the player's 
 
 ## Particles and presentation hooks
 
-`entity/particles/` has only block break/hit and rain splashes. Missing, from `Block.randomDisplayTick` and the
-`Entity*FX` classes: smoke and flames (torches, furnaces, fire), lava pops and drips, redstone dust and ore sparkles,
-portal swirl, explosion and large-smoke puffs, bubbles and splash (also a fishing bite and projectiles under water),
-`snowballpoof` when a snowball or egg bursts, hearts when breeding or taming, note particles, snow-shovel puffs and
-slime drops.
+Smoke, flames, lava pops, redstone dust, portal swirls, explosion puffs, bubbles, splashes, hearts and note
+particles are implemented (`rendering/particles/`). Still missing: the slime drops (`EntitySlimeFX`) and the
+`snowballpoof` burst of a snowball or egg (both item-sprite particles rather than `particles.png`), the fishing-bite
+and boat splashes, the wolf shaking spray (wolves do not shake dry yet), and the `spawnExplosionParticle` puffs when
+a spawner releases a mob. Creative and spectator players make no water splash.
 
 ## Projectile leftovers
 

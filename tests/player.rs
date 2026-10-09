@@ -816,3 +816,25 @@ fn healing_caps_at_maximum_health() {
     health.heal(42);
     assert_eq!(health.current, game::player::MAX_PLAYER_HEALTH);
 }
+
+#[test]
+fn hurt_camera_roll_eases_in_and_out_without_jumps() {
+    use game::player::hurt_roll_degrees;
+
+    assert_eq!(hurt_roll_degrees(-0.5), 0.0);
+    assert!(hurt_roll_degrees(10.0).abs() < 1.0e-4);
+    assert!(hurt_roll_degrees(0.0).abs() < 1.0e-4);
+
+    let mut peak = 0.0_f32;
+    let mut previous = hurt_roll_degrees(10.0);
+    let mut largest_step = 0.0_f32;
+    for step in 1..=600 {
+        let roll = hurt_roll_degrees(10.0 - step as f32 / 60.0);
+        peak = peak.max(roll);
+        largest_step = largest_step.max((roll - previous).abs());
+        previous = roll;
+    }
+    assert!((peak - 14.0).abs() < 0.1, "peak {peak}");
+    // At 60 fps the roll may not move more than a degree per frame.
+    assert!(largest_step < 1.0, "largest step {largest_step}");
+}

@@ -19,6 +19,7 @@ use crate::entity::StepHeight;
 use crate::entity::Velocity;
 use crate::entity::combat::HURT_TICKS;
 use crate::entity::combat::PlayerCombat;
+use crate::entity::combat::tick_player_combat;
 use crate::inventory::Hotbar;
 pub(crate) mod interaction;
 pub(crate) mod model;
@@ -109,6 +110,10 @@ impl Plugin for PlayerPlugin {
                 Update,
                 update_camera_bobbing
                     .after(PhysicsSet::Integrate)
+                    // `hurt_pose` reads `hurt_time` with the new tick's
+                    // `partial`; running first pairs them one tick apart and
+                    // the roll steps back and forth on every tick.
+                    .after(tick_player_combat)
                     .run_if(in_state(AppScreen::Playing)),
             )
             .add_plugins((survival::SurvivalPlugin, sleep::SleepPlugin));
@@ -443,15 +448,38 @@ fn update_camera_bobbing(
     }
 }
 
-/// `EntityRenderer.hurtCameraEffect`: a hit rolls the view up to 14° away
-/// from the side it came from, easing back over the hurt time.
+/// Peak roll of the hit camera effect, in degrees.
+const HURT_ROLL_DEGREES: f32 = 14.0;
+/// Fraction of the hurt time spent easing into the peak.
+const HURT_ROLL_RISE: f32 = 0.2;
+
+/// The roll for `elapsed` ticks of hurt time left (`HURT_TICKS` right after a
+/// hit, 0 when it ends). Beta's `sin(p^4 * PI)` snaps to its peak within two
+/// ticks, which looks jittery at frame rate; this eases in over the first
+/// `HURT_ROLL_RISE` and out smoothly, with the same peak.
+pub fn hurt_roll_degrees(elapsed: f32) -> f32 {
+    if elapsed < 0.0 {
+        return 0.0;
+    }
+    let age = (1.0 - elapsed / f32::from(HURT_TICKS)).clamp(0.0, 1.0);
+    let envelope = if age < HURT_ROLL_RISE {
+        let t = age / HURT_ROLL_RISE;
+        t * t * (3.0 - 2.0 * t)
+    } else {
+        let t = (age - HURT_ROLL_RISE) / (1.0 - HURT_ROLL_RISE);
+        (1.0 - t) * (1.0 - t)
+    };
+    envelope * HURT_ROLL_DEGREES
+}
+
+/// `EntityRenderer.hurtCameraEffect`: a hit rolls the view away from the side
+/// it came from, easing back over the hurt time.
 fn hurt_pose(combat: &PlayerCombat, partial: f32) -> Mat4 {
     let elapsed = f32::from(combat.hurt_time) - partial;
     if elapsed < 0.0 {
         return Mat4::IDENTITY;
     }
-    let progress = elapsed / f32::from(HURT_TICKS);
-    let roll = (progress.powi(4) * std::f32::consts::PI).sin() * 14.0;
+    let roll = hurt_roll_degrees(elapsed);
     let side = combat.attacked_at_yaw.to_radians();
     Mat4::from_rotation_y(-side)
         * Mat4::from_rotation_z((-roll).to_radians())

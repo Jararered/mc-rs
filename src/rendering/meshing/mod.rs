@@ -631,6 +631,32 @@ impl BlockGeometry {
         tint: [f32; 3],
         shading: CornerShading,
     ) {
+        self.push_quad_both_ways(origin, corners, texels, tint, shading, false);
+    }
+
+    /// A quad plus its reverse with every texel staying on its own corner, as
+    /// `renderBlockMinecartTrack` emits them. The reverse is the side seen
+    /// from above, so a curve keeps the shape its texture has.
+    fn push_glued_two_sided_quad(
+        &mut self,
+        origin: [f32; 3],
+        corners: [[f32; 3]; 4],
+        texels: [AtlasTexel; 4],
+        tint: [f32; 3],
+        shading: CornerShading,
+    ) {
+        self.push_quad_both_ways(origin, corners, texels, tint, shading, true);
+    }
+
+    fn push_quad_both_ways(
+        &mut self,
+        origin: [f32; 3],
+        corners: [[f32; 3]; 4],
+        texels: [AtlasTexel; 4],
+        tint: [f32; 3],
+        shading: CornerShading,
+        glued: bool,
+    ) {
         let edge =
             |from: [f32; 3], to: [f32; 3]| std::array::from_fn::<f32, 3, _>(|i| to[i] - from[i]);
         let (a, b) = (edge(corners[0], corners[1]), edge(corners[1], corners[2]));
@@ -643,7 +669,26 @@ impl BlockGeometry {
         let normal = cross.map(|v| v / length);
         self.push_block_quad(origin, normal, corners, texels, tint, shading);
         let reversed = [corners[3], corners[2], corners[1], corners[0]];
-        self.push_block_quad(origin, normal.map(|v| -v), reversed, texels, tint, shading);
+        let back = if glued {
+            [texels[3], texels[2], texels[1], texels[0]]
+        } else {
+            texels
+        };
+        let shades = if glued {
+            CornerShading {
+                light: [
+                    shading.light[3],
+                    shading.light[2],
+                    shading.light[1],
+                    shading.light[0],
+                ],
+                ao: [shading.ao[3], shading.ao[2], shading.ao[1], shading.ao[0]],
+                shade: shading.shade,
+            }
+        } else {
+            shading
+        };
+        self.push_block_quad(origin, normal.map(|v| -v), reversed, back, tint, shades);
     }
 
     fn push_block_quad(

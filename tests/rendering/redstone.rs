@@ -500,3 +500,52 @@ fn lever_stick_samples_its_tip_and_winds_outward_on_every_support() {
         }
     }
 }
+
+/// The corner of the rail's upward-facing quad nearest `(x, z)`, as its
+/// texel inside the tile.
+fn rail_top_texel(shape: u8, corner: (f32, f32)) -> [u8; 2] {
+    let mut chunk = Chunk::new();
+    chunk.set_with_metadata(X, Y, Z, Block::Rail, shape);
+    let meshes = mesh(&chunk);
+    let vertices: Vec<_> = meshes
+        .layers()
+        .iter()
+        .flat_map(|layer| layer.vertices().iter().copied())
+        .collect();
+    assert_eq!(vertices.len(), 8, "a rail is two quads");
+    for quad in vertices.chunks_exact(4) {
+        // Counter-clockwise seen from above is the side the player sees.
+        let at = |i: usize| quad[i].position;
+        let (a, b) = (
+            [at(1)[0] - at(0)[0], at(1)[2] - at(0)[2]],
+            [at(2)[0] - at(1)[0], at(2)[2] - at(1)[2]],
+        );
+        if a[0] * b[1] - a[1] * b[0] >= 0.0 {
+            continue;
+        }
+        let vertex = quad
+            .iter()
+            .find(|v| v.position[0] == X as f32 + corner.0 && v.position[2] == Z as f32 + corner.1)
+            .expect("the quad covers the cell");
+        return vertex.texel.texel;
+    }
+    panic!("no quad faces up");
+}
+
+#[test]
+fn rail_curves_keep_the_shape_of_their_texture_seen_from_above() {
+    // The curve tile joins its bottom (+z) and right (+x) edges; every shape
+    // is that tile turned the way `renderBlockMinecartTrack` turns it.
+    // Shape 6 (south and east) is the tile as drawn: u grows with x, v with z.
+    assert_eq!(rail_top_texel(6, (1.0, 1.0)), [16, 16]);
+    assert_eq!(rail_top_texel(6, (0.0, 0.0)), [0, 0]);
+    // Shape 7 (south and west) turns it a quarter: u grows with z, v with -x.
+    assert_eq!(rail_top_texel(7, (1.0, 1.0)), [16, 0]);
+    assert_eq!(rail_top_texel(7, (0.0, 1.0)), [16, 16]);
+    // Shape 8 (north and west): u grows with -x, v with -z.
+    assert_eq!(rail_top_texel(8, (0.0, 0.0)), [16, 16]);
+    assert_eq!(rail_top_texel(8, (1.0, 1.0)), [0, 0]);
+    // Shape 9 (north and east): u grows with -z, v with x.
+    assert_eq!(rail_top_texel(9, (1.0, 0.0)), [16, 16]);
+    assert_eq!(rail_top_texel(9, (0.0, 1.0)), [0, 0]);
+}

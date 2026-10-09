@@ -325,7 +325,7 @@ impl Mesher<'_> {
             AtlasTexel::new(tile_x, tile_y, 0, 0),
         ];
         let light = self.skylight.channels_at(x as i32, y as i32, z as i32);
-        mesh.push_two_sided_quad(
+        mesh.push_glued_two_sided_quad(
             origin,
             corners,
             texels,

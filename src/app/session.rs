@@ -45,9 +45,11 @@ use crate::entity::EntitySize;
 use crate::entity::Velocity;
 use crate::entity::explosion::PrimedTnt;
 use crate::entity::falling_block::FallingBlock;
+use crate::entity::fishing::Bobber;
 use crate::entity::mobs::Mob;
 use crate::entity::projectiles::Arrow;
 use crate::entity::projectiles::Fireball;
+use crate::entity::thrown::Thrown;
 use crate::inventory::session::ActiveWorkbench;
 use crate::inventory::session::InventorySession;
 use crate::player::Player;
@@ -327,6 +329,8 @@ struct WorldState<'w, 's> {
             With<crate::entity::minecart::Minecart>,
             With<Arrow>,
             With<Fireball>,
+            With<Thrown>,
+            With<Bobber>,
             With<LightningBolt>,
             With<ShadowOwner>,
             With<Player>,

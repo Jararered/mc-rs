@@ -5,7 +5,8 @@
 //! scale, flip, and lift; that child's children are the model's boxes,
 //! re-posed from the mob's [`Living`] state. Meshes and materials are shared
 //! between mobs, and per-mob brightness, hurt flashes, and creeper flashes
-//! ride in each box's `MeshTag`. Arrows and fireballs are in [`projectiles`].
+//! ride in each box's `MeshTag`. Arrows, fireballs, thrown
+//! snowballs and eggs, and the fishing bobber are in [`projectiles`].
 
 mod cart;
 pub mod models;
@@ -57,7 +58,7 @@ pub use shading::Pass;
 pub use shading::creature_tag;
 
 /// Skins with a flat color to stand in when the reference texture is absent.
-const SKINS: [(&str, [u8; 3]); 20] = [
+const SKINS: [(&str, [u8; 3]); 21] = [
     ("mob/pig.png", [237, 167, 175]),
     ("mob/saddle.png", [112, 72, 40]),
     ("mob/cow.png", [124, 93, 74]),
@@ -77,6 +78,7 @@ const SKINS: [(&str, [u8; 3]); 20] = [
     ("mob/pigzombie.png", [222, 150, 150]),
     ("gui/items.png", [180, 180, 180]),
     ("item/arrows.png", [156, 125, 82]),
+    ("particles.png", [200, 60, 50]),
     ("item/cart.png", [127, 127, 127]),
 ];
 
@@ -162,6 +164,7 @@ pub(super) fn plugin(app: &mut App) {
                 pose_creatures,
                 projectiles::add_projectile_models,
                 projectiles::pose_projectiles,
+                projectiles::pose_fishing_lines,
                 cart::add_cart_models,
                 cart::pose_carts,
             )

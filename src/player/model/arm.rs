@@ -14,7 +14,9 @@ use bevy::window::PrimaryWindow;
 
 use crate::app::settings::GameSettings;
 use crate::app::state::AppScreen;
+use crate::entity::fishing::Fishing;
 use crate::inventory::Hotbar;
+use crate::item::Item;
 use crate::item::ItemData;
 use crate::item::ItemStack;
 use crate::rendering::appearance::Shape;
@@ -27,8 +29,12 @@ use crate::player::Player;
 use crate::player::camera::CameraBobbing;
 use crate::player::camera::camera_bob_pose;
 use crate::player::camera::update_camera_bobbing;
+use crate::player::interaction::use_item::BowDraw;
+use crate::player::interaction::use_item::draw_power;
 
 const ARM_LAYER: usize = 1;
+/// [`VisualKey::data`] of a fishing rod whose line is out.
+const ROD_CAST: u16 = 1;
 /// Beta `EntityPlayer.swingItem` counts eight ticks.
 const SWING_TICKS: i32 = 8;
 /// `ItemRenderer.updateEquippedItem` moves at most this much per tick.
@@ -225,7 +231,7 @@ fn animate_arm(
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<(&Window, &CursorOptions), With<PrimaryWindow>>,
     settings: Res<GameSettings>,
-    players: Query<(&CameraBobbing, &Hotbar), With<Player>>,
+    players: Query<(&CameraBobbing, &Hotbar, Option<&Fishing>, Option<&BowDraw>), With<Player>>,
     mut arms: Query<(&mut FirstPersonArm, &mut Transform, &mut Visibility)>,
     mut held: Query<
         (
@@ -266,7 +272,7 @@ fn animate_arm(
         *wait_for_release = mouse.pressed(MouseButton::Left);
     }
     let carried = *wait_for_release;
-    let Ok((bobbing, hotbar)) = players.single() else {
+    let Ok((bobbing, hotbar, fishing, draw)) = players.single() else {
         return;
     };
     let walk_pose = if settings.view_bobbing {
@@ -274,18 +280,32 @@ fn animate_arm(
     } else {
         Mat4::IDENTITY
     };
-    let desired = hotbar.selected_stack().map(VisualKey::from_stack);
+    // `EntityPlayer.getItemIcon`: a rod whose line is out shows the icon one
+    // row down.
+    let desired = hotbar.selected_stack().map(|stack| {
+        let mut key = VisualKey::from_stack(stack);
+        if stack.item() == Item::FishingRod && fishing.is_some() {
+            key.data = ROD_CAST;
+        }
+        key
+    });
+    let draw = draw.map(|draw| draw.ticks as f32 + tick.partial());
     let Ok((mut held_mesh, mut held_material, mut held_transform, mut held_visibility)) =
         held.single_mut()
     else {
         return;
     };
+    let holding_bow = hotbar
+        .selected_stack()
+        .is_some_and(|stack| stack.item() == Item::Bow);
     for (mut arm, mut transform, mut arm_visibility) in &mut arms {
         let start_swing = locked
             && ((!carried
                 && (mouse.just_pressed(MouseButton::Left)
                     || (mouse.pressed(MouseButton::Left) && !arm.swinging)))
-                || mouse.just_pressed(MouseButton::Right));
+                // `ItemBow` never calls `swingItem`: shooting and drawing
+                // leave the arm still.
+                || (mouse.just_pressed(MouseButton::Right) && !holding_bow));
         if !locked {
             arm.swinging = false;
             arm.swing_tick = 0;
@@ -293,6 +313,20 @@ fn animate_arm(
             // `swingItem` arms the counter at -1 so the next tick lands on 0.
             arm.swinging = true;
             arm.swing_tick = -1;
+        }
+
+        // Casting and reeling change the rod's icon without lowering it.
+        if let (Some(shown), Some(wanted)) = (arm.displayed, desired)
+            && shown != wanted
+            && shown.id == wanted.id
+            && wanted.id == Item::FishingRod.as_u16()
+        {
+            arm.displayed = desired;
+            let mesh = assets
+                .held_meshes
+                .entry(wanted)
+                .or_insert_with(|| meshes.add(mesh_for(wanted)));
+            held_mesh.0 = mesh.clone();
         }
 
         for _ in 0..tick.ticks_this_frame() {
@@ -351,7 +385,12 @@ fn animate_arm(
                 * held_pose(
                     progress,
                     equip,
-                    arm.displayed == Some(VisualKey { id: 346, data: 0 }),
+                    arm.displayed
+                        .is_some_and(|key| key.id == Item::FishingRod.as_u16()),
+                    draw.filter(|_| {
+                        arm.displayed
+                            .is_some_and(|key| key.id == Item::Bow.as_u16())
+                    }),
                     arm.displayed.is_some_and(|key| {
                         key.id < 256
                             && block_appearance(key.id as u8, key.data).shape != Shape::Flat
@@ -369,11 +408,14 @@ fn mesh_for(key: VisualKey) -> Mesh {
         }
         mesh::sprite_mesh(look.top, look.tint, true)
     } else {
-        mesh::sprite_mesh(item_tile(key.id, key.data).unwrap_or(0), [255; 3], false)
+        let cast = key.id == Item::FishingRod.as_u16() && key.data == ROD_CAST;
+        let data = if cast { 0 } else { key.data };
+        let tile = item_tile(key.id, data).unwrap_or(0);
+        mesh::sprite_mesh(if cast { tile + 16 } else { tile }, [255; 3], false)
     }
 }
 
-fn held_pose(progress: f32, equip: f32, rod: bool, modeled: bool) -> Mat4 {
+fn held_pose(progress: f32, equip: f32, rod: bool, draw: Option<f32>, modeled: bool) -> Mat4 {
     let p = progress.clamp(0.0, 1.0);
     let root = p.sqrt() * std::f32::consts::PI;
     let swing = (p * std::f32::consts::PI).sin();
@@ -390,6 +432,27 @@ fn held_pose(progress: f32, equip: f32, rod: bool, modeled: bool) -> Mat4 {
         * Mat4::from_scale(Vec3::splat(0.4));
     if rod {
         pose *= Mat4::from_rotation_y(std::f32::consts::PI);
+    }
+    if let Some(ticks) = draw {
+        // Beta 1.8 `ItemRenderer`: the bow is turned across the view and
+        // stretched as it is drawn, trembling near full draw.
+        let power = draw_power(ticks);
+        let tremble = if power > 0.1 {
+            ((ticks - 0.1) * 1.3).sin() * 0.01 * (power - 0.1)
+        } else {
+            0.0
+        };
+        pose *= Mat4::from_rotation_z((-18_f32).to_radians())
+            * Mat4::from_rotation_y((-12_f32).to_radians())
+            * Mat4::from_rotation_x((-8_f32).to_radians())
+            * Mat4::from_translation(Vec3::new(-0.9, 0.2 + tremble, power * 0.1))
+            * Mat4::from_rotation_z((-335_f32).to_radians())
+            * Mat4::from_rotation_y((-50_f32).to_radians())
+            * Mat4::from_translation(Vec3::new(0.0, 0.5, 0.0))
+            * Mat4::from_scale(Vec3::new(1.0, 1.0, 1.0 + power * 0.2))
+            * Mat4::from_translation(Vec3::new(0.0, -0.5, 0.0))
+            * Mat4::from_rotation_y(50_f32.to_radians())
+            * Mat4::from_rotation_z(335_f32.to_radians());
     }
     if !modeled {
         pose *= Mat4::from_translation(Vec3::new(0., -0.3, 0.))

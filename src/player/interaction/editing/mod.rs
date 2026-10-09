@@ -61,6 +61,8 @@ use crate::world::tick::WorldTick;
 
 use super::mining::MiningState;
 use super::overlay::BlockFocus;
+use super::use_item::ItemUse;
+use super::use_item::launches;
 use crate::player::Player;
 use crate::player::PlayerCamera;
 use crate::player::PlayerHealth;
@@ -146,7 +148,11 @@ pub(crate) fn interact_blocks(
     ),
     mut focus: ResMut<BlockFocus>,
     (mut state, frame): (Local<BlockInteractState>, Res<bevy::diagnostic::FrameCount>),
-    (mut inventory_screen, mut bed_uses): (ResMut<InventorySession>, MessageWriter<BedUse>),
+    (mut inventory_screen, mut bed_uses, mut item_uses): (
+        ResMut<InventorySession>,
+        MessageWriter<BedUse>,
+        MessageWriter<ItemUse>,
+    ),
     mut workbench: ResMut<ActiveWorkbench>,
     mut item_rng: Local<ItemRng>,
 ) {
@@ -283,14 +289,27 @@ pub(crate) fn interact_blocks(
                     velocity.0.y < 0.0,
                     &mut hotbar,
                 ),
-                Pointed::Mob(target) => interact(
-                    &mut commands,
-                    &mut item_rng,
-                    &mut mobs,
-                    target,
-                    &mut hotbar,
-                    &mut inventory,
-                ),
+                Pointed::Mob(target) => {
+                    interact(
+                        &mut commands,
+                        &mut item_rng,
+                        &mut mobs,
+                        target,
+                        &mut hotbar,
+                        &mut inventory,
+                    );
+                    // `Minecraft.clickMouse` goes on to `sendUseItem` after
+                    // `interactWithEntity`.
+                    if hotbar
+                        .selected_stack()
+                        .is_some_and(|stack| launches(stack.item()))
+                    {
+                        item_uses.write(ItemUse {
+                            eye: transform.translation,
+                            look,
+                        });
+                    }
+                }
                 Pointed::Fireball(target) => {
                     if left_click && let Ok((_, mut fireball, _)) = fireballs.get_mut(target) {
                         fireball.deflect(look);
@@ -608,6 +627,16 @@ pub(crate) fn interact_blocks(
             } else {
                 hotbar.take_selected(1);
             }
+        } else if hotbar
+            .selected_stack()
+            .is_some_and(|stack| launches(stack.item()))
+        {
+            // `Item.onItemRightClick`: the bow, snowballs, eggs and the rod
+            // do nothing to the block clicked and are used instead.
+            item_uses.write(ItemUse {
+                eye: transform.translation,
+                look: view_rotation * Vec3::NEG_Z,
+            });
         } else if let Some(hit) = hit
             && matches!(
                 hit.block,

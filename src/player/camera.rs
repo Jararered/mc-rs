@@ -1,5 +1,6 @@
 //! The first-person camera: field of view, view bobbing, and the hurt roll.
 
+use super::interaction::use_item::BowDraw;
 use super::state::Player;
 use super::state::PlayerInterpolation;
 use crate::app::settings::GameSettings;
@@ -23,16 +24,75 @@ pub(super) struct CameraBobbing {
     camera_pitch: f32,
 }
 
+/// Where the player's eyes are drawn this frame: between the last tick's
+/// position and this one's, as the camera is.
+pub(crate) fn rendered_eye(
+    transform: &Transform,
+    interpolation: Option<&PlayerInterpolation>,
+    partial: f32,
+) -> Vec3 {
+    interpolation.map_or(transform.translation, |interpolation| {
+        interpolation
+            .previous_position
+            .lerp(transform.translation, partial.clamp(0.0, 1.0))
+    })
+}
+
+/// How much a full bow draw narrows the view.
+const DRAW_ZOOM: f32 = 0.15;
+
+/// The view's scale for a bow drawn `ticks` ticks, after modern
+/// `getFieldOfViewModifier`: it narrows with the square of the draw, to 15%
+/// less after a second.
+pub fn draw_fov_scale(ticks: f32) -> f32 {
+    let drawn = (ticks / 20.0).clamp(0.0, 1.0);
+    1.0 - drawn * drawn * DRAW_ZOOM
+}
+
+/// The view scale now and a tick ago. It closes half the gap to its target
+/// each tick, so letting the string go eases the view back out.
+pub(super) struct FovZoom {
+    previous: f32,
+    current: f32,
+}
+
+impl Default for FovZoom {
+    fn default() -> Self {
+        Self {
+            previous: 1.0,
+            current: 1.0,
+        }
+    }
+}
+
 pub(super) fn apply_camera_fov(
     settings: Res<GameSettings>,
+    tick: Option<Res<WorldTick>>,
+    draws: Query<&BowDraw, With<Player>>,
     mut cameras: Query<&mut Projection, With<PlayerCamera>>,
+    mut zoom: Local<FovZoom>,
 ) {
-    if !settings.is_changed() {
-        return;
+    let target = draws
+        .single()
+        .map_or(1.0, |draw| draw_fov_scale(draw.ticks as f32));
+    let (ticks, partial) = tick
+        .as_ref()
+        .map_or((0, 1.0), |tick| (tick.ticks_this_frame(), tick.partial()));
+    for _ in 0..ticks {
+        zoom.previous = zoom.current;
+        zoom.current += (target - zoom.current) * 0.5;
+        if (target - zoom.current).abs() < 1e-4 {
+            zoom.current = target;
+        }
     }
-    let fov = settings.fov_radians();
-    for projection in &mut cameras {
-        if let Projection::Perspective(perspective) = projection.into_inner() {
+    let scale = zoom.previous + (zoom.current - zoom.previous) * partial;
+    let fov = settings.fov_radians() * scale;
+    for mut projection in &mut cameras {
+        // Written only when it differs, so a steady view changes nothing.
+        if let Projection::Perspective(perspective) = projection.as_ref()
+            && perspective.fov != fov
+            && let Projection::Perspective(perspective) = projection.as_mut()
+        {
             perspective.fov = fov;
         }
     }

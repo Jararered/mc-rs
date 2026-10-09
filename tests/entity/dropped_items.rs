@@ -577,7 +577,11 @@ fn dropped_items_drift_with_water_once_per_world_tick() {
     ))
     .init_asset::<StandardMaterial>()
     .init_state::<AppScreen>()
-    .init_resource::<GameSettings>()
+    // Beta's own motion: the Floating Items feature slows the drift.
+    .insert_resource(GameSettings {
+        floating_items: false,
+        ..default()
+    })
     .init_resource::<WorldTick>()
     .insert_resource(chunks)
     .add_plugins((
@@ -868,4 +872,95 @@ fn an_item_dropped_into_fire_or_onto_a_cactus_is_destroyed() {
     assert!(app.world().get_entity(burning).is_err());
     assert!(app.world().get_entity(pricked).is_err());
     assert!(app.world().get_entity(safe).is_ok());
+}
+
+#[test]
+fn float_motion_rises_slowly_and_brakes_a_plunge() {
+    use game::entity::drops::items::item_float_motion;
+
+    // At rest it gains half a thousandth of a block per tick, per tick.
+    let rising = item_float_motion(Vec3::ZERO);
+    assert!((rising.y - 5.0e-4).abs() < 1e-7);
+    // It stops accelerating once it climbs at 0.06.
+    assert_eq!(item_float_motion(Vec3::new(0.0, 0.06, 0.0)).y, 0.06);
+    // A falling item loses a fifth of its speed before the lift.
+    let plunge = item_float_motion(Vec3::new(1.0, -0.5, -1.0));
+    assert!((plunge.y - (-0.4 + 5.0e-4)).abs() < 1e-6);
+    assert!((plunge.x - 0.99).abs() < 1e-6 && (plunge.z + 0.99).abs() < 1e-6);
+}
+
+/// Where an item dropped into a walled pool ten deep is after 400 ticks.
+fn settle_in_pool(floating: bool) -> f32 {
+    use bevy::prelude::*;
+    use bevy::state::app::StatesPlugin;
+    use game::app::settings::GameSettings;
+    use game::app::state::AppScreen;
+    use game::entity::CollisionState;
+    use game::entity::DroppedItem;
+    use game::entity::PreviousTick;
+    use game::entity::drops::items::DroppedItemPlugin;
+    use game::entity::drops::items::DroppedItemState;
+    use game::entity::drops::items::ItemMotion;
+    use game::world::biome::Biome;
+    use game::world::chunk::Chunk;
+    use game::world::chunk::ChunkPosition;
+    use game::world::chunk::WorldChunks;
+    use game::world::tick::WorldTick;
+
+    let mut chunk = Chunk::new();
+    for x in 4..=12 {
+        for z in 4..=12 {
+            let wall = x == 4 || x == 12 || z == 4 || z == 12;
+            chunk.set(x, 59, z, Block::Stone);
+            for y in 60..=69 {
+                chunk.set(x, y, z, if wall { Block::Stone } else { Block::Water });
+            }
+        }
+    }
+    let mut chunks = WorldChunks::default();
+    chunks.insert(
+        ChunkPosition::ZERO,
+        crate::world::block_ticks::generated(chunk, Biome::Plains),
+    );
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, StatesPlugin))
+        .init_state::<AppScreen>()
+        .insert_resource(GameSettings {
+            floating_items: floating,
+            ..default()
+        })
+        .init_resource::<WorldTick>()
+        .insert_resource(chunks)
+        .add_plugins(DroppedItemPlugin);
+    app.update();
+    app.world_mut()
+        .resource_mut::<NextState<AppScreen>>()
+        .set(AppScreen::Playing);
+    app.update();
+    let item = app
+        .world_mut()
+        .spawn((
+            DroppedItem(ItemStack::from_block(Block::Cobblestone, 1).unwrap()),
+            DroppedItemState::new(100, 0.0, 3),
+            Transform::from_xyz(8.5, 64.5, 8.5),
+            PreviousTick(Vec3::new(8.5, 64.5, 8.5)),
+            ItemMotion(Vec3::ZERO),
+            CollisionState::default(),
+            EntitySize::DROPPED_ITEM,
+        ))
+        .id();
+    for _ in 0..400 {
+        app.world_mut().resource_mut::<WorldTick>().advance(0.05);
+        app.update();
+    }
+    app.world().get::<Transform>(item).unwrap().translation.y
+}
+
+#[test]
+fn floating_items_rise_to_the_surface_and_beta_s_sink() {
+    // Beta: on the pool floor, the box's center an eighth above it.
+    assert!((settle_in_pool(false) - 60.125).abs() < 0.01);
+    // The feature: bobbing where the water ends, just under y = 70.
+    let floated = settle_in_pool(true);
+    assert!((69.5..70.1).contains(&floated), "{floated}");
 }

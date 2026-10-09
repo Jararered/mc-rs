@@ -85,6 +85,8 @@ enum MenuAction {
     Difficulty,
     ViewBobbing,
     Fullscreen,
+    FloatingItems,
+    BowCharging,
     Tab(SettingsTab),
 }
 
@@ -102,14 +104,18 @@ pub(super) enum SettingLabel {
     MaxFps,
     MouseSensitivity,
     ViewBobbing,
+    FloatingItems,
+    BowCharging,
     Fullscreen,
 }
 
 #[derive(Component, Clone, Copy, PartialEq, Eq)]
 enum SettingsTab {
-    Video,
-    Controls,
     Gameplay,
+    Controls,
+    Video,
+    /// Deliberate departures from Beta 1.7.3.
+    Features,
 }
 
 #[derive(Component)]
@@ -358,8 +364,8 @@ fn spawn_settings_menu(commands: &mut Commands, textures: &MenuTextures, setting
                     spawn_button(
                         tabs,
                         textures,
-                        "Video",
-                        MenuAction::Tab(SettingsTab::Video),
+                        "Gameplay",
+                        MenuAction::Tab(SettingsTab::Gameplay),
                         160.0,
                         None,
                     );
@@ -374,8 +380,16 @@ fn spawn_settings_menu(commands: &mut Commands, textures: &MenuTextures, setting
                     spawn_button(
                         tabs,
                         textures,
-                        "Gameplay",
-                        MenuAction::Tab(SettingsTab::Gameplay),
+                        "Video",
+                        MenuAction::Tab(SettingsTab::Video),
+                        160.0,
+                        None,
+                    );
+                    spawn_button(
+                        tabs,
+                        textures,
+                        "Features",
+                        MenuAction::Tab(SettingsTab::Features),
                         160.0,
                         None,
                     );
@@ -479,6 +493,36 @@ fn spawn_settings_menu(commands: &mut Commands, textures: &MenuTextures, setting
                                 fullscreen_text(settings),
                                 MenuAction::Fullscreen,
                                 SettingLabel::Fullscreen,
+                            );
+                        });
+                    content
+                        .spawn((
+                            SettingsTab::Features,
+                            Node {
+                                width: percent(100),
+                                flex_shrink: 0.0,
+                                align_self: AlignSelf::Start,
+                                display: Display::None,
+                                grid_template_columns: vec![RepeatedGridTrack::flex(1, 1.0)],
+                                row_gap: px(8),
+                                column_gap: px(16),
+                                ..default()
+                            },
+                        ))
+                        .with_children(|parent| {
+                            spawn_setting_button(
+                                parent,
+                                textures,
+                                floating_items_text(settings),
+                                MenuAction::FloatingItems,
+                                SettingLabel::FloatingItems,
+                            );
+                            spawn_setting_button(
+                                parent,
+                                textures,
+                                bow_charging_text(settings),
+                                MenuAction::BowCharging,
+                                SettingLabel::BowCharging,
                             );
                         });
                     content
@@ -796,6 +840,8 @@ fn handle_buttons(
             MenuAction::Difficulty => settings.difficulty = settings.difficulty.cycle(),
             MenuAction::ViewBobbing => settings.view_bobbing = !settings.view_bobbing,
             MenuAction::Fullscreen => settings.fullscreen = !settings.fullscreen,
+            MenuAction::FloatingItems => settings.floating_items = !settings.floating_items,
+            MenuAction::BowCharging => settings.bow_charging = !settings.bow_charging,
             MenuAction::Tab(selected) => {
                 drag.0 = None;
                 for (tab, mut node) in &mut panels {
@@ -836,6 +882,8 @@ fn refresh_settings_labels(
             SettingLabel::MouseSensitivity => sensitivity_text(&settings),
             SettingLabel::ViewBobbing => view_bobbing_text(&settings),
             SettingLabel::Fullscreen => fullscreen_text(&settings),
+            SettingLabel::FloatingItems => floating_items_text(&settings),
+            SettingLabel::BowCharging => bow_charging_text(&settings),
         };
         if let Ok(mut text) = texts.get_mut(entity) {
             **text = value;
@@ -896,6 +944,20 @@ fn graphics_text(settings: &GameSettings) -> String {
             GraphicsQuality::Fast => "Fast",
             GraphicsQuality::Fancy => "Fancy",
         }
+    )
+}
+
+fn floating_items_text(settings: &GameSettings) -> String {
+    format!(
+        "Floating items: {}",
+        if settings.floating_items { "ON" } else { "OFF" }
+    )
+}
+
+fn bow_charging_text(settings: &GameSettings) -> String {
+    format!(
+        "Bow charging: {}",
+        if settings.bow_charging { "ON" } else { "OFF" }
     )
 }
 

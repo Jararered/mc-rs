@@ -88,6 +88,12 @@ pub struct GameSettings {
     pub mouse_sensitivity: f32,
     pub view_bobbing: bool,
     pub fullscreen: bool,
+    /// Features tab: dropped items rise and bob in water instead of sinking
+    /// as Beta's do.
+    pub floating_items: bool,
+    /// Features tab: the bow is drawn and released as in Beta 1.8, instead of
+    /// 1.7.3's instant shot.
+    pub bow_charging: bool,
 }
 
 impl Default for GameSettings {
@@ -106,6 +112,8 @@ impl Default for GameSettings {
             mouse_sensitivity: 1.0,
             view_bobbing: true,
             fullscreen: false,
+            floating_items: true,
+            bow_charging: false,
         }
     }
 }
@@ -252,6 +260,8 @@ struct StoredSettings {
     mouse_sensitivity: f32,
     view_bobbing: bool,
     fullscreen: bool,
+    floating_items: bool,
+    bow_charging: bool,
 }
 
 impl Default for StoredSettings {
@@ -277,6 +287,8 @@ impl From<&GameSettings> for StoredSettings {
             mouse_sensitivity: settings.mouse_sensitivity,
             view_bobbing: settings.view_bobbing,
             fullscreen: settings.fullscreen,
+            floating_items: settings.floating_items,
+            bow_charging: settings.bow_charging,
         }
     }
 }
@@ -297,6 +309,8 @@ impl From<StoredSettings> for GameSettings {
             mouse_sensitivity: stored.mouse_sensitivity,
             view_bobbing: stored.view_bobbing,
             fullscreen: stored.fullscreen,
+            floating_items: stored.floating_items,
+            bow_charging: stored.bow_charging,
         };
         settings.clamp();
         settings

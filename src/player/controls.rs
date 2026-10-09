@@ -13,6 +13,8 @@ use crate::entity::CollisionState;
 use crate::entity::Flying;
 use crate::entity::Velocity;
 use crate::inventory::Hotbar;
+use crate::player::interaction::use_item::BowDraw;
+use crate::player::interaction::use_item::DRAW_MOVEMENT_SCALE;
 use bevy::input::mouse::AccumulatedMouseMotion;
 use bevy::input::mouse::AccumulatedMouseScroll;
 use bevy::prelude::*;
@@ -208,11 +210,12 @@ pub(super) fn apply_player_input(
             Option<&Flying>,
             &FlySpeed,
             &mut PlayerMovementInput,
+            Option<&BowDraw>,
         ),
         With<Player>,
     >,
 ) {
-    let Ok((transform, mut velocity, _collision, flying, fly_speed, mut movement_input)) =
+    let Ok((transform, mut velocity, _collision, flying, fly_speed, mut movement_input, draw)) =
         player.single_mut()
     else {
         return;
@@ -274,6 +277,11 @@ pub(super) fn apply_player_input(
     if sneaking {
         movement_input.strafe *= 0.3;
         movement_input.forward *= 0.3;
+    }
+    // Beta 1.8 `EntityPlayerSP.onLivingUpdate`: using an item slows the walk.
+    if draw.is_some() {
+        movement_input.strafe *= DRAW_MOVEMENT_SCALE;
+        movement_input.forward *= DRAW_MOVEMENT_SCALE;
     }
 }
 

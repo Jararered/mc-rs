@@ -25,7 +25,10 @@ pub use crate::entity::explosion::Explosion;
 use crate::entity::explosion::ExplosionRandom;
 use crate::entity::explosion::apply_explosions;
 use crate::entity::explosion::tick_tnt;
+use crate::entity::fishing::tick_bobbers;
+use crate::entity::projectiles::pickup_arrows;
 use crate::entity::projectiles::tick_projectiles;
+use crate::entity::thrown::tick_thrown;
 use crate::item::Item;
 use crate::item::ItemStack;
 use crate::physics::PhysicsSet;
@@ -330,6 +333,9 @@ impl Plugin for MobPlugin {
                     tick_player_combat,
                     tick_creatures,
                     tick_projectiles,
+                    pickup_arrows,
+                    tick_thrown,
+                    tick_bobbers,
                     tick_spawners,
                     tick_tnt,
                     apply_explosions,
@@ -463,7 +469,8 @@ pub fn spawn(commands: &mut Commands, mut mob: Mob, feet: Vec3) -> Entity {
     spawn_facing(commands, mob, feet, yaw)
 }
 
-fn spawn_facing(commands: &mut Commands, mut mob: Mob, feet: Vec3, yaw: f32) -> Entity {
+/// Spawn a new mob facing `yaw` degrees.
+pub fn spawn_facing(commands: &mut Commands, mut mob: Mob, feet: Vec3, yaw: f32) -> Entity {
     let size = mob.kind.size(mob.variant);
     let kind = mob.kind;
     let swim = (kind == MobType::Squid).then(|| Swim::new(&mut mob.rng));

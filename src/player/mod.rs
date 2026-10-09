@@ -16,7 +16,9 @@ mod state;
 mod survival;
 
 pub use camera::PlayerCamera;
+pub use camera::draw_fov_scale;
 pub use camera::hurt_roll_degrees;
+pub(crate) use camera::rendered_eye;
 pub(crate) use controls::SPRINT_ACCELERATION_MULTIPLIER;
 pub use interaction::editing::PLACED_BLOCK;
 pub use interaction::editing::break_block;
@@ -36,6 +38,9 @@ pub use interaction::mining::hand_ticks_to_break;
 pub use interaction::overlay::BlockFocus;
 pub use interaction::overlay::destroy_overlay_mesh;
 pub use interaction::overlay::double_crack_intensity;
+pub use interaction::use_item::BowDraw;
+pub use interaction::use_item::ItemUse;
+pub use interaction::use_item::draw_power;
 pub use model::arm::interpolated_swing;
 pub use state::FlySpeed;
 pub use state::GameMode;
@@ -61,6 +66,7 @@ impl Plugin for PlayerPlugin {
         interaction::overlay::overlay_plugin(app);
         model::arm::plugin(app);
         portal::plugin(app);
+        interaction::use_item::plugin(app);
         app.init_resource::<PauseMenu>()
             .init_resource::<crate::inventory::session::InventorySession>()
             .init_resource::<crate::inventory::session::ActiveWorkbench>()
@@ -79,6 +85,8 @@ impl Plugin for PlayerPlugin {
                 (
                     controls::look_player.run_if(controls::chat_controls_active),
                     interaction::editing::interact_blocks.run_if(controls::chat_controls_active),
+                    interaction::use_item::use_items,
+                    interaction::use_item::draw_bow.run_if(controls::chat_controls_active),
                     controls::update_mouse_capture.run_if(controls::chat_controls_active),
                     controls::toggle_flying.run_if(controls::chat_controls_active),
                     controls::adjust_fly_speed.run_if(controls::chat_controls_active),

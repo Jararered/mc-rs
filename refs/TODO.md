@@ -6,19 +6,13 @@ Each entry names the Beta class to transcribe. Order inside a section is roughly
 
 Implemented since the previous audit and no longer listed: the Nether and portals, redstone (dust, torches, repeaters,
 levers, buttons, plates, pistons, dispensers, note-block state), rails and minecarts, beds and spawn points, flint and
-steel (recipe, fire, lit TNT, durability), food and soup, double chests, game modes, weather, fire rendering.
+steel (recipe, fire, lit TNT, durability), food and soup, double chests, game modes, weather, fire rendering, the bow
+and arrow pickup, thrown snowballs and eggs, the fishing rod.
 
 ## Items with no use behavior
 
 The items are registered, craftable and stack correctly, but right-click does nothing.
 
-- **Bow and arrows** (`ItemBow`, `EntityArrow`): no charge, draw animation or shot; no arrow pickup. Skeletons and
-  dispensers already fire `entity::projectiles::Arrow`, so the entity exists. Needs a player-owned arrow that can be
-  picked up and may trigger wooden plates.
-- **Snowball and egg** (`ItemSnowball`, `EntitySnowball`, `ItemEgg`, `EntityEgg`): no throwing entity. Eggs have a
-  1/8 chance to hatch a chicken; a snowball only knocks back in Beta. Dispensers eject both as plain items instead of
-  launching them.
-- **Fishing rod** (`ItemFishingRod`, `EntityFish`): no bobber, catch roll or reel-in.
 - **Boat** (`ItemBoat`, `EntityBoat`): no entity, placement, riding or drop.
 - **Painting** (`ItemPainting`, `EntityPainting`, `EnumArt`): no entity, placement or art selection.
 - **Sign** (`ItemSign`, `BlockSign`, `TileEntitySign`, `GuiEditSign`): the blocks have no shape, text storage or edit
@@ -47,7 +41,6 @@ The items are registered, craftable and stack correctly, but right-click does no
 - **Mob-on-mob behavior**: mobs only target the player. Wolves do not hunt sheep, and retaliation between mobs is
   not simulated.
 - **Cactus damage to mobs**: only the player and dropped items take it.
-- **Arrows on wooden pressure plates**: plates read the per-tick body snapshot, which does not include arrows.
 - **`performSleepSpawning`** (the monster that wakes a sleeper) is not copied.
 
 ## Audio
@@ -61,8 +54,18 @@ jukebox discs, and the volume options. Sound assets must come from the player's 
 
 `entity/particles/` has only block break/hit and rain splashes. Missing, from `Block.randomDisplayTick` and the
 `Entity*FX` classes: smoke and flames (torches, furnaces, fire), lava pops and drips, redstone dust and ore sparkles,
-portal swirl, explosion and large-smoke puffs, bubbles and splash, hearts when breeding or taming, note particles,
-snow-shovel puffs and slime drops.
+portal swirl, explosion and large-smoke puffs, bubbles and splash (also a fishing bite and projectiles under water),
+`snowballpoof` when a snowball or egg bursts, hearts when breeding or taming, note particles, snow-shovel puffs and
+slime drops.
+
+## Projectile leftovers
+
+- Arrows, thrown items and bobbers are not saved, so a stuck arrow that could be picked up is lost on reload. Beta
+  writes `Arrow` (with its `player` flag), `Snowball` and `Egg` entities.
+- The fishing line ends at the first-person hand and does not sway with the arm's swing (`RenderFish`); there is no
+  third-person line or cast-rod model until the F5 camera exists.
+- The Bow Charging feature (Beta 1.8) was written without a 1.8 reference: the bow has no durability, no pull
+  icons (they are not in the 1.7.3 `items.png`), and no FOV change.
 
 ## Client UI and controls
 

@@ -97,6 +97,12 @@ pub struct GameSettings {
     /// Features tab: a ridden pig goes where its rider looks while forward
     /// is held. Beta's pig wanders wherever it likes.
     pub pig_steering: bool,
+    /// Features tab: a floating boat comes to rest at the waterline. Beta's
+    /// bobs a few centimetres up and down for ever.
+    pub steady_boats: bool,
+    /// Features tab: any hit above the wreck speed breaks a boat. Beta's
+    /// only breaks when it scrapes along what it hits.
+    pub boat_crashes: bool,
 }
 
 impl Default for GameSettings {
@@ -118,6 +124,8 @@ impl Default for GameSettings {
             floating_items: true,
             bow_charging: false,
             pig_steering: true,
+            steady_boats: true,
+            boat_crashes: true,
         }
     }
 }
@@ -267,6 +275,8 @@ struct StoredSettings {
     floating_items: bool,
     bow_charging: bool,
     pig_steering: bool,
+    steady_boats: bool,
+    boat_crashes: bool,
 }
 
 impl Default for StoredSettings {
@@ -295,6 +305,8 @@ impl From<&GameSettings> for StoredSettings {
             floating_items: settings.floating_items,
             bow_charging: settings.bow_charging,
             pig_steering: settings.pig_steering,
+            steady_boats: settings.steady_boats,
+            boat_crashes: settings.boat_crashes,
         }
     }
 }
@@ -318,6 +330,8 @@ impl From<StoredSettings> for GameSettings {
             floating_items: stored.floating_items,
             bow_charging: stored.bow_charging,
             pig_steering: stored.pig_steering,
+            steady_boats: stored.steady_boats,
+            boat_crashes: stored.boat_crashes,
         };
         settings.clamp();
         settings

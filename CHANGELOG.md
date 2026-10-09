@@ -6,7 +6,7 @@ heading for the item, block or mob they belong to. Tick a box once it has been c
 
 Every entry ends with the commit that made the change and when it was committed (`hash · date time`, local time,
 from `git log --date=format:'%Y-%m-%d %H:%M'`). A commit cannot name its own hash, so an entry is written as
-`pending` in the commit that makes the change and gets its hash and time the next time this file is edited.
+`94d9f67 · 2026-10-09 08:53` in the commit that makes the change and gets its hash and time the next time this file is edited.
 
 ## Unreleased
 
@@ -77,28 +77,33 @@ from `git log --date=format:'%Y-%m-%d %H:%M'`). A commit cannot name its own has
 
 - [ ] Right-click with a boat places it on the block or the water you are looking at, up to five blocks away; one
       set on a snow layer rests on the block beneath.
+      `94d9f67 · 2026-10-09 08:53`
+- [ ] Features, Steady boats (on by default): a boat dropped on water bobs for a second or two and then sits still
+      at the waterline. Off, it keeps bobbing a few centimetres for ever, as in Beta.
+      `pending`
+- [ ] Features, Boat crashes (on by default): running a boat into a block at speed breaks it, head-on or at an
+      angle; a gentle bump only stops it. Off, only scraping along a wall or shore breaks it, as in Beta.
       `pending`
 - [ ] A boat floats at the surface of water, rises when pushed under, and falls and grinds to a halt on land.
-      `pending`
+      `94d9f67 · 2026-10-09 08:53`
 - [ ] Right-click a boat to sit in it and right-click it again to step out. W, A, S and D push it the way you
       look, sneaking pushes more gently, and the boat turns to trail its wake.
-      `pending`
-- [ ] A boat that scrapes along a wall or shore at speed breaks into three planks and two sticks and puts its
-      rider off; a square hit or a slow one only stops it.
-      `pending`
+      `94d9f67 · 2026-10-09 08:53`
+- [ ] A wrecked boat breaks into three planks and two sticks and puts its rider off.
+      `94d9f67 · 2026-10-09 08:53`
 - [ ] Five quick punches break a boat into the same planks and sticks; it rocks with each hit and the damage wears
       off if you stop.
-      `pending`
+      `94d9f67 · 2026-10-09 08:53`
 - [ ] Walking into a boat pushes it, two boats push each other apart, and a boat clears the snow layers under it.
-      `pending`
+      `94d9f67 · 2026-10-09 08:53`
 - [ ] A boat is still there, with its heading, after saving and reloading, in both save formats.
-      `pending`
+      `94d9f67 · 2026-10-09 08:53`
 
 ##### Settings
 
 - [ ] Features, Pig steering (on by default): a ridden pig turns to where you look and walks while W is held,
       hopping up blocks in its way. Off, the pig wanders wherever it likes, as in Beta.
-      `pending`
+      `94d9f67 · 2026-10-09 08:53`
 - [ ] Settings has a new Features tab for deliberate departures from Beta. Both options survive a restart.
       `a22f8d3 · 2026-10-09 07:55`
 - [ ] The settings tabs read Gameplay, Controls, Video, Features.
@@ -130,11 +135,11 @@ from `git log --date=format:'%Y-%m-%d %H:%M'`). A commit cannot name its own has
 ##### Pig
 
 - [ ] Right-click a saddled pig to ride it and right-click it again to get off. An unsaddled pig cannot be ridden.
-      `pending`
+      `94d9f67 · 2026-10-09 08:53`
 - [ ] You sit on the pig's back and are carried wherever it goes; a pig that dies or unloads lets you go.
-      `pending`
+      `94d9f67 · 2026-10-09 08:53`
 - [ ] A pig that falls with you on it hurts you as much as the fall hurts the pig.
-      `pending`
+      `94d9f67 · 2026-10-09 08:53`
 
 ##### Chicken
 

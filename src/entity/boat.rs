@@ -9,6 +9,7 @@
 //! on one.
 use bevy::prelude::*;
 
+use crate::app::settings::GameSettings;
 use crate::block::blocks::Block;
 use crate::entity::EntitySize;
 use crate::entity::PreviousTick;
@@ -50,6 +51,8 @@ const BREAK_DAMAGE: i32 = 40;
 /// The horizontal speed above which running into something wrecks the boat.
 const WRECK_SPEED: f32 = 0.15;
 const MAX_SPEED: f32 = 0.4;
+/// Vertical drag on a floating boat with `BoatRules::steady`.
+const STEADY_WATER_DRAG: f32 = 0.8;
 
 #[derive(Component, Clone, Debug, PartialEq)]
 pub struct Boat {
@@ -145,6 +148,81 @@ pub fn rider_motion(strafe: f32, forward: f32, yaw: f32) -> Vec2 {
     ) * AIR_DRAG
 }
 
+/// The Features toggles that depart from Beta's boat.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BoatRules {
+    /// `GameSettings::steady_boats`: buoyancy follows how deep the hull sits
+    /// instead of counting wet fifths, so a floating boat comes to rest.
+    /// Beta's hunts a few centimetres up and down for ever.
+    pub steady: bool,
+    /// `GameSettings::boat_crashes`: the speed that wrecks a boat is read
+    /// before the move, so a square hit breaks it too. Beta reads it after
+    /// the blocked axis has been stopped, and only a glancing hit counts.
+    pub crashes: bool,
+}
+
+impl BoatRules {
+    pub const BETA: Self = Self {
+        steady: false,
+        crashes: false,
+    };
+    pub const FEATURES: Self = Self {
+        steady: true,
+        crashes: true,
+    };
+}
+
+/// How much of the hull is under water, as `onUpdate` counts it: fifths of
+/// its height, lowered by an eighth, each wet if any water reaches it.
+fn wet_fifths(aabb: Aabb, chunks: &WorldChunks) -> f32 {
+    const SLICES: i32 = 5;
+    let height = aabb.max.y - aabb.min.y;
+    let level = |slice: i32| aabb.min.y + height * slice as f32 / SLICES as f32 - 0.125;
+    let wet = (0..SLICES)
+        .filter(|&slice| {
+            let layer = Aabb::new(
+                Vec3::new(aabb.min.x, level(slice), aabb.min.z),
+                Vec3::new(aabb.max.x, level(slice + 1), aabb.max.z),
+            );
+            water_within(layer, chunks)
+        })
+        .count();
+    wet as f32 / SLICES as f32
+}
+
+/// The same measure without the steps: the depth of water over the lowered
+/// hull bottom as a share of its height. A tenth is added below full so the
+/// boat rides at Beta's waterline, where a partly wet fifth counts whole.
+fn wet_share(aabb: Aabb, chunks: &WorldChunks) -> f32 {
+    let height = aabb.max.y - aabb.min.y;
+    let bottom = aabb.min.y - 0.125;
+    let top = bottom + height;
+    // Water whose surface is at or above `level`, anywhere under the hull.
+    let reaches = |level: f32| {
+        let layer = Aabb::new(
+            Vec3::new(aabb.min.x, level, aabb.min.z),
+            Vec3::new(aabb.max.x, top, aabb.max.z),
+        );
+        water_within(layer, chunks)
+    };
+    if !reaches(bottom) {
+        return 0.0;
+    }
+    if reaches(top) {
+        return 1.0;
+    }
+    let (mut wet, mut dry) = (bottom, top);
+    for _ in 0..10 {
+        let middle = (wet + dry) * 0.5;
+        if reaches(middle) {
+            wet = middle;
+        } else {
+            dry = middle;
+        }
+    }
+    ((wet - bottom) / height + 0.1).min(1.0)
+}
+
 /// What one tick asks of the world around the boat.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct BoatStep {
@@ -155,11 +233,12 @@ pub struct BoatStep {
 }
 
 /// `EntityBoat.onUpdate` for one world tick. `rider_motion` is the rider's
-/// `motionX/Z`, when there is a rider.
+/// `motionX/Z`, when there is a rider; [`BoatRules::BETA`] is Beta's boat.
 pub fn step_boat(
     boat: &mut Boat,
     center: &mut Vec3,
     rider_motion: Option<Vec2>,
+    rules: BoatRules,
     chunks: &WorldChunks,
 ) -> BoatStep {
     if boat.time_since_hit > 0 {
@@ -171,22 +250,18 @@ pub fn step_boat(
     let previous = *center;
     boat.prev_yaw = boat.yaw;
     let aabb = BOAT_SIZE.aabb(*center);
-    // How much of the hull is under water, in fifths.
-    const SLICES: i32 = 5;
-    let height = aabb.max.y - aabb.min.y;
-    let level = |slice: i32| aabb.min.y + height * slice as f32 / SLICES as f32 - 0.125;
-    let submerged = (0..SLICES)
-        .filter(|&slice| {
-            let layer = Aabb::new(
-                Vec3::new(aabb.min.x, level(slice), aabb.min.z),
-                Vec3::new(aabb.max.x, level(slice + 1), aabb.max.z),
-            );
-            water_within(layer, chunks)
-        })
-        .count() as i32;
-    if submerged < SLICES {
-        let fraction = submerged as f32 / SLICES as f32;
-        boat.motion.y += 0.04 * (fraction * 2.0 - 1.0);
+    let submerged = if rules.steady {
+        wet_share(aabb, chunks)
+    } else {
+        wet_fifths(aabb, chunks)
+    };
+    if submerged < 1.0 {
+        boat.motion.y += 0.04 * (submerged * 2.0 - 1.0);
+        if rules.steady && submerged > 0.0 {
+            // The water's drag on the hull, which stills the bob within a
+            // second or two of a drop.
+            boat.motion.y *= STEADY_WATER_DRAG;
+        }
     } else {
         if boat.motion.y < 0.0 {
             boat.motion.y /= 2.0;
@@ -202,10 +277,11 @@ pub fn step_boat(
     if boat.on_ground {
         boat.motion *= 0.5;
     }
-    // `Entity.moveEntity`: the blocked axes lose their motion before the
-    // speed is measured, so a square hit on a wall does not wreck the boat
+    // `Entity.moveEntity`: the blocked axes lose their motion before Beta
+    // measures the speed, so a square hit on a wall does not wreck the boat
     // but a glancing one does.
     let delta = boat.motion;
+    let arriving = delta.xz().length();
     let moved = move_entity(aabb, delta, 0.0, boat.on_ground, chunks);
     *center = BOAT_SIZE.position_from_aabb(moved.aabb);
     boat.on_ground = delta.y < 0.0 && moved.collision.collided_y;
@@ -218,7 +294,11 @@ pub fn step_boat(
     if moved.collision.collided_z {
         boat.motion.z = 0.0;
     }
-    let speed = boat.motion.xz().length();
+    let speed = if rules.crashes {
+        arriving
+    } else {
+        boat.motion.xz().length()
+    };
     if (moved.collision.collided_x || moved.collision.collided_z) && speed > WRECK_SPEED {
         return BoatStep {
             wrecked: true,
@@ -347,13 +427,14 @@ pub(crate) fn bump_boats(
 pub(crate) fn tick_boats(
     mut commands: Commands,
     tick: Res<WorldTick>,
+    settings: Option<Res<GameSettings>>,
     mut chunks: ResMut<WorldChunks>,
     mut ticks: ResMut<BlockTicks>,
     mut streaming: Option<ResMut<WorldStreaming>>,
     mut persistence: Option<ResMut<WorldPersistence>>,
     mut boats: Query<
         (Entity, &mut Boat, &Seat, &mut Transform, &mut PreviousTick),
-        Without<Player>,ccx
+        Without<Player>,
     >,
     riders: Query<(&Transform, &PlayerMovementInput), With<Player>>,
     mut rng: Local<ItemRng>,
@@ -364,6 +445,12 @@ pub(crate) fn tick_boats(
     if count == 0 {
         return;
     }
+    let rules = settings
+        .as_ref()
+        .map_or(BoatRules::FEATURES, |settings| BoatRules {
+            steady: settings.steady_boats,
+            crashes: settings.boat_crashes,
+        });
     order.clear();
     order.extend(boats.iter().map(|(entity, ..)| entity));
     order.sort();
@@ -392,7 +479,7 @@ pub(crate) fn tick_boats(
             });
             previous.0 = transform.translation;
             let mut center = transform.translation;
-            let step = step_boat(&mut boat, &mut center, push, &chunks);
+            let step = step_boat(&mut boat, &mut center, push, rules, &chunks);
             transform.translation = center;
             if step.wrecked {
                 break_boat(&mut commands, &mut rng, entity, seat.rider, center);

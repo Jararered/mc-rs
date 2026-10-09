@@ -88,6 +88,8 @@ enum MenuAction {
     FloatingItems,
     BowCharging,
     PigSteering,
+    SteadyBoats,
+    BoatCrashes,
     Tab(SettingsTab),
 }
 
@@ -108,6 +110,8 @@ pub(super) enum SettingLabel {
     FloatingItems,
     BowCharging,
     PigSteering,
+    SteadyBoats,
+    BoatCrashes,
     Fullscreen,
 }
 
@@ -533,6 +537,20 @@ fn spawn_settings_menu(commands: &mut Commands, textures: &MenuTextures, setting
                                 MenuAction::PigSteering,
                                 SettingLabel::PigSteering,
                             );
+                            spawn_setting_button(
+                                parent,
+                                textures,
+                                steady_boats_text(settings),
+                                MenuAction::SteadyBoats,
+                                SettingLabel::SteadyBoats,
+                            );
+                            spawn_setting_button(
+                                parent,
+                                textures,
+                                boat_crashes_text(settings),
+                                MenuAction::BoatCrashes,
+                                SettingLabel::BoatCrashes,
+                            );
                         });
                     content
                         .spawn((
@@ -852,6 +870,8 @@ fn handle_buttons(
             MenuAction::FloatingItems => settings.floating_items = !settings.floating_items,
             MenuAction::BowCharging => settings.bow_charging = !settings.bow_charging,
             MenuAction::PigSteering => settings.pig_steering = !settings.pig_steering,
+            MenuAction::SteadyBoats => settings.steady_boats = !settings.steady_boats,
+            MenuAction::BoatCrashes => settings.boat_crashes = !settings.boat_crashes,
             MenuAction::Tab(selected) => {
                 drag.0 = None;
                 for (tab, mut node) in &mut panels {
@@ -895,6 +915,8 @@ fn refresh_settings_labels(
             SettingLabel::FloatingItems => floating_items_text(&settings),
             SettingLabel::BowCharging => bow_charging_text(&settings),
             SettingLabel::PigSteering => pig_steering_text(&settings),
+            SettingLabel::SteadyBoats => steady_boats_text(&settings),
+            SettingLabel::BoatCrashes => boat_crashes_text(&settings),
         };
         if let Ok(mut text) = texts.get_mut(entity) {
             **text = value;
@@ -976,6 +998,20 @@ fn pig_steering_text(settings: &GameSettings) -> String {
     format!(
         "Pig steering: {}",
         if settings.pig_steering { "ON" } else { "OFF" }
+    )
+}
+
+fn steady_boats_text(settings: &GameSettings) -> String {
+    format!(
+        "Steady boats: {}",
+        if settings.steady_boats { "ON" } else { "OFF" }
+    )
+}
+
+fn boat_crashes_text(settings: &GameSettings) -> String {
+    format!(
+        "Boat crashes: {}",
+        if settings.boat_crashes { "ON" } else { "OFF" }
     )
 }
 

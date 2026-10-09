@@ -398,6 +398,8 @@ fn settings_round_trip_through_json() {
         floating_items: false,
         bow_charging: true,
         pig_steering: false,
+        steady_boats: false,
+        boat_crashes: false,
     };
     save_settings(&path, &settings).unwrap();
     assert_eq!(load_settings(&path), settings);

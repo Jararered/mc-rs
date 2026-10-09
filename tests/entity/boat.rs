@@ -5,6 +5,7 @@ use bevy::math::Vec2;
 use bevy::math::Vec3;
 use game::block::blocks::Block;
 use game::entity::boat::Boat;
+use game::entity::boat::BoatRules;
 use game::entity::boat::rider_motion;
 use game::entity::boat::step_boat;
 
@@ -27,7 +28,7 @@ fn land() -> TestWorld {
 }
 
 fn run(w: &TestWorld, boat: &mut Boat, center: &mut Vec3, ticks: usize) -> bool {
-    (0..ticks).any(|_| step_boat(boat, center, None, &w.chunks).wrecked)
+    (0..ticks).any(|_| step_boat(boat, center, None, BoatRules::BETA, &w.chunks).wrecked)
 }
 
 #[test]
@@ -52,7 +53,7 @@ fn a_boat_held_under_water_rises() {
         ..Boat::default()
     };
     let mut center = Vec3::new(8.5, 61.8, 8.5);
-    step_boat(&mut boat, &mut center, None, &w.chunks);
+    step_boat(&mut boat, &mut center, None, BoatRules::BETA, &w.chunks);
     // Fully under: the fall is halved, then 0.007 of lift, then the drag.
     assert!((boat.motion.y - (-0.1 + 0.007) * 0.95).abs() < 1e-5);
 }
@@ -82,7 +83,13 @@ fn a_rider_pushes_the_boat_and_its_speed_is_capped() {
     let push = rider_motion(0.0, 1.0, -std::f32::consts::FRAC_PI_2);
     assert!(push.x > 0.017 && push.y.abs() < 1e-6, "{push}");
     for _ in 0..20 {
-        step_boat(&mut boat, &mut center, Some(push), &w.chunks);
+        step_boat(
+            &mut boat,
+            &mut center,
+            Some(push),
+            BoatRules::BETA,
+            &w.chunks,
+        );
     }
     assert!(boat.motion.x > 0.05, "{}", boat.motion);
     assert!(center.x > 4.9, "{center}");
@@ -92,6 +99,7 @@ fn a_rider_pushes_the_boat_and_its_speed_is_capped() {
         &mut boat,
         &mut center,
         Some(Vec2::new(50.0, 0.0)),
+        BoatRules::BETA,
         &w.chunks,
     );
     assert!(
@@ -151,12 +159,12 @@ fn a_boat_turns_at_most_twenty_degrees_a_tick_toward_its_wake() {
         ..Boat::default()
     };
     let mut center = Vec3::new(4.5, 63.15, 8.5);
-    step_boat(&mut boat, &mut center, None, &w.chunks);
+    step_boat(&mut boat, &mut center, None, BoatRules::BETA, &w.chunks);
     assert!((boat.yaw.abs() - 20.0).abs() < 1e-4, "{}", boat.yaw);
     assert_eq!(boat.prev_yaw, 0.0);
     for _ in 0..12 {
         boat.motion.x = 0.3;
-        step_boat(&mut boat, &mut center, None, &w.chunks);
+        step_boat(&mut boat, &mut center, None, BoatRules::BETA, &w.chunks);
     }
     // Moving east, the yaw comes to point west, back along the travel.
     assert!(
@@ -186,7 +194,7 @@ fn a_boat_clears_the_snow_layers_under_its_corners() {
     w.set(at(11, 61, 9), Block::SnowLayer);
     let mut boat = Boat::default();
     let mut center = Vec3::new(9.0, 61.3, 9.0);
-    let step = step_boat(&mut boat, &mut center, None, &w.chunks);
+    let step = step_boat(&mut boat, &mut center, None, BoatRules::BETA, &w.chunks);
     let mut snow = step.snow;
     snow.sort_by_key(|cell| (cell.x, cell.z));
     assert_eq!(snow, vec![IVec3::new(8, 61, 8), IVec3::new(9, 61, 9)]);
@@ -207,4 +215,48 @@ fn five_quick_blows_break_a_boat_and_the_damage_wears_off() {
     run(&w, &mut rested, &mut center, 10);
     assert_eq!((rested.damage, rested.time_since_hit), (30, 0));
     assert!(!rested.hurt(1));
+}
+
+#[test]
+fn a_steady_boat_comes_to_rest_at_beta_s_waterline_and_beta_s_keeps_bobbing() {
+    let w = pool();
+    let settle = |rules: BoatRules| {
+        let mut boat = Boat::default();
+        let mut center = Vec3::new(8.5, 64.5, 8.5);
+        for _ in 0..60 {
+            step_boat(&mut boat, &mut center, None, rules, &w.chunks);
+        }
+        // The swing over the next two seconds.
+        let (mut low, mut high) = (center.y, center.y);
+        for _ in 0..40 {
+            step_boat(&mut boat, &mut center, None, rules, &w.chunks);
+            low = low.min(center.y);
+            high = high.max(center.y);
+        }
+        (low, high)
+    };
+    let (low, high) = settle(BoatRules::FEATURES);
+    assert!(high - low < 0.002, "still moving between {low} and {high}");
+    // Where Beta's flips between two and three wet fifths.
+    assert!((low - 63.185).abs() < 0.01, "rests at {low}");
+    let (low, high) = settle(BoatRules::BETA);
+    assert!(high - low > 0.02, "Beta's hunts: {low} to {high}");
+}
+
+#[test]
+fn with_boat_crashes_a_square_hit_at_speed_wrecks_the_boat_too() {
+    let mut w = pool();
+    w.fill(at(12, 61, 0), at(12, 66, 15), Block::Stone);
+    let crash = |speed: f32| {
+        let mut boat = Boat {
+            motion: Vec3::new(speed, 0.0, 0.0),
+            ..Boat::default()
+        };
+        let mut center = Vec3::new(11.0, 63.185, 6.5);
+        (0..3).any(|_| {
+            step_boat(&mut boat, &mut center, None, BoatRules::FEATURES, &w.chunks).wrecked
+        })
+    };
+    assert!(crash(0.3));
+    assert!(!crash(0.1), "a gentle bump only stops it");
 }

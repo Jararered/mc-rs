@@ -952,6 +952,31 @@ fn liquid_surface_y(metadata: u8, y: i32) -> f32 {
     y as f32 + 1.0 - percent_air(metadata)
 }
 
+/// `World.isAABBInMaterial(box, Material.water)`: water in a cell the box
+/// spans whose surface is not below the bottom of the box.
+pub fn water_within(area: Aabb, chunks: &WorldChunks) -> bool {
+    let (min_x, max_x, min_y, max_y, min_z, max_z) = block_range(area);
+    for x in min_x..max_x {
+        for y in min_y..max_y {
+            for z in min_z..max_z {
+                if !chunks.block_at(x, y, z).is_some_and(is_water) {
+                    continue;
+                }
+                let metadata = chunks.metadata_at(x, y, z);
+                let surface = if metadata < 8 {
+                    (y + 1) as f32 - f32::from(metadata) / 8.0
+                } else {
+                    (y + 1) as f32
+                };
+                if surface >= area.min.y {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
 /// `Entity.handleLavaMovement`: lava within the box, inset 0.1 at the sides
 /// and 0.4 at the top and bottom.
 pub fn lava_contains(aabb: Aabb, chunks: &WorldChunks) -> bool {

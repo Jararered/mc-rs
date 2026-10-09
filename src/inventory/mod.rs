@@ -5,6 +5,7 @@ use bevy::prelude::Component;
 
 use crate::crafting::CraftingGrid;
 use crate::crafting::beta_recipe_book;
+use crate::item::Item;
 use crate::item::ItemStack;
 
 pub use sorting::sort_container_slots;
@@ -87,6 +88,32 @@ impl Inventory {
         *hotbar = simulated_hotbar;
         hotbar.pop = pop;
         true
+    }
+
+    /// `InventoryPlayer.consumeInventoryItem`: take one `item` from the first
+    /// slot holding it, hotbar first. False if there is none.
+    pub fn consume(&mut self, hotbar: &mut Hotbar, item: Item) -> bool {
+        let Some(slot) = hotbar
+            .slots
+            .iter_mut()
+            .chain(&mut self.main)
+            .find(|slot| slot.is_some_and(|stack| stack.item() == item))
+        else {
+            return false;
+        };
+        *slot = slot.and_then(|stack| {
+            ItemStack::with_data(stack.item(), stack.count() - 1, stack.data()).ok()
+        });
+        true
+    }
+
+    /// Whether any hotbar or main slot holds `item`.
+    pub fn holds(&self, hotbar: &Hotbar, item: Item) -> bool {
+        hotbar
+            .slots
+            .iter()
+            .chain(&self.main)
+            .any(|slot| slot.is_some_and(|stack| stack.item() == item))
     }
 
     /// `InventoryPlayer.addItemStackToInventory`: top up matching stacks

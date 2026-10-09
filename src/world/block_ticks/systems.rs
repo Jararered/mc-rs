@@ -17,7 +17,11 @@ use crate::entity::falling_block;
 use crate::entity::minecart;
 use crate::entity::minecart::Minecart;
 use crate::entity::mount;
-use crate::entity::projectiles::spawn_arrow;
+use crate::entity::projectiles::ArrowDamage;
+use crate::entity::projectiles::Projectile;
+use crate::entity::projectiles::spawn_arrow_with;
+use crate::entity::thrown::ThrownKind;
+use crate::entity::thrown::spawn_thrown;
 use crate::item::Item;
 use crate::physics::Aabb;
 use crate::physics::PhysicsSet;
@@ -112,6 +116,7 @@ pub(super) fn run_block_ticks(
     creatures: Query<(&Transform, &EntitySize), With<Living>>,
     primed: Query<(&Transform, &EntitySize), With<PrimedTnt>>,
     carts: Query<(&Transform, &EntitySize), With<Minecart>>,
+    projectiles: Query<(&Transform, &EntitySize), With<Projectile>>,
 ) {
     let count = tick.ticks_this_frame();
     ticks.set_dimension(environment.dimension());
@@ -132,6 +137,8 @@ pub(super) fn run_block_ticks(
     occupants.extend(dropped.iter().map(|(t, s)| occupant(t, s, false)));
     occupants.extend(creatures.iter().map(|(t, s)| occupant(t, s, true)));
     occupants.extend(primed.iter().map(|(t, s)| occupant(t, s, false)));
+    // `EnumMobType.everything`: an arrow lying on a wooden plate holds it down.
+    occupants.extend(projectiles.iter().map(|(t, s)| occupant(t, s, false)));
     occupants.extend(carts.iter().map(|(t, s)| {
         let mut body = occupant(t, s, false);
         body.minecart = true;
@@ -221,14 +228,30 @@ fn apply_tick_effects(
                 facing,
                 stack,
             } => {
+                // `BlockDispenser.dispenseItem`: arrows, eggs and snowballs
+                // leave along (dx, 0.1, dz) at 1.1 blocks per tick with a
+                // spread of 6. A dispensed arrow can be picked up.
+                let direction = dispenser_direction(facing);
+                let mouth = position.as_vec3() + Vec3::new(0.5, 0.5, 0.5) + direction * 0.6;
+                let heading = Vec3::new(direction.x, 0.1, direction.z);
                 if stack.item() == Item::Arrow {
-                    // `BlockDispenser.dispenseItem`: heading (dx, 0.1, dz) at
-                    // 1.1 blocks per tick with a spread of 6.
-                    let direction = dispenser_direction(facing);
-                    spawn_arrow(
+                    spawn_arrow_with(
                         &mut commands,
-                        position.as_vec3() + Vec3::new(0.5, 0.5, 0.5) + direction * 0.6,
-                        Vec3::new(direction.x, 0.1, direction.z),
+                        mouth,
+                        heading,
+                        1.1,
+                        6.0,
+                        None,
+                        true,
+                        ArrowDamage::Flat(4),
+                        &mut JavaRandom::new(rng.next_u64()),
+                    );
+                } else if let Some(kind) = ThrownKind::from_item(stack.item()) {
+                    spawn_thrown(
+                        &mut commands,
+                        kind,
+                        mouth,
+                        heading,
                         1.1,
                         6.0,
                         None,

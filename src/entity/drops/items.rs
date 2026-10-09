@@ -5,6 +5,7 @@
 
 use bevy::prelude::*;
 
+use crate::app::settings::GameSettings;
 use crate::app::state::AppScreen;
 use crate::block::blocks::Block;
 use crate::block::fluids::is_lava;
@@ -21,6 +22,7 @@ use crate::physics::Aabb;
 use crate::physics::PhysicsSet;
 use crate::physics::WATER_CURRENT_PER_TICK;
 use crate::physics::burning_in;
+use crate::physics::eye_in_water;
 use crate::physics::lava_contains;
 use crate::physics::move_entity;
 use crate::physics::touches_cactus;
@@ -45,6 +47,9 @@ const ITEM_GRAVITY_PER_TICK: f32 = 0.04;
 const ITEM_VERTICAL_DRAG: f32 = 0.98;
 const DEFAULT_SLIPPERINESS: f32 = 0.6;
 const ICE_SLIPPERINESS: f32 = 0.98;
+const FLOAT_RISE_PER_TICK: f32 = 5.0e-4;
+const FLOAT_RISE_LIMIT: f32 = 0.06;
+const FLOAT_PLUNGE_DRAG: f32 = 0.8;
 pub struct DroppedItemPlugin;
 
 impl Plugin for DroppedItemPlugin {
@@ -320,6 +325,26 @@ pub fn spawn_thrown_item(
     );
 }
 
+/// An item flung with a given motion, as `EntityFish.catchFish` sends its
+/// catch to the angler. Pickup waits 10 ticks.
+pub fn spawn_flung_item(
+    commands: &mut Commands,
+    rng: &mut ItemRng,
+    position: Vec3,
+    motion: Vec3,
+    stack: ItemStack,
+) {
+    spawn_item(
+        commands,
+        position,
+        stack,
+        motion,
+        PICKUP_DELAY_TICKS,
+        rng.unit() * std::f32::consts::TAU,
+        rng.next_u64(),
+    );
+}
+
 /// Respawn an item that was stored in a chunk file.
 pub fn spawn_saved_item(commands: &mut Commands, item: crate::world::chunk::ChunkDroppedItem) {
     commands.spawn((
@@ -430,6 +455,29 @@ pub fn apply_item_gravity(mut motion: Vec3) -> Vec3 {
     motion
 }
 
+/// The Floating Items feature, after modern `ItemEntity.setUnderwaterMovement`:
+/// a submerged item drifts with a little drag and rises until it climbs at
+/// 0.06 blocks per tick. Its plunge is also damped, so a thrown item turns
+/// around within a block or so rather than carrying on to the bottom.
+pub fn item_float_motion(mut motion: Vec3) -> Vec3 {
+    motion.x *= 0.99;
+    motion.z *= 0.99;
+    if motion.y < 0.0 {
+        motion.y *= FLOAT_PLUNGE_DRAG;
+    }
+    if motion.y < FLOAT_RISE_LIMIT {
+        motion.y += FLOAT_RISE_PER_TICK;
+    }
+    motion
+}
+
+/// Whether water covers an item deeply enough to carry it: its surface is
+/// more than 0.1 above the bottom of the item's box.
+pub fn item_floats(aabb: Aabb, chunks: &WorldChunks) -> bool {
+    let center = (aabb.min + aabb.max) * 0.5;
+    eye_in_water(Vec3::new(center.x, aabb.min.y + 0.1, center.z), chunks)
+}
+
 pub fn item_slipperiness(block: Option<Block>) -> f32 {
     if block == Some(Block::Ice) {
         ICE_SLIPPERINESS
@@ -500,6 +548,7 @@ pub fn hotbar_icon_scale(pop: u8, partial: f32) -> Vec2 {
 fn tick_dropped_items(
     tick: Res<WorldTick>,
     chunks: Res<WorldChunks>,
+    settings: Option<Res<GameSettings>>,
     mut persistence: Option<ResMut<WorldPersistence>>,
     mut commands: Commands,
     mut hotbars: Query<&mut Hotbar>,
@@ -535,6 +584,7 @@ fn tick_dropped_items(
         }
     }
 
+    let floating = settings.is_some_and(|settings| settings.floating_items);
     for (
         entity,
         mut transform,
@@ -569,7 +619,12 @@ fn tick_dropped_items(
             let (in_water, current) = water_current(aabb, &chunks);
             state.update_hazards(in_water, lava_contains(aabb, &chunks));
             motion.0 += current * WATER_CURRENT_PER_TICK;
-            motion.0 = apply_item_gravity(motion.0);
+            // Beta's items sink; the Floating Items feature carries them up.
+            motion.0 = if floating && item_floats(aabb, &chunks) {
+                item_float_motion(motion.0)
+            } else {
+                apply_item_gravity(motion.0)
+            };
             // `EntityItem.onUpdate`: an item in lava is spat back out.
             let cell = transform.translation.floor().as_ivec3();
             if chunks.block_at(cell.x, cell.y, cell.z).is_some_and(is_lava) {

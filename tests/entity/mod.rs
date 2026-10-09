@@ -3,6 +3,7 @@ mod dropped_items;
 pub(crate) mod mobs;
 
 pub(crate) mod pathfinding;
+mod projectiles;
 
 use bevy::prelude::*;
 use game::entity::CollisionState;

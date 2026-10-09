@@ -1107,3 +1107,24 @@ fn take_matching_stacks_removes_only_the_same_item_and_data() {
     let other = ItemStack::from_block_state(Block::Wool, 1, 1).unwrap();
     assert!(take_matching_stacks(slots.iter_mut(), other).is_empty());
 }
+
+#[test]
+fn consuming_an_item_takes_one_from_the_first_slot_that_holds_it() {
+    use game::inventory::Inventory;
+
+    let mut hotbar = Hotbar::default();
+    let mut inventory = Inventory::default();
+    assert!(!inventory.holds(&hotbar, Item::Arrow));
+    assert!(!inventory.consume(&mut hotbar, Item::Arrow));
+
+    inventory.main[5] = ItemStack::new(Item::Arrow, 2).ok();
+    hotbar.slots[3] = ItemStack::new(Item::Arrow, 1).ok();
+    assert!(inventory.holds(&hotbar, Item::Arrow));
+    // The hotbar is searched first, and an emptied slot is cleared.
+    assert!(inventory.consume(&mut hotbar, Item::Arrow));
+    assert_eq!(hotbar.slots[3], None);
+    assert!(inventory.consume(&mut hotbar, Item::Arrow));
+    assert_eq!(inventory.main[5].map(|stack| stack.count()), Some(1));
+    assert!(inventory.consume(&mut hotbar, Item::Arrow));
+    assert!(!inventory.consume(&mut hotbar, Item::Arrow));
+}

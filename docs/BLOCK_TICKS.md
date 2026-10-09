@@ -270,10 +270,12 @@ instead of Java's runtime-seeded `World.rand`.
   their shape from `RailLogic` when placed and keep it afterward, as in
   Beta; only a three-way junction beside a power source switches.
   Dispensers persist nine slots and fire arrows (as `entity::projectiles`
-  arrows) or eject items; eggs and snowballs are ejected as items. Note
+  arrows, which can be picked up), launch eggs and snowballs
+  (`entity::thrown`), or eject items. Note
   blocks keep their pitch but make no sound until audio is implemented.
   Plates and detector rails read a per-tick snapshot of nearby bodies
-  (`BlockTicks::set_occupants`); arrows do not trigger wooden plates yet.
+  (`BlockTicks::set_occupants`); arrows, thrown items and bobbers are in it
+  through `entity::projectiles::Projectile`, so they press wooden plates.
   Minecarts (`entity::minecart`) are a transcription of `EntityMinecart.onUpdate`
   (empty, chest, and furnace carts), are saved with their chunk, and can be
   ridden by the player or a creature (`entity::mount`).

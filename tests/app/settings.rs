@@ -395,6 +395,8 @@ fn settings_round_trip_through_json() {
         view_bobbing: false,
         fullscreen: true,
         difficulty: Difficulty::Hard,
+        floating_items: false,
+        bow_charging: true,
     };
     save_settings(&path, &settings).unwrap();
     assert_eq!(load_settings(&path), settings);
@@ -1092,6 +1094,23 @@ fn settings_tabs_buttons_and_live_labels() {
 }
 
 #[test]
+fn the_features_tab_toggles_the_departures_from_beta() {
+    let mut app = settings_menu_app();
+    // Items float and the bow is Beta 1.7.3's until the player says otherwise.
+    assert!(app.world().resource::<GameSettings>().floating_items);
+    assert!(!app.world().resource::<GameSettings>().bow_charging);
+    click_menu_button(&mut app, "Features");
+    click_menu_button(&mut app, "Floating items: ON");
+    click_menu_button(&mut app, "Bow charging: OFF");
+    let settings = app.world().resource::<GameSettings>();
+    assert!(!settings.floating_items);
+    assert!(settings.bow_charging);
+    // The labels follow.
+    click_menu_button(&mut app, "Floating items: OFF");
+    assert!(app.world().resource::<GameSettings>().floating_items);
+}
+
+#[test]
 fn settings_resize_scroll_and_tab_reset() {
     use bevy::input::mouse::MouseScrollUnit;
     use bevy::input::mouse::MouseWheel;
@@ -1114,7 +1133,7 @@ fn settings_resize_scroll_and_tab_reset() {
             .iter(app.world())
             .filter(|node| node.grid_template_columns == vec![RepeatedGridTrack::flex(2, 1.0)])
             .count(),
-        3
+        4
     );
     app.world_mut()
         .get_mut::<Window>(window)
@@ -1127,7 +1146,7 @@ fn settings_resize_scroll_and_tab_reset() {
             .iter(app.world())
             .filter(|node| node.grid_template_columns == vec![RepeatedGridTrack::flex(1, 1.0)])
             .count(),
-        3
+        4
     );
     let content = app
         .world_mut()

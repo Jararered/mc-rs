@@ -24,11 +24,13 @@ pub mod creature;
 pub mod drops;
 pub mod explosion;
 pub mod falling_block;
+pub mod fishing;
 pub mod minecart;
 pub mod mobs;
 pub mod mount;
 pub mod pathfinding;
 pub mod projectiles;
+pub mod thrown;
 
 /// Mob simulation and rendering costs collected since the last performance
 /// print.
@@ -58,7 +60,8 @@ impl EntityDiagnostics {
 
 /// A falling block or primed TNT stored with the chunk it is in. Both have
 /// already taken their block out of the world, so losing the entity would
-/// lose the block. Arrows and fireballs are not saved.
+/// lose the block. Arrows, fireballs, thrown snowballs and eggs, and fishing
+/// bobbers are not saved, so an arrow left stuck in a wall is gone on reload.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum SavedBody {
     FallingBlock {

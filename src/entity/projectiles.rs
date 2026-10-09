@@ -1,10 +1,13 @@
-//! Beta 1.7.3 projectiles: `EntityArrow`, which skeletons shoot, and
-//! `EntityFireball`, which ghasts lob.
+//! Beta 1.7.3 projectiles: `EntityArrow`, which skeletons, dispensers and the
+//! player's bow shoot, and `EntityFireball`, which ghasts lob. Snowballs and
+//! eggs are in [`thrown`](crate::entity::thrown) and the fishing bobber in
+//! [`fishing`](crate::entity::fishing); they share the helpers here.
 //!
 //! An arrow falls 0.03 blocks per tick per tick and loses 1% of its speed,
 //! passes through plants and torches, and sticks in the first block with a
 //! collision box, where it lies for a minute. It hurts what it hits by 4 and
-//! glances off a target still invulnerable from an earlier hit. A fireball
+//! glances off a target still invulnerable from an earlier hit. An arrow the
+//! player or a dispenser shot can be picked up again once it has stuck. A fireball
 //! accelerates toward where it was aimed and explodes against anything,
 //! setting fires. The player can bat a fireball back by hitting it.
 
@@ -23,9 +26,12 @@ use crate::entity::combat::drop_loot;
 use crate::entity::combat::hurt_creature;
 use crate::entity::combat::hurt_player;
 use crate::entity::creature::Living;
+use crate::entity::creature::PLAYER_EYE_HEIGHT;
 use crate::entity::explosion::Explosion;
 use crate::entity::mobs::Mob;
+use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
+use crate::item::Item;
 use crate::item::ItemStack;
 use crate::physics::Aabb;
 use crate::physics::raycast_blocks;
@@ -42,7 +48,7 @@ use crate::world::difficulty::Difficulty;
 use crate::world::tick::WorldTick;
 
 /// `EntityArrow.setSize(0.5, 0.5)`.
-const ARROW_SIZE: EntitySize = EntitySize {
+pub const ARROW_SIZE: EntitySize = EntitySize {
     width: 0.5,
     height: 0.5,
     y_offset: 0.0,
@@ -53,6 +59,21 @@ pub const FIREBALL_SIZE: EntitySize = EntitySize {
     height: 1.0,
     y_offset: 0.0,
 };
+
+/// Marks a body that is neither living nor an item but still presses a
+/// wooden pressure plate: arrows, thrown snowballs and eggs, and bobbers.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct Projectile;
+
+/// How hard an arrow strikes.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ArrowDamage {
+    /// Beta 1.7.3: every arrow does this much.
+    Flat(i16),
+    /// The Bow Charging feature, after Beta 1.8: twice the arrow's speed,
+    /// rounded up, and a critical arrow adds up to half of that again.
+    Speed { critical: bool },
+}
 
 /// Who loosed an arrow. Beta's arrow keeps a reference to its shooter even
 /// after the shooter dies, so what the hit needs is copied here.
@@ -65,11 +86,24 @@ pub struct Shooter {
     pub source: Source,
 }
 
+impl Shooter {
+    pub fn player(entity: Entity, position: Vec3) -> Self {
+        Self {
+            entity,
+            position,
+            source: Source::Player,
+        }
+    }
+}
+
 /// `EntityArrow`. Its `Transform` is the bottom center of its box.
 #[derive(Component, Clone, Debug)]
 pub struct Arrow {
-    /// The mob that shot it, which it cannot hit for its first 5 ticks.
+    /// Who shot it, whom it cannot hit for its first 5 ticks.
     pub shooter: Option<Shooter>,
+    /// `doesArrowBelongToPlayer`: the player can pick it up once it sticks.
+    pub pickup: bool,
+    pub damage: ArrowDamage,
     /// `motionX/Y/Z`, in blocks per tick.
     pub motion: Vec3,
     /// Degrees, for the renderer. Yaw 0 points along +Z.
@@ -97,6 +131,13 @@ pub struct Fireball {
     ticks_in_air: u32,
 }
 
+impl Arrow {
+    /// `inGround`.
+    pub fn is_stuck(&self) -> bool {
+        self.stuck.is_some()
+    }
+}
+
 impl Fireball {
     /// `EntityFireball.attackEntityFrom`: struck by the player, it flies off
     /// the way they look.
@@ -118,12 +159,12 @@ fn gaussian(rng: &mut JavaRandom) -> f32 {
     }
 }
 
-fn gaussian_vec(rng: &mut JavaRandom) -> Vec3 {
+pub(crate) fn gaussian_vec(rng: &mut JavaRandom) -> Vec3 {
     Vec3::new(gaussian(rng), gaussian(rng), gaussian(rng))
 }
 
 /// `(yaw, pitch)` in degrees for a direction of travel.
-fn heading_angles(motion: Vec3) -> (f32, f32) {
+pub(crate) fn heading_angles(motion: Vec3) -> (f32, f32) {
     let horizontal = (motion.x * motion.x + motion.z * motion.z).sqrt();
     (
         motion.x.atan2(motion.z).to_degrees(),
@@ -131,8 +172,27 @@ fn heading_angles(motion: Vec3) -> (f32, f32) {
     )
 }
 
+/// `setArrowHeading` and its snowball, egg and bobber twins: `heading` at
+/// `speed` blocks per tick, scattered by `spread`.
+pub(crate) fn scattered_heading(
+    heading: Vec3,
+    speed: f32,
+    spread: f32,
+    rng: &mut JavaRandom,
+) -> Vec3 {
+    (heading.normalize_or_zero() + gaussian_vec(rng) * 0.0075 * spread) * speed
+}
+
+/// Where `new EntityArrow(world, shooter)` and the thrown entities start:
+/// `eye`, a little to the right of the way `look` faces and 0.1 down.
+pub fn hand_origin(eye: Vec3, look: Vec3) -> Vec3 {
+    let flat = Vec3::new(look.x, 0.0, look.z).normalize_or_zero();
+    eye - Vec3::new(flat.z * 0.16, 0.1, -flat.x * 0.16)
+}
+
 /// `EntityArrow.setArrowHeading`: aim along `heading` at `speed` blocks per
-/// tick, scattered by `spread`.
+/// tick, scattered by `spread`. The arrow does Beta's 4 damage and stays
+/// where it lands.
 pub fn spawn_arrow(
     commands: &mut Commands,
     position: Vec3,
@@ -142,13 +202,41 @@ pub fn spawn_arrow(
     shooter: Option<Shooter>,
     rng: &mut JavaRandom,
 ) -> Entity {
-    let motion = (heading.normalize_or_zero() + gaussian_vec(rng) * 0.0075 * spread) * speed;
+    spawn_arrow_with(
+        commands,
+        position,
+        heading,
+        speed,
+        spread,
+        shooter,
+        false,
+        ArrowDamage::Flat(4),
+        rng,
+    )
+}
+
+/// [`spawn_arrow`] with `doesArrowBelongToPlayer` and the damage chosen.
+#[allow(clippy::too_many_arguments)]
+pub fn spawn_arrow_with(
+    commands: &mut Commands,
+    position: Vec3,
+    heading: Vec3,
+    speed: f32,
+    spread: f32,
+    shooter: Option<Shooter>,
+    pickup: bool,
+    damage: ArrowDamage,
+    rng: &mut JavaRandom,
+) -> Entity {
+    let motion = scattered_heading(heading, speed, spread, rng);
     let (yaw, pitch) = heading_angles(motion);
     commands
         .spawn((
             Name::new("Arrow"),
             Arrow {
                 shooter,
+                pickup,
+                damage,
                 motion,
                 yaw,
                 prev_yaw: yaw,
@@ -159,11 +247,38 @@ pub fn spawn_arrow(
                 ticks_in_ground: 0,
                 ticks_in_air: 0,
             },
+            Projectile,
+            ARROW_SIZE,
             Transform::from_translation(position),
             PreviousTick(position),
             Visibility::Inherited,
         ))
         .id()
+}
+
+/// `new EntityArrow(world, player)` from `ItemBow`: from the hand, along
+/// `look`. Beta 1.7.3 always shoots at 1.5 blocks per tick.
+pub fn spawn_player_arrow(
+    commands: &mut Commands,
+    player: Entity,
+    eye: Vec3,
+    look: Vec3,
+    speed: f32,
+    damage: ArrowDamage,
+    rng: &mut JavaRandom,
+) -> Entity {
+    let origin = hand_origin(eye + Vec3::Y * PLAYER_EYE_HEIGHT, look);
+    spawn_arrow_with(
+        commands,
+        origin,
+        look,
+        speed,
+        1.0,
+        Some(Shooter::player(player, eye)),
+        true,
+        damage,
+        rng,
+    )
 }
 
 /// `new EntityFireball(world, shooter, dx, dy, dz)`: aimed along `toward`,
@@ -194,13 +309,13 @@ pub fn spawn_fireball(
 
 /// Something a projectile can strike.
 #[derive(Clone, Copy)]
-enum Struck {
+pub(crate) enum Struck {
     Player,
     Mob(Entity),
 }
 
 /// The nearest body whose box, grown by 0.3, the segment enters.
-fn first_struck(
+pub(crate) fn first_struck(
     from: Vec3,
     to: Vec3,
     player: Option<Aabb>,
@@ -243,7 +358,7 @@ fn first_struck(
 }
 
 /// Fold `next` toward `previous` the way Beta smooths a projectile's facing.
-fn smooth_angle(previous: &mut f32, next: f32) -> f32 {
+pub(crate) fn smooth_angle(previous: &mut f32, next: f32) -> f32 {
     let mut prev = *previous;
     while next - prev < -180.0 {
         prev -= 360.0;
@@ -320,6 +435,7 @@ pub(crate) fn tick_projectiles(
         ),
         With<Player>,
     >,
+    player_entity: Query<Entity, With<Player>>,
     mut explosions: MessageWriter<Explosion>,
     mut loot: Local<ItemRng>,
     mut rng: Local<ProjectileRandom>,
@@ -333,6 +449,7 @@ pub(crate) fn tick_projectiles(
         .as_ref()
         .map_or(Difficulty::Normal, |settings| settings.difficulty);
     let mut player = player.single_mut().ok();
+    let player_entity = player_entity.single().ok();
 
     for (entity, mut arrow, mut transform, mut previous) in &mut arrows {
         let mut position = transform.translation;
@@ -378,8 +495,10 @@ pub(crate) fn tick_projectiles(
                 .shooter
                 .filter(|_| arrow.ticks_in_air < 5)
                 .map(|shooter| shooter.entity);
+            // The shooter's own box does not count for those 5 ticks either.
             let player_box = player
                 .as_ref()
+                .filter(|_| ignore.is_none() || ignore != player_entity)
                 .map(|(transform, ..)| EntitySize::PLAYER.aabb(transform.translation));
             let struck = first_struck(
                 position,
@@ -390,9 +509,25 @@ pub(crate) fn tick_projectiles(
                 ),
                 ignore,
             );
+            let amount = match arrow.damage {
+                ArrowDamage::Flat(amount) => amount,
+                ArrowDamage::Speed { critical } => {
+                    let amount = (arrow.motion.length() * 2.0).ceil() as i16;
+                    if critical {
+                        amount + rng.0.next_int((amount / 2 + 2) as u32) as i16
+                    } else {
+                        amount
+                    }
+                }
+            };
             let hit = Hit {
-                amount: 4,
+                amount,
                 from: arrow.shooter.map(|shooter| {
+                    if Some(shooter.entity) == player_entity
+                        && let Some((transform, ..)) = player.as_ref()
+                    {
+                        return transform.translation;
+                    }
                     mobs.get(shooter.entity)
                         .map_or(shooter.position, |(.., transform, _)| transform.translation)
                 }),
@@ -528,8 +663,48 @@ pub(crate) fn tick_projectiles(
     }
 }
 
+/// `EntityArrow.onCollideWithPlayer`: an arrow that has stuck and stopped
+/// quivering, shot by the player or a dispenser, goes back into the inventory
+/// of a player who touches it. It stays where it is if there is no room.
+pub(crate) fn pickup_arrows(
+    mut commands: Commands,
+    mut player: Query<(&Transform, &EntitySize, &mut Hotbar, &mut Inventory), With<Player>>,
+    arrows: Query<(Entity, &Arrow, &Transform), Without<Player>>,
+) {
+    let Ok((at, size, mut hotbar, mut inventory)) = player.single_mut() else {
+        return;
+    };
+    // `boundingBox.expand(1, 0, 1)`, as for a dropped item.
+    let mut reach = size.aabb(at.translation);
+    reach.min -= Vec3::new(1.0, 0.0, 1.0);
+    reach.max += Vec3::new(1.0, 0.0, 1.0);
+    for (entity, arrow, transform) in &arrows {
+        if !arrow.pickup
+            || !arrow.is_stuck()
+            || arrow.shake > 0
+            || !reach.intersects(ARROW_SIZE.aabb(transform.translation))
+        {
+            continue;
+        }
+        let Ok(stack) = ItemStack::new(Item::Arrow, 1) else {
+            return;
+        };
+        // A full inventory changes nothing, so it must not be flagged as
+        // changed every frame the player stands on the arrow.
+        if inventory
+            .bypass_change_detection()
+            .insert(hotbar.bypass_change_detection(), stack)
+            .is_none()
+        {
+            inventory.set_changed();
+            hotbar.set_changed();
+            commands.entity(entity).despawn();
+        }
+    }
+}
+
 /// `Entity.rand` for projectiles.
-pub(crate) struct ProjectileRandom(JavaRandom);
+pub(crate) struct ProjectileRandom(pub(crate) JavaRandom);
 
 impl Default for ProjectileRandom {
     fn default() -> Self {

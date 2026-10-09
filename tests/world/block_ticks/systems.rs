@@ -18,7 +18,11 @@ use game::entity::mobs::spawn as spawn_mob;
 use game::entity::mount::Mounted;
 use game::entity::mount::dismount;
 use game::entity::mount::mount;
+use game::entity::projectiles::ARROW_SIZE;
 use game::entity::projectiles::Arrow;
+use game::entity::projectiles::Projectile;
+use game::entity::thrown::Thrown;
+use game::entity::thrown::ThrownKind;
 use game::item::Item;
 use game::item::ItemStack;
 use game::player::Player;
@@ -154,6 +158,84 @@ fn flick(app: &mut App, x: i32, y: i32, z: i32) {
 
 fn count<T: Component>(app: &mut App) -> usize {
     app.world_mut().query::<&T>().iter(app.world()).count()
+}
+
+/// Load a dispenser facing east at (8, 61, 8) with `stack` and pulse it.
+fn fire_dispenser(app: &mut App, stack: ItemStack) {
+    place(app, 8, 61, 8, Block::Dispenser);
+    app.world_mut()
+        .resource_mut::<WorldChunks>()
+        .set_metadata(8, 61, 8, 5);
+    app.world_mut()
+        .resource_mut::<WorldChunks>()
+        .dispenser_at_mut(8, 61, 8)
+        .unwrap()
+        .slots[0] = Some(stack);
+    place(app, 7, 61, 8, Block::Lever);
+    app.world_mut()
+        .resource_mut::<WorldChunks>()
+        .set_metadata(7, 61, 8, 5);
+    flick(app, 7, 61, 8);
+    for _ in 0..5 {
+        step(app);
+    }
+}
+
+#[test]
+fn a_dispensed_arrow_can_be_picked_up() {
+    let mut app = app();
+    fire_dispenser(&mut app, ItemStack::new(Item::Arrow, 1).unwrap());
+    let arrows: Vec<bool> = app
+        .world_mut()
+        .query::<&Arrow>()
+        .iter(app.world())
+        .map(|arrow| arrow.pickup)
+        .collect();
+    assert_eq!(arrows, [true]);
+}
+
+#[test]
+fn dispensers_launch_eggs_and_snowballs() {
+    for (item, kind) in [
+        (Item::Egg, ThrownKind::Egg),
+        (Item::Snowball, ThrownKind::Snowball),
+    ] {
+        let mut app = app();
+        fire_dispenser(&mut app, ItemStack::new(item, 1).unwrap());
+        let thrown: Vec<(ThrownKind, Vec3)> = app
+            .world_mut()
+            .query::<&Thrown>()
+            .iter(app.world())
+            .map(|thrown| (thrown.kind, thrown.motion))
+            .collect();
+        assert_eq!(thrown.len(), 1, "{item:?}");
+        assert_eq!(thrown[0].0, kind);
+        // East, at about 1.1 blocks per tick.
+        assert!(thrown[0].1.x > 0.9, "{}", thrown[0].1);
+        assert_eq!(count::<DroppedItem>(&mut app), 0);
+    }
+}
+
+#[test]
+fn an_arrow_holds_down_a_wooden_plate_but_not_a_stone_one() {
+    for (plate, pressed) in [
+        (Block::WoodenPressurePlate, 1),
+        (Block::StonePressurePlate, 0),
+    ] {
+        let mut app = app();
+        place(&mut app, 8, 61, 8, plate);
+        step(&mut app);
+        app.world_mut()
+            .spawn((Projectile, ARROW_SIZE, Transform::from_xyz(8.5, 61.0, 8.5)));
+        for _ in 0..3 {
+            step(&mut app);
+        }
+        assert_eq!(
+            app.world().resource::<WorldChunks>().metadata_at(8, 61, 8),
+            pressed,
+            "{plate:?}"
+        );
+    }
 }
 
 #[test]

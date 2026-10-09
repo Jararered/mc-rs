@@ -22,7 +22,8 @@
 //! mid-fuse by a save is lost with its block; the native format keeps them.
 //! Minecarts are written as Beta's `Minecart` entity (type, a furnace cart's
 //! push and fuel, a chest cart's items); who rides one is not kept.
-//! Neither format keeps arrows or fireballs. The format
+//! Neither format keeps arrows (a stuck one that could have been picked up
+//! included), fireballs, thrown snowballs and eggs, or bobbers. The format
 //! is described by `ChunkLoader`, `McRegionChunkLoader`, `RegionFile`, `WorldInfo`
 //! and `NBTBase` in the reference source.
 

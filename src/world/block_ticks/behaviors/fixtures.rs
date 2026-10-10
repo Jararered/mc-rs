@@ -6,6 +6,7 @@ use bevy::math::IVec3;
 
 use crate::block::blocks::Block;
 use crate::world::block_ticks::BlockBehavior;
+use crate::world::block_ticks::TickEffect;
 use crate::world::block_ticks::TickWorld;
 use crate::world::block_ticks::behavior;
 
@@ -51,6 +52,11 @@ impl Door {
             world.set_metadata_notify(position + IVec3::Y, (metadata ^ OPEN) + UPPER);
         }
         world.set_metadata_notify(position, metadata ^ OPEN);
+        world.emit(TickEffect::Aux {
+            position,
+            effect: 1003,
+            data: 0,
+        });
     }
 }
 
@@ -140,6 +146,11 @@ impl BlockBehavior for Trapdoor {
             let powered = world.block_indirectly_getting_powered(position);
             if (metadata & OPEN != 0) != powered {
                 world.set_metadata_notify(position, metadata ^ OPEN);
+                world.emit(TickEffect::Aux {
+                    position,
+                    effect: 1003,
+                    data: 0,
+                });
             }
         }
     }

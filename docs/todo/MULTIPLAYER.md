@@ -45,6 +45,11 @@ when it lands and add what you find missing.
 - [ ] Weather (`Packet71Weather`, `Packet70Bed`), sleeping (`Packet17Sleep`), explosions (`Packet60Explosion`)
 - [ ] Many block changes in one chunk as `Packet52MultiBlockChange`
 - [ ] Respawn after death: check the flow against the real client
+- [ ] `Packet70Bed` 0 when a respawning player's bed is gone (they get the chat line only)
+- [ ] Sign text in the game's own client: nothing draws it, and there is no screen to write it. A Beta client
+      writes a new sign once and every client reads it.
+- [ ] A PvP switch (`server.properties`' `pvp`): one player can always hit another
+- [ ] `Packet61DoorChange` for a jukebox, which is not a block the game simulates
 
 ## Beta server: trust and robustness
 

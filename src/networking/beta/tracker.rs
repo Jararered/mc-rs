@@ -93,6 +93,8 @@ pub(super) struct Seen {
     pub equipment: Option<[Option<(i16, i16)>; 5]>,
     /// The bed a player is asleep in.
     pub bed: Option<IVec3>,
+    /// `Packet38EntityStatus` beyond hurt and death, made this tick.
+    pub status: Option<u8>,
 }
 
 /// `EntityTracker.trackEntity`'s table: how far away a kind is shown, how
@@ -218,6 +220,7 @@ pub(super) fn survey(world: &mut World) -> Vec<Seen> {
         collected: false,
         equipment: None,
         bed: None,
+        status: None,
     };
 
     let mut players = world.query_filtered::<(
@@ -286,14 +289,21 @@ pub(super) fn survey(world: &mut World) -> Vec<Seen> {
     let mut mobs = world.query::<(
         Entity,
         &Mob,
-        &Living,
+        &mut Living,
         &Transform,
         &Velocity,
         Option<&Fuse>,
         Option<&Hover>,
     )>();
-    for (entity, mob, living, transform, velocity, fuse, hover) in mobs.iter(world) {
+    for (entity, mob, mut living, transform, velocity, fuse, hover) in mobs.iter_mut(world) {
+        // Read without flagging a change unless there is something to take.
+        let status = if living.status.is_some() {
+            living.status.take()
+        } else {
+            None
+        };
         seen.push(Seen {
+            status,
             yaw: living.yaw,
             pitch: living.pitch,
             metadata: mob_metadata(mob, fuse, hover),
@@ -554,6 +564,9 @@ impl Entry {
             }
         }
         self.hurt_time = seen.hurt_time;
+        if let Some(status) = seen.status {
+            shared.entity_status(id, status);
+        }
         if seen.dead && !self.dead {
             shared.entity_status(id, 3);
             own.entity_status(id, 3);

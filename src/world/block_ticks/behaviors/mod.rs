@@ -87,6 +87,11 @@ pub(super) fn table() -> [&'static dyn BlockBehavior; 256] {
     register(&mut table, &[Block::Snow], &snow::SNOW_BLOCK);
     register(&mut table, &[Block::Torch], &attached::TORCH);
     register(&mut table, &[Block::Ladder], &attached::LADDER);
+    register(
+        &mut table,
+        &[Block::StandingSign, Block::WallSign],
+        &attached::SIGN,
+    );
     register(&mut table, &[Block::Sponge], &sponge::SPONGE);
     register(&mut table, &[Block::Sapling], &plants::SAPLING);
     register(

@@ -1335,6 +1335,31 @@ fn a_chunk_changed_after_its_snapshot_still_counts_as_unsaved() {
 }
 
 #[test]
+fn what_is_written_on_a_sign_is_saved_in_both_formats() {
+    use game::world::persistence::SaveFormat;
+    for format in [SaveFormat::Binary, SaveFormat::Original] {
+        let saves = temp_saves("signs");
+        let storage = WorldStorage::create_in_format(&saves, 0, "Signs", None, format).unwrap();
+        let position = ChunkPosition::ZERO;
+        let mut generated = OverworldGenerator::new(0).generate(position);
+        generated
+            .chunk
+            .set_with_metadata(4, 90, 5, Block::StandingSign, 6);
+        let index = Chunk::index(4, 90, 5);
+        let lines = ["Welcome", "", "to the", "mine"].map(str::to_owned);
+        generated.chunk.sign_mut(index).unwrap().lines = lines.clone();
+        storage.save_chunk(position, &generated).unwrap();
+
+        let loaded = storage.load_chunk(position).unwrap();
+        let sign = loaded.chunk.sign(index).expect("the sign kept its text");
+        assert_eq!(sign.lines, lines, "{format:?}");
+        // A sign from a save has been written on already.
+        assert!(!sign.editable);
+        fs::remove_dir_all(saves).unwrap();
+    }
+}
+
+#[test]
 fn dispenser_inventory_and_note_state_round_trip_with_their_blocks() {
     let saves = temp_saves("redstone-tiles");
     let storage = WorldStorage::create(&saves, 0, "Redstone").unwrap();

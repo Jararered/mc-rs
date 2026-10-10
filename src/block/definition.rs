@@ -358,6 +358,22 @@ pub(crate) fn door_bounds(metadata: u8) -> BlockBounds {
     }
 }
 
+/// `BlockSign.setBlockBoundsBasedOnState`: a post's half-wide column, or a
+/// wall sign's board against the block behind it (`metadata` 2 to 5, the
+/// face it hangs on).
+pub(crate) fn sign_bounds(block: Block, metadata: u8) -> BlockBounds {
+    if block == Block::StandingSign {
+        return ([0.25, 0.0, 0.25], [0.75, 1.0, 0.75]);
+    }
+    let (low, high, thick) = (0.281_25, 0.781_25, 0.125);
+    match metadata {
+        2 => ([0.0, low, 1.0 - thick], [1.0, high, 1.0]),
+        3 => ([0.0, low, 0.0], [1.0, high, thick]),
+        4 => ([1.0 - thick, low, 0.0], [1.0, high, 1.0]),
+        _ => ([0.0, low, 0.0], [thick, high, 1.0]),
+    }
+}
+
 /// `BlockTrapDoor.setBlockBoundsForBlockRender`: flat on the floor of its
 /// cell when closed, upright against its supporting wall when open.
 pub(crate) fn trapdoor_bounds(metadata: u8) -> BlockBounds {

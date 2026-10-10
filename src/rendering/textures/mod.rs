@@ -557,7 +557,7 @@ pub fn block_tile(
             (3, _) => tile(16),
             _ => tile(6),
         },
-        Block::WoodenStairs | Block::Fence => tile(4),
+        Block::WoodenStairs | Block::Fence | Block::StandingSign | Block::WallSign => tile(4),
         Block::CobblestoneStairs => tile(16),
         Block::Cobweb => tile(11),
         Block::Trapdoor => tile(84),

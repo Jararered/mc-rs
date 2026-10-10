@@ -343,7 +343,9 @@ impl Block {
             | Self::CobblestoneStairs
             | Self::WoodenDoor
             | Self::IronDoor
-            | Self::Trapdoor => metadata,
+            | Self::Trapdoor
+            | Self::StandingSign
+            | Self::WallSign => metadata,
             // The occupied bit is not drawn.
             Self::Bed => metadata & 0b1011,
             _ => 0,
@@ -352,6 +354,10 @@ impl Block {
 
     pub const fn is_door(self) -> bool {
         matches!(self, Self::WoodenDoor | Self::IronDoor)
+    }
+
+    pub const fn is_sign(self) -> bool {
+        matches!(self, Self::StandingSign | Self::WallSign)
     }
 
     pub const fn is_stairs(self) -> bool {
@@ -365,6 +371,7 @@ impl Block {
             Self::Torch | Self::Ladder => definition::oriented_bounds(self, metadata),
             Self::WoodenDoor | Self::IronDoor => definition::door_bounds(metadata),
             Self::Trapdoor => definition::trapdoor_bounds(metadata),
+            Self::StandingSign | Self::WallSign => definition::sign_bounds(self, metadata),
             _ => definition::redstone_bounds(self, metadata)
                 .unwrap_or_else(|| self.selection_bounds()),
         }

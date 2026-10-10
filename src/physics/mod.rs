@@ -68,11 +68,28 @@ pub struct PhysicsPlugin;
 
 impl Plugin for PhysicsPlugin {
     fn build(&self, app: &mut App) {
+        app.add_plugins(BodyPhysicsPlugin).add_systems(
+            Update,
+            integrate_player
+                .after(integrate_bodies)
+                .in_set(PhysicsSet::Integrate)
+                .run_if(crate::world::tick::playing),
+        );
+    }
+}
+
+/// [`PhysicsPlugin`] without the player: gravity and collision for the
+/// bodies nothing else moves, such as primed TNT. A server adds this alone,
+/// since its players are moved by their clients.
+pub struct BodyPhysicsPlugin;
+
+impl Plugin for BodyPhysicsPlugin {
+    fn build(&self, app: &mut App) {
         app.init_resource::<WorldTick>()
             .configure_sets(Update, PhysicsSet::Integrate.after(PhysicsSet::ApplyInput))
             .add_systems(
                 Update,
-                (integrate_bodies, integrate_player)
+                integrate_bodies
                     .in_set(PhysicsSet::Integrate)
                     .run_if(crate::world::tick::playing),
             );

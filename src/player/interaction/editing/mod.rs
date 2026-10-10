@@ -63,6 +63,7 @@ pub use placement::place_block;
 pub use placement::place_door;
 pub use placement::place_selected_block;
 pub use placement::place_selected_block_facing;
+pub use placement::place_sign;
 pub use tools::pick_up_fluid;
 pub use tools::place_fluid;
 pub use tools::plant_seeds;

@@ -30,6 +30,7 @@ pub use interaction::editing::place_door;
 pub use interaction::editing::place_fluid;
 pub use interaction::editing::place_selected_block;
 pub use interaction::editing::place_selected_block_facing;
+pub use interaction::editing::place_sign;
 pub use interaction::editing::plant_seeds;
 pub use interaction::editing::till_block;
 pub use interaction::editing::till_with_selected_hoe;

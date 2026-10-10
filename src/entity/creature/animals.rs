@@ -236,6 +236,7 @@ impl Body<'_> {
         {
             living.wolf_drying = true;
             living.wolf_shake_time = 0.0;
+            living.status = Some(8);
         }
         if wet {
             living.wolf_shaking = true;

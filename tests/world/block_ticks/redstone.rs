@@ -342,11 +342,25 @@ fn powered_dispenser_takes_one_item_after_four_ticks() {
     );
     assert_eq!(
         w.effects(),
-        vec![TickEffect::Dispense {
-            position: dispenser,
-            facing: w.metadata(dispenser),
-            stack: ItemStack::new(Item::Egg, 1).unwrap(),
-        }]
+        vec![
+            TickEffect::Dispense {
+                position: dispenser,
+                facing: w.metadata(dispenser),
+                stack: ItemStack::new(Item::Egg, 1).unwrap(),
+            },
+            // The twang of something that flies, and smoke out of the
+            // south-facing mouth.
+            TickEffect::Aux {
+                position: dispenser,
+                effect: 1002,
+                data: 0,
+            },
+            TickEffect::Aux {
+                position: dispenser,
+                effect: 2000,
+                data: 7,
+            },
+        ]
     );
 }
 

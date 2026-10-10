@@ -14,7 +14,18 @@ from `git log --date=format:'%Y-%m-%d %H:%M'`). A commit cannot name its own has
 
 #### Additions
 
-- Nothing this round.
+##### Sign
+
+- [ ] Right-click with a sign on top of a solid block stands a post turned to face you; on the side of one it
+      hangs a board. It cannot go on the underside of a block or on glass. A post is drawn square to the
+      nearer axis, not at its sixteenth of a turn.
+      `pending`
+- [ ] A sign pops off as an item when the block under a post or behind a board is taken away.
+      `pending`
+- [ ] A sign keeps its four lines through a save in either format, and one in a Beta world loads with its text.
+      Nothing draws the text or lets you write it in this game yet: on the server, a Beta client writes a new
+      sign once and every client reads it.
+      `pending`
 
 #### Interactions
 
@@ -80,10 +91,10 @@ from `git log --date=format:'%Y-%m-%d %H:%M'`). A commit cannot name its own has
       `94d9f67 · 2026-10-09 08:53`
 - [ ] Features, Steady boats (on by default): a boat dropped on water bobs for a second or two and then sits still
       at the waterline. Off, it keeps bobbing a few centimetres for ever, as in Beta.
-      `pending`
+      `95b1313 · 2026-10-09 09:07`
 - [ ] Features, Boat crashes (on by default): running a boat into a block at speed breaks it, head-on or at an
       angle; a gentle bump only stops it. Off, only scraping along a wall or shore breaks it, as in Beta.
-      `pending`
+      `95b1313 · 2026-10-09 09:07`
 - [ ] A boat floats at the surface of water, rises when pushed under, and falls and grinds to a halt on land.
       `94d9f67 · 2026-10-09 08:53`
 - [ ] Right-click a boat to sit in it and right-click it again to step out. W, A, S and D push it the way you

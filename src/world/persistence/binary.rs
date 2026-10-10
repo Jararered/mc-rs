@@ -137,6 +137,8 @@ pub(super) struct StoredChunk {
     dispensers: Vec<StoredDispenser>,
     #[serde(default)]
     notes: Vec<StoredNote>,
+    #[serde(default)]
+    signs: Vec<StoredSign>,
     /// Absent on chunks saved before population ran across chunks. Those were
     /// decorated in full when generated.
     #[serde(default = "populated_default")]
@@ -184,6 +186,12 @@ struct StoredChest {
 struct StoredDispenser {
     index: u16,
     slots: [Option<StoredStack>; DISPENSER_SLOTS],
+}
+
+#[derive(Serialize, Deserialize)]
+struct StoredSign {
+    index: u16,
+    lines: [String; 4],
 }
 
 #[derive(Serialize, Deserialize)]
@@ -313,6 +321,14 @@ impl StoredChunk {
                     previous_powered: note.previous_powered,
                 })
                 .collect(),
+            signs: generated
+                .chunk
+                .signs()
+                .map(|(index, sign)| StoredSign {
+                    index: index as u16,
+                    lines: sign.lines.clone(),
+                })
+                .collect(),
             populated: generated.populated,
             metadata: generated
                 .chunk
@@ -439,6 +455,24 @@ impl StoredChunk {
                 .slots
                 .map(|stack| stack.and_then(StoredStack::into_stack));
             chunk.insert_dispenser(index, Dispenser { slots });
+        }
+        for sign in self.signs {
+            let index = usize::from(sign.index);
+            if index >= BLOCKS_PER_CHUNK {
+                continue;
+            }
+            let y = index / (CHUNK_SIZE * CHUNK_SIZE);
+            let z = index / CHUNK_SIZE % CHUNK_SIZE;
+            let x = index % CHUNK_SIZE;
+            if chunk.get(x, y, z).is_some_and(Block::is_sign) {
+                chunk.insert_sign(
+                    index,
+                    crate::world::chunk::SignText {
+                        lines: sign.lines,
+                        editable: false,
+                    },
+                );
+            }
         }
         for note in self.notes {
             let index = usize::from(note.index);

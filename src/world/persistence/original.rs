@@ -14,10 +14,9 @@
 //! Beta stores blocks, metadata and light but not biomes, scheduled ticks or the
 //! simulation state of mobs, so those are rebuilt on load: climate from the seed,
 //! ticks from the world, and mob timers from defaults. Every Beta block id loads;
-//! one with a shape this game does not draw yet (rails, beds, signs, redstone
-//! parts, cake) shows as a stone-textured cube. Tile entities
-//! other than chests, furnaces, dispensers, note blocks and spawners (signs) are
-//! dropped, which is also what Beta does with ids it does not know. Falling
+//! one with a shape this game does not draw yet (cake) shows as a
+//! stone-textured cube. Tile entities other than chests, furnaces, dispensers,
+//! note blocks, signs and spawners are dropped, which is also what Beta does with ids it does not know. Falling
 //! blocks and primed TNT in flight are not written, so one caught mid-fall or
 //! mid-fuse by a save is lost with its block; the native format keeps them.
 //! Minecarts are written as Beta's `Minecart` entity (type, a furnace cart's
@@ -661,6 +660,13 @@ impl ChunkSnapshot {
             tile.put_list("Items", items_list(&dispenser.slots));
             tiles.push(Tag::Compound(tile));
         }
+        for (index, sign) in chunk.signs() {
+            let mut tile = tile_entity("Sign", index);
+            for (line, text) in sign.lines.iter().enumerate() {
+                tile.put_string(&format!("Text{}", line + 1), text);
+            }
+            tiles.push(Tag::Compound(tile));
+        }
         for (index, note) in chunk.notes() {
             let mut tile = tile_entity("Music", index);
             tile.put_byte("note", note.pitch as i8);
@@ -766,6 +772,16 @@ fn decode_chunk(
             "Trap" if block == Some(Block::Dispenser) => {
                 let slots = read_items::<DISPENSER_SLOTS>(tile);
                 chunk.insert_dispenser(index, Dispenser { slots });
+            }
+            "Sign" if block.is_some_and(Block::is_sign) => {
+                chunk.insert_sign(
+                    index,
+                    crate::world::chunk::SignText {
+                        lines: [1, 2, 3, 4]
+                            .map(|line| tile.string(&format!("Text{line}")).to_owned()),
+                        editable: false,
+                    },
+                );
             }
             "Music" if block == Some(Block::NoteBlock) => {
                 chunk.insert_note(

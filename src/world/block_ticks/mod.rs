@@ -160,6 +160,13 @@ pub enum TickEffect {
     /// `BlockFluid.triggerLavaMixEffects`: lava met water or a block it burns
     /// away, and steam rises from the cell.
     LavaMix { position: IVec3 },
+    /// `World.playAuxSFX`: a sound or puff a block makes (1003 a door, 1000
+    /// to 1002 a dispenser's clicks, 2000 its smoke).
+    Aux {
+        position: IVec3,
+        effect: i32,
+        data: i32,
+    },
     /// Move an entity out of the cell newly occupied by a piston extension.
     PistonPush { position: IVec3, direction: IVec3 },
 }
@@ -173,6 +180,15 @@ pub struct NotePlayed {
     pub instrument: u8,
     /// 0..24.
     pub pitch: u8,
+}
+
+/// `World.playAuxSFX` from a block: see [`TickEffect::Aux`]. Nothing in the
+/// game plays these yet; a server tells its clients.
+#[derive(Message, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AuxEffect {
+    pub position: IVec3,
+    pub effect: i32,
+    pub data: i32,
 }
 
 /// The block update state of the loaded world.

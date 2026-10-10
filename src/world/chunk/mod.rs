@@ -10,6 +10,7 @@ pub use chunk::OpenCart;
 pub use chunk::PendingTick;
 pub use chunk::SECTION_HEIGHT;
 pub use chunk::SECTIONS_PER_CHUNK;
+pub use chunk::SignText;
 pub use chunk::WorldChunks;
 pub use chunk::remesh_chunks_touching;
 pub use position::ChunkPosition;

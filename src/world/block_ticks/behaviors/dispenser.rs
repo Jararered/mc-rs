@@ -2,7 +2,9 @@
 use bevy::math::IVec3;
 
 use crate::block::blocks::Block;
+use crate::item::Item;
 use crate::world::block_ticks::BlockBehavior;
+use crate::world::block_ticks::TickEffect;
 use crate::world::block_ticks::TickWorld;
 
 pub struct Dispenser;
@@ -60,8 +62,38 @@ impl BlockBehavior for Dispenser {
                 }
             }
         }
-        if let Some(slot) = selected {
-            world.dispense(pos, world.metadata(pos), slot);
-        }
+        // `dispenseItem`'s sounds: a dry click with nothing to throw, a
+        // bow's twang for what flies and a click for what drops, then smoke
+        // out of the mouth.
+        let Some(slot) = selected else {
+            world.emit(TickEffect::Aux {
+                position: pos,
+                effect: 1001,
+                data: 0,
+            });
+            return;
+        };
+        let facing = world.metadata(pos);
+        let flies = world
+            .dispenser(pos)
+            .and_then(|dispenser| dispenser.slots[slot])
+            .is_some_and(|stack| matches!(stack.item(), Item::Arrow | Item::Egg | Item::Snowball));
+        world.dispense(pos, facing, slot);
+        let (dx, dz) = match facing {
+            3 => (0, 1),
+            2 => (0, -1),
+            5 => (1, 0),
+            _ => (-1, 0),
+        };
+        world.emit(TickEffect::Aux {
+            position: pos,
+            effect: if flies { 1002 } else { 1000 },
+            data: 0,
+        });
+        world.emit(TickEffect::Aux {
+            position: pos,
+            effect: 2000,
+            data: dx + 1 + (dz + 1) * 3,
+        });
     }
 }

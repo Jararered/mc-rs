@@ -161,6 +161,11 @@ pub struct Living {
     pub(crate) wolf_drying: bool,
     /// `EntityWolf.timeWolfIsShaking`, the shake's progress from 0 to 2.
     pub(crate) wolf_shake_time: f32,
+    /// `World.sendTrackedEntityStatusUpdatePacket`: something a client has
+    /// to be told to draw, such as a wolf's taming hearts (7), its smoke
+    /// when that fails (6) or the start of its shake (8). A server takes it;
+    /// the game draws these for itself and leaves it.
+    pub status: Option<u8>,
 }
 
 impl Default for Living {
@@ -204,6 +209,7 @@ impl Living {
             wolf_shaking: false,
             wolf_drying: false,
             wolf_shake_time: 0.0,
+            status: None,
         }
     }
 

@@ -283,6 +283,39 @@ pub fn place_door(chunks: &mut WorldChunks, hit: BlockHit, door: Block, front: D
     true
 }
 
+/// `ItemSign.onItemUse`: a post on top of a solid block, turned to face the
+/// player in sixteenths of a circle, or a board on its side. Returns the
+/// sign's cell and what was there.
+pub fn place_sign(
+    chunks: &mut WorldChunks,
+    hit: BlockHit,
+    look: Vec3,
+) -> Option<(IVec3, Block, u8)> {
+    if hit.face == BlockFace::Down || !hit.block.is_solid_material() {
+        return None;
+    }
+    let (x, y, z) = hit.face.neighbor(hit.x, hit.y, hit.z);
+    let previous = chunks.block_at(x, y, z)?;
+    if !previous.is_replaceable() {
+        return None;
+    }
+    let previous_metadata = chunks.metadata_at(x, y, z);
+    let (block, metadata) = match hit.face {
+        BlockFace::Up => {
+            // Beta's yaw: 0 looks along +Z and 90 along -X.
+            let yaw = (-look.x).atan2(look.z).to_degrees();
+            let turn = ((yaw + 180.0) * 16.0 / 360.0 + 0.5).floor() as i32 & 15;
+            (Block::StandingSign, turn as u8)
+        }
+        BlockFace::North => (Block::WallSign, 2),
+        BlockFace::South => (Block::WallSign, 3),
+        BlockFace::West => (Block::WallSign, 4),
+        _ => (Block::WallSign, 5),
+    };
+    chunks.set_block_with_metadata(x, y, z, block, metadata);
+    Some((IVec3::new(x, y, z), previous, previous_metadata))
+}
+
 /// `BlockPistonBase.determineOrientation`: close to the placed block, the
 /// player's eye height takes priority over horizontal facing. The collision
 /// box starts at the feet, so `min.y + 1.82` is Beta's placement height

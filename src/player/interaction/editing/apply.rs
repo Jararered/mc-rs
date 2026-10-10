@@ -16,6 +16,7 @@ use super::place_bed;
 use super::place_door;
 use super::place_fluid;
 use super::place_selected_block_facing;
+use super::place_sign;
 use super::placement::furnace_facing_toward_player;
 use super::plant_seeds;
 use super::push_event;
@@ -103,10 +104,11 @@ pub(crate) fn apply_player_actions(
         Query<(Entity, &Transform, &mut Minecart, Option<&Cargo>), Without<Player>>,
         Query<(Entity, &Transform, &mut Boat, &Seat), Without<Player>>,
     ),
-    (mut bed_uses, mut item_uses, mut windows): (
+    (mut bed_uses, mut item_uses, mut windows, mut strikes): (
         MessageWriter<BedUse>,
         MessageWriter<ItemUse>,
         MessageWriter<WindowOpen>,
+        MessageWriter<crate::player::interaction::attack::PlayerStrike>,
     ),
     mut workbench: ResMut<ActiveWorkbench>,
     mut item_rng: Local<ItemRng>,
@@ -149,6 +151,16 @@ pub(crate) fn apply_player_actions(
                 look,
             } => {
                 match pointed {
+                    // The blow lands in `strike_players`, which can reach
+                    // both players at once.
+                    Pointed::Player(target) => {
+                        if left_click {
+                            strikes.write(crate::player::interaction::attack::PlayerStrike {
+                                attacker: player_entity,
+                                target,
+                            });
+                        }
+                    }
                     Pointed::Mob(target) if left_click => {
                         attack(
                             &mut commands,
@@ -581,6 +593,30 @@ pub(crate) fn apply_player_actions(
                             );
                             notify_edit(&mut streaming, &mut persistence, hit.x, y, hit.z, false);
                         }
+                    } else if stack.item() == Item::Sign
+                        && let Some((cell, previous, metadata)) =
+                            place_sign(&mut chunks, hit, transform.rotation * Vec3::NEG_Z)
+                    {
+                        let selected = hotbar.selected;
+                        hotbar.slots[selected] =
+                            ItemStack::with_data(stack.item(), stack.count() - 1, stack.data())
+                                .ok();
+                        push_event(
+                            &mut block_ticks,
+                            BlockEvent::Changed {
+                                position: cell,
+                                previous,
+                                metadata,
+                            },
+                        );
+                        notify_edit(
+                            &mut streaming,
+                            &mut persistence,
+                            cell.x,
+                            cell.y,
+                            cell.z,
+                            false,
+                        );
                     } else if stack.item() == Item::Bed
                         && let Some(cells) = place_bed(
                             &mut chunks,

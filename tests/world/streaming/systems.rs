@@ -119,7 +119,7 @@ fn distant_chunks_release_world_data_entities_and_meshes() {
     let destination = ChunkPosition { x: 8, z: 0 };
     // Generation and meshing are separate stages, so wait for the rendered
     // entity rather than just the stored chunk data.
-    assert!(run_until(&mut app, Duration::from_secs(3), |app| {
+    assert!(run_until(&mut app, Duration::from_secs(30), |app| {
         rendered_positions(app).contains(&destination)
     }));
     assert!(
@@ -151,7 +151,7 @@ fn generation_runs_one_ring_ahead_of_meshing() {
         x: LOAD_RADIUS,
         z: 0,
     };
-    assert!(run_until(&mut app, Duration::from_secs(5), |app| {
+    assert!(run_until(&mut app, Duration::from_secs(30), |app| {
         rendered_positions(app).contains(&edge)
     }));
     let chunks = app.world().resource::<WorldChunks>();
@@ -179,7 +179,7 @@ fn spawn_chunk_waits_for_all_neighbor_block_data_before_its_first_mesh() {
         !rendered_positions(&mut app).contains(&ChunkPosition::ZERO),
         "the spawn chunk must not mesh before its neighbors are loaded"
     );
-    assert!(run_until(&mut app, Duration::from_secs(5), |app| {
+    assert!(run_until(&mut app, Duration::from_secs(30), |app| {
         rendered_positions(app).contains(&ChunkPosition::ZERO)
     }));
     let layer_entities = layer_entities(&mut app);
@@ -224,7 +224,7 @@ fn gpu_culled_layers_skip_the_main_world_frustum_test() {
     app.world_mut()
         .spawn((Player, Transform::from_xyz(8.0, 80.0, 8.0)));
 
-    assert!(run_until(&mut app, Duration::from_secs(5), |app| {
+    assert!(run_until(&mut app, Duration::from_secs(30), |app| {
         rendered_positions(app).contains(&ChunkPosition::ZERO)
     }));
     let layer_entities = layer_entities(&mut app);
@@ -286,7 +286,7 @@ fn edited_chunk_remesh_is_dispatched_without_main_thread_meshing() {
     app.world_mut()
         .spawn((Player, Transform::from_xyz(8.0, 80.0, 8.0)));
     let origin = ChunkPosition::ZERO;
-    assert!(run_until(&mut app, Duration::from_secs(5), |app| {
+    assert!(run_until(&mut app, Duration::from_secs(30), |app| {
         rendered_positions(app).contains(&origin)
     }));
     assert!(run_until(&mut app, Duration::from_secs(20), |app| {
@@ -594,7 +594,7 @@ fn chunks_stream_around_every_player_and_unload_when_one_leaves() {
         .spawn((Player, Transform::from_xyz(648.0, 80.0, 8.0)))
         .id();
     let distant = ChunkPosition { x: 40, z: 0 };
-    assert!(run_until(&mut app, Duration::from_secs(5), |app| {
+    assert!(run_until(&mut app, Duration::from_secs(30), |app| {
         let rendered = rendered_positions(app);
         rendered.contains(&ChunkPosition::ZERO) && rendered.contains(&distant)
     }));

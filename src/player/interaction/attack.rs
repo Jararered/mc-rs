@@ -211,10 +211,77 @@ pub(crate) fn interact<F: bevy::ecs::query::QueryFilter>(
                 mob.owner = Some("Player".to_owned());
                 struck.living.chasing = false;
             }
+            struck.living.status = Some(if tamed { 7 } else { 6 });
             if let Some(effects) = effects.as_deref_mut() {
                 effects.tame_burst(feet, width, height, tamed);
             }
         }
         _ => {}
+    }
+}
+
+/// One player's blow on another, to be landed by [`strike_players`].
+#[derive(Message, Clone, Copy, Debug)]
+pub struct PlayerStrike {
+    pub attacker: Entity,
+    pub target: Entity,
+}
+
+/// `attackTargetEntityWithCurrentItem` on another player: the held item's
+/// damage, a point more while falling, and the wear a hit costs it. A player
+/// is not scaled by difficulty the way a monster is.
+#[allow(clippy::type_complexity)]
+pub(crate) fn strike_players(
+    mut strikes: MessageReader<PlayerStrike>,
+    mut players: Query<
+        (
+            &Transform,
+            Option<&mut crate::player::PlayerHealth>,
+            Option<&mut crate::entity::combat::PlayerCombat>,
+            &mut Velocity,
+            Option<&mut Inventory>,
+        ),
+        With<crate::player::Player>,
+    >,
+    mut hotbars: Query<&mut Hotbar, With<crate::player::Player>>,
+    settings: Option<Res<crate::app::settings::GameSettings>>,
+    mut rng: Local<ItemRng>,
+    mut spare_armor: Local<[Option<ItemStack>; 4]>,
+) {
+    let difficulty = settings
+        .as_ref()
+        .map_or_else(crate::world::difficulty::Difficulty::default, |settings| {
+            settings.difficulty
+        });
+    for strike in strikes.read().copied() {
+        if strike.attacker == strike.target {
+            continue;
+        }
+        let Ok((from, falling)) = players
+            .get(strike.attacker)
+            .map(|(transform, _, _, velocity, _)| (transform.translation, velocity.0.y < 0.0))
+        else {
+            continue;
+        };
+        let Ok(mut hotbar) = hotbars.get_mut(strike.attacker) else {
+            continue;
+        };
+        let held = hotbar.selected_stack();
+        let Ok(mut parts) = players.get_mut(strike.target) else {
+            continue;
+        };
+        let Some(mut victim) = crate::entity::projectiles::victim_of(&mut parts, &mut spare_armor)
+        else {
+            continue;
+        };
+        let hit = Hit {
+            amount: damage_vs_entity(held) + i16::from(falling),
+            from: Some(from),
+            source: Source::Player,
+        };
+        crate::entity::combat::hurt_player(&mut victim, hit, difficulty, &mut rng);
+        if let Some(stack) = held {
+            hotbar.damage_selected(hit_durability(stack));
+        }
     }
 }

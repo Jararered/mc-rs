@@ -82,7 +82,13 @@ pub enum ClientPacket {
         window: i8,
         action: i16,
     },
-    UpdateSign,
+    /// `Packet130UpdateSign`: what the client wrote on a sign.
+    UpdateSign {
+        x: i32,
+        y: i32,
+        z: i32,
+        lines: [String; 4],
+    },
     Disconnect(String),
 }
 
@@ -243,11 +249,15 @@ pub fn read_packet(bytes: &[u8]) -> Result<(ClientPacket, usize), ReadError> {
             ClientPacket::Transaction { window, action }
         }
         130 => {
-            r.take::<10>()?;
-            for _ in 0..4 {
-                r.string(15)?;
+            let x = r.i32()?;
+            let y = i32::from(r.i16()?);
+            let z = r.i32()?;
+            ClientPacket::UpdateSign {
+                x,
+                y,
+                z,
+                lines: [r.string(15)?, r.string(15)?, r.string(15)?, r.string(15)?],
             }
-            ClientPacket::UpdateSign
         }
         255 => ClientPacket::Disconnect(r.string(100)?),
         other => return Err(ReadError::Invalid(format!("packet id {other}"))),
@@ -764,6 +774,17 @@ impl Writer {
         self.u8(window as u8);
         self.i16(action);
         self.u8(u8::from(accepted));
+    }
+
+    /// `Packet130UpdateSign`.
+    pub fn update_sign(&mut self, x: i32, y: i32, z: i32, lines: &[String; 4]) {
+        self.u8(130);
+        self.i32(x);
+        self.i16(y as i16);
+        self.i32(z);
+        for line in lines {
+            self.string(line);
+        }
     }
 
     /// `Packet255KickDisconnect`.

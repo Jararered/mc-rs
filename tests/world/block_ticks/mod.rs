@@ -190,6 +190,7 @@ impl TestWorld {
                 TickEffect::FallingBlock { .. }
                 | TickEffect::PrimedTnt { .. }
                 | TickEffect::Note { .. }
+                | TickEffect::Aux { .. }
                 | TickEffect::Dispense { .. }
                 | TickEffect::DropStack { .. }
                 | TickEffect::LavaMix { .. }

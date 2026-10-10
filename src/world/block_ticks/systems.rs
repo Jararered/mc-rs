@@ -58,6 +58,7 @@ impl Plugin for BlockTicksPlugin {
             .init_resource::<LightCache>()
             .init_resource::<WorldTick>()
             .add_message::<super::NotePlayed>()
+            .add_message::<super::AuxEffect>()
             .configure_sets(Update, BlockTickSet.after(PhysicsSet::Integrate))
             .add_systems(
                 Update,
@@ -220,6 +221,7 @@ fn apply_tick_effects(
     mut bodies: Query<(&mut Transform, &EntitySize)>,
     mut particles: Option<ResMut<EffectParticles>>,
     mut notes: MessageWriter<super::NotePlayed>,
+    mut aux: MessageWriter<super::AuxEffect>,
 ) {
     for effect in ticks.take_effects() {
         match effect {
@@ -308,6 +310,17 @@ fn apply_tick_effects(
                     };
                     transform.translation += direction.as_vec3() * (distance + 0.001);
                 }
+            }
+            TickEffect::Aux {
+                position,
+                effect,
+                data,
+            } => {
+                aux.write(super::AuxEffect {
+                    position,
+                    effect,
+                    data,
+                });
             }
             // Note blocks have no sound to play until audio is implemented.
             TickEffect::Note {

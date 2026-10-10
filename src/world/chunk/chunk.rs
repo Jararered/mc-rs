@@ -63,6 +63,15 @@ pub struct NoteState {
     pub previous_powered: bool,
 }
 
+/// Beta `TileEntitySign`: the four lines written on a sign.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SignText {
+    pub lines: [String; 4],
+    /// `isEditable`: whoever placed it has not written on it yet. Not saved,
+    /// so a sign from a save can no longer be written on, as in Beta.
+    pub editable: bool,
+}
+
 /// A scheduled block tick carried by a chunk that is not loaded into the live
 /// world. While a chunk is loaded its ticks live in the block tick scheduler.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -95,6 +104,7 @@ pub struct Chunk {
     chests: HashMap<usize, Chest>,
     dispensers: HashMap<usize, Dispenser>,
     notes: HashMap<usize, NoteState>,
+    signs: HashMap<usize, SignText>,
     /// Scheduled ticks saved with the chunk. Empty while the chunk is live.
     pending_ticks: Vec<PendingTick>,
     mob_records: Vec<crate::entity::mobs::MobRecord>,
@@ -115,6 +125,7 @@ impl Chunk {
             chests: HashMap::new(),
             dispensers: HashMap::new(),
             notes: HashMap::new(),
+            signs: HashMap::new(),
             pending_ticks: Vec::new(),
             mob_records: Vec::new(),
             saved_bodies: Vec::new(),
@@ -167,6 +178,7 @@ impl Chunk {
             chests,
             dispensers,
             notes,
+            signs: HashMap::new(),
             pending_ticks: Vec::new(),
             mob_records: Vec::new(),
             saved_bodies: Vec::new(),
@@ -211,6 +223,7 @@ impl Chunk {
             chests,
             dispensers,
             notes,
+            signs: HashMap::new(),
             pending_ticks: Vec::new(),
             mob_records: Vec::new(),
             saved_bodies: Vec::new(),
@@ -389,6 +402,17 @@ impl Chunk {
         } else if previous != Block::NoteBlock && block == Block::NoteBlock {
             self.notes.entry(index).or_default();
         }
+        if !block.is_sign() {
+            self.signs.remove(&index);
+        } else if !previous.is_sign() {
+            self.signs.insert(
+                index,
+                SignText {
+                    editable: true,
+                    ..Default::default()
+                },
+            );
+        }
         if previous.is_chest() && !block.is_chest() {
             self.chests.remove(&index);
         } else if !previous.is_chest() && block.is_chest() {
@@ -418,6 +442,19 @@ impl Chunk {
 
     pub fn insert_furnace(&mut self, index: usize, furnace: Furnace) {
         self.furnaces.insert(index, furnace);
+    }
+
+    pub fn signs(&self) -> impl Iterator<Item = (usize, &SignText)> {
+        self.signs.iter().map(|(index, sign)| (*index, sign))
+    }
+    pub fn sign(&self, index: usize) -> Option<&SignText> {
+        self.signs.get(&index)
+    }
+    pub fn sign_mut(&mut self, index: usize) -> Option<&mut SignText> {
+        self.signs.get_mut(&index)
+    }
+    pub fn insert_sign(&mut self, index: usize, sign: SignText) {
+        self.signs.insert(index, sign);
     }
 
     pub fn notes(&self) -> impl Iterator<Item = (usize, &NoteState)> {
@@ -670,6 +707,18 @@ impl WorldChunks {
             }
         }
         positions
+    }
+
+    pub fn sign_at(&self, x: i32, y: i32, z: i32) -> Option<&SignText> {
+        let index = local_index(x, y, z)?;
+        self.get(ChunkPosition::from_block(x, z))?.chunk.sign(index)
+    }
+
+    pub fn sign_at_mut(&mut self, x: i32, y: i32, z: i32) -> Option<&mut SignText> {
+        let index = local_index(x, y, z)?;
+        self.get_mut(ChunkPosition::from_block(x, z))?
+            .chunk
+            .sign_mut(index)
     }
 
     pub fn note_at_mut(&mut self, x: i32, y: i32, z: i32) -> Option<&mut NoteState> {

@@ -52,6 +52,8 @@ pub enum Action {
 /// What the crosshair rests on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Pointed {
+    /// Another player.
+    Player(Entity),
     Mob(Entity),
     Fireball(Entity),
     Minecart(Entity),
@@ -97,12 +99,14 @@ impl Plugin for PlayerActionsPlugin {
         super::interaction::use_item::plugin(app);
         app.add_message::<PlayerAction>()
             .add_message::<WindowOpen>()
+            .add_message::<super::interaction::attack::PlayerStrike>()
             .add_message::<super::sleep::BedUse>()
             .init_resource::<crate::inventory::session::ActiveWorkbench>()
             .add_systems(
                 Update,
                 (
                     super::interaction::editing::apply_player_actions,
+                    super::interaction::attack::strike_players,
                     super::interaction::use_item::use_items,
                 )
                     .chain()

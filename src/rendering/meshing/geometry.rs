@@ -173,6 +173,8 @@ pub(crate) fn is_box_shape(block: Block) -> bool {
             | Block::StoneButton
             | Block::StonePressurePlate
             | Block::WoodenPressurePlate
+            | Block::StandingSign
+            | Block::WallSign
     ) || block.is_stairs()
         || block.is_door()
 }
@@ -196,6 +198,19 @@ pub(crate) fn block_boxes(block: Block, metadata: u8, fence_links: [bool; 4]) ->
         | Block::StonePressurePlate
         | Block::WoodenPressurePlate => {
             boxes.push(flat(block.selection_bounds_for(metadata)));
+        }
+        Block::WallSign => boxes.push(flat(block.selection_bounds_for(metadata))),
+        // `ModelSign` at two thirds: a post and a board on it. The board
+        // turns in sixteenths of a circle; boxes follow the nearer axis.
+        Block::StandingSign => {
+            let (near, far) = (0.5 - 1.0 / 24.0, 0.5 + 1.0 / 24.0);
+            let top = 7.0 / 12.0;
+            boxes.push([near, 0.0, near, far, top, far]);
+            if (metadata + 2) % 8 < 4 {
+                boxes.push([0.0, top, near, 1.0, top + 0.5, far]);
+            } else {
+                boxes.push([near, top, 0.0, far, top + 0.5, 1.0]);
+            }
         }
         Block::Fence => {
             let [west, east, north, south] = fence_links;

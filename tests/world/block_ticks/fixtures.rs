@@ -11,10 +11,12 @@ use game::physics::BlockHit;
 use game::physics::colliding_aabbs;
 use game::player::place_door;
 use game::player::place_selected_block_facing;
+use game::player::place_sign;
 use game::rendering::meshing::mesh_chunk_with_settings;
 use game::rendering::textures::block_tile;
 use game::rendering::textures::door_tile;
 use game::world::block_ticks::BlockEvent;
+use game::world::block_ticks::TickEffect;
 use game::world::block_ticks::behaviors::plants::SAPLING_READY;
 use game::world::chunk::Chunk;
 use game::world::lighting::Skylight;
@@ -640,4 +642,88 @@ fn a_bed_respawn_needs_the_bed_and_a_free_cell_beside_it() {
 
     world.set(foot, Block::Air);
     assert_eq!(bed_respawn_feet(&world.chunks, foot), None);
+}
+
+#[test]
+fn a_sign_stands_or_hangs_on_something_solid_and_goes_with_it() {
+    let mut world = floor();
+    // Looking along +Z is Beta's yaw 0: the post is turned half way round to
+    // face the player.
+    let post = place_sign(
+        &mut world.chunks,
+        hit(8, 63, 8, BlockFace::Up, Block::Stone),
+        Vec3::Z,
+    );
+    assert_eq!(post.map(|(cell, ..)| cell), Some(at(8, 64, 8)));
+    assert_eq!(world.block(at(8, 64, 8)), Block::StandingSign);
+    assert_eq!(world.metadata(at(8, 64, 8)), 8);
+    assert!(
+        world
+            .chunks
+            .sign_at(8, 64, 8)
+            .is_some_and(|sign| sign.editable),
+        "a new sign can be written on"
+    );
+
+    // On a side it is a board, whose metadata is the face it hangs on.
+    world.set(at(4, 64, 4), Block::Stone);
+    assert!(
+        place_sign(
+            &mut world.chunks,
+            hit(4, 64, 4, BlockFace::North, Block::Stone),
+            Vec3::Z
+        )
+        .is_some()
+    );
+    assert_eq!(world.block(at(4, 64, 3)), Block::WallSign);
+    assert_eq!(world.metadata(at(4, 64, 3)), 2);
+    // Never under a block, and never on one that is not solid.
+    assert!(
+        place_sign(
+            &mut world.chunks,
+            hit(4, 64, 4, BlockFace::Down, Block::Stone),
+            Vec3::Z
+        )
+        .is_none()
+    );
+
+    world.place(at(8, 63, 8), Block::Air);
+    world.place(at(4, 64, 4), Block::Air);
+    assert_eq!(world.block(at(8, 64, 8)), Block::Air);
+    assert_eq!(world.block(at(4, 64, 3)), Block::Air);
+    assert!(world.chunks.sign_at(8, 64, 8).is_none());
+    let drops = world.drops();
+    assert!(drops.contains(&(at(8, 64, 8), Block::StandingSign, 8)));
+    assert!(drops.contains(&(at(4, 64, 3), Block::WallSign, 2)));
+}
+
+#[test]
+fn a_powered_door_creaks_and_an_empty_dispenser_clicks() {
+    let mut world = floor();
+    world.set_with_metadata(at(8, 64, 8), Block::IronDoor, 0);
+    world.set_with_metadata(at(8, 65, 8), Block::IronDoor, 8);
+    world.set_with_metadata(at(7, 64, 8), Block::Lever, 5);
+    world.set_with_metadata(at(3, 64, 3), Block::Dispenser, 3);
+    world.set_with_metadata(at(2, 64, 3), Block::Lever, 5);
+    world.effects();
+
+    world.event(BlockEvent::Activated {
+        position: at(7, 64, 8),
+    });
+    assert_ne!(world.metadata(at(8, 64, 8)) & 4, 0, "the door opened");
+    assert!(world.effects().contains(&TickEffect::Aux {
+        position: at(8, 64, 8),
+        effect: 1003,
+        data: 0,
+    }));
+
+    world.event(BlockEvent::Activated {
+        position: at(2, 64, 3),
+    });
+    world.run(5);
+    assert!(world.effects().contains(&TickEffect::Aux {
+        position: at(3, 64, 3),
+        effect: 1001,
+        data: 0,
+    }));
 }

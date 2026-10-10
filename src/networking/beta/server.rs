@@ -63,6 +63,7 @@ use crate::player::actions::WindowOpen;
 use crate::player::sleep::PlayerSleep;
 use crate::player::sleep::SleepPlugin;
 use crate::random::ItemRng;
+use crate::world::block_ticks::AuxEffect;
 use crate::world::block_ticks::NotePlayed;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
@@ -175,10 +176,18 @@ struct Effect {
     effect: i32,
 }
 
+/// A sign was written on, and everyone holding its chunk is told.
+struct SignChange {
+    dimension: Dimension,
+    at: IVec3,
+    lines: [String; 4],
+}
+
 /// What `receive` needs besides the client and the world.
 struct Shared<'a> {
     tracker: &'a mut Tracker,
     effects: &'a mut Vec<Effect>,
+    signs: &'a mut Vec<SignChange>,
     rng: &'a mut ItemRng,
 }
 
@@ -191,6 +200,7 @@ struct Outbox {
     blasts: Vec<Exploded>,
     strikes: Vec<Vec3>,
     notes: Vec<NotePlayed>,
+    aux: Vec<AuxEffect>,
 }
 
 fn fill_outbox(
@@ -199,7 +209,9 @@ fn fill_outbox(
     mut blasts: MessageReader<Exploded>,
     mut strikes: MessageReader<LightningStrike>,
     mut notes: MessageReader<NotePlayed>,
+    mut aux: MessageReader<AuxEffect>,
 ) {
+    outbox.aux.extend(aux.read().copied());
     outbox.windows.extend(windows.read().copied());
     outbox.blasts.extend(blasts.read().cloned());
     outbox.strikes.extend(strikes.read().map(|strike| strike.0));
@@ -217,6 +229,7 @@ pub struct BetaServer {
     chat_seen: HashMap<Dimension, u64>,
     tracker: Tracker,
     effects: Vec<Effect>,
+    signs: Vec<SignChange>,
     rng: ItemRng,
 }
 
@@ -233,6 +246,8 @@ fn build_world(app: &mut App, view_distance: i32) {
             crate::rendering::WorldRenderingPlugin,
             // Dropped items move, age and are picked up here.
             crate::entity::drops::items::DroppedItemPlugin,
+            // Primed TNT falls. Players are left to their clients.
+            crate::physics::BodyPhysicsPlugin,
             PlayerActionsPlugin,
             SurvivalPlugin,
             SleepPlugin,
@@ -243,6 +258,7 @@ fn build_world(app: &mut App, view_distance: i32) {
         .add_message::<Exploded>()
         .add_message::<LightningStrike>()
         .add_message::<NotePlayed>()
+        .add_message::<AuxEffect>()
         .add_systems(Last, fill_outbox);
     app.world_mut()
         .resource_mut::<GameSettings>()
@@ -274,6 +290,7 @@ impl BetaServer {
             chat_seen: HashMap::new(),
             tracker: Tracker::default(),
             effects: Vec::new(),
+            signs: Vec::new(),
             rng: ItemRng::default(),
         })
     }
@@ -307,6 +324,7 @@ impl BetaServer {
         let mut shared = Shared {
             tracker: &mut self.tracker,
             effects: &mut self.effects,
+            signs: &mut self.signs,
             rng: &mut self.rng,
         };
         for client in &mut self.clients {
@@ -448,6 +466,7 @@ impl BetaServer {
             })
             .collect();
         let effects = std::mem::take(&mut self.effects);
+        let signs = std::mem::take(&mut self.signs);
         let mut bolts = Vec::new();
         for (dimension, outbox) in &events {
             for strike in &outbox.strikes {
@@ -475,6 +494,17 @@ impl BetaServer {
                         .effect(effect.effect, effect.at.x, effect.at.y, effect.at.z, 0);
                 }
             }
+            for sign in &signs {
+                if sign.dimension == client.dimension
+                    && client
+                        .sent
+                        .contains(&ChunkPosition::from_block(sign.at.x, sign.at.z))
+                {
+                    client
+                        .out
+                        .update_sign(sign.at.x, sign.at.y, sign.at.z, &sign.lines);
+                }
+            }
             for (dimension, id, at) in &bolts {
                 if *dimension == client.dimension && near(*at, LIGHTNING_RANGE) {
                     client
@@ -499,6 +529,12 @@ impl BetaServer {
                         blast.strength,
                         &cells,
                     );
+                }
+            }
+            for aux in &outbox.aux {
+                let at = aux.position;
+                if near(at.as_vec3(), EFFECT_RANGE) {
+                    client.out.effect(aux.effect, at.x, at.y, at.z, aux.data);
                 }
             }
             for note in &outbox.notes {
@@ -811,6 +847,31 @@ fn play(client: &mut Client, host: &mut WorldHost, shared: &mut Shared, packet: 
                     }
                 }
             }
+            // `handleFlying` for a rider: in the place of a position the
+            // client sends its own `motionX/Z`, which is what a boat is
+            // pushed by. A boat and a steered pig read the keys behind that
+            // motion, so it is turned back into them.
+            let steering = match position {
+                Some([x, feet, _, z]) if feet <= -900.0 && x.is_finite() && z.is_finite() => {
+                    // One airborne `moveFlying` and its drag: see
+                    // `boat::rider_motion`.
+                    const FULL: f32 = 0.02 * 0.98 * 0.91;
+                    let (bevy_yaw, _, _) = transform.rotation.to_euler(EulerRot::YXZ);
+                    let (sin, cos) = (std::f32::consts::PI - bevy_yaw).sin_cos();
+                    let (x, z) = (x as f32, z as f32);
+                    let key = |along: f32| {
+                        let key = (along / FULL).clamp(-1.0, 1.0);
+                        if key.abs() < 0.05 { 0.0 } else { key }
+                    };
+                    (key(x * cos + z * sin), key(z * cos - x * sin))
+                }
+                _ => (0.0, 0.0),
+            };
+            if let Some(mut input) = world.get_mut::<PlayerMovementInput>(entity)
+                && (input.strafe, input.forward) != steering
+            {
+                (input.strafe, input.forward) = steering;
+            }
         }
         ClientPacket::Dig {
             status,
@@ -923,7 +984,9 @@ fn play(client: &mut Client, host: &mut WorldHost, shared: &mut Shared, packet: 
             if at.translation.distance_squared(eyes.translation) >= ENTITY_REACH * ENTITY_REACH {
                 return;
             }
-            let target = if world.get::<Mob>(target).is_some() {
+            let target = if world.get::<crate::player::Player>(target).is_some() {
+                Pointed::Player(target)
+            } else if world.get::<Mob>(target).is_some() {
                 Pointed::Mob(target)
             } else if world.get::<Minecart>(target).is_some() {
                 Pointed::Minecart(target)
@@ -932,7 +995,7 @@ fn play(client: &mut Client, host: &mut WorldHost, shared: &mut Shared, packet: 
             } else if world.get::<Fireball>(target).is_some() {
                 Pointed::Fireball(target)
             } else {
-                // Another player, or something that is not clicked on.
+                // Something that is not clicked on.
                 return;
             };
             // The client may have used its held item up on its own copy.
@@ -982,6 +1045,35 @@ fn play(client: &mut Client, host: &mut WorldHost, shared: &mut Shared, packet: 
                 &mut client.out,
             );
             throw(world, entity, shared.rng, dropped);
+        }
+        // `handleUpdateSign`: only a sign nobody has written on yet takes
+        // text, and a line with a character chat would not take reads "!?".
+        ClientPacket::UpdateSign { x, y, z, lines } => {
+            let mut chunks = world.resource_mut::<WorldChunks>();
+            let Some(sign) = chunks.sign_at_mut(x, y, z).filter(|sign| sign.editable) else {
+                return;
+            };
+            sign.lines = lines.map(|line| {
+                if line
+                    .chars()
+                    .all(|c| c >= ' ' && c != '\u{a7}' && c != '\u{7f}')
+                {
+                    line
+                } else {
+                    "!?".to_owned()
+                }
+            });
+            sign.editable = false;
+            shared.signs.push(SignChange {
+                dimension,
+                at: IVec3::new(x, y, z),
+                lines: sign.lines.clone(),
+            });
+            if let Some(mut persistence) =
+                world.get_resource_mut::<crate::world::persistence::WorldPersistence>()
+            {
+                persistence.mark_dirty(ChunkPosition::from_block(x, z));
+            }
         }
         ClientPacket::Transaction { window, action } => client.windows.acknowledge(window, action),
         ClientPacket::CloseWindow(_) => {
@@ -1093,6 +1185,15 @@ fn send_state(
         };
         client.out.pre_chunk(position.x, position.z, true);
         client.out.map_chunk(position.x, position.z, &deflated);
+        // `TileEntitySign.getDescriptionPacket`, for each sign in it.
+        for (index, sign) in generated.chunk.signs() {
+            client.out.update_sign(
+                position.x * 16 + (index % 16) as i32,
+                (index / 256) as i32,
+                position.z * 16 + (index / 16 % 16) as i32,
+                &sign.lines,
+            );
+        }
         client.sent.insert(position);
         budget -= 1;
     }

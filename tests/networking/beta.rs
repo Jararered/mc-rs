@@ -13,6 +13,7 @@ use flate2::read::ZlibDecoder;
 use game::block::blocks::Block;
 use game::entity::combat::Source;
 use game::entity::explosion::Explosion;
+use game::entity::explosion::prime_tnt;
 use game::entity::mobs::MobType;
 use game::entity::mobs::SpawnMob;
 use game::inventory::Hotbar;
@@ -25,6 +26,7 @@ use game::networking::beta::codec::ClientPacket;
 use game::networking::beta::codec::ReadError;
 use game::networking::beta::codec::read_packet;
 use game::player::PlayerHealth;
+use game::player::PlayerMovementInput;
 use game::world::chunk::WorldChunks;
 use game::world::dimension::Dimension;
 use game::world::persistence::WorldStorage;
@@ -156,6 +158,11 @@ enum Heard {
         window: i8,
         action: i16,
         accepted: bool,
+    },
+    /// `Packet130UpdateSign`.
+    Sign {
+        at: [i32; 3],
+        lines: [String; 4],
     },
     Kick(String),
 }
@@ -461,6 +468,15 @@ fn hear(bytes: &[u8]) -> Option<(Heard, usize)> {
             action: w.i16()?,
             accepted: w.u8()? != 0,
         },
+        130 => {
+            let x = w.i32()?;
+            let y = i32::from(w.i16()?);
+            let z = w.i32()?;
+            Heard::Sign {
+                at: [x, y, z],
+                lines: [w.string()?, w.string()?, w.string()?, w.string()?],
+            }
+        }
         255 => Heard::Kick(w.string()?),
         other => panic!("the server sent packet {other}, which this client does not read"),
     };
@@ -892,7 +908,9 @@ fn players_see_each_other_arrive_move_swing_and_leave() {
                 moved: Some([48, 0, 0]),
             }
     });
-    assert!(alice.heard.contains(&Heard::Swing(entity)));
+    until(&mut server, &mut alice, "bob's swing", |heard| {
+        *heard == Heard::Swing(entity)
+    });
     assert_eq!(own_id(&bob), entity);
 
     // Sneaking is the second of `Entity`'s flags.
@@ -1286,4 +1304,171 @@ fn a_dead_player_stays_down_until_their_client_respawns() {
         |heard| matches!(heard, Heard::Player { entity, .. } if *entity == bob_id),
     );
     assert!(alice.heard[seen..].contains(&Heard::Gone(bob_id)));
+}
+
+#[test]
+fn a_sign_is_placed_written_on_once_and_read_by_everyone() {
+    let mut server = server("sign");
+    let (mut writer, [x, feet, z]) = join(&mut server, "writer");
+    let (mut reader, _) = join(&mut server, "reader");
+    let (_, body) = server.host_mut().find("writer").unwrap();
+    overworld(&mut server)
+        .get_mut::<Hotbar>(body)
+        .unwrap()
+        .slots[0] = ItemStack::new(Item::Sign, 1).ok();
+
+    let under = [x.floor() as i32, feet as i32 - 1, z.floor() as i32 + 2];
+    let top = (0..127)
+        .rev()
+        .find(|y| {
+            overworld(&mut server)
+                .resource::<WorldChunks>()
+                .block_at(under[0], *y, under[2])
+                .is_some_and(Block::is_opaque_cube)
+        })
+        .unwrap();
+    let post = [under[0], top + 1, under[2]];
+    writer.place(
+        [under[0], top, under[2]],
+        1,
+        Some((Item::Sign.as_u16() as i16, 1, 0)),
+    );
+    until(&mut server, &mut reader, "the sign post", |heard| {
+        *heard
+            == Heard::BlockChange {
+                at: post,
+                block: Block::StandingSign.as_u8(),
+            }
+    });
+
+    // `Packet130UpdateSign` from the editor, relayed to whoever holds the
+    // chunk.
+    let lines = ["Beware", "of the", "creeper", ""].map(str::to_owned);
+    let mut out = vec![130];
+    out.extend(post[0].to_be_bytes());
+    out.extend((post[1] as i16).to_be_bytes());
+    out.extend(post[2].to_be_bytes());
+    for line in &lines {
+        string(&mut out, line);
+    }
+    writer.send(&out);
+    until(&mut server, &mut reader, "what the sign says", |heard| {
+        *heard
+            == Heard::Sign {
+                at: post,
+                lines: lines.clone(),
+            }
+    });
+
+    // It takes text only once (`isEditable`).
+    let mut again = vec![130];
+    again.extend(post[0].to_be_bytes());
+    again.extend((post[1] as i16).to_be_bytes());
+    again.extend(post[2].to_be_bytes());
+    for line in ["no", "", "", ""] {
+        string(&mut again, line);
+    }
+    writer.send(&again);
+    for _ in 0..5 {
+        server.tick();
+    }
+    assert_eq!(
+        overworld(&mut server)
+            .resource::<WorldChunks>()
+            .sign_at(post[0], post[1], post[2])
+            .unwrap()
+            .lines,
+        lines
+    );
+}
+
+#[test]
+fn one_player_can_hit_another() {
+    let mut server = server("pvp");
+    let (mut alice, _) = join(&mut server, "alice");
+    let (mut bob, _) = join(&mut server, "bob");
+    let (alice_id, bob_id) = (own_id(&alice), own_id(&bob));
+    until(
+        &mut server,
+        &mut alice,
+        "bob arriving",
+        |heard| matches!(heard, Heard::Player { name, .. } if name == "bob"),
+    );
+    alice.use_entity(alice_id, bob_id, true);
+    // A bare fist takes half a heart, and everyone sees him flinch.
+    until(&mut server, &mut bob, "the blow", |heard| {
+        *heard == Heard::Health(19)
+    });
+    until(&mut server, &mut alice, "bob flinching", |heard| {
+        *heard
+            == Heard::Status {
+                entity: bob_id,
+                status: 2,
+            }
+    });
+}
+
+#[test]
+fn primed_tnt_falls_and_a_riders_motion_steers() {
+    let mut server = server("bodies");
+    let (mut player, [x, feet, z]) = join(&mut server, "rider");
+    let (_, body) = server.host_mut().find("rider").unwrap();
+
+    // Nothing integrates a player here, but TNT still drops.
+    let world = overworld(&mut server);
+    let start = Vec3::new(x as f32 + 3.0, feet as f32 + 12.0, z as f32);
+    let tnt = prime_tnt(&mut world.commands(), start, 200);
+    world.flush();
+    until(&mut server, &mut player, "the TNT", |heard| {
+        matches!(heard, Heard::Object { kind: 50, .. })
+    });
+    // Bodies fall on frame time, so give it some.
+    let deadline = Instant::now() + Duration::from_secs(20);
+    loop {
+        server.tick();
+        std::thread::sleep(Duration::from_millis(10));
+        let fallen = overworld(&mut server)
+            .get::<Transform>(tnt)
+            .unwrap()
+            .translation;
+        if fallen.y < start.y - 1.0 {
+            break;
+        }
+        assert!(Instant::now() < deadline, "the TNT hangs at {fallen}");
+    }
+
+    // A rider's packet carries its own motion where a position would be:
+    // straight ahead at yaw 0 is +Z, the forward key held down.
+    let mut out = vec![13];
+    for value in [0.0f64, -999.0, -999.0, 0.0178] {
+        out.extend(value.to_be_bytes());
+    }
+    out.extend(0f32.to_be_bytes());
+    out.extend(0f32.to_be_bytes());
+    out.push(0);
+    player.send(&out);
+    let mut input =
+        |server: &mut BetaServer| *overworld(server).get::<PlayerMovementInput>(body).unwrap();
+    // The packet may take a tick or two to cross the socket.
+    let mut held = input(&mut server);
+    for _ in 0..200 {
+        if held.forward > 0.9 {
+            break;
+        }
+        server.tick();
+        std::thread::sleep(Duration::from_millis(2));
+        held = input(&mut server);
+    }
+    assert!(held.forward > 0.9 && held.strafe == 0.0, "{held:?}");
+    // On foot again, the keys are the client's own business.
+    player.stand(x, feet, z);
+    for _ in 0..200 {
+        if input(&mut server).forward == 0.0 {
+            break;
+        }
+        server.tick();
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    let released = input(&mut server);
+    assert_eq!((released.forward, released.strafe), (0.0, 0.0));
 }

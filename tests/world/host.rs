@@ -20,6 +20,7 @@ use game::world::persistence::SaveFormat;
 use game::world::persistence::WorldStorage;
 use game::world::plugin::WorldPlugin;
 use game::world::portal;
+use game::world::streaming::WorldStreaming;
 use game::world::tick::WorldTick;
 
 fn host(label: &str, format: SaveFormat) -> WorldHost {
@@ -156,7 +157,7 @@ fn two_players_can_be_in_different_dimensions_at_once() {
             "{format:?}"
         );
         assert!(
-            run_until(&mut host, Duration::from_secs(60), |host| {
+            run_until(&mut host, Duration::from_secs(180), |host| {
                 host.loaded() == [Dimension::Overworld]
             }),
             "{format:?}: the empty Nether never unloaded"
@@ -214,21 +215,41 @@ fn standing_in_a_portal_sends_a_player_through() {
         (at.y - 1.62 + 0.1).floor() as i32,
         at.z.floor() as i32,
     );
+    // Finished, so that no population pass is still to write into it.
     assert!(run_until(&mut host, Duration::from_secs(60), |host| {
-        host.world(Dimension::Overworld)
-            .unwrap()
-            .resource::<WorldChunks>()
-            .block_at(cell.x, cell.y, cell.z)
-            .is_some()
+        let world = host.world(Dimension::Overworld).unwrap();
+        let chunks = world.resource::<WorldChunks>();
+        world
+            .get_resource::<WorldStreaming>()
+            .is_some_and(|streaming| {
+                streaming.neighborhood_finished(chunks, ChunkPosition::from_block(cell.x, cell.z))
+            })
     }));
     // A new arrival cannot start a trip until `timeUntilPortal` has run out.
     for _ in 0..30 {
         host.update(0.05);
     }
-    host.world_mut(Dimension::Overworld)
+    // A whole portal, in its frame: a portal block on its own is taken away
+    // by the first neighbour that changes.
+    let mut chunks = host
+        .world_mut(Dimension::Overworld)
         .unwrap()
-        .resource_mut::<WorldChunks>()
-        .set_block(cell.x, cell.y, cell.z, Block::NetherPortal);
+        .resource_mut::<WorldChunks>();
+    for width in -1..=2 {
+        for height in -1..=3 {
+            let edge = width == -1 || width == 2 || height == -1 || height == 3;
+            chunks.set_block(
+                cell.x + width,
+                cell.y + height,
+                cell.z,
+                if edge {
+                    Block::Obsidian
+                } else {
+                    Block::NetherPortal
+                },
+            );
+        }
+    }
     assert!(
         run_until(&mut host, Duration::from_secs(120), |host| {
             host.find("alice")

@@ -74,6 +74,29 @@ impl BlockBehavior for Torch {
     }
 }
 
+/// `BlockSign.onNeighborBlockChange`: a post needs something solid under
+/// it, and a wall sign the block it hangs on.
+pub struct Sign;
+pub static SIGN: Sign = Sign;
+
+impl BlockBehavior for Sign {
+    fn neighbor_changed(&self, world: &mut TickWorld, position: IVec3, _neighbor: Block) {
+        let behind = if world.block(position) == Block::StandingSign {
+            IVec3::NEG_Y
+        } else {
+            match world.metadata(position) {
+                2 => IVec3::Z,
+                3 => IVec3::NEG_Z,
+                4 => IVec3::X,
+                _ => IVec3::NEG_X,
+            }
+        };
+        if !world.block(position + behind).is_solid_material() {
+            break_off(world, position);
+        }
+    }
+}
+
 pub struct Ladder;
 pub static LADDER: Ladder = Ladder;
 

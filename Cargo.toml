@@ -104,7 +104,3 @@ path = "tests/main.rs"
 [[example]]
 name = "chunk_render"
 required-features = ["render_harness"]
-
-[[bench]]
-name = "entities"
-harness = false

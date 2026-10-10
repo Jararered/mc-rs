@@ -2,6 +2,7 @@ mod boat;
 mod combat;
 mod dropped_items;
 pub(crate) mod mobs;
+mod mount;
 
 pub(crate) mod pathfinding;
 mod projectiles;

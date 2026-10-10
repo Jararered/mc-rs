@@ -1,3 +1,4 @@
+mod achievements;
 mod held_item;
 mod sleep;
 

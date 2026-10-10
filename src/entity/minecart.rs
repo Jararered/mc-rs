@@ -112,6 +112,8 @@ pub struct Minecart {
     pub in_reverse: bool,
     /// `rotationYaw` in degrees.
     pub yaw: f32,
+    /// `prevRotationYaw`, for rider yaw drift and drawing.
+    pub prev_yaw: f32,
     /// `onGround`, from the last sweep.
     pub on_ground: bool,
     /// `riddenByEntity`.
@@ -130,6 +132,7 @@ impl Default for Minecart {
             rock_direction: 1,
             in_reverse: false,
             yaw: 0.0,
+            prev_yaw: 0.0,
             on_ground: false,
             rider: None,
         }
@@ -333,12 +336,13 @@ fn move_cart(cart: &mut Minecart, center: &mut Vec3, delta: Vec3, chunks: &World
 }
 
 /// `EntityMinecart.onUpdate` for one world tick (the server branch).
+/// Returns true when a `largesmoke` particle should spawn this tick.
 pub fn step_minecart(
     cart: &mut Minecart,
     center: &mut Vec3,
     chunks: &WorldChunks,
     rng: &mut JavaRandom,
-) {
+) -> bool {
     if cart.time_since_hit > 0 {
         cart.time_since_hit -= 1;
     }
@@ -346,6 +350,7 @@ pub fn step_minecart(
         cart.damage -= 1;
     }
     let previous = *center;
+    cart.prev_yaw = cart.yaw;
     let yaw_start = cart.yaw;
     cart.motion.y -= 0.04;
     let cell = rail_cell(chunks, *center);
@@ -544,7 +549,9 @@ pub fn step_minecart(
         if cart.fuel < 0 {
             cart.push = Vec2::ZERO;
         }
+        return true;
     }
+    false
 }
 
 /// The cart state `applyEntityCollision` reads and writes.
@@ -723,6 +730,7 @@ impl Default for CartRandom {
 pub(crate) fn tick_minecarts(
     tick: Res<WorldTick>,
     chunks: Res<WorldChunks>,
+    mut particles: ResMut<crate::entity::ParticleEmits>,
     mut carts: Query<(Entity, &mut Minecart, &mut Transform, &mut PreviousTick)>,
     mut random: Local<CartRandom>,
     mut order: Local<Vec<Entity>>,
@@ -747,8 +755,11 @@ pub(crate) fn tick_minecarts(
             }
             previous.0 = transform.translation;
             let mut center = transform.translation;
-            step_minecart(&mut cart, &mut center, &chunks, &mut random.0);
+            let smoke = step_minecart(&mut cart, &mut center, &chunks, &mut random.0);
             transform.translation = center;
+            if smoke {
+                particles.large_smoke(center + Vec3::Y * 0.8);
+            }
             let reach = grow(CART_SIZE.aabb(center), Vec3::new(0.2, 0.0, 0.2));
             let before = previous.0;
             drop((cart, transform, previous));

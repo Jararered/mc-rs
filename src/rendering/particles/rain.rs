@@ -18,6 +18,8 @@ use crate::app::state::AppScreen;
 use crate::block::blocks::Block;
 use crate::block::fluids::Fluid;
 use crate::block::fluids::is_liquid;
+use crate::entity::ParticleEmits;
+use crate::entity::ParticleKind;
 use crate::physics::PhysicsSet;
 use crate::player::Player;
 use crate::player::PlayerCamera;
@@ -185,13 +187,40 @@ impl RainParticles {
 
     /// `EntitySmokeFX` at its default scale.
     fn smoke(&mut self, position: Vec3) -> Particle {
+        self.smoke_scaled(position, 1.0)
+    }
+
+    /// `EntitySmokeFX` with Beta's scale argument (`largesmoke` is 2.5).
+    fn smoke_scaled(&mut self, position: Vec3, scale: f32) -> Particle {
         let mut particle = self.base(Kind::Smoke, position);
         particle.velocity *= 0.1;
         particle.shade = self.random.next_float() * 0.3;
-        particle.size *= 0.75;
-        particle.max_age = (8.0 / (self.random.next_float() * 0.8 + 0.2)) as u8;
+        particle.size *= 0.75 * scale;
+        particle.max_age = ((8.0 / (self.random.next_float() * 0.8 + 0.2)) * scale) as u8;
         particle.sprite = ParticleSprite::Explosion(7);
         particle
+    }
+
+    /// `EntitySplashFX` with an optional launch velocity from the emitter.
+    fn splash_with_motion(&mut self, position: Vec3, velocity: Vec3) -> Particle {
+        let mut particle = self.splash(position);
+        if velocity.y == 0.0 && (velocity.x != 0.0 || velocity.z != 0.0) {
+            particle.velocity.x = velocity.x;
+            particle.velocity.y = velocity.y + 0.1;
+            particle.velocity.z = velocity.z;
+        }
+        particle
+    }
+
+    /// Drain gameplay particle requests into the pool.
+    fn ingest(&mut self, emits: &mut ParticleEmits) {
+        for emit in emits.drain() {
+            let particle = match emit.kind {
+                ParticleKind::Splash => self.splash_with_motion(emit.position, emit.velocity),
+                ParticleKind::LargeSmoke => self.smoke_scaled(emit.position, 2.5),
+            };
+            self.push(particle);
+        }
     }
 
     fn tick(&mut self, chunks: &WorldChunks, light: Option<&LightCache>, subtracted: u8) {
@@ -352,11 +381,15 @@ fn update_particles(
     light: Option<Res<LightCache>>,
     player: Query<&Transform, With<Player>>,
     camera: Query<&GlobalTransform, With<PlayerCamera>>,
+    mut emits: Option<ResMut<ParticleEmits>>,
     mut particles: ResMut<RainParticles>,
     mut renderer: ResMut<RainRenderer>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut visibility: Query<&mut Visibility>,
 ) {
+    if let Some(emits) = emits.as_deref_mut() {
+        particles.ingest(emits);
+    }
     let strength = weather
         .as_ref()
         .map_or(0.0, |weather| weather.rain_strength);

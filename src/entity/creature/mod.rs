@@ -33,10 +33,12 @@ pub use monsters::Hover;
 use std::time::Instant;
 
 use bevy::ecs::query::QueryData;
+use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 
 use crate::app::settings::GameSettings;
 use crate::block::blocks::Block;
+use crate::entity::BoatSolids;
 use crate::entity::CollisionState;
 use crate::entity::EntityDiagnostics;
 use crate::entity::EntitySize;
@@ -69,14 +71,15 @@ use crate::physics::eye_in_water;
 use crate::physics::inside_opaque_block;
 use crate::physics::intersects_liquid;
 use crate::physics::lava_contains;
-use crate::physics::move_entity;
 use crate::physics::raycast_blocks;
 use crate::physics::step_on_block;
 use crate::physics::water_movement;
 use crate::physics::web_slowed;
+use crate::player::Achievement;
 use crate::player::Player;
 use crate::player::PlayerHealth;
 use crate::player::PlayerMovementInput;
+use crate::player::UnlockAchievement;
 use crate::random::ItemRng;
 use crate::world::block_ticks::BlockTicks;
 use crate::world::chunk::CHUNK_SIZE;
@@ -271,6 +274,8 @@ pub(crate) struct Surroundings<'a> {
     pig_steering: bool,
     /// Pushable bodies at the start of the frame, for `applyEntityCollision`.
     crowd: &'a [(Entity, Aabb)],
+    /// Boat solid boxes (`EntityBoat.getBoundingBox`).
+    solids: &'a [Aabb],
 }
 
 impl Surroundings<'_> {
@@ -338,6 +343,20 @@ pub(crate) struct Effects<'a, 'w, 's> {
     pub explosions: &'a mut Vec<Explosion>,
     pub block_ticks: Option<&'a mut BlockTicks>,
     pub victim: Option<Victim<'a>>,
+    pub achievements: &'a mut Vec<UnlockAchievement>,
+}
+
+/// Shared world reads for [`tick_creatures`], packed so the system stays under
+/// Bevy's parameter limit.
+#[derive(SystemParam)]
+pub(crate) struct CreatureWorld<'w> {
+    tick: Res<'w, WorldTick>,
+    chunks: Res<'w, WorldChunks>,
+    light: Res<'w, LightCache>,
+    boat_solids: Res<'w, BoatSolids>,
+    settings: Option<Res<'w, GameSettings>>,
+    block_ticks: Option<ResMut<'w, BlockTicks>>,
+    diagnostics: Option<ResMut<'w, EntityDiagnostics>>,
 }
 
 /// The optional, kind-specific components a creature carries.
@@ -393,12 +412,9 @@ pub(crate) struct CreatureItem {
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn tick_creatures(
     mut commands: Commands,
-    tick: Res<WorldTick>,
-    chunks: Res<WorldChunks>,
-    light: Res<LightCache>,
+    mut world_res: CreatureWorld,
     environment: crate::world::dimension::Environment,
-    settings: Option<Res<GameSettings>>,
-    mut block_ticks: Option<ResMut<BlockTicks>>,
+    mut achievement_writer: MessageWriter<UnlockAchievement>,
     mut explosion_writer: MessageWriter<Explosion>,
     mut player: Query<
         (
@@ -418,15 +434,16 @@ pub(crate) fn tick_creatures(
     mut crowd: Local<Vec<(Entity, Aabb)>>,
     mut loot: Local<ItemRng>,
     mut explosions: Local<Vec<Explosion>>,
+    mut unlocks: Local<Vec<UnlockAchievement>>,
     mut spare_armor: Local<[Option<ItemStack>; 4]>,
-    mut diagnostics: Option<ResMut<EntityDiagnostics>>,
 ) {
-    let ticks = tick.ticks_this_frame();
+    let ticks = world_res.tick.ticks_this_frame();
     if ticks == 0 {
         return;
     }
     let start = Instant::now();
-    let difficulty = settings
+    let difficulty = world_res
+        .settings
         .as_ref()
         .map_or(Difficulty::Normal, |settings| settings.difficulty);
     let mut player = player.single_mut().ok();
@@ -450,8 +467,8 @@ pub(crate) fn tick_creatures(
         crowd.push((Entity::PLACEHOLDER, target.aabb()));
     }
     let world = Surroundings {
-        chunks: &chunks,
-        light: &light,
+        chunks: &world_res.chunks,
+        light: &world_res.light,
         raining: environment.is_raining(),
         skylight_subtracted: environment.skylight_subtracted(0.0),
         ambient: environment.ambient_light(),
@@ -467,25 +484,29 @@ pub(crate) fn tick_creatures(
                 forward: input.is_some_and(|input| input.forward > 0.0),
             }
         }),
-        pig_steering: settings
+        pig_steering: world_res
+            .settings
             .as_ref()
             .is_none_or(|settings| settings.pig_steering),
         crowd: crowd.as_slice(),
+        solids: world_res.boat_solids.0.as_slice(),
     };
     let victim = victim(&mut player, &mut spare_armor);
     explosions.clear();
+    unlocks.clear();
     let mut fx = Effects {
         commands: &mut commands,
         loot: &mut loot,
         explosions: &mut explosions,
-        block_ticks: block_ticks.as_deref_mut(),
+        block_ticks: world_res.block_ticks.as_deref_mut(),
         victim,
+        achievements: &mut unlocks,
     };
 
     for mut item in &mut creatures {
         let entity = item.entity;
         if difficulty == Difficulty::Peaceful && item.mob.kind.hostile()
-            || !chunks.contains(ChunkPosition::from_world(
+            || !world_res.chunks.contains(ChunkPosition::from_world(
                 item.transform.translation.x,
                 item.transform.translation.z,
             ))
@@ -539,7 +560,8 @@ pub(crate) fn tick_creatures(
         }
     }
     explosion_writer.write_batch(explosions.drain(..));
-    if let Some(diagnostics) = diagnostics.as_deref_mut() {
+    achievement_writer.write_batch(unlocks.drain(..));
+    if let Some(diagnostics) = world_res.diagnostics.as_deref_mut() {
         diagnostics.creatures.record(start.elapsed());
         diagnostics.ticks += u64::from(ticks);
         diagnostics.searches.add(pathfinder.take_stats());
@@ -1184,12 +1206,13 @@ impl Body<'_> {
         fx: &mut Effects,
     ) {
         let step = web_slowed(self.aabb(), world.chunks, &mut self.motion);
-        let mut movement = move_entity(
+        let mut movement = crate::physics::move_entity_with_solids(
             self.aabb(),
             step,
             self.step_height,
             self.collision.on_ground,
             world.chunks,
+            world.solids,
         );
         // The edge of the loaded world is a wall. Unloaded chunks have no
         // collision, and a mob that walked into one would be dropped without
@@ -1199,12 +1222,13 @@ impl Body<'_> {
             .chunks
             .contains(ChunkPosition::from_world(moved.x, moved.z))
         {
-            movement = move_entity(
+            movement = crate::physics::move_entity_with_solids(
                 self.aabb(),
                 Vec3::new(0.0, self.motion.y, 0.0),
                 self.step_height,
                 self.collision.on_ground,
                 world.chunks,
+                world.solids,
             );
             movement.collision.collided_x = true;
             movement.collision.collided_z = true;
@@ -1266,6 +1290,11 @@ impl Body<'_> {
             let damage = (distance - 3.0).ceil() as i16;
             if damage > 0 {
                 self.strike(world, Hit::environment(damage), fx);
+            }
+            // `EntityPig.fall`: flyPig when the fall is more than five with a
+            // player rider.
+            if self.mob.kind == MobType::Pig && distance > 5.0 {
+                fx.achievements.push(UnlockAchievement(Achievement::FlyPig));
             }
         }
         if matches!(self.mob.kind, MobType::Chicken | MobType::Ghast) {

@@ -26,13 +26,14 @@ The items are registered, craftable and stack correctly, but right-click does no
 
 ## Riding
 
-- **Boat leftovers** (`EntityBoat`): no `splash` particles from a fast boat (needs particles), and a boat is not
-  solid to other entities (`getCollisionBox`), so nothing can stand on one.
-- **Pig leftovers**: the `flyPig` achievement (needs achievements). Steering is the Pig Steering feature, not Beta.
-- **Portals while riding**: a mounted player never touches blocks, so a rider cannot charge a portal; Beta
-  dismounts the player inside one (`EntityPlayerSP.onLivingUpdate`).
-- **Minecart leftovers** (the last two apply to boats and pigs too): no furnace-cart smoke (`largesmoke`, needs particles), no cart sounds (needs audio), no
-  rider yaw drift (`Entity.updateRidden`), and no lying/sitting third-person rider pose (needs the F5 camera).
+Implemented since the previous audit: boat splash particles, boat solid collision so bodies can stand on one,
+portal charge and dismount while riding, rider yaw drift (`Entity.updateRidden`), furnace-cart `largesmoke`,
+and the `flyPig` unlock hook (tracking only; no achievement screen or popup yet).
+
+- **Pig leftovers**: steering is the Pig Steering feature, not Beta. `flyPig` unlocks into `Achievements` but
+  there is no stats/achievements UI.
+- **Minecart leftovers**: Beta 1.7.3 never plays minecart sounds in Java (assets exist unused). Sitting/lying
+  third-person rider pose needs the F5 camera and a third-person player model.
 
 ## Mobs and combat
 

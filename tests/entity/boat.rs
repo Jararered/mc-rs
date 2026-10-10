@@ -4,10 +4,13 @@ use bevy::math::IVec3;
 use bevy::math::Vec2;
 use bevy::math::Vec3;
 use game::block::blocks::Block;
+use game::entity::EntitySize;
+use game::entity::boat::BOAT_SIZE;
 use game::entity::boat::Boat;
 use game::entity::boat::BoatRules;
 use game::entity::boat::rider_motion;
 use game::entity::boat::step_boat;
+use game::physics::move_entity_with_solids;
 
 use crate::world::block_ticks::TestWorld;
 use crate::world::block_ticks::at;
@@ -187,6 +190,21 @@ fn the_rider_sits_behind_the_centre_along_the_yaw() {
 }
 
 #[test]
+fn a_turning_boat_remembers_where_its_seat_was_a_tick_ago() {
+    let w = pool();
+    let mut boat = Boat {
+        motion: Vec3::new(0.0, 0.0, 0.3),
+        ..Boat::default()
+    };
+    let mut center = Vec3::new(8.5, 63.185, 4.5);
+    let before = boat.seat();
+    step_boat(&mut boat, &mut center, None, BoatRules::BETA, &w.chunks);
+    assert!(boat.yaw != 0.0);
+    assert_eq!(boat.previous_seat(), before);
+    assert!((boat.seat() - before).length() > 0.1);
+}
+
+#[test]
 fn a_boat_clears_the_snow_layers_under_its_corners() {
     let mut w = land();
     w.set(at(8, 61, 8), Block::SnowLayer);
@@ -259,4 +277,40 @@ fn with_boat_crashes_a_square_hit_at_speed_wrecks_the_boat_too() {
     };
     assert!(crash(0.3));
     assert!(!crash(0.1), "a gentle bump only stops it");
+}
+
+#[test]
+fn a_body_can_stand_on_a_boat() {
+    let w = land();
+    let boat_center = Vec3::new(8.5, 61.3, 8.5);
+    let boat = BOAT_SIZE.aabb(boat_center);
+    let size = EntitySize {
+        width: 0.6,
+        height: 1.8,
+        y_offset: 0.0,
+    };
+    // Feet just above the deck, then fall onto it.
+    let position = Vec3::new(8.5, boat.max.y + 0.25, 8.5);
+    let movement = move_entity_with_solids(
+        size.aabb(position),
+        Vec3::new(0.0, -1.0, 0.0),
+        0.0,
+        false,
+        &w.chunks,
+        &[boat],
+    );
+    assert!(movement.collision.on_ground);
+    assert!((movement.aabb.min.y - boat.max.y).abs() < 1e-4);
+}
+
+#[test]
+fn a_fast_boat_reports_splash_speed() {
+    let w = pool();
+    let mut boat = Boat {
+        motion: Vec3::new(0.3, 0.0, 0.0),
+        ..Boat::default()
+    };
+    let mut center = Vec3::new(8.5, 63.185, 8.5);
+    let step = step_boat(&mut boat, &mut center, None, BoatRules::BETA, &w.chunks);
+    assert!(step.splash_speed > 0.15, "{}", step.splash_speed);
 }

@@ -94,6 +94,17 @@ from `git log --date=format:'%Y-%m-%d %H:%M'`). A commit cannot name its own has
 - [ ] Five quick punches break a boat into the same planks and sticks; it rocks with each hit and the damage wears
       off if you stop.
       `94d9f67 · 2026-10-09 08:53`
+- [ ] Riding a boat, a minecart or a pig, the view moves smoothly with it instead of stepping on every tick, and
+      stays steady relative to a boat while it turns.
+      `pending`
+- [ ] A fast boat throws splash particles; a powered furnace minecart puffs largesmoke while it burns fuel.
+      `pending`
+- [ ] You can walk onto a boat and stand on its deck.
+      `pending`
+- [ ] Riding into a Nether portal steps you off the vehicle and still charges the trip.
+      `pending`
+- [ ] While riding, your look eases toward the vehicle's turn (boats, carts, and pigs).
+      `pending`
 - [ ] Walking into a boat pushes it, two boats push each other apart, and a boat clears the snow layers under it.
       `94d9f67 · 2026-10-09 08:53`
 - [ ] A boat is still there, with its heading, after saving and reloading, in both save formats.
@@ -140,6 +151,8 @@ from `git log --date=format:'%Y-%m-%d %H:%M'`). A commit cannot name its own has
       `94d9f67 · 2026-10-09 08:53`
 - [ ] A pig that falls with you on it hurts you as much as the fall hurts the pig.
       `94d9f67 · 2026-10-09 08:53`
+- [ ] Falling more than five blocks on a pig unlocks flyPig (tracked; no achievement popup yet).
+      `pending`
 
 ##### Chicken
 

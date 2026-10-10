@@ -30,9 +30,16 @@ pub mod fishing;
 pub mod minecart;
 pub mod mobs;
 pub mod mount;
+pub mod particles;
 pub mod pathfinding;
 pub mod projectiles;
+pub mod solids;
 pub mod thrown;
+
+pub use particles::ParticleEmit;
+pub use particles::ParticleEmits;
+pub use particles::ParticleKind;
+pub use solids::BoatSolids;
 
 /// Mob simulation and rendering costs collected since the last performance
 /// print.

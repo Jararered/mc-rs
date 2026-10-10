@@ -6,6 +6,7 @@ use crate::app::state::PauseMenu;
 use crate::entity::EntitySize;
 use crate::entity::Flying;
 use crate::entity::combat::tick_player_combat;
+pub mod achievements;
 mod camera;
 mod controls;
 pub(crate) mod interaction;
@@ -14,6 +15,10 @@ pub mod portal;
 pub mod sleep;
 mod state;
 mod survival;
+
+pub use achievements::Achievement;
+pub use achievements::Achievements;
+pub use achievements::UnlockAchievement;
 
 pub use camera::PlayerCamera;
 pub use camera::draw_fov_scale;
@@ -66,6 +71,7 @@ impl Plugin for PlayerPlugin {
         interaction::overlay::overlay_plugin(app);
         model::arm::plugin(app);
         portal::plugin(app);
+        achievements::plugin(app);
         interaction::use_item::plugin(app);
         app.init_resource::<PauseMenu>()
             .init_resource::<crate::inventory::session::InventorySession>()

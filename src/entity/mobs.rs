@@ -323,7 +323,10 @@ impl Plugin for MobPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<MobRandom>()
             .init_resource::<EntityDiagnostics>()
+            .init_resource::<crate::entity::ParticleEmits>()
+            .add_plugins(crate::entity::solids::BoatSolidsPlugin)
             .add_message::<SpawnMob>()
+            .add_message::<crate::player::UnlockAchievement>()
             .init_resource::<ExplosionRandom>()
             .add_message::<Explosion>()
             .add_systems(

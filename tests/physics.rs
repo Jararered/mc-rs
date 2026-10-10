@@ -671,7 +671,8 @@ fn sneaking_brakes_at_the_edge_of_supported_ground() {
     world.insert(ChunkPosition::ZERO, chunks);
     let aabb = EntitySize::PLAYER.aabb(Vec3::new(8.5, 65.0 + EntitySize::PLAYER.y_offset, 8.5));
 
-    let movement = move_entity_with_sneak(aabb, Vec3::new(0.9, 0.0, 0.0), 0.5, true, true, &world);
+    let movement =
+        move_entity_with_sneak(aabb, Vec3::new(0.9, 0.0, 0.0), 0.5, true, true, &world, &[]);
     assert!(movement.displacement.x > 0.0);
     assert!(movement.displacement.x < 0.9);
     assert!(!movement.collision.collided_x);

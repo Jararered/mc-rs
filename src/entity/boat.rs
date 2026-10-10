@@ -3,15 +3,12 @@
 //! [`step_boat`] is `EntityBoat.onUpdate` for one world tick (the server
 //! branch), in Beta's order. `Transform.translation` is Beta's
 //! `posX/posY/posZ`: the centre of the box.
-//!
-//! Not copied: the `splash` particles of a fast boat (there is no such
-//! particle yet), and the boat's solid collision box, so a body cannot stand
-//! on one.
 use bevy::prelude::*;
 
 use crate::app::settings::GameSettings;
 use crate::block::blocks::Block;
 use crate::entity::EntitySize;
+use crate::entity::ParticleEmits;
 use crate::entity::PreviousTick;
 use crate::entity::Velocity;
 use crate::entity::creature::Living;
@@ -29,6 +26,7 @@ use crate::physics::water_within;
 use crate::player::Player;
 use crate::player::PlayerMovementInput;
 use crate::random::ItemRng;
+use crate::random::JavaRandom;
 use crate::world::block_ticks::BlockTicks;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
@@ -240,6 +238,8 @@ pub struct BoatStep {
     pub wrecked: bool,
     /// Snow layers under the boat's corners, which it clears away.
     pub snow: Vec<IVec3>,
+    /// Horizontal speed after the move, for splash particles when above 0.15.
+    pub splash_speed: f32,
 }
 
 /// `EntityBoat.onUpdate` for one world tick. `rider_motion` is the rider's
@@ -313,8 +313,10 @@ pub fn step_boat(
         return BoatStep {
             wrecked: true,
             snow: Vec::new(),
+            splash_speed: speed,
         };
     }
+    let splash_speed = boat.motion.xz().length();
     boat.motion.x *= 0.99;
     boat.motion.y *= 0.95;
     boat.motion.z *= 0.99;
@@ -350,6 +352,37 @@ pub fn step_boat(
     BoatStep {
         wrecked: false,
         snow,
+        splash_speed,
+    }
+}
+
+/// `EntityBoat.onUpdate` splash particles when horizontal speed exceeds 0.15.
+fn emit_boat_splash(
+    particles: &mut ParticleEmits,
+    rng: &mut JavaRandom,
+    center: Vec3,
+    yaw_degrees: f32,
+    motion: Vec3,
+    speed: f32,
+) {
+    let cos = yaw_degrees.to_radians().cos();
+    let sin = yaw_degrees.to_radians().sin();
+    let count = (1.0 + speed * 60.0) as i32;
+    for _ in 0..count {
+        let lateral = rng.next_float() * 2.0 - 1.0;
+        let side = (rng.next_int(2) as f32 * 2.0 - 1.0) * 0.7;
+        let (x, z) = if rng.next_int(2) == 0 {
+            (
+                center.x - cos * lateral * 0.8 + sin * side,
+                center.z - sin * lateral * 0.8 - cos * side,
+            )
+        } else {
+            (
+                center.x + cos + sin * lateral * 0.7,
+                center.z + sin - cos * lateral * 0.7,
+            )
+        };
+        particles.splash(Vec3::new(x, center.y - 0.125, z), motion);
     }
 }
 
@@ -442,12 +475,14 @@ pub(crate) fn tick_boats(
     mut ticks: ResMut<BlockTicks>,
     mut streaming: Option<ResMut<WorldStreaming>>,
     mut persistence: Option<ResMut<WorldPersistence>>,
+    mut particles: ResMut<ParticleEmits>,
     mut boats: Query<
         (Entity, &mut Boat, &Seat, &mut Transform, &mut PreviousTick),
         Without<Player>,
     >,
     riders: Query<(&Transform, &PlayerMovementInput), With<Player>>,
     mut rng: Local<ItemRng>,
+    mut splash_rng: Local<Option<JavaRandom>>,
     mut order: Local<Vec<Entity>>,
     mut wrecked: Local<Vec<Entity>>,
 ) {
@@ -455,6 +490,7 @@ pub(crate) fn tick_boats(
     if count == 0 {
         return;
     }
+    let splash_rng = splash_rng.get_or_insert_with(|| JavaRandom::new(0x424F_4154));
     let rules = settings
         .as_ref()
         .map_or(BoatRules::FEATURES, |settings| BoatRules {
@@ -491,6 +527,16 @@ pub(crate) fn tick_boats(
             let mut center = transform.translation;
             let step = step_boat(&mut boat, &mut center, push, rules, &chunks);
             transform.translation = center;
+            if step.splash_speed > 0.15 {
+                emit_boat_splash(
+                    &mut particles,
+                    splash_rng,
+                    center,
+                    boat.yaw,
+                    boat.motion,
+                    step.splash_speed,
+                );
+            }
             if step.wrecked {
                 break_boat(&mut commands, &mut rng, entity, seat.rider, center);
                 wrecked.push(entity);

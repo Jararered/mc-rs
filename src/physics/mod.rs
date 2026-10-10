@@ -22,6 +22,7 @@ use crate::block::fluids::flow_vector;
 use crate::block::fluids::is_lava;
 use crate::block::fluids::is_water;
 use crate::block::fluids::percent_air;
+use crate::entity::BoatSolids;
 use crate::entity::CollisionState;
 use crate::entity::DroppedItem;
 use crate::entity::EntitySize;
@@ -31,6 +32,7 @@ use crate::entity::StepDistance;
 use crate::entity::StepHeight;
 use crate::entity::Velocity;
 use crate::entity::creature::Living;
+use crate::entity::mount::dismount;
 use crate::player::GameMode;
 use crate::player::Player;
 use crate::player::PlayerInterpolation;
@@ -260,7 +262,28 @@ pub fn move_entity(
     was_on_ground: bool,
     chunks: &WorldChunks,
 ) -> Movement {
-    move_entity_with_sneak(aabb, delta, step_height, was_on_ground, false, chunks)
+    move_entity_with_sneak(aabb, delta, step_height, was_on_ground, false, chunks, &[])
+}
+
+/// [`move_entity`] that also sweeps against entity solid boxes (boats'
+/// `getBoundingBox`).
+pub fn move_entity_with_solids(
+    aabb: Aabb,
+    delta: Vec3,
+    step_height: f32,
+    was_on_ground: bool,
+    chunks: &WorldChunks,
+    solids: &[Aabb],
+) -> Movement {
+    move_entity_with_sneak(
+        aabb,
+        delta,
+        step_height,
+        was_on_ground,
+        false,
+        chunks,
+        solids,
+    )
 }
 
 /// Beta `Entity.moveEntity`, including sneak edge braking before collision resolution.
@@ -271,16 +294,17 @@ pub fn move_entity_with_sneak(
     was_on_ground: bool,
     sneaking: bool,
     chunks: &WorldChunks,
+    solids: &[Aabb],
 ) -> Movement {
     let original = delta;
     let before = aabb;
     let sneak_edge = was_on_ground && sneaking;
     if sneak_edge {
-        (delta.x, _) = clip_sneak_edge(aabb, delta.x, 0.0, chunks);
-        (_, delta.z) = clip_sneak_edge(aabb, 0.0, delta.z, chunks);
+        (delta.x, _) = clip_sneak_edge(aabb, delta.x, 0.0, chunks, solids);
+        (_, delta.z) = clip_sneak_edge(aabb, 0.0, delta.z, chunks, solids);
     }
     let requested = delta;
-    let mut colliders = colliding_aabbs(chunks, aabb.expand(delta));
+    let mut colliders = colliding_aabbs_with(chunks, aabb.expand(delta), solids);
 
     for collider in &colliders {
         delta.y = collider.calculate_y_offset(aabb, delta.y);
@@ -300,7 +324,14 @@ pub fn move_entity_with_sneak(
     let blocked_horizontally = requested.x != delta.x || requested.z != delta.z;
     let landed = original.y != delta.y && original.y < 0.0;
     if step_height > 0.0 && (was_on_ground || landed) && blocked_horizontally {
-        let stepped = try_step(before, requested, step_height, chunks, &mut colliders);
+        let stepped = try_step(
+            before,
+            requested,
+            step_height,
+            chunks,
+            solids,
+            &mut colliders,
+        );
         let stepped_h = stepped.displacement.x.hypot(stepped.displacement.z);
         let current_h = delta.x.hypot(delta.z);
         if stepped_h > current_h {
@@ -321,15 +352,21 @@ pub fn move_entity_with_sneak(
     }
 }
 
-fn clip_sneak_edge(aabb: Aabb, mut x: f32, mut z: f32, chunks: &WorldChunks) -> (f32, f32) {
-    while x != 0.0 && !collides(chunks, aabb.offset(Vec3::new(x, -1.0, 0.0))) {
+fn clip_sneak_edge(
+    aabb: Aabb,
+    mut x: f32,
+    mut z: f32,
+    chunks: &WorldChunks,
+    solids: &[Aabb],
+) -> (f32, f32) {
+    while x != 0.0 && !collides_with(chunks, aabb.offset(Vec3::new(x, -1.0, 0.0)), solids) {
         if x.abs() <= 0.05 {
             x = 0.0;
         } else {
             x -= x.signum() * 0.05;
         }
     }
-    while z != 0.0 && !collides(chunks, aabb.offset(Vec3::new(0.0, -1.0, z))) {
+    while z != 0.0 && !collides_with(chunks, aabb.offset(Vec3::new(0.0, -1.0, z)), solids) {
         if z.abs() <= 0.05 {
             z = 0.0;
         } else {
@@ -346,15 +383,13 @@ fn try_step(
     original: Vec3,
     step_height: f32,
     chunks: &WorldChunks,
+    solids: &[Aabb],
     colliders: &mut Vec<Aabb>,
 ) -> Movement {
     let mut aabb = start;
     let mut delta = Vec3::new(original.x, step_height, original.z);
     colliders.clear();
-    visit_colliders(chunks, aabb.expand(delta), |collider| {
-        colliders.push(collider);
-        false
-    });
+    colliders.extend(colliding_aabbs_with(chunks, aabb.expand(delta), solids));
     let colliders = &*colliders;
 
     for collider in colliders {
@@ -388,17 +423,35 @@ fn try_step(
 
 /// Solid boxes overlapping `area`, including a full-cube floor below y = 0.
 pub fn colliding_aabbs(chunks: &WorldChunks, area: Aabb) -> Vec<Aabb> {
+    colliding_aabbs_with(chunks, area, &[])
+}
+
+/// [`colliding_aabbs`] plus entity solid boxes (boats).
+pub fn colliding_aabbs_with(chunks: &WorldChunks, area: Aabb, solids: &[Aabb]) -> Vec<Aabb> {
     let mut boxes = Vec::new();
     visit_colliders(chunks, area, |collider| {
         boxes.push(collider);
         false
     });
+    for &solid in solids {
+        if area.intersects(solid) {
+            boxes.push(solid);
+        }
+    }
     boxes
 }
 
 /// Whether any solid box overlaps `area`: `colliding_aabbs` without the list.
 pub fn collides(chunks: &WorldChunks, area: Aabb) -> bool {
     visit_colliders(chunks, area, |_| true)
+}
+
+/// [`collides`] that also checks entity solid boxes.
+pub fn collides_with(chunks: &WorldChunks, area: Aabb, solids: &[Aabb]) -> bool {
+    if visit_colliders(chunks, area, |_| true) {
+        return true;
+    }
+    solids.iter().any(|solid| area.intersects(*solid))
 }
 
 /// Visit the solid boxes overlapping `area` until `visit` returns true, and
@@ -467,6 +520,7 @@ fn integrate_player(
     tick: Res<WorldTick>,
     time: Res<Time>,
     chunks: Res<WorldChunks>,
+    boat_solids: Res<BoatSolids>,
     mut block_ticks: Option<ResMut<BlockTicks>>,
     mut commands: Commands,
     mut players: Query<
@@ -498,6 +552,8 @@ fn integrate_player(
     const VERTICAL_DRAG: f32 = 0.98;
     const JUMP_IMPULSE: f32 = 0.419_999_99;
 
+    let solids = boat_solids.0.as_slice();
+
     for (
         entity,
         mut transform,
@@ -517,11 +573,22 @@ fn integrate_player(
     ) in &mut players
     {
         // A rider goes where its vehicle goes (`updateRidden`); the vehicle
-        // system puts it there.
+        // system puts it there. Still probe portal blocks so a ride into one
+        // can charge and dismount (`EntityPlayerSP.onLivingUpdate`).
         if mounted.is_some() {
             velocity.0 = Vec3::ZERO;
             if let Some(survival) = survival.as_deref_mut() {
                 survival.fall_distance = 0.0;
+            }
+            let mut unslowed = Vec3::ZERO;
+            touch_blocks(
+                size.aabb(transform.translation),
+                &chunks,
+                &mut unslowed,
+                portal.as_deref_mut(),
+            );
+            if portal.as_ref().is_some_and(|portal| portal.charging()) {
+                dismount(&mut commands, entity);
             }
             continue;
         }
@@ -637,6 +704,7 @@ fn integrate_player(
                     collision.on_ground,
                     input.sneaking,
                     &chunks,
+                    solids,
                 );
                 transform.translation = size.position_from_aabb(movement.aabb);
                 *collision = movement.collision;
@@ -664,7 +732,9 @@ fn integrate_player(
                         motion.z,
                     );
                     let escape_box = movement.aabb.offset(escape_offset);
-                    if !collides(&chunks, escape_box) && !intersects_liquid(escape_box, &chunks) {
+                    if !collides_with(&chunks, escape_box, solids)
+                        && !intersects_liquid(escape_box, &chunks)
+                    {
                         motion.y = 0.3;
                     }
                 }
@@ -722,6 +792,7 @@ fn integrate_player(
                 collision.on_ground,
                 input.sneaking,
                 &chunks,
+                solids,
             );
             transform.translation = size.position_from_aabb(movement.aabb);
             *collision = movement.collision;
@@ -1109,6 +1180,7 @@ fn integrate_bodies(
     time: Res<Time>,
     tick: Res<WorldTick>,
     chunks: Res<WorldChunks>,
+    boat_solids: Res<BoatSolids>,
     mut bodies: Query<
         (
             &mut Transform,
@@ -1119,7 +1191,12 @@ fn integrate_bodies(
             Option<&Gravity>,
             Option<&Flying>,
         ),
-        (Without<DroppedItem>, Without<Player>, Without<Living>),
+        (
+            Without<DroppedItem>,
+            Without<Player>,
+            Without<Living>,
+            Without<crate::entity::boat::Boat>,
+        ),
     >,
 ) {
     let frame = time.delta_secs().min(MAX_FRAME_SECS);
@@ -1129,6 +1206,8 @@ fn integrate_bodies(
     // A slow frame takes several short steps instead of running slow.
     let steps = (frame / MAX_STEP_SECS).ceil().max(1.0);
     let dt = frame / steps;
+
+    let solids = boat_solids.0.as_slice();
 
     for (mut transform, mut velocity, size, mut collision, step_height, gravity, flying) in
         &mut bodies
@@ -1160,12 +1239,13 @@ fn integrate_bodies(
                 velocity.0.y = velocity.0.y.max(-TERMINAL_VELOCITY);
             }
 
-            let movement = move_entity(
+            let movement = move_entity_with_solids(
                 size.aabb(transform.translation),
                 velocity.0 * dt,
                 step_height.map(|step| step.0).unwrap_or(0.0),
                 collision.on_ground,
                 &chunks,
+                solids,
             );
             transform.translation = size.position_from_aabb(movement.aabb);
             *collision = movement.collision;

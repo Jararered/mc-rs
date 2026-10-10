@@ -173,26 +173,17 @@ enum RecipeData {
     },
 }
 
-/// `"Name"` or `"Name:data"`.
-fn named(text: &str) -> (Item, Option<u16>) {
-    let (name, data) = match text.split_once(':') {
-        Some((name, data)) => (name, data.parse().ok()),
-        None => (text, None),
-    };
-    let item = Item::named(name).unwrap_or_else(|| panic!("recipes.ron names no item {name}"));
-    (item, data)
-}
-
 fn ingredient(text: &str) -> Ingredient {
-    match named(text) {
-        (item, Some(data)) => Ingredient::exact(item, data),
-        (item, None) => Ingredient::any(item),
+    match Item::named(text) {
+        Some((item, Some(data))) => Ingredient::exact(item, data),
+        Some((item, None)) => Ingredient::any(item),
+        None => panic!("recipes.ron names no item {text}"),
     }
 }
 
 fn output((text, count): &(String, u8)) -> ItemStack {
-    let (item, data) = named(text);
-    ItemStack::with_data(item, *count, data.unwrap_or(0)).expect("registered Beta recipe output")
+    ItemStack::named(text, *count)
+        .unwrap_or_else(|| panic!("recipes.ron cannot make {count} of {text}"))
 }
 
 impl From<RecipeData> for Recipe {

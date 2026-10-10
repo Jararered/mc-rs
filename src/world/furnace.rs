@@ -3,6 +3,9 @@
 use bevy::math::IVec3;
 use bevy::prelude::Res;
 use bevy::prelude::ResMut;
+use serde::Deserialize;
+use std::collections::HashMap;
+use std::sync::OnceLock;
 
 use crate::block::blocks::Block;
 use crate::item::Item;
@@ -99,35 +102,64 @@ impl Furnace {
     }
 }
 
-/// Complete Beta 1.7.3 smelting map. Log species share the same charcoal result.
+/// An item, and one damage value of it or all of them.
+type Key = (Item, Option<u16>);
+
+/// `data/furnace.ron`.
+#[derive(Deserialize)]
+struct FurnaceData {
+    smelting: HashMap<String, (String, u8)>,
+    fuel: HashMap<String, u16>,
+}
+
+struct FurnaceTables {
+    smelting: HashMap<Key, ItemStack>,
+    fuel: HashMap<Key, u16>,
+}
+
+fn tables() -> &'static FurnaceTables {
+    static TABLES: OnceLock<FurnaceTables> = OnceLock::new();
+    TABLES.get_or_init(|| {
+        let data: FurnaceData = ron::from_str(include_str!("../../data/furnace.ron"))
+            .unwrap_or_else(|error| panic!("data/furnace.ron: {error}"));
+        let key = |name: &str| {
+            Item::named(name).unwrap_or_else(|| panic!("furnace.ron names no item {name}"))
+        };
+        FurnaceTables {
+            smelting: data
+                .smelting
+                .iter()
+                .map(|(input, (output, count))| {
+                    let output = ItemStack::named(output, *count)
+                        .unwrap_or_else(|| panic!("furnace.ron cannot make {count} of {output}"));
+                    (key(input), output)
+                })
+                .collect(),
+            fuel: data
+                .fuel
+                .iter()
+                .map(|(name, ticks)| (key(name), *ticks))
+                .collect(),
+        }
+    })
+}
+
+/// The entry for a stack: its own damage value's, or else the item's.
+fn listed<V: Copy>(table: &HashMap<Key, V>, stack: ItemStack) -> Option<V> {
+    table
+        .get(&(stack.item(), Some(stack.data())))
+        .or_else(|| table.get(&(stack.item(), None)))
+        .copied()
+}
+
+/// Beta's `FurnaceRecipes`. Log species share the same charcoal result.
 pub fn smelting_result(input: ItemStack) -> Option<ItemStack> {
-    let (item, data) = (input.item().block(), input.data());
-    let result = match (item, input.item()) {
-        (Some(Block::IronOre), _) => ItemStack::new(Item::IronIngot, 1).ok(),
-        (Some(Block::GoldOre), _) => ItemStack::new(Item::GoldIngot, 1).ok(),
-        (Some(Block::DiamondOre), _) => ItemStack::new(Item::Diamond, 1).ok(),
-        (Some(Block::Sand), _) => ItemStack::from_block(Block::Glass, 1).ok(),
-        (Some(Block::Cobblestone), _) => ItemStack::from_block(Block::Stone, 1).ok(),
-        (Some(Block::Cactus), _) => ItemStack::with_data(Item::Dye, 1, 2).ok(),
-        (Some(Block::Wood), _) if data <= 2 => ItemStack::with_data(Item::Coal, 1, 1).ok(),
-        (_, Item::RawPorkchop) => ItemStack::new(Item::CookedPorkchop, 1).ok(),
-        (_, Item::RawFish) => ItemStack::new(Item::CookedFish, 1).ok(),
-        (_, Item::ClayBall) => ItemStack::new(Item::Brick, 1).ok(),
-        _ => None,
-    }?;
-    Some(result)
+    listed(&tables().smelting, input)
 }
 
 /// Beta `TileEntityFurnace.getItemBurnTime` durations, in world ticks.
 pub fn fuel_ticks(fuel: ItemStack) -> Option<u16> {
-    match fuel.item() {
-        Item::Coal => Some(1_600),
-        Item::Stick => Some(100),
-        Item::LavaBucket => Some(20_000),
-        item if item.block() == Some(Block::Sapling) => Some(100),
-        item if item.block().is_some_and(is_wood_material) => Some(300),
-        _ => None,
-    }
+    listed(&tables().fuel, fuel)
 }
 
 pub(crate) fn is_wood_material(block: Block) -> bool {

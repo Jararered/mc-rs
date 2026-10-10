@@ -1,0 +1,790 @@
+// Beta 1.7.3's furnace. An item is written as in `recipes.ron`: "Name", or
+// "Name:data" for one subtype or damage value; "block.Name" is a block's own
+// item where an item shares its name.
+(
+    // `FurnaceRecipes`: what an input smelts into, and how many.
+    smelting: {
+        "IronOre": ("IronIngot", 1),
+        "GoldOre": ("GoldIngot", 1),
+        "DiamondOre": ("Diamond", 1),
+        "Sand": ("Glass", 1),
+        "Cobblestone": ("Stone", 1),
+        "Cactus": ("Dye:2", 1),
+        "Wood": ("Coal:1", 1),
+        "RawPorkchop": ("CookedPorkchop", 1),
+        "RawFish": ("CookedFish", 1),
+        "ClayBall": ("Brick", 1),
+    },
+    // `TileEntityFurnace.getItemBurnTime`, in ticks. Smelting one item takes
+    // 200. Every block of `Material.wood` burns for 300.
+    fuel: {
+        "Coal": 1600,
+        "Stick": 100,
+        "LavaBucket": 20000,
+        "Sapling": 100,
+        "Wood": 300,
+        "WoodenPlanks": 300,
+        "Chest": 300,
+        "CraftingTable": 300,
+        "Bookshelf": 300,
+        "WoodenStairs": 300,
+        "block.WoodenDoor": 300,
+        "Fence": 300,
+        "Trapdoor": 300,
+        "WoodenPressurePlate": 300,
+        "NoteBlock": 300,
+        "Jukebox": 300,
+        "LockedChest": 300,
+        "StandingSign": 300,
+        "WallSign": 300,
+    },
+)
+
+#![enable(implicit_some)]
+// Beta 1.7.3's `Item` registry: one row per standalone item, in id order
+// (256 up, then the two records). A block's own item is not listed; it stacks
+// to 64 and takes its subtypes from the block. What a row leaves out is the
+// plain item: a stack of 64 with no damage value.
+//
+//   stack       `maxStackSize`
+//   durability  `maxDamage`: uses before the item breaks
+//   subtypes    the highest damage value that names a variety (coal, dye)
+//   map         the damage value is a map's number
+//   places      the block the item puts down when used
+//   heal        `ItemFood.healAmount`, in half hearts
+//   armor       the slot the piece is worn in and `damageReduceAmount`
+//   tool        the kind and `EnumToolMaterial`: Pick, Axe, Shovel, Sword or
+//               Hoe of Wood, Stone, Iron, Diamond or Gold, or Shears
+//   leaves      `containerItem`: what crafting with it hands back
+{
+    IronShovel: (stack: 1, durability: 250, tool: Shovel(Iron)),
+    IronPickaxe: (stack: 1, durability: 250, tool: Pick(Iron)),
+    IronAxe: (stack: 1, durability: 250, tool: Axe(Iron)),
+    FlintAndSteel: (stack: 1, durability: 64),
+    Apple: (stack: 1, heal: 4),
+    Bow: (stack: 1),
+    Arrow: (),
+    Coal: (subtypes: 1),
+    Diamond: (),
+    IronIngot: (),
+    GoldIngot: (),
+    IronSword: (stack: 1, durability: 250, tool: Sword(Iron)),
+    WoodenSword: (stack: 1, durability: 59, tool: Sword(Wood)),
+    WoodenShovel: (stack: 1, durability: 59, tool: Shovel(Wood)),
+    WoodenPickaxe: (stack: 1, durability: 59, tool: Pick(Wood)),
+    WoodenAxe: (stack: 1, durability: 59, tool: Axe(Wood)),
+    StoneSword: (stack: 1, durability: 131, tool: Sword(Stone)),
+    StoneShovel: (stack: 1, durability: 131, tool: Shovel(Stone)),
+    StonePickaxe: (stack: 1, durability: 131, tool: Pick(Stone)),
+    StoneAxe: (stack: 1, durability: 131, tool: Axe(Stone)),
+    DiamondSword: (stack: 1, durability: 1561, tool: Sword(Diamond)),
+    DiamondShovel: (stack: 1, durability: 1561, tool: Shovel(Diamond)),
+    DiamondPickaxe: (stack: 1, durability: 1561, tool: Pick(Diamond)),
+    DiamondAxe: (stack: 1, durability: 1561, tool: Axe(Diamond)),
+    Stick: (),
+    Bowl: (),
+    MushroomStew: (stack: 1, heal: 10),
+    GoldSword: (stack: 1, durability: 32, tool: Sword(Gold)),
+    GoldShovel: (stack: 1, durability: 32, tool: Shovel(Gold)),
+    GoldPickaxe: (stack: 1, durability: 32, tool: Pick(Gold)),
+    GoldAxe: (stack: 1, durability: 32, tool: Axe(Gold)),
+    String: (),
+    Feather: (),
+    Gunpowder: (),
+    WoodenHoe: (stack: 1, durability: 59, tool: Hoe(Wood)),
+    StoneHoe: (stack: 1, durability: 131, tool: Hoe(Stone)),
+    IronHoe: (stack: 1, durability: 250, tool: Hoe(Iron)),
+    DiamondHoe: (stack: 1, durability: 1561, tool: Hoe(Diamond)),
+    GoldHoe: (stack: 1, durability: 32, tool: Hoe(Gold)),
+    Seeds: (),
+    Wheat: (),
+    Bread: (stack: 1, heal: 5),
+    LeatherHelmet: (stack: 1, durability: 33, armor: (slot: Helmet, points: 3)),
+    LeatherChestplate: (stack: 1, durability: 48, armor: (slot: Chestplate, points: 8)),
+    LeatherLeggings: (stack: 1, durability: 45, armor: (slot: Leggings, points: 6)),
+    LeatherBoots: (stack: 1, durability: 39, armor: (slot: Boots, points: 3)),
+    ChainmailHelmet: (stack: 1, durability: 66, armor: (slot: Helmet, points: 3)),
+    ChainmailChestplate: (stack: 1, durability: 96, armor: (slot: Chestplate, points: 8)),
+    ChainmailLeggings: (stack: 1, durability: 90, armor: (slot: Leggings, points: 6)),
+    ChainmailBoots: (stack: 1, durability: 78, armor: (slot: Boots, points: 3)),
+    IronHelmet: (stack: 1, durability: 132, armor: (slot: Helmet, points: 3)),
+    IronChestplate: (stack: 1, durability: 192, armor: (slot: Chestplate, points: 8)),
+    IronLeggings: (stack: 1, durability: 180, armor: (slot: Leggings, points: 6)),
+    IronBoots: (stack: 1, durability: 156, armor: (slot: Boots, points: 3)),
+    DiamondHelmet: (stack: 1, durability: 264, armor: (slot: Helmet, points: 3)),
+    DiamondChestplate: (stack: 1, durability: 384, armor: (slot: Chestplate, points: 8)),
+    DiamondLeggings: (stack: 1, durability: 360, armor: (slot: Leggings, points: 6)),
+    DiamondBoots: (stack: 1, durability: 312, armor: (slot: Boots, points: 3)),
+    GoldHelmet: (stack: 1, durability: 66, armor: (slot: Helmet, points: 3)),
+    GoldChestplate: (stack: 1, durability: 96, armor: (slot: Chestplate, points: 8)),
+    GoldLeggings: (stack: 1, durability: 90, armor: (slot: Leggings, points: 6)),
+    GoldBoots: (stack: 1, durability: 78, armor: (slot: Boots, points: 3)),
+    Flint: (),
+    RawPorkchop: (stack: 1, heal: 3),
+    CookedPorkchop: (stack: 1, heal: 8),
+    Painting: (),
+    GoldenApple: (stack: 1, heal: 42),
+    Sign: (stack: 1),
+    WoodenDoor: (stack: 1),
+    Bucket: (stack: 1),
+    WaterBucket: (stack: 1),
+    LavaBucket: (stack: 1),
+    Minecart: (stack: 1),
+    Saddle: (stack: 1),
+    IronDoor: (stack: 1),
+    Redstone: (places: RedstoneWire),
+    Snowball: (stack: 16),
+    Boat: (stack: 1),
+    Leather: (),
+    MilkBucket: (stack: 1, leaves: Bucket),
+    Brick: (),
+    ClayBall: (),
+    SugarCane: (places: SugarCane),
+    Paper: (),
+    Book: (),
+    Slimeball: (),
+    ChestMinecart: (stack: 1),
+    FurnaceMinecart: (stack: 1),
+    Egg: (stack: 16),
+    Compass: (),
+    FishingRod: (stack: 1, durability: 64),
+    Clock: (),
+    GlowstoneDust: (),
+    RawFish: (stack: 1, heal: 2),
+    CookedFish: (stack: 1, heal: 5),
+    Dye: (subtypes: 15),
+    Bone: (),
+    Sugar: (),
+    Cake: (stack: 1),
+    Bed: (stack: 1),
+    Repeater: (places: Repeater),
+    Cookie: (stack: 8, heal: 1),
+    Map: (stack: 1, map: true),
+    Shears: (stack: 1, durability: 238, tool: Shears),
+    Record13: (stack: 1),
+    RecordCat: (stack: 1),
+}
+
+}
+
+/// `"Name"` or `"Name:data"`.
+fn named(text: &str) -> (Item, Option<u16>) {
+    let (name, data) = match text.split_once(':') {
+        Some((name, data)) => (name, data.parse().ok()),
+        None => (text, None),
+    };
+    let item = Item::named(name).unwrap_or_else(|| panic!("recipes.ron names no item {name}"));
+    (item, data)
+}
+
+fn ingredient(text: &str) -> Ingredient {
+    match named(text) {
+        (item, Some(data)) => Ingredient::exact(item, data),
+        (item, None) => Ingredient::any(item),
+    match Item::named(text) {
+        Some((item, Some(data))) => Ingredient::exact(item, data),
+        Some((item, None)) => Ingredient::any(item),
+        None => panic!("recipes.ron names no item {text}"),
+    }
+}
+
+fn output((text, count): &(String, u8)) -> ItemStack {
+    let (item, data) = named(text);
+    ItemStack::with_data(item, *count, data.unwrap_or(0)).expect("registered Beta recipe output")
+    ItemStack::named(text, *count)
+        .unwrap_or_else(|| panic!("recipes.ron cannot make {count} of {text}"))
+}
+
+impl From<RecipeData> for Recipe {
+/// `ItemArmor.damageReduceAmount` by slot: helmet, chestplate, leggings, boots.
+fn armor_points(item: Item) -> Option<i32> {
+    use Item as I;
+    Some(match item {
+        I::LeatherHelmet
+        | I::ChainmailHelmet
+        | I::IronHelmet
+        | I::DiamondHelmet
+        | I::GoldHelmet => 3,
+        I::LeatherChestplate
+        | I::ChainmailChestplate
+        | I::IronChestplate
+        | I::DiamondChestplate
+        | I::GoldChestplate => 8,
+        I::LeatherLeggings
+        | I::ChainmailLeggings
+        | I::IronLeggings
+        | I::DiamondLeggings
+        | I::GoldLeggings => 6,
+        I::LeatherBoots | I::ChainmailBoots | I::IronBoots | I::DiamondBoots | I::GoldBoots => 3,
+        _ => return None,
+    })
+    Some(i32::from(item.properties()?.armor?.points))
+}
+
+/// `InventoryPlayer.getTotalArmorValue`: each piece's points, scaled by how
+pub mod tools;
+use crate::block::blocks::Block;
+pub use registry::Armor;
+pub use registry::ArmorSlot;
+pub use registry::Item;
+pub use registry::ItemData;
+pub use registry::ItemProperties;
+    }
+
+    /// `count` of the item a data file names; see [`Item::named`].
+    pub fn named(text: &str, count: u8) -> Option<Self> {
+        let (item, data) = Item::named(text)?;
+        Self::with_data(item, count, data.unwrap_or(0)).ok()
+    }
+
+    /// Direct block representation, not a mining-drop rule (stone may drop cobble).
+    pub fn from_block(block: Block, count: u8) -> Result<Self, StackError> {
+        Self::from_block_state(block, 0, count)
+//! Inventory identities and Beta stack rules. Definitions do not imply that
+//! an item's use, crafting recipe, or rendering has been implemented.
+use super::tools::ToolType;
+use crate::block::blocks::Block;
+use num_enum::FromPrimitive;
+use num_enum::IntoPrimitive;
+use serde::de::IntoDeserializer;
+use serde::de::value::Error as NameError;
+use std::collections::HashMap;
+use std::sync::LazyLock;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ItemData {
+    /// Present for direct block items, not special items such as doors/buckets.
+    pub block: Option<Block>,
+    /// `ItemFood.healAmount`: half-hearts restored when eaten.
+    pub heal: Option<u8>,
+    pub armor: Option<Armor>,
+    pub tool: Option<ToolType>,
+    /// Beta crafting remainder, for example an empty bucket left by milk.
+    pub container: Option<Item>,
+}
+
+impl ItemProperties {
+    /// Beta crafting remainder, for example an empty bucket left by milk.
+    pub const fn container_item(self) -> Option<Item> {
+        match self.item {
+            Item::MilkBucket => Some(Item::Bucket),
+            _ => None,
+        self.container
+    }
+}
+
+/// `ItemArmor`: where a piece is worn and its `damageReduceAmount`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+pub struct Armor {
+    pub slot: ArmorSlot,
+    pub points: u8,
+}
+
+/// The armor slots in the order the inventory holds them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+pub enum ArmorSlot {
+    Helmet,
+    Chestplate,
+    Leggings,
+    Boots,
+}
+
+/// One row of `data/items.ron`.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Row {
+    #[serde(default = "full_stack")]
+    stack: u8,
+    durability: Option<u16>,
+    subtypes: Option<u16>,
+    #[serde(default)]
+    map: bool,
+    places: Option<Block>,
+    heal: Option<u8>,
+    armor: Option<Armor>,
+    tool: Option<ToolType>,
+    leaves: Option<Item>,
+}
+
+fn full_stack() -> u8 {
+    64
+}
+
+impl Row {
+    fn build(self, item: Item) -> ItemProperties {
+        let data = match (self.durability, self.subtypes) {
+            (Some(uses), _) => ItemData::Durability(uses),
+            (None, Some(highest)) => ItemData::Subtype(highest),
+            (None, None) if self.map => ItemData::Map,
+            (None, None) => ItemData::None,
+        };
+        ItemProperties {
+            item,
+            max_stack_size: self.stack,
+            data,
+            block: self.places,
+            heal: self.heal,
+            armor: self.armor,
+            tool: self.tool,
+            container: self.leaves,
+        }
+    }
+}
+
+/// Beta's `Item` registry, read once from `data/items.ron`: the standalone
+/// items in the order of [`STANDALONE_RANGES`].
+static STANDALONE: LazyLock<Vec<ItemProperties>> = LazyLock::new(|| {
+    let mut rows: HashMap<Item, Row> = ron::from_str(include_str!("../../data/items.ron"))
+        .unwrap_or_else(|error| panic!("data/items.ron: {error}"));
+    STANDALONE_RANGES
+        .into_iter()
+        .flat_map(|(start, end)| start..=end)
+        .map(|raw| {
+            let item = Item::from(raw);
+            let row = rows.remove(&item);
+            row.unwrap_or_else(|| panic!("data/items.ron has no row for {item:?}"))
+                .build(item)
+        })
+        .collect()
+});
+
+/// Block items share their block's Beta id. Standalone items start at 256.
+///
+/// Standalone variants use their Beta item ids as discriminants. Block item ids
+    BlockOrUnknown(u16),
+}
+const fn standalone(item: Item, max_stack_size: u8, data: ItemData) -> ItemProperties {
+    ItemProperties {
+        item,
+        max_stack_size,
+        data,
+        block: None,
+    }
+}
+
+impl Item {
+    pub fn from_block(block: Block) -> Option<Self> {
+        block
+    /// The item a data file names: a standalone item's variant, or else a
+    /// block's, as [`Display`](std::fmt::Display) writes them.
+    pub fn named(name: &str) -> Option<Self> {
+        let name = || IntoDeserializer::<NameError>::into_deserializer(name);
+        Self::deserialize(name())
+            .ok()
+            .or_else(|| Self::from_block(Block::deserialize(name()).ok()?))
+    ///
+    /// `"block.Name"` is the block's own item where an item shares its name
+    /// (`"WoodenDoor"` is the door item, `"block.WoodenDoor"` the half-door
+    /// block), and `"Name:data"` adds a subtype or damage value.
+    pub fn named(text: &str) -> Option<(Self, Option<u16>)> {
+        let (name, data) = match text.split_once(':') {
+            Some((name, data)) => (name, Some(data.parse().ok()?)),
+            None => (text, None),
+        };
+        let variant = |name| IntoDeserializer::<NameError>::into_deserializer(name);
+        let block = |name| Self::from_block(Block::deserialize(variant(name)).ok()?);
+        let item = match name.strip_prefix("block.") {
+            Some(name) => block(name),
+            None => Self::deserialize(variant(name))
+                .ok()
+                .or_else(|| block(name)),
+        }?;
+        Some((item, data))
+    }
+
+    pub fn as_u16(self) -> u16 {
+    /// `ItemFood.healAmount`: half-hearts restored when eaten.
+    pub fn heal_amount(self) -> Option<u8> {
+        Some(match self {
+            Self::Apple => 4,
+            Self::Bread => 5,
+            Self::RawPorkchop => 3,
+            Self::CookedPorkchop => 8,
+            Self::GoldenApple => 42,
+            Self::RawFish => 2,
+            Self::CookedFish => 5,
+            Self::MushroomStew => 10,
+            Self::Cookie => 1,
+            _ => return None,
+        })
+        self.properties()?.heal
+    }
+
+    /// `SlotArmor.isItemValid`: the armor slot this item is worn in, counting
+    /// helmet, chestplate, leggings, boots. A pumpkin is worn as a helmet.
+    pub fn armor_slot(self) -> Option<usize> {
+        use Item as I;
+        Some(match self {
+            I::LeatherHelmet
+            | I::ChainmailHelmet
+            | I::IronHelmet
+            | I::DiamondHelmet
+            | I::GoldHelmet => 0,
+            I::LeatherChestplate
+            | I::ChainmailChestplate
+            | I::IronChestplate
+            | I::DiamondChestplate
+            | I::GoldChestplate => 1,
+            I::LeatherLeggings
+            | I::ChainmailLeggings
+            | I::IronLeggings
+            | I::DiamondLeggings
+            | I::GoldLeggings => 2,
+            I::LeatherBoots | I::ChainmailBoots | I::IronBoots | I::DiamondBoots | I::GoldBoots => {
+                3
+            }
+            _ if self.block() == Some(Block::Pumpkin) => 0,
+            _ => return None,
+        })
+        if self.block() == Some(Block::Pumpkin) {
+            return Some(0);
+        }
+        Some(self.properties()?.armor?.slot as usize)
+    }
+
+    pub fn properties(self) -> Option<ItemProperties> {
+                data: block.item_data(),
+                block: Some(block),
+                heal: None,
+                armor: None,
+                tool: None,
+                container: None,
+            });
+        }
+        match self {
+            Self::IronShovel => Some(standalone(self, 1, ItemData::Durability(250))),
+            Self::IronPickaxe => Some(standalone(self, 1, ItemData::Durability(250))),
+            Self::IronAxe => Some(standalone(self, 1, ItemData::Durability(250))),
+            Self::FlintAndSteel => Some(standalone(self, 1, ItemData::Durability(64))),
+            Self::Apple => Some(standalone(self, 1, ItemData::None)),
+            Self::Bow => Some(standalone(self, 1, ItemData::None)),
+            Self::Arrow => Some(standalone(self, 64, ItemData::None)),
+            Self::Coal => Some(standalone(self, 64, ItemData::Subtype(1))),
+            Self::Diamond => Some(standalone(self, 64, ItemData::None)),
+            Self::IronIngot => Some(standalone(self, 64, ItemData::None)),
+            Self::GoldIngot => Some(standalone(self, 64, ItemData::None)),
+            Self::IronSword => Some(standalone(self, 1, ItemData::Durability(250))),
+            Self::WoodenSword => Some(standalone(self, 1, ItemData::Durability(59))),
+            Self::WoodenShovel => Some(standalone(self, 1, ItemData::Durability(59))),
+            Self::WoodenPickaxe => Some(standalone(self, 1, ItemData::Durability(59))),
+            Self::WoodenAxe => Some(standalone(self, 1, ItemData::Durability(59))),
+            Self::StoneSword => Some(standalone(self, 1, ItemData::Durability(131))),
+            Self::StoneShovel => Some(standalone(self, 1, ItemData::Durability(131))),
+            Self::StonePickaxe => Some(standalone(self, 1, ItemData::Durability(131))),
+            Self::StoneAxe => Some(standalone(self, 1, ItemData::Durability(131))),
+            Self::DiamondSword => Some(standalone(self, 1, ItemData::Durability(1561))),
+            Self::DiamondShovel => Some(standalone(self, 1, ItemData::Durability(1561))),
+            Self::DiamondPickaxe => Some(standalone(self, 1, ItemData::Durability(1561))),
+            Self::DiamondAxe => Some(standalone(self, 1, ItemData::Durability(1561))),
+            Self::Stick => Some(standalone(self, 64, ItemData::None)),
+            Self::Bowl => Some(standalone(self, 64, ItemData::None)),
+            Self::MushroomStew => Some(standalone(self, 1, ItemData::None)),
+            Self::GoldSword => Some(standalone(self, 1, ItemData::Durability(32))),
+            Self::GoldShovel => Some(standalone(self, 1, ItemData::Durability(32))),
+            Self::GoldPickaxe => Some(standalone(self, 1, ItemData::Durability(32))),
+            Self::GoldAxe => Some(standalone(self, 1, ItemData::Durability(32))),
+            Self::String => Some(standalone(self, 64, ItemData::None)),
+            Self::Feather => Some(standalone(self, 64, ItemData::None)),
+            Self::Gunpowder => Some(standalone(self, 64, ItemData::None)),
+            Self::WoodenHoe => Some(standalone(self, 1, ItemData::Durability(59))),
+            Self::StoneHoe => Some(standalone(self, 1, ItemData::Durability(131))),
+            Self::IronHoe => Some(standalone(self, 1, ItemData::Durability(250))),
+            Self::DiamondHoe => Some(standalone(self, 1, ItemData::Durability(1561))),
+            Self::GoldHoe => Some(standalone(self, 1, ItemData::Durability(32))),
+            Self::Seeds => Some(standalone(self, 64, ItemData::None)),
+            Self::Wheat => Some(standalone(self, 64, ItemData::None)),
+            Self::Bread => Some(standalone(self, 1, ItemData::None)),
+            Self::LeatherHelmet => Some(standalone(self, 1, ItemData::Durability(33))),
+            Self::LeatherChestplate => Some(standalone(self, 1, ItemData::Durability(48))),
+            Self::LeatherLeggings => Some(standalone(self, 1, ItemData::Durability(45))),
+            Self::LeatherBoots => Some(standalone(self, 1, ItemData::Durability(39))),
+            Self::ChainmailHelmet => Some(standalone(self, 1, ItemData::Durability(66))),
+            Self::ChainmailChestplate => Some(standalone(self, 1, ItemData::Durability(96))),
+            Self::ChainmailLeggings => Some(standalone(self, 1, ItemData::Durability(90))),
+            Self::ChainmailBoots => Some(standalone(self, 1, ItemData::Durability(78))),
+            Self::IronHelmet => Some(standalone(self, 1, ItemData::Durability(132))),
+            Self::IronChestplate => Some(standalone(self, 1, ItemData::Durability(192))),
+            Self::IronLeggings => Some(standalone(self, 1, ItemData::Durability(180))),
+            Self::IronBoots => Some(standalone(self, 1, ItemData::Durability(156))),
+            Self::DiamondHelmet => Some(standalone(self, 1, ItemData::Durability(264))),
+            Self::DiamondChestplate => Some(standalone(self, 1, ItemData::Durability(384))),
+            Self::DiamondLeggings => Some(standalone(self, 1, ItemData::Durability(360))),
+            Self::DiamondBoots => Some(standalone(self, 1, ItemData::Durability(312))),
+            Self::GoldHelmet => Some(standalone(self, 1, ItemData::Durability(66))),
+            Self::GoldChestplate => Some(standalone(self, 1, ItemData::Durability(96))),
+            Self::GoldLeggings => Some(standalone(self, 1, ItemData::Durability(90))),
+            Self::GoldBoots => Some(standalone(self, 1, ItemData::Durability(78))),
+            Self::Flint => Some(standalone(self, 64, ItemData::None)),
+            Self::RawPorkchop => Some(standalone(self, 1, ItemData::None)),
+            Self::CookedPorkchop => Some(standalone(self, 1, ItemData::None)),
+            Self::Painting => Some(standalone(self, 64, ItemData::None)),
+            Self::GoldenApple => Some(standalone(self, 1, ItemData::None)),
+            Self::Sign => Some(standalone(self, 1, ItemData::None)),
+            Self::WoodenDoor => Some(standalone(self, 1, ItemData::None)),
+            Self::Bucket => Some(standalone(self, 1, ItemData::None)),
+            Self::WaterBucket => Some(standalone(self, 1, ItemData::None)),
+            Self::LavaBucket => Some(standalone(self, 1, ItemData::None)),
+            Self::Minecart => Some(standalone(self, 1, ItemData::None)),
+            Self::Saddle => Some(standalone(self, 1, ItemData::None)),
+            Self::IronDoor => Some(standalone(self, 1, ItemData::None)),
+            Self::Redstone => Some(ItemProperties {
+                block: Some(Block::RedstoneWire),
+                ..standalone(self, 64, ItemData::None)
+            }),
+            Self::Snowball => Some(standalone(self, 16, ItemData::None)),
+            Self::Boat => Some(standalone(self, 1, ItemData::None)),
+            Self::Leather => Some(standalone(self, 64, ItemData::None)),
+            Self::MilkBucket => Some(standalone(self, 1, ItemData::None)),
+            Self::Brick => Some(standalone(self, 64, ItemData::None)),
+            Self::ClayBall => Some(standalone(self, 64, ItemData::None)),
+            Self::SugarCane => Some(ItemProperties {
+                block: Some(Block::SugarCane),
+                ..standalone(self, 64, ItemData::None)
+            }),
+            Self::Paper => Some(standalone(self, 64, ItemData::None)),
+            Self::Book => Some(standalone(self, 64, ItemData::None)),
+            Self::Slimeball => Some(standalone(self, 64, ItemData::None)),
+            Self::ChestMinecart => Some(standalone(self, 1, ItemData::None)),
+            Self::FurnaceMinecart => Some(standalone(self, 1, ItemData::None)),
+            Self::Egg => Some(standalone(self, 16, ItemData::None)),
+            Self::Compass => Some(standalone(self, 64, ItemData::None)),
+            Self::FishingRod => Some(standalone(self, 1, ItemData::Durability(64))),
+            Self::Clock => Some(standalone(self, 64, ItemData::None)),
+            Self::GlowstoneDust => Some(standalone(self, 64, ItemData::None)),
+            Self::RawFish => Some(standalone(self, 1, ItemData::None)),
+            Self::CookedFish => Some(standalone(self, 1, ItemData::None)),
+            Self::Dye => Some(standalone(self, 64, ItemData::Subtype(15))),
+            Self::Bone => Some(standalone(self, 64, ItemData::None)),
+            Self::Sugar => Some(standalone(self, 64, ItemData::None)),
+            Self::Cake => Some(standalone(self, 1, ItemData::None)),
+            Self::Bed => Some(standalone(self, 1, ItemData::None)),
+            Self::Repeater => Some(ItemProperties {
+                block: Some(Block::Repeater),
+                ..standalone(self, 64, ItemData::None)
+            }),
+            Self::Cookie => Some(standalone(self, 8, ItemData::None)),
+            Self::Map => Some(standalone(self, 1, ItemData::Map)),
+            Self::Shears => Some(standalone(self, 1, ItemData::Durability(238))),
+            Self::Record13 => Some(standalone(self, 1, ItemData::None)),
+            Self::RecordCat => Some(standalone(self, 1, ItemData::None)),
+            _ => None,
+        let raw = self.as_u16();
+        let mut before = 0;
+        for (start, end) in STANDALONE_RANGES {
+            if (start..=end).contains(&raw) {
+                return Some(STANDALONE[usize::from(before + raw - start)]);
+            }
+            before += end - start + 1;
+        }
+        None
+    }
+}
+
+
+/// Raw id ranges that contain an item: block items, the main item list, and records.
+const RAW_RANGES: [(u16, u16); 3] = [(1, Block::MAX_ITEM_ID as u16), (256, 359), (2256, 2257)];
+const RAW_RANGES: [(u16, u16); 3] = [
+    (1, Block::MAX_ITEM_ID as u16),
+    STANDALONE_RANGES[0],
+    STANDALONE_RANGES[1],
+];
+
+/// Raw ids of the standalone items: the main item list, and records.
+const STANDALONE_RANGES: [(u16, u16); 2] = [(256, 359), (2256, 2257)];
+
+/// Stateless immutable registry; lookups allocate nothing.
+pub struct ItemRegistry;
+use crate::block::definition::Digger;
+use crate::block::definition::properties;
+use crate::block::properties::mine_progress_per_tick;
+use serde::Deserialize;
+
+/// `EnumToolMaterial` harvest level and `efficiencyOnProperMaterial`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ToolTier {
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+pub enum ToolTier {
+    Wood,
+    Stone,
+    Iron,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ToolType {
+/// What kind of tool an item is, as `data/items.ron` gives it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+pub enum ToolType {
+    Pick(ToolTier),
+    Axe(ToolTier),
+    Shovel(ToolTier),
+
+fn tool_type(item: Item) -> Option<ToolType> {
+    Some(match item {
+        Item::WoodenPickaxe => ToolType::Pick(ToolTier::Wood),
+        Item::StonePickaxe => ToolType::Pick(ToolTier::Stone),
+        Item::IronPickaxe => ToolType::Pick(ToolTier::Iron),
+        Item::DiamondPickaxe => ToolType::Pick(ToolTier::Diamond),
+        Item::GoldPickaxe => ToolType::Pick(ToolTier::Gold),
+        Item::WoodenAxe => ToolType::Axe(ToolTier::Wood),
+        Item::StoneAxe => ToolType::Axe(ToolTier::Stone),
+        Item::IronAxe => ToolType::Axe(ToolTier::Iron),
+        Item::DiamondAxe => ToolType::Axe(ToolTier::Diamond),
+        Item::GoldAxe => ToolType::Axe(ToolTier::Gold),
+        Item::WoodenShovel => ToolType::Shovel(ToolTier::Wood),
+        Item::StoneShovel => ToolType::Shovel(ToolTier::Stone),
+        Item::IronShovel => ToolType::Shovel(ToolTier::Iron),
+        Item::DiamondShovel => ToolType::Shovel(ToolTier::Diamond),
+        Item::GoldShovel => ToolType::Shovel(ToolTier::Gold),
+        Item::WoodenSword => ToolType::Sword(ToolTier::Wood),
+        Item::StoneSword => ToolType::Sword(ToolTier::Stone),
+        Item::IronSword => ToolType::Sword(ToolTier::Iron),
+        Item::DiamondSword => ToolType::Sword(ToolTier::Diamond),
+        Item::GoldSword => ToolType::Sword(ToolTier::Gold),
+        Item::WoodenHoe => ToolType::Hoe(ToolTier::Wood),
+        Item::StoneHoe => ToolType::Hoe(ToolTier::Stone),
+        Item::IronHoe => ToolType::Hoe(ToolTier::Iron),
+        Item::DiamondHoe => ToolType::Hoe(ToolTier::Diamond),
+        Item::GoldHoe => ToolType::Hoe(ToolTier::Gold),
+        Item::Shears => ToolType::Shears,
+        _ => return None,
+    })
+    item.properties()?.tool
+}
+
+/// `InventoryPlayer.getDamageVsEntity`: `ItemSword` deals `4 + 2 *` its
+use bevy::prelude::Res;
+use bevy::prelude::ResMut;
+use serde::Deserialize;
+use std::collections::HashMap;
+use std::sync::OnceLock;
+
+use crate::block::blocks::Block;
+use crate::item::Item;
+}
+
+/// Complete Beta 1.7.3 smelting map. Log species share the same charcoal result.
+/// An item, and one damage value of it or all of them.
+type Key = (Item, Option<u16>);
+
+/// `data/furnace.ron`.
+#[derive(Deserialize)]
+struct FurnaceData {
+    smelting: HashMap<String, (String, u8)>,
+    fuel: HashMap<String, u16>,
+}
+
+struct FurnaceTables {
+    smelting: HashMap<Key, ItemStack>,
+    fuel: HashMap<Key, u16>,
+}
+
+fn tables() -> &'static FurnaceTables {
+    static TABLES: OnceLock<FurnaceTables> = OnceLock::new();
+    TABLES.get_or_init(|| {
+        let data: FurnaceData = ron::from_str(include_str!("../../data/furnace.ron"))
+            .unwrap_or_else(|error| panic!("data/furnace.ron: {error}"));
+        let key = |name: &str| {
+            Item::named(name).unwrap_or_else(|| panic!("furnace.ron names no item {name}"))
+        };
+        FurnaceTables {
+            smelting: data
+                .smelting
+                .iter()
+                .map(|(input, (output, count))| {
+                    let output = ItemStack::named(output, *count)
+                        .unwrap_or_else(|| panic!("furnace.ron cannot make {count} of {output}"));
+                    (key(input), output)
+                })
+                .collect(),
+            fuel: data
+                .fuel
+                .iter()
+                .map(|(name, ticks)| (key(name), *ticks))
+                .collect(),
+        }
+    })
+}
+
+/// The entry for a stack: its own damage value's, or else the item's.
+fn listed<V: Copy>(table: &HashMap<Key, V>, stack: ItemStack) -> Option<V> {
+    table
+        .get(&(stack.item(), Some(stack.data())))
+        .or_else(|| table.get(&(stack.item(), None)))
+        .copied()
+}
+
+/// Beta's `FurnaceRecipes`. Log species share the same charcoal result.
+pub fn smelting_result(input: ItemStack) -> Option<ItemStack> {
+    let (item, data) = (input.item().block(), input.data());
+    let result = match (item, input.item()) {
+        (Some(Block::IronOre), _) => ItemStack::new(Item::IronIngot, 1).ok(),
+        (Some(Block::GoldOre), _) => ItemStack::new(Item::GoldIngot, 1).ok(),
+        (Some(Block::DiamondOre), _) => ItemStack::new(Item::Diamond, 1).ok(),
+        (Some(Block::Sand), _) => ItemStack::from_block(Block::Glass, 1).ok(),
+        (Some(Block::Cobblestone), _) => ItemStack::from_block(Block::Stone, 1).ok(),
+        (Some(Block::Cactus), _) => ItemStack::with_data(Item::Dye, 1, 2).ok(),
+        (Some(Block::Wood), _) if data <= 2 => ItemStack::with_data(Item::Coal, 1, 1).ok(),
+        (_, Item::RawPorkchop) => ItemStack::new(Item::CookedPorkchop, 1).ok(),
+        (_, Item::RawFish) => ItemStack::new(Item::CookedFish, 1).ok(),
+        (_, Item::ClayBall) => ItemStack::new(Item::Brick, 1).ok(),
+        _ => None,
+    }?;
+    Some(result)
+    listed(&tables().smelting, input)
+}
+
+/// Beta `TileEntityFurnace.getItemBurnTime` durations, in world ticks.
+pub fn fuel_ticks(fuel: ItemStack) -> Option<u16> {
+    match fuel.item() {
+        Item::Coal => Some(1_600),
+        Item::Stick => Some(100),
+        Item::LavaBucket => Some(20_000),
+        item if item.block() == Some(Block::Sapling) => Some(100),
+        item if item.block().is_some_and(is_wood_material) => Some(300),
+        _ => None,
+    }
+    listed(&tables().fuel, fuel)
+}
+
+pub(crate) fn is_wood_material(block: Block) -> bool {
+// Beta 1.7.3's furnace. An item is written as in `recipes.ron`: "Name", or
+// "Name:data" for one subtype or damage value; "block.Name" is a block's own
+// item where an item shares its name.
+(
+    // `FurnaceRecipes`: what an input smelts into, and how many.
+    smelting: {
+        "IronOre": ("IronIngot", 1),
+        "GoldOre": ("GoldIngot", 1),
+        "DiamondOre": ("Diamond", 1),
+        "Sand": ("Glass", 1),
+        "Cobblestone": ("Stone", 1),
+        "Cactus": ("Dye:2", 1),
+        "Wood": ("Coal:1", 1),
+        "RawPorkchop": ("CookedPorkchop", 1),
+        "RawFish": ("CookedFish", 1),
+        "ClayBall": ("Brick", 1),
+    },
+    // `TileEntityFurnace.getItemBurnTime`, in ticks. Smelting one item takes
+    // 200. Every block of `Material.wood` burns for 300.
+    fuel: {
+        "Coal": 1600,
+        "Stick": 100,
+        "LavaBucket": 20000,
+        "Sapling": 100,
+        "Wood": 300,
+        "WoodenPlanks": 300,
+        "Chest": 300,
+        "CraftingTable": 300,
+        "Bookshelf": 300,
+        "WoodenStairs": 300,
+        "block.WoodenDoor": 300,
+        "Fence": 300,
+        "Trapdoor": 300,
+        "WoodenPressurePlate": 300,
+        "NoteBlock": 300,
+        "Jukebox": 300,
+        "LockedChest": 300,
+        "StandingSign": 300,
+        "WallSign": 300,
+    },
+)

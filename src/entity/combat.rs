@@ -271,26 +271,7 @@ fn knock_from(
 
 /// `ItemArmor.damageReduceAmount` by slot: helmet, chestplate, leggings, boots.
 fn armor_points(item: Item) -> Option<i32> {
-    use Item as I;
-    Some(match item {
-        I::LeatherHelmet
-        | I::ChainmailHelmet
-        | I::IronHelmet
-        | I::DiamondHelmet
-        | I::GoldHelmet => 3,
-        I::LeatherChestplate
-        | I::ChainmailChestplate
-        | I::IronChestplate
-        | I::DiamondChestplate
-        | I::GoldChestplate => 8,
-        I::LeatherLeggings
-        | I::ChainmailLeggings
-        | I::IronLeggings
-        | I::DiamondLeggings
-        | I::GoldLeggings => 6,
-        I::LeatherBoots | I::ChainmailBoots | I::IronBoots | I::DiamondBoots | I::GoldBoots => 3,
-        _ => return None,
-    })
+    Some(i32::from(item.properties()?.armor?.points))
 }
 
 /// `InventoryPlayer.getTotalArmorValue`: each piece's points, scaled by how

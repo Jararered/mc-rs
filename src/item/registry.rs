@@ -1,11 +1,14 @@
 //! Inventory identities and Beta stack rules. Definitions do not imply that
 //! an item's use, crafting recipe, or rendering has been implemented.
+use super::tools::ToolType;
 use crate::block::blocks::Block;
 use num_enum::FromPrimitive;
 use num_enum::IntoPrimitive;
 use serde::Deserialize;
 use serde::de::IntoDeserializer;
 use serde::de::value::Error as NameError;
+use std::collections::HashMap;
+use std::sync::LazyLock;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ItemData {
@@ -35,17 +38,95 @@ pub struct ItemProperties {
     pub data: ItemData,
     /// Present for direct block items, not special items such as doors/buckets.
     pub block: Option<Block>,
+    /// `ItemFood.healAmount`: half-hearts restored when eaten.
+    pub heal: Option<u8>,
+    pub armor: Option<Armor>,
+    pub tool: Option<ToolType>,
+    /// Beta crafting remainder, for example an empty bucket left by milk.
+    pub container: Option<Item>,
 }
 
 impl ItemProperties {
     /// Beta crafting remainder, for example an empty bucket left by milk.
     pub const fn container_item(self) -> Option<Item> {
-        match self.item {
-            Item::MilkBucket => Some(Item::Bucket),
-            _ => None,
+        self.container
+    }
+}
+
+/// `ItemArmor`: where a piece is worn and its `damageReduceAmount`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+pub struct Armor {
+    pub slot: ArmorSlot,
+    pub points: u8,
+}
+
+/// The armor slots in the order the inventory holds them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+pub enum ArmorSlot {
+    Helmet,
+    Chestplate,
+    Leggings,
+    Boots,
+}
+
+/// One row of `data/items.ron`.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Row {
+    #[serde(default = "full_stack")]
+    stack: u8,
+    durability: Option<u16>,
+    subtypes: Option<u16>,
+    #[serde(default)]
+    map: bool,
+    places: Option<Block>,
+    heal: Option<u8>,
+    armor: Option<Armor>,
+    tool: Option<ToolType>,
+    leaves: Option<Item>,
+}
+
+fn full_stack() -> u8 {
+    64
+}
+
+impl Row {
+    fn build(self, item: Item) -> ItemProperties {
+        let data = match (self.durability, self.subtypes) {
+            (Some(uses), _) => ItemData::Durability(uses),
+            (None, Some(highest)) => ItemData::Subtype(highest),
+            (None, None) if self.map => ItemData::Map,
+            (None, None) => ItemData::None,
+        };
+        ItemProperties {
+            item,
+            max_stack_size: self.stack,
+            data,
+            block: self.places,
+            heal: self.heal,
+            armor: self.armor,
+            tool: self.tool,
+            container: self.leaves,
         }
     }
 }
+
+/// Beta's `Item` registry, read once from `data/items.ron`: the standalone
+/// items in the order of [`STANDALONE_RANGES`].
+static STANDALONE: LazyLock<Vec<ItemProperties>> = LazyLock::new(|| {
+    let mut rows: HashMap<Item, Row> = ron::from_str(include_str!("../../data/items.ron"))
+        .unwrap_or_else(|error| panic!("data/items.ron: {error}"));
+    STANDALONE_RANGES
+        .into_iter()
+        .flat_map(|(start, end)| start..=end)
+        .map(|raw| {
+            let item = Item::from(raw);
+            let row = rows.remove(&item);
+            row.unwrap_or_else(|| panic!("data/items.ron has no row for {item:?}"))
+                .build(item)
+        })
+        .collect()
+});
 
 /// Block items share their block's Beta id. Standalone items start at 256.
 ///
@@ -164,15 +245,6 @@ pub enum Item {
     #[serde(skip)]
     BlockOrUnknown(u16),
 }
-const fn standalone(item: Item, max_stack_size: u8, data: ItemData) -> ItemProperties {
-    ItemProperties {
-        item,
-        max_stack_size,
-        data,
-        block: None,
-    }
-}
-
 impl Item {
     pub fn from_block(block: Block) -> Option<Self> {
         block
@@ -182,11 +254,24 @@ impl Item {
 
     /// The item a data file names: a standalone item's variant, or else a
     /// block's, as [`Display`](std::fmt::Display) writes them.
-    pub fn named(name: &str) -> Option<Self> {
-        let name = || IntoDeserializer::<NameError>::into_deserializer(name);
-        Self::deserialize(name())
-            .ok()
-            .or_else(|| Self::from_block(Block::deserialize(name()).ok()?))
+    ///
+    /// `"block.Name"` is the block's own item where an item shares its name
+    /// (`"WoodenDoor"` is the door item, `"block.WoodenDoor"` the half-door
+    /// block), and `"Name:data"` adds a subtype or damage value.
+    pub fn named(text: &str) -> Option<(Self, Option<u16>)> {
+        let (name, data) = match text.split_once(':') {
+            Some((name, data)) => (name, Some(data.parse().ok()?)),
+            None => (text, None),
+        };
+        let variant = |name| IntoDeserializer::<NameError>::into_deserializer(name);
+        let block = |name| Self::from_block(Block::deserialize(variant(name)).ok()?);
+        let item = match name.strip_prefix("block.") {
+            Some(name) => block(name),
+            None => Self::deserialize(variant(name))
+                .ok()
+                .or_else(|| block(name)),
+        }?;
+        Some((item, data))
     }
 
     pub fn as_u16(self) -> u16 {
@@ -211,46 +296,16 @@ impl Item {
 
     /// `ItemFood.healAmount`: half-hearts restored when eaten.
     pub fn heal_amount(self) -> Option<u8> {
-        Some(match self {
-            Self::Apple => 4,
-            Self::Bread => 5,
-            Self::RawPorkchop => 3,
-            Self::CookedPorkchop => 8,
-            Self::GoldenApple => 42,
-            Self::RawFish => 2,
-            Self::CookedFish => 5,
-            Self::MushroomStew => 10,
-            Self::Cookie => 1,
-            _ => return None,
-        })
+        self.properties()?.heal
     }
 
     /// `SlotArmor.isItemValid`: the armor slot this item is worn in, counting
     /// helmet, chestplate, leggings, boots. A pumpkin is worn as a helmet.
     pub fn armor_slot(self) -> Option<usize> {
-        use Item as I;
-        Some(match self {
-            I::LeatherHelmet
-            | I::ChainmailHelmet
-            | I::IronHelmet
-            | I::DiamondHelmet
-            | I::GoldHelmet => 0,
-            I::LeatherChestplate
-            | I::ChainmailChestplate
-            | I::IronChestplate
-            | I::DiamondChestplate
-            | I::GoldChestplate => 1,
-            I::LeatherLeggings
-            | I::ChainmailLeggings
-            | I::IronLeggings
-            | I::DiamondLeggings
-            | I::GoldLeggings => 2,
-            I::LeatherBoots | I::ChainmailBoots | I::IronBoots | I::DiamondBoots | I::GoldBoots => {
-                3
-            }
-            _ if self.block() == Some(Block::Pumpkin) => 0,
-            _ => return None,
-        })
+        if self.block() == Some(Block::Pumpkin) {
+            return Some(0);
+        }
+        Some(self.properties()?.armor?.slot as usize)
     }
 
     pub fn properties(self) -> Option<ItemProperties> {
@@ -260,126 +315,21 @@ impl Item {
                 max_stack_size: 64,
                 data: block.item_data(),
                 block: Some(block),
+                heal: None,
+                armor: None,
+                tool: None,
+                container: None,
             });
         }
-        match self {
-            Self::IronShovel => Some(standalone(self, 1, ItemData::Durability(250))),
-            Self::IronPickaxe => Some(standalone(self, 1, ItemData::Durability(250))),
-            Self::IronAxe => Some(standalone(self, 1, ItemData::Durability(250))),
-            Self::FlintAndSteel => Some(standalone(self, 1, ItemData::Durability(64))),
-            Self::Apple => Some(standalone(self, 1, ItemData::None)),
-            Self::Bow => Some(standalone(self, 1, ItemData::None)),
-            Self::Arrow => Some(standalone(self, 64, ItemData::None)),
-            Self::Coal => Some(standalone(self, 64, ItemData::Subtype(1))),
-            Self::Diamond => Some(standalone(self, 64, ItemData::None)),
-            Self::IronIngot => Some(standalone(self, 64, ItemData::None)),
-            Self::GoldIngot => Some(standalone(self, 64, ItemData::None)),
-            Self::IronSword => Some(standalone(self, 1, ItemData::Durability(250))),
-            Self::WoodenSword => Some(standalone(self, 1, ItemData::Durability(59))),
-            Self::WoodenShovel => Some(standalone(self, 1, ItemData::Durability(59))),
-            Self::WoodenPickaxe => Some(standalone(self, 1, ItemData::Durability(59))),
-            Self::WoodenAxe => Some(standalone(self, 1, ItemData::Durability(59))),
-            Self::StoneSword => Some(standalone(self, 1, ItemData::Durability(131))),
-            Self::StoneShovel => Some(standalone(self, 1, ItemData::Durability(131))),
-            Self::StonePickaxe => Some(standalone(self, 1, ItemData::Durability(131))),
-            Self::StoneAxe => Some(standalone(self, 1, ItemData::Durability(131))),
-            Self::DiamondSword => Some(standalone(self, 1, ItemData::Durability(1561))),
-            Self::DiamondShovel => Some(standalone(self, 1, ItemData::Durability(1561))),
-            Self::DiamondPickaxe => Some(standalone(self, 1, ItemData::Durability(1561))),
-            Self::DiamondAxe => Some(standalone(self, 1, ItemData::Durability(1561))),
-            Self::Stick => Some(standalone(self, 64, ItemData::None)),
-            Self::Bowl => Some(standalone(self, 64, ItemData::None)),
-            Self::MushroomStew => Some(standalone(self, 1, ItemData::None)),
-            Self::GoldSword => Some(standalone(self, 1, ItemData::Durability(32))),
-            Self::GoldShovel => Some(standalone(self, 1, ItemData::Durability(32))),
-            Self::GoldPickaxe => Some(standalone(self, 1, ItemData::Durability(32))),
-            Self::GoldAxe => Some(standalone(self, 1, ItemData::Durability(32))),
-            Self::String => Some(standalone(self, 64, ItemData::None)),
-            Self::Feather => Some(standalone(self, 64, ItemData::None)),
-            Self::Gunpowder => Some(standalone(self, 64, ItemData::None)),
-            Self::WoodenHoe => Some(standalone(self, 1, ItemData::Durability(59))),
-            Self::StoneHoe => Some(standalone(self, 1, ItemData::Durability(131))),
-            Self::IronHoe => Some(standalone(self, 1, ItemData::Durability(250))),
-            Self::DiamondHoe => Some(standalone(self, 1, ItemData::Durability(1561))),
-            Self::GoldHoe => Some(standalone(self, 1, ItemData::Durability(32))),
-            Self::Seeds => Some(standalone(self, 64, ItemData::None)),
-            Self::Wheat => Some(standalone(self, 64, ItemData::None)),
-            Self::Bread => Some(standalone(self, 1, ItemData::None)),
-            Self::LeatherHelmet => Some(standalone(self, 1, ItemData::Durability(33))),
-            Self::LeatherChestplate => Some(standalone(self, 1, ItemData::Durability(48))),
-            Self::LeatherLeggings => Some(standalone(self, 1, ItemData::Durability(45))),
-            Self::LeatherBoots => Some(standalone(self, 1, ItemData::Durability(39))),
-            Self::ChainmailHelmet => Some(standalone(self, 1, ItemData::Durability(66))),
-            Self::ChainmailChestplate => Some(standalone(self, 1, ItemData::Durability(96))),
-            Self::ChainmailLeggings => Some(standalone(self, 1, ItemData::Durability(90))),
-            Self::ChainmailBoots => Some(standalone(self, 1, ItemData::Durability(78))),
-            Self::IronHelmet => Some(standalone(self, 1, ItemData::Durability(132))),
-            Self::IronChestplate => Some(standalone(self, 1, ItemData::Durability(192))),
-            Self::IronLeggings => Some(standalone(self, 1, ItemData::Durability(180))),
-            Self::IronBoots => Some(standalone(self, 1, ItemData::Durability(156))),
-            Self::DiamondHelmet => Some(standalone(self, 1, ItemData::Durability(264))),
-            Self::DiamondChestplate => Some(standalone(self, 1, ItemData::Durability(384))),
-            Self::DiamondLeggings => Some(standalone(self, 1, ItemData::Durability(360))),
-            Self::DiamondBoots => Some(standalone(self, 1, ItemData::Durability(312))),
-            Self::GoldHelmet => Some(standalone(self, 1, ItemData::Durability(66))),
-            Self::GoldChestplate => Some(standalone(self, 1, ItemData::Durability(96))),
-            Self::GoldLeggings => Some(standalone(self, 1, ItemData::Durability(90))),
-            Self::GoldBoots => Some(standalone(self, 1, ItemData::Durability(78))),
-            Self::Flint => Some(standalone(self, 64, ItemData::None)),
-            Self::RawPorkchop => Some(standalone(self, 1, ItemData::None)),
-            Self::CookedPorkchop => Some(standalone(self, 1, ItemData::None)),
-            Self::Painting => Some(standalone(self, 64, ItemData::None)),
-            Self::GoldenApple => Some(standalone(self, 1, ItemData::None)),
-            Self::Sign => Some(standalone(self, 1, ItemData::None)),
-            Self::WoodenDoor => Some(standalone(self, 1, ItemData::None)),
-            Self::Bucket => Some(standalone(self, 1, ItemData::None)),
-            Self::WaterBucket => Some(standalone(self, 1, ItemData::None)),
-            Self::LavaBucket => Some(standalone(self, 1, ItemData::None)),
-            Self::Minecart => Some(standalone(self, 1, ItemData::None)),
-            Self::Saddle => Some(standalone(self, 1, ItemData::None)),
-            Self::IronDoor => Some(standalone(self, 1, ItemData::None)),
-            Self::Redstone => Some(ItemProperties {
-                block: Some(Block::RedstoneWire),
-                ..standalone(self, 64, ItemData::None)
-            }),
-            Self::Snowball => Some(standalone(self, 16, ItemData::None)),
-            Self::Boat => Some(standalone(self, 1, ItemData::None)),
-            Self::Leather => Some(standalone(self, 64, ItemData::None)),
-            Self::MilkBucket => Some(standalone(self, 1, ItemData::None)),
-            Self::Brick => Some(standalone(self, 64, ItemData::None)),
-            Self::ClayBall => Some(standalone(self, 64, ItemData::None)),
-            Self::SugarCane => Some(ItemProperties {
-                block: Some(Block::SugarCane),
-                ..standalone(self, 64, ItemData::None)
-            }),
-            Self::Paper => Some(standalone(self, 64, ItemData::None)),
-            Self::Book => Some(standalone(self, 64, ItemData::None)),
-            Self::Slimeball => Some(standalone(self, 64, ItemData::None)),
-            Self::ChestMinecart => Some(standalone(self, 1, ItemData::None)),
-            Self::FurnaceMinecart => Some(standalone(self, 1, ItemData::None)),
-            Self::Egg => Some(standalone(self, 16, ItemData::None)),
-            Self::Compass => Some(standalone(self, 64, ItemData::None)),
-            Self::FishingRod => Some(standalone(self, 1, ItemData::Durability(64))),
-            Self::Clock => Some(standalone(self, 64, ItemData::None)),
-            Self::GlowstoneDust => Some(standalone(self, 64, ItemData::None)),
-            Self::RawFish => Some(standalone(self, 1, ItemData::None)),
-            Self::CookedFish => Some(standalone(self, 1, ItemData::None)),
-            Self::Dye => Some(standalone(self, 64, ItemData::Subtype(15))),
-            Self::Bone => Some(standalone(self, 64, ItemData::None)),
-            Self::Sugar => Some(standalone(self, 64, ItemData::None)),
-            Self::Cake => Some(standalone(self, 1, ItemData::None)),
-            Self::Bed => Some(standalone(self, 1, ItemData::None)),
-            Self::Repeater => Some(ItemProperties {
-                block: Some(Block::Repeater),
-                ..standalone(self, 64, ItemData::None)
-            }),
-            Self::Cookie => Some(standalone(self, 8, ItemData::None)),
-            Self::Map => Some(standalone(self, 1, ItemData::Map)),
-            Self::Shears => Some(standalone(self, 1, ItemData::Durability(238))),
-            Self::Record13 => Some(standalone(self, 1, ItemData::None)),
-            Self::RecordCat => Some(standalone(self, 1, ItemData::None)),
-            _ => None,
+        let raw = self.as_u16();
+        let mut before = 0;
+        for (start, end) in STANDALONE_RANGES {
+            if (start..=end).contains(&raw) {
+                return Some(STANDALONE[usize::from(before + raw - start)]);
+            }
+            before += end - start + 1;
         }
+        None
     }
 }
 
@@ -394,7 +344,14 @@ impl std::fmt::Display for Item {
 }
 
 /// Raw id ranges that contain an item: block items, the main item list, and records.
-const RAW_RANGES: [(u16, u16); 3] = [(1, Block::MAX_ITEM_ID as u16), (256, 359), (2256, 2257)];
+const RAW_RANGES: [(u16, u16); 3] = [
+    (1, Block::MAX_ITEM_ID as u16),
+    STANDALONE_RANGES[0],
+    STANDALONE_RANGES[1],
+];
+
+/// Raw ids of the standalone items: the main item list, and records.
+const STANDALONE_RANGES: [(u16, u16); 2] = [(256, 359), (2256, 2257)];
 
 /// Stateless immutable registry; lookups allocate nothing.
 pub struct ItemRegistry;

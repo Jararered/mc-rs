@@ -2,6 +2,8 @@
 pub mod registry;
 pub mod tools;
 use crate::block::blocks::Block;
+pub use registry::Armor;
+pub use registry::ArmorSlot;
 pub use registry::Item;
 pub use registry::ItemData;
 pub use registry::ItemProperties;
@@ -52,6 +54,12 @@ impl ItemStack {
             return Err(StackError::InvalidData(data));
         }
         Ok(Self { item, count, data })
+    }
+
+    /// `count` of the item a data file names; see [`Item::named`].
+    pub fn named(text: &str, count: u8) -> Option<Self> {
+        let (item, data) = Item::named(text)?;
+        Self::with_data(item, count, data.unwrap_or(0)).ok()
     }
 
     /// Direct block representation, not a mining-drop rule (stone may drop cobble).

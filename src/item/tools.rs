@@ -10,10 +10,11 @@ use crate::block::blocks::Block;
 use crate::block::definition::Digger;
 use crate::block::definition::properties;
 use crate::block::properties::mine_progress_per_tick;
+use serde::Deserialize;
 
 /// `EnumToolMaterial` harvest level and `efficiencyOnProperMaterial`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum ToolTier {
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+pub enum ToolTier {
     Wood,
     Stone,
     Iron,
@@ -42,8 +43,9 @@ impl ToolTier {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum ToolType {
+/// What kind of tool an item is, as `data/items.ron` gives it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+pub enum ToolType {
     Pick(ToolTier),
     Axe(ToolTier),
     Shovel(ToolTier),
@@ -53,35 +55,7 @@ enum ToolType {
 }
 
 fn tool_type(item: Item) -> Option<ToolType> {
-    Some(match item {
-        Item::WoodenPickaxe => ToolType::Pick(ToolTier::Wood),
-        Item::StonePickaxe => ToolType::Pick(ToolTier::Stone),
-        Item::IronPickaxe => ToolType::Pick(ToolTier::Iron),
-        Item::DiamondPickaxe => ToolType::Pick(ToolTier::Diamond),
-        Item::GoldPickaxe => ToolType::Pick(ToolTier::Gold),
-        Item::WoodenAxe => ToolType::Axe(ToolTier::Wood),
-        Item::StoneAxe => ToolType::Axe(ToolTier::Stone),
-        Item::IronAxe => ToolType::Axe(ToolTier::Iron),
-        Item::DiamondAxe => ToolType::Axe(ToolTier::Diamond),
-        Item::GoldAxe => ToolType::Axe(ToolTier::Gold),
-        Item::WoodenShovel => ToolType::Shovel(ToolTier::Wood),
-        Item::StoneShovel => ToolType::Shovel(ToolTier::Stone),
-        Item::IronShovel => ToolType::Shovel(ToolTier::Iron),
-        Item::DiamondShovel => ToolType::Shovel(ToolTier::Diamond),
-        Item::GoldShovel => ToolType::Shovel(ToolTier::Gold),
-        Item::WoodenSword => ToolType::Sword(ToolTier::Wood),
-        Item::StoneSword => ToolType::Sword(ToolTier::Stone),
-        Item::IronSword => ToolType::Sword(ToolTier::Iron),
-        Item::DiamondSword => ToolType::Sword(ToolTier::Diamond),
-        Item::GoldSword => ToolType::Sword(ToolTier::Gold),
-        Item::WoodenHoe => ToolType::Hoe(ToolTier::Wood),
-        Item::StoneHoe => ToolType::Hoe(ToolTier::Stone),
-        Item::IronHoe => ToolType::Hoe(ToolTier::Iron),
-        Item::DiamondHoe => ToolType::Hoe(ToolTier::Diamond),
-        Item::GoldHoe => ToolType::Hoe(ToolTier::Gold),
-        Item::Shears => ToolType::Shears,
-        _ => return None,
-    })
+    item.properties()?.tool
 }
 
 /// `InventoryPlayer.getDamageVsEntity`: `ItemSword` deals `4 + 2 *` its

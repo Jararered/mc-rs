@@ -2,6 +2,7 @@
 //!
 //! It links the same `game` library the client does and opens no window.
 
+use std::convert::Infallible;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
@@ -9,75 +10,47 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 use std::time::Instant;
 
+use clap::Parser;
 use game::networking::beta::BetaServer;
 use game::networking::beta::ServerConfig;
+use game::random::parse_seed;
 use game::world::persistence::SaveFormat;
 use game::world::persistence::WorldStorage;
 use game::world::persistence::list_worlds;
 
-const USAGE: &str = "\
-Usage: server [options]
-
-  --port <port>      Port to listen on (default 25565)
-  --world <name>     World to host, by name or by folder under the saves
-                     directory; created if there is none (default \"Server\")
-  --saves <folder>   Where worlds are kept (default \"saves\")
-  --seed <number>    Seed for a world that has to be created
-  --beta-format      Create the world in Beta 1.7.3's own save format
-  --view <chunks>    Chunks each way sent to a client (default 8)
-  --peaceful         Run the world on Peaceful whatever difficulty it was
-                     saved with
-";
-
+/// A dedicated server for Beta 1.7.3 clients.
+#[derive(Parser)]
+#[command(name = "server", version)]
 struct Options {
+    /// Port to listen on
+    #[arg(long, default_value_t = 25565)]
     port: u16,
+    /// World to host, by name or by folder under the saves directory; created
+    /// if there is none
+    #[arg(long, value_name = "NAME", default_value = "Server")]
     world: String,
+    /// Where worlds are kept
+    #[arg(long, value_name = "FOLDER", default_value = "saves")]
     saves: PathBuf,
+    /// Seed for a world that has to be created: a number, or text hashed as a
+    /// word typed into Beta's seed box is
+    // A seed is often negative, which would otherwise read as a flag.
+    #[arg(long, value_name = "SEED", allow_hyphen_values = true, value_parser = seed)]
     seed: Option<u64>,
-    format: SaveFormat,
+    /// Create the world in Beta 1.7.3's own save format
+    #[arg(long)]
+    beta_format: bool,
+    /// Chunks each way sent to a client, from 2 to 16
+    #[arg(long, value_name = "CHUNKS", default_value_t = 8)]
     view: i32,
+    /// Run the world on Peaceful whatever difficulty it was saved with
+    #[arg(long)]
     peaceful: bool,
 }
 
-fn options() -> Result<Options, String> {
-    let mut options = Options {
-        port: 25565,
-        world: "Server".to_owned(),
-        saves: PathBuf::from("saves"),
-        seed: None,
-        format: SaveFormat::Binary,
-        view: 8,
-        peaceful: false,
-    };
-    let mut args = std::env::args().skip(1);
-    while let Some(arg) = args.next() {
-        let mut value = || args.next().ok_or_else(|| format!("{arg} needs a value"));
-        match arg.as_str() {
-            "--port" => options.port = value()?.parse().map_err(|_| "bad port")?,
-            "--world" => options.world = value()?,
-            "--saves" => options.saves = PathBuf::from(value()?),
-            "--seed" => {
-                let text = value()?;
-                // A number is the seed; anything else is hashed, as a word
-                // typed into Beta's seed box is.
-                options.seed = Some(text.parse::<i64>().map_or_else(
-                    |_| {
-                        text.chars()
-                            .fold(0i32, |hash, c| hash.wrapping_mul(31).wrapping_add(c as i32))
-                            as i64 as u64
-                    },
-                    |seed| seed as u64,
-                ));
-            }
-            "--beta-format" => options.format = SaveFormat::Original,
-            "--view" => options.view = value()?.parse().map_err(|_| "bad view distance")?,
-            "--peaceful" => options.peaceful = true,
-            "--help" | "-h" => return Err(String::new()),
-            other => return Err(format!("unknown option {other}")),
-        }
-    }
-    options.view = options.view.clamp(2, 16);
-    Ok(options)
+#[allow(clippy::unnecessary_wraps)]
+fn seed(text: &str) -> Result<u64, Infallible> {
+    Ok(parse_seed(text))
 }
 
 fn open_world(options: &Options) -> std::io::Result<WorldStorage> {
@@ -97,20 +70,17 @@ fn open_world(options: &Options) -> std::io::Result<WorldStorage> {
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |time| time.as_nanos() as u64)
     });
-    WorldStorage::create_in_format(&options.saves, seed, &options.world, None, options.format)
+    let format = if options.beta_format {
+        SaveFormat::Original
+    } else {
+        SaveFormat::Binary
+    };
+    WorldStorage::create_in_format(&options.saves, seed, &options.world, None, format)
 }
 
 fn main() {
-    let options = match options() {
-        Ok(options) => options,
-        Err(problem) => {
-            if !problem.is_empty() {
-                eprintln!("{problem}\n");
-            }
-            eprint!("{USAGE}");
-            std::process::exit(if problem.is_empty() { 0 } else { 2 });
-        }
-    };
+    let mut options = Options::parse();
+    options.view = options.view.clamp(2, 16);
     let storage = match open_world(&options) {
         Ok(storage) => storage,
         Err(error) => {

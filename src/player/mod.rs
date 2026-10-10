@@ -6,6 +6,7 @@ use crate::app::state::PauseMenu;
 use crate::entity::EntitySize;
 use crate::entity::Flying;
 use crate::entity::combat::tick_player_combat;
+pub mod actions;
 mod camera;
 mod controls;
 pub(crate) mod interaction;
@@ -88,7 +89,6 @@ impl Plugin for PlayerPlugin {
                 (
                     controls::look_player.run_if(controls::chat_controls_active),
                     interaction::editing::interact_blocks.run_if(controls::chat_controls_active),
-                    interaction::use_item::use_items,
                     interaction::use_item::draw_bow.run_if(controls::chat_controls_active),
                     controls::update_mouse_capture.run_if(controls::chat_controls_active),
                     controls::toggle_flying.run_if(controls::chat_controls_active),
@@ -114,7 +114,24 @@ impl Plugin for PlayerPlugin {
                     .after(crate::entity::mount::snap_riders)
                     .run_if(in_state(AppScreen::Playing)),
             )
-            .add_plugins((survival::SurvivalPlugin, sleep::SleepPlugin));
+            .configure_sets(
+                Update,
+                actions::PlayerActionSet
+                    .after(interaction::editing::interact_blocks)
+                    .before(interaction::use_item::draw_bow)
+                    .in_set(PhysicsSet::ApplyInput),
+            )
+            .add_systems(
+                Update,
+                interaction::editing::open_windows
+                    .after(actions::PlayerActionSet)
+                    .run_if(in_state(AppScreen::Playing)),
+            )
+            .add_plugins((
+                actions::PlayerActionsPlugin,
+                survival::SurvivalPlugin,
+                sleep::SleepPlugin,
+            ));
     }
 }
 

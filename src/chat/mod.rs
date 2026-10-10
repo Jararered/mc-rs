@@ -19,7 +19,29 @@ pub mod registry;
 const HISTORY_LIMIT: usize = 50;
 
 #[derive(Message, Debug, Clone)]
-pub struct ChatSubmission(pub String);
+pub struct ChatSubmission {
+    pub text: String,
+    /// The player who typed it. `None` is this client's own player.
+    pub sender: Option<Entity>,
+}
+
+impl ChatSubmission {
+    /// A line typed by this client's player.
+    pub fn new(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            sender: None,
+        }
+    }
+
+    /// A line typed by `sender`.
+    pub fn from_player(sender: Entity, text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            sender: Some(sender),
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct ChatMessage {

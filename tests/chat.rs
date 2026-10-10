@@ -882,14 +882,13 @@ fn chat_backend_dispatches_multiple_submissions_without_ui_or_window() {
         .init_resource::<WorldChunks>()
         .init_resource::<WorldTick>()
         .add_plugins(ChatPlugin);
+    app.world_mut().write_message(ChatSubmission::new("hello"));
     app.world_mut()
-        .write_message(ChatSubmission("hello".into()));
+        .write_message(ChatSubmission::new("/time set noon"));
     app.world_mut()
-        .write_message(ChatSubmission("/time set noon".into()));
+        .write_message(ChatSubmission::new("/unknown"));
     app.world_mut()
-        .write_message(ChatSubmission("/unknown".into()));
-    app.world_mut()
-        .write_message(ChatSubmission("/time query".into()));
+        .write_message(ChatSubmission::new("/time query"));
     app.update();
 
     assert_eq!(app.world().resource::<WorldTick>().world_time(), 6000);
@@ -1175,4 +1174,58 @@ fn chat_input_lists_suggestions_and_tab_accepts_the_selected_one() {
     assert_eq!(names(shown(&mut app)), ["rain"]);
     key(&mut app, KeyCode::Escape, Key::Escape, None);
     assert!(shown(&mut app).is_empty());
+}
+
+#[test]
+fn a_command_acts_on_the_player_who_sent_it() {
+    use game::chat::ChatHistory;
+    use game::chat::ChatPlugin;
+    use game::chat::ChatSubmission;
+    use game::player::LocalPlayer;
+    use game::player::Player;
+    use game::player::PlayerName;
+    use game::world::tick::WorldTick;
+
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins)
+        .init_resource::<WorldChunks>()
+        .init_resource::<WorldTick>()
+        .add_plugins(ChatPlugin);
+    let body = || {
+        (
+            game::player::PlayerHealth::default(),
+            Hotbar::default(),
+            Inventory::default(),
+            Transform::from_xyz(8.0, 70.0, 8.0),
+        )
+    };
+    let host = app.world_mut().spawn((LocalPlayer, body())).id();
+    let bob = app
+        .world_mut()
+        .spawn((Player, PlayerName("bob".to_owned()), body()))
+        .id();
+    app.world_mut()
+        .write_message(ChatSubmission::from_player(bob, "/give 264 3"));
+    app.world_mut()
+        .write_message(ChatSubmission::from_player(bob, "hi"));
+    app.update();
+
+    let diamonds = |app: &App, player| {
+        app.world()
+            .get::<Hotbar>(player)
+            .unwrap()
+            .slots
+            .iter()
+            .flatten()
+            .map(|stack| u32::from(stack.count()))
+            .sum::<u32>()
+    };
+    assert_eq!(diamonds(&app, bob), 3);
+    assert_eq!(diamonds(&app, host), 0);
+    assert!(
+        app.world()
+            .resource::<ChatHistory>()
+            .messages()
+            .any(|message| message.text == "<bob> hi")
+    );
 }

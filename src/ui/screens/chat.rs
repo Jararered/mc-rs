@@ -299,7 +299,7 @@ fn read_chat_input(
             KeyCode::Enter | KeyCode::NumpadEnter => {
                 let text = chat.input.trim();
                 if !text.is_empty() {
-                    submissions.write(ChatSubmission(text.to_owned()));
+                    submissions.write(ChatSubmission::new(text));
                 }
                 chat.input.clear();
                 focus.open = false;

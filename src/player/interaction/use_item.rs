@@ -25,10 +25,12 @@ use crate::inventory::Inventory;
 use crate::inventory::session::InventorySession;
 use crate::item::Item;
 use crate::player::LocalPlayer;
+use crate::player::Player;
 use crate::player::sleep::PlayerSleep;
 use crate::random::ItemRng;
 use crate::random::JavaRandom;
 use crate::world::tick::WorldTick;
+use std::collections::HashMap;
 
 /// `ItemBow`'s speed in Beta 1.7.3, in blocks per tick.
 const BOW_SPEED: f32 = 1.5;
@@ -40,6 +42,7 @@ pub(crate) const DRAW_MOVEMENT_SCALE: f32 = 0.2;
 /// The held item was used: a right-click that no block or screen took.
 #[derive(Message, Clone, Copy, Debug)]
 pub struct ItemUse {
+    pub player: Entity,
     /// The player's eyes.
     pub eye: Vec3,
     /// Unit view direction.
@@ -91,35 +94,44 @@ pub(crate) fn use_items(
             Option<&Fishing>,
             Option<&BowDraw>,
         ),
-        With<LocalPlayer>,
+        With<Player>,
     >,
-    bobbers: Query<(&Bobber, &Transform), Without<LocalPlayer>>,
+    bobbers: Query<(&Bobber, &Transform), Without<Player>>,
     mut mobs: Query<&mut Velocity, With<Mob>>,
     mut rng: Local<LaunchRandom>,
     mut item_rng: Local<ItemRng>,
+    // Each player's line and draw as this frame's uses leave them: the
+    // components only change once the commands are applied.
+    mut hands: Local<HashMap<Entity, (Option<Entity>, bool)>>,
 ) {
-    let Ok((entity, mut hotbar, mut inventory, fishing, draw)) = player.single_mut() else {
-        uses.clear();
-        return;
-    };
-    // The bobber is gone without the player's doing: a change of dimension.
-    let mut fishing = fishing.map(|fishing| fishing.0);
-    if fishing.is_some_and(|bobber| !bobbers.contains(bobber)) {
-        commands.entity(entity).remove::<Fishing>();
-        fishing = None;
+    hands.clear();
+    for (entity, _, _, fishing, draw) in &player {
+        // The bobber is gone without the player's doing: a change of
+        // dimension.
+        let mut fishing = fishing.map(|fishing| fishing.0);
+        if fishing.is_some_and(|bobber| !bobbers.contains(bobber)) {
+            commands.entity(entity).remove::<Fishing>();
+            fishing = None;
+        }
+        hands.insert(entity, (fishing, draw.is_some()));
     }
     let charging = settings.is_some_and(|settings| settings.bow_charging);
-    let mut drawing = draw.is_some();
     for used in uses.read() {
+        let Ok((entity, mut hotbar, mut inventory, ..)) = player.get_mut(used.player) else {
+            continue;
+        };
+        let Some((fishing, drawing)) = hands.get_mut(&entity) else {
+            continue;
+        };
         let Some(item) = hotbar.selected_stack().map(|stack| stack.item()) else {
             continue;
         };
         match item {
             Item::Bow if charging => {
                 // Beta 1.8 `ItemBow.onItemRightClick`: only with an arrow.
-                if !drawing && inventory.holds(&hotbar, Item::Arrow) {
+                if !*drawing && inventory.holds(&hotbar, Item::Arrow) {
                     commands.entity(entity).insert(BowDraw::default());
-                    drawing = true;
+                    *drawing = true;
                 }
             }
             Item::Bow => {
@@ -159,7 +171,7 @@ pub(crate) fn use_items(
                         hotbar.damage_selected(damage);
                     }
                 } else {
-                    fishing = Some(cast_bobber(
+                    *fishing = Some(cast_bobber(
                         &mut commands,
                         entity,
                         used.eye,

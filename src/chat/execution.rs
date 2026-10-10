@@ -14,8 +14,10 @@ use crate::inventory::Inventory;
 use crate::player::GameMode;
 use crate::player::LocalPlayer;
 use crate::player::MAX_PLAYER_HEALTH;
+use crate::player::Player;
 use crate::player::PlayerHealth;
 use crate::player::PlayerInterpolation;
+use crate::player::PlayerName;
 use crate::random::ItemRng;
 use crate::rendering::textures::BlockMaterial;
 use crate::rendering::textures::LineRasterSupported;
@@ -56,8 +58,10 @@ pub(super) struct CommandContext<'w, 's> {
             &'static mut PlayerHealth,
             &'static mut GameMode,
         ),
-        With<LocalPlayer>,
+        With<Player>,
     >,
+    local: Query<'w, 's, Entity, With<LocalPlayer>>,
+    names: Query<'w, 's, &'static PlayerName>,
     chunks: ResMut<'w, WorldChunks>,
     streaming: Option<ResMut<'w, WorldStreaming>>,
     persistence: Option<ResMut<'w, WorldPersistence>>,
@@ -74,18 +78,21 @@ pub(super) fn submit_chat(
     mut context: CommandContext,
 ) {
     for submission in submissions.read() {
-        context.execute(&submission.0);
+        context.execute(submission.sender, &submission.text);
     }
 }
 
 impl CommandContext<'_, '_> {
-    fn execute(&mut self, message: &str) {
+    /// Run `message` for `sender`, or for this client's player.
+    fn execute(&mut self, sender: Option<Entity>, message: &str) {
         let Self {
             commands,
             chat,
             registry,
             clock,
             player,
+            local,
+            names,
             chunks,
             streaming,
             persistence,
@@ -96,8 +103,12 @@ impl CommandContext<'_, '_> {
             line_raster,
             weather,
         } = self;
+        let sender = sender.or_else(|| local.single().ok());
         if !message.starts_with('/') {
-            chat.push(format!("<Player> {message}"));
+            let name = sender
+                .and_then(|sender| names.get(sender).ok())
+                .map_or("Player", |name| name.0.as_str());
+            chat.push(format!("<{name}> {message}"));
             return;
         }
         let command = match registry.parse(message) {
@@ -200,7 +211,7 @@ impl CommandContext<'_, '_> {
             ));
             return;
         }
-        let Ok((
+        let Some((
             mut transform,
             mut velocity,
             mut collision,
@@ -210,7 +221,7 @@ impl CommandContext<'_, '_> {
             size,
             mut health,
             mut game_mode,
-        )) = player.single_mut()
+        )) = sender.and_then(|sender| player.get_mut(sender).ok())
         else {
             chat.push("Player is unavailable");
             return;

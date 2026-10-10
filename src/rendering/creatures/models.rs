@@ -6,6 +6,7 @@
 //! about its rotation point. [`model_transform`] applies `RenderLiving`'s
 //! body yaw, upside-down flip, and lift into the mob's frame.
 
+use std::collections::HashMap;
 use std::f32::consts::FRAC_PI_2;
 use std::f32::consts::FRAC_PI_4;
 use std::f32::consts::PI;
@@ -14,6 +15,8 @@ use bevy::asset::RenderAssetUsages;
 use bevy::mesh::Indices;
 use bevy::prelude::*;
 use bevy::render::render_resource::PrimitiveTopology;
+use serde::Deserialize;
+use std::sync::OnceLock;
 
 use crate::entity::mobs::MobType;
 use crate::item::Item;
@@ -39,8 +42,9 @@ pub struct Cuboid {
 
 /// Which render pass draws a part: the main model, or `RenderPig`'s and
 /// `RenderSheep`'s second model.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Deserialize)]
 pub enum Layer {
+    #[default]
     Base,
     /// `ModelPig(0.5)` in `saddle.png`, drawn while saddled.
     Saddle,
@@ -58,12 +62,14 @@ pub enum Layer {
 }
 
 /// How `setRotationAngles` and `setLivingAnimations` move a part.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Deserialize)]
 pub enum Role {
     /// Keeps the rotation it was built with.
+    #[default]
     Fixed,
     /// Turns with the head. `ModelChicken` negates the pitch.
     Head {
+        #[serde(default)]
         inverted_pitch: bool,
     },
     /// `cos(swing * 0.6662 + phase) * 1.4 * amount` about X.
@@ -88,7 +94,7 @@ pub enum Role {
 }
 
 /// `ModelWolf` repositions most parts when the wolf sits.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
 pub enum WolfPart {
     /// The head, ears, and snout, drawn with `renderWithRotation`.
     Head,
@@ -127,369 +133,115 @@ pub struct PoseInput {
     pub angry: bool,
 }
 
-fn part(
-    texture: [u8; 2],
-    origin: [f32; 3],
-    size: [u8; 3],
-    inflate: f32,
-    pivot: [f32; 3],
-    role: Role,
-    layer: Layer,
-) -> Part {
+const BODY_PITCH: Vec3 = Vec3::new(FRAC_PI_2, 0.0, 0.0);
+
+/// A tentacle two pixels square, hanging from `pivot` and turned by `yaw`.
+fn tentacle(texture: [u8; 2], length: u8, pivot: [f32; 3], yaw: f32, role: Role) -> Part {
     Part {
         cuboid: Cuboid {
             texture,
-            origin: Vec3::from_array(origin),
-            size,
-            inflate,
+            origin: Vec3::new(-1.0, 0.0, -1.0),
+            size: [2, length, 2],
+            inflate: 0.0,
             mirror: false,
         },
         pivot: Vec3::from_array(pivot),
-        rotation: Vec3::ZERO,
+        rotation: Vec3::new(0.0, yaw, 0.0),
         role,
-        layer,
+        layer: Layer::Base,
     }
 }
 
-fn mirrored(mut part: Part) -> Part {
-    part.cuboid.mirror = true;
-    part
+/// One box of `data/creature_models.ron`. What a line leaves out is zero: a
+/// fixed part of the base layer.
+#[derive(Deserialize)]
+struct PartData {
+    tex: [u8; 2],
+    from: [f32; 3],
+    size: [u8; 3],
+    #[serde(default)]
+    inflate: f32,
+    #[serde(default)]
+    pivot: [f32; 3],
+    #[serde(default)]
+    rotation: [f32; 3],
+    #[serde(default)]
+    role: Role,
+    #[serde(default)]
+    layer: Layer,
+    #[serde(default)]
+    mirror: bool,
 }
 
-fn rotated(mut part: Part, rotation: Vec3) -> Part {
-    part.rotation = rotation;
-    part
+impl From<PartData> for Part {
+    fn from(data: PartData) -> Self {
+        Self {
+            cuboid: Cuboid {
+                texture: data.tex,
+                origin: Vec3::from_array(data.from),
+                size: data.size,
+                inflate: data.inflate,
+                mirror: data.mirror,
+            },
+            pivot: Vec3::from_array(data.pivot),
+            rotation: Vec3::from_array(data.rotation),
+            role: data.role,
+            layer: data.layer,
+        }
+    }
 }
 
-const HEAD: Role = Role::Head {
-    inverted_pitch: false,
-};
-const BODY_PITCH: Vec3 = Vec3::new(FRAC_PI_2, 0.0, 0.0);
-
-/// `ModelQuadruped(legHeight, inflate)`: head, body, and four legs.
-fn quadruped(leg: u8, inflate: f32, layer: Layer) -> Vec<Part> {
-    let leg_top = 24.0 - f32::from(leg);
-    let leg_part = |x: f32, z: f32, phase: f32| {
-        part(
-            [0, 16],
-            [-2.0, 0.0, -2.0],
-            [4, leg, 4],
-            inflate,
-            [x, leg_top, z],
-            Role::Leg { phase },
-            layer,
-        )
-    };
-    vec![
-        part(
-            [0, 0],
-            [-4.0, -4.0, -8.0],
-            [8, 8, 8],
-            inflate,
-            [0.0, 18.0 - f32::from(leg), -6.0],
-            HEAD,
-            layer,
-        ),
-        rotated(
-            part(
-                [28, 8],
-                [-5.0, -10.0, -7.0],
-                [10, 16, 8],
-                inflate,
-                [0.0, 17.0 - f32::from(leg), 2.0],
-                Role::Fixed,
-                layer,
-            ),
-            BODY_PITCH,
-        ),
-        leg_part(-3.0, 7.0, 0.0),
-        leg_part(3.0, 7.0, PI),
-        leg_part(-3.0, -5.0, PI),
-        leg_part(3.0, -5.0, 0.0),
-    ]
+/// The models listed in `data/creature_models.ron`, read once.
+fn listed() -> &'static HashMap<MobType, Vec<Part>> {
+    static MODELS: OnceLock<HashMap<MobType, Vec<Part>>> = OnceLock::new();
+    MODELS.get_or_init(|| {
+        let models: HashMap<MobType, Vec<PartData>> =
+            ron::from_str(include_str!("../../../data/creature_models.ron"))
+                .unwrap_or_else(|error| panic!("data/creature_models.ron: {error}"));
+        models
+            .into_iter()
+            .map(|(kind, parts)| (kind, parts.into_iter().map(Part::from).collect()))
+            .collect()
+    })
 }
 
-/// The parts of a creature's model, or none for mobs without one.
+/// The parts of a creature's model: the listed boxes, then the tentacles
+/// that are placed by arithmetic.
 pub fn model(kind: MobType) -> Vec<Part> {
+    let listed_as = match kind {
+        MobType::PigZombie => MobType::Zombie,
+        kind => kind,
+    };
+    let mut parts = listed()[&listed_as].clone();
     match kind {
-        MobType::Pig => {
-            let mut parts = quadruped(6, 0.0, Layer::Base);
-            parts.extend(quadruped(6, 0.5, Layer::Saddle));
-            parts
-        }
-        MobType::Cow => cow(),
-        MobType::Sheep => sheep(),
-        MobType::Chicken => chicken(),
-        MobType::Squid => squid(),
-        MobType::Wolf => wolf(),
-        MobType::Zombie | MobType::PigZombie => biped(false),
-        MobType::Skeleton => biped(true),
-        MobType::Creeper => {
-            let mut parts = creeper(0.0, Layer::Base);
-            parts.extend(creeper(2.0, Layer::Charge));
-            parts
-        }
-        MobType::Spider => spider(),
-        MobType::Slime => slime(),
-        MobType::Ghast => ghast(),
+        MobType::Squid => parts.extend(squid_tentacles()),
+        MobType::Ghast => parts.extend(ghast_tentacles()),
+        _ => {}
     }
-}
-
-/// `ModelZombie`, or `ModelSkeleton`'s thinner limbs on the same frame.
-fn biped(skeleton: bool) -> Vec<Part> {
-    let base = Layer::Base;
-    let (limb_origin, limb) = if skeleton {
-        ([-1.0, 0.0, -1.0], [2, 12, 2])
-    } else {
-        ([-2.0, 0.0, -2.0], [4, 12, 4])
-    };
-    let (right_arm, left_arm) = if skeleton {
-        ([-1.0, -2.0, -1.0], [-1.0, -2.0, -1.0])
-    } else {
-        ([-3.0, -2.0, -2.0], [-1.0, -2.0, -2.0])
-    };
-    vec![
-        part(
-            [0, 0],
-            [-4.0, -8.0, -4.0],
-            [8, 8, 8],
-            0.0,
-            [0.0; 3],
-            HEAD,
-            base,
-        ),
-        part(
-            [16, 16],
-            [-4.0, 0.0, -2.0],
-            [8, 12, 4],
-            0.0,
-            [0.0; 3],
-            Role::Fixed,
-            base,
-        ),
-        part(
-            [40, 16],
-            right_arm,
-            limb,
-            0.0,
-            [-5.0, 2.0, 0.0],
-            Role::ZombieArm { right: true },
-            base,
-        ),
-        mirrored(part(
-            [40, 16],
-            left_arm,
-            limb,
-            0.0,
-            [5.0, 2.0, 0.0],
-            Role::ZombieArm { right: false },
-            base,
-        )),
-        part(
-            [0, 16],
-            limb_origin,
-            limb,
-            0.0,
-            [-2.0, 12.0, 0.0],
-            Role::Leg { phase: 0.0 },
-            base,
-        ),
-        mirrored(part(
-            [0, 16],
-            limb_origin,
-            limb,
-            0.0,
-            [2.0, 12.0, 0.0],
-            Role::Leg { phase: PI },
-            base,
-        )),
-        // `bipedHeadwear`, a half-pixel larger, drawn last.
-        part(
-            [32, 0],
-            [-4.0, -8.0, -4.0],
-            [8, 8, 8],
-            0.5,
-            [0.0; 3],
-            HEAD,
-            base,
-        ),
-    ]
-}
-
-/// `ModelCreeper(inflate)`: a head on a body over four short legs.
-fn creeper(inflate: f32, layer: Layer) -> Vec<Part> {
-    let leg = |x: f32, z: f32, phase: f32| {
-        part(
-            [0, 16],
-            [-2.0, 0.0, -2.0],
-            [4, 6, 4],
-            inflate,
-            [x, 16.0, z],
-            Role::Leg { phase },
-            layer,
-        )
-    };
-    vec![
-        part(
-            [0, 0],
-            [-4.0, -8.0, -4.0],
-            [8, 8, 8],
-            inflate,
-            [0.0, 4.0, 0.0],
-            HEAD,
-            layer,
-        ),
-        part(
-            [16, 16],
-            [-4.0, 0.0, -2.0],
-            [8, 12, 4],
-            inflate,
-            [0.0, 4.0, 0.0],
-            Role::Fixed,
-            layer,
-        ),
-        leg(-2.0, 4.0, 0.0),
-        leg(2.0, 4.0, PI),
-        leg(-2.0, -4.0, PI),
-        leg(2.0, -4.0, 0.0),
-    ]
-}
-
-/// `ModelSpider`: head, neck, abdomen, and four legs a side. The eyes pass
-/// redraws the head.
-fn spider() -> Vec<Part> {
-    let base = Layer::Base;
-    let head = |layer: Layer| {
-        part(
-            [32, 4],
-            [-4.0, -4.0, -8.0],
-            [8, 8, 8],
-            0.0,
-            [0.0, 15.0, -3.0],
-            HEAD,
-            layer,
-        )
-    };
-    let mut parts = vec![
-        head(base),
-        part(
-            [0, 0],
-            [-3.0, -3.0, -3.0],
-            [6, 6, 6],
-            0.0,
-            [0.0, 15.0, 0.0],
-            Role::Fixed,
-            base,
-        ),
-        part(
-            [0, 12],
-            [-5.0, -4.0, -6.0],
-            [10, 8, 12],
-            0.0,
-            [0.0, 15.0, 9.0],
-            Role::Fixed,
-            base,
-        ),
-    ];
-    for n in 1..=8u8 {
-        let left = n % 2 == 1;
-        let z = [2.0, 2.0, 1.0, 1.0, 0.0, 0.0, -1.0, -1.0][usize::from(n - 1)];
-        parts.push(part(
-            [18, 0],
-            [if left { -15.0 } else { -1.0 }, -1.0, -1.0],
-            [16, 2, 2],
-            0.0,
-            [if left { -4.0 } else { 4.0 }, 15.0, z],
-            Role::SpiderLeg(n),
-            base,
-        ));
-    }
-    parts.push(head(Layer::Eyes));
     parts
 }
 
-/// `ModelSlime(16)`, the core with its eyes and mouth, and the translucent
-/// `ModelSlime(0)` cube around it.
-fn slime() -> Vec<Part> {
-    let base = Layer::Base;
-    vec![
-        part(
-            [0, 16],
-            [-3.0, 17.0, -3.0],
-            [6, 6, 6],
-            0.0,
-            [0.0; 3],
-            Role::Fixed,
-            base,
-        ),
-        part(
-            [32, 0],
-            [-3.25, 18.0, -3.5],
-            [2, 2, 2],
-            0.0,
-            [0.0; 3],
-            Role::Fixed,
-            base,
-        ),
-        part(
-            [32, 4],
-            [1.25, 18.0, -3.5],
-            [2, 2, 2],
-            0.0,
-            [0.0; 3],
-            Role::Fixed,
-            base,
-        ),
-        part(
-            [32, 8],
-            [0.0, 21.0, -3.5],
-            [1, 1, 1],
-            0.0,
-            [0.0; 3],
-            Role::Fixed,
-            base,
-        ),
-        part(
-            [0, 0],
-            [-4.0, 16.0, -4.0],
-            [8, 8, 8],
-            0.0,
-            [0.0; 3],
-            Role::Fixed,
-            Layer::SlimeOuter,
-        ),
-    ]
+/// `ModelSquid`'s eight tentacles in a ring.
+fn squid_tentacles() -> impl Iterator<Item = Part> {
+    (0..8).map(|i| {
+        let around = f64::from(i) * std::f64::consts::PI * 2.0 / 8.0;
+        let facing = f64::from(i) * std::f64::consts::PI * -2.0 / 8.0 + std::f64::consts::FRAC_PI_2;
+        let pivot = [around.cos() as f32 * 5.0, 15.0, around.sin() as f32 * 5.0];
+        tentacle([48, 0], 18, pivot, facing as f32, Role::Tentacle)
+    })
 }
 
-/// `ModelGhast`: a cube trailing nine tentacles whose lengths come from
+/// `ModelGhast`'s nine tentacles, whose lengths come from
 /// `new Random(1660)`.
-fn ghast() -> Vec<Part> {
-    let mut parts = vec![part(
-        [0, 0],
-        [-8.0, -8.0, -8.0],
-        [16, 16, 16],
-        0.0,
-        [0.0, 8.0, 0.0],
-        Role::Fixed,
-        Layer::Base,
-    )];
+fn ghast_tentacles() -> impl Iterator<Item = Part> {
     let mut rng = crate::random::JavaRandom::new(1660);
-    for i in 0..9u8 {
+    (0..9u8).map(move |i| {
         let column = f32::from(i % 3) - f32::from(i / 3 % 2) * 0.5 + 0.25;
         let x = (column / 2.0 * 2.0 - 1.0) * 5.0;
         let z = (f32::from(i / 3) / 2.0 * 2.0 - 1.0) * 5.0;
         let length = rng.next_int(7) as u8 + 8;
-        parts.push(part(
-            [0, 0],
-            [-1.0, 0.0, -1.0],
-            [2, length, 2],
-            0.0,
-            [x, 15.0, z],
-            Role::GhastTentacle(i),
-            Layer::Base,
-        ));
-    }
-    parts
+        tentacle([0, 0], length, [x, 15.0, z], 0.0, Role::GhastTentacle(i))
+    })
 }
 
 /// `getHeldItem`: skeletons carry a bow and zombie pigmen a gold sword.
@@ -527,338 +279,6 @@ pub fn held_item_transform(full_3d: bool) -> Transform {
         * Mat4::from_translation(Vec3::new(-0.9375, -0.0625, 0.0));
     // The arm's frame is in pixels; these offsets are in blocks.
     Transform::from_matrix(Mat4::from_scale(Vec3::splat(16.0)) * into_hand * grip * sprite)
-}
-
-/// `ModelCow`: a deeper head with horns, a larger body, udders, and legs
-/// set a pixel wider.
-fn cow() -> Vec<Part> {
-    let mut parts = quadruped(12, 0.0, Layer::Base);
-    parts[0] = part(
-        [0, 0],
-        [-4.0, -4.0, -6.0],
-        [8, 8, 6],
-        0.0,
-        [0.0, 4.0, -8.0],
-        HEAD,
-        Layer::Base,
-    );
-    parts[1] = rotated(
-        part(
-            [18, 4],
-            [-6.0, -10.0, -7.0],
-            [12, 18, 10],
-            0.0,
-            [0.0, 5.0, 2.0],
-            Role::Fixed,
-            Layer::Base,
-        ),
-        BODY_PITCH,
-    );
-    for (leg, offset) in parts[2..6].iter_mut().zip([
-        Vec3::new(-1.0, 0.0, 0.0),
-        Vec3::new(1.0, 0.0, 0.0),
-        Vec3::new(-1.0, 0.0, -1.0),
-        Vec3::new(1.0, 0.0, -1.0),
-    ]) {
-        leg.pivot += offset;
-    }
-    parts.extend([
-        part(
-            [22, 0],
-            [-4.0, -5.0, -4.0],
-            [1, 3, 1],
-            0.0,
-            [0.0, 3.0, -7.0],
-            HEAD,
-            Layer::Base,
-        ),
-        part(
-            [22, 0],
-            [3.0, -5.0, -4.0],
-            [1, 3, 1],
-            0.0,
-            [0.0, 3.0, -7.0],
-            HEAD,
-            Layer::Base,
-        ),
-        rotated(
-            part(
-                [52, 0],
-                [-2.0, -3.0, 0.0],
-                [4, 6, 2],
-                0.0,
-                [0.0, 14.0, 6.0],
-                Role::Fixed,
-                Layer::Base,
-            ),
-            BODY_PITCH,
-        ),
-    ]);
-    parts
-}
-
-/// `ModelSheep2` for the shorn body and `ModelSheep1` for the fleece.
-fn sheep() -> Vec<Part> {
-    let mut parts = quadruped(12, 0.0, Layer::Base);
-    parts[0] = part(
-        [0, 0],
-        [-3.0, -4.0, -6.0],
-        [6, 6, 8],
-        0.0,
-        [0.0, 6.0, -8.0],
-        HEAD,
-        Layer::Base,
-    );
-    parts[1] = rotated(
-        part(
-            [28, 8],
-            [-4.0, -10.0, -7.0],
-            [8, 16, 6],
-            0.0,
-            [0.0, 5.0, 2.0],
-            Role::Fixed,
-            Layer::Base,
-        ),
-        BODY_PITCH,
-    );
-    let fleece_leg = |x: f32, z: f32, phase: f32| {
-        part(
-            [0, 16],
-            [-2.0, 0.0, -2.0],
-            [4, 6, 4],
-            0.5,
-            [x, 12.0, z],
-            Role::Leg { phase },
-            Layer::Fleece,
-        )
-    };
-    parts.extend([
-        part(
-            [0, 0],
-            [-3.0, -4.0, -4.0],
-            [6, 6, 6],
-            0.6,
-            [0.0, 6.0, -8.0],
-            HEAD,
-            Layer::Fleece,
-        ),
-        rotated(
-            part(
-                [28, 8],
-                [-4.0, -10.0, -7.0],
-                [8, 16, 6],
-                1.75,
-                [0.0, 5.0, 2.0],
-                Role::Fixed,
-                Layer::Fleece,
-            ),
-            BODY_PITCH,
-        ),
-        fleece_leg(-3.0, 7.0, 0.0),
-        fleece_leg(3.0, 7.0, PI),
-        fleece_leg(-3.0, -5.0, PI),
-        fleece_leg(3.0, -5.0, 0.0),
-    ]);
-    parts
-}
-
-fn chicken() -> Vec<Part> {
-    let head = Role::Head {
-        inverted_pitch: true,
-    };
-    let base = Layer::Base;
-    vec![
-        part(
-            [0, 0],
-            [-2.0, -6.0, -2.0],
-            [4, 6, 3],
-            0.0,
-            [0.0, 15.0, -4.0],
-            head,
-            base,
-        ),
-        part(
-            [14, 0],
-            [-2.0, -4.0, -4.0],
-            [4, 2, 2],
-            0.0,
-            [0.0, 15.0, -4.0],
-            head,
-            base,
-        ),
-        part(
-            [14, 4],
-            [-1.0, -2.0, -3.0],
-            [2, 2, 2],
-            0.0,
-            [0.0, 15.0, -4.0],
-            head,
-            base,
-        ),
-        rotated(
-            part(
-                [0, 9],
-                [-3.0, -4.0, -3.0],
-                [6, 8, 6],
-                0.0,
-                [0.0, 16.0, 0.0],
-                Role::Fixed,
-                base,
-            ),
-            BODY_PITCH,
-        ),
-        part(
-            [26, 0],
-            [-1.0, 0.0, -3.0],
-            [3, 5, 3],
-            0.0,
-            [-2.0, 19.0, 1.0],
-            Role::Leg { phase: 0.0 },
-            base,
-        ),
-        part(
-            [26, 0],
-            [-1.0, 0.0, -3.0],
-            [3, 5, 3],
-            0.0,
-            [1.0, 19.0, 1.0],
-            Role::Leg { phase: PI },
-            base,
-        ),
-        part(
-            [24, 13],
-            [0.0, 0.0, -3.0],
-            [1, 4, 6],
-            0.0,
-            [-4.0, 13.0, 0.0],
-            Role::Wing { sign: 1.0 },
-            base,
-        ),
-        part(
-            [24, 13],
-            [-1.0, 0.0, -3.0],
-            [1, 4, 6],
-            0.0,
-            [4.0, 13.0, 0.0],
-            Role::Wing { sign: -1.0 },
-            base,
-        ),
-    ]
-}
-
-/// `ModelSquid`: the body and eight tentacles in a ring.
-fn squid() -> Vec<Part> {
-    let mut parts = vec![part(
-        [0, 0],
-        [-6.0, -8.0, -6.0],
-        [12, 16, 12],
-        0.0,
-        [0.0, 8.0, 0.0],
-        Role::Fixed,
-        Layer::Base,
-    )];
-    for i in 0..8 {
-        let around = f64::from(i) * std::f64::consts::PI * 2.0 / 8.0;
-        let facing = f64::from(i) * std::f64::consts::PI * -2.0 / 8.0 + std::f64::consts::FRAC_PI_2;
-        parts.push(rotated(
-            part(
-                [48, 0],
-                [-1.0, 0.0, -1.0],
-                [2, 18, 2],
-                0.0,
-                [around.cos() as f32 * 5.0, 15.0, around.sin() as f32 * 5.0],
-                Role::Tentacle,
-                Layer::Base,
-            ),
-            Vec3::new(0.0, facing as f32, 0.0),
-        ));
-    }
-    parts
-}
-
-fn wolf() -> Vec<Part> {
-    let head = Role::Wolf(WolfPart::Head);
-    let base = Layer::Base;
-    let leg = |n: u8| {
-        part(
-            [0, 18],
-            [-1.0, 0.0, -1.0],
-            [2, 8, 2],
-            0.0,
-            [0.0; 3],
-            Role::Wolf(WolfPart::Leg(n)),
-            base,
-        )
-    };
-    vec![
-        part(
-            [0, 0],
-            [-3.0, -3.0, -2.0],
-            [6, 6, 4],
-            0.0,
-            [-1.0, 13.5, -7.0],
-            head,
-            base,
-        ),
-        part(
-            [18, 14],
-            [-4.0, -2.0, -3.0],
-            [6, 9, 6],
-            0.0,
-            [0.0, 14.0, 2.0],
-            Role::Wolf(WolfPart::Body),
-            base,
-        ),
-        part(
-            [21, 0],
-            [-4.0, -3.0, -3.0],
-            [8, 6, 7],
-            0.0,
-            [-1.0, 14.0, 2.0],
-            Role::Wolf(WolfPart::Mane),
-            base,
-        ),
-        leg(1),
-        leg(2),
-        leg(3),
-        leg(4),
-        part(
-            [9, 18],
-            [-1.0, 0.0, -1.0],
-            [2, 8, 2],
-            0.0,
-            [-1.0, 12.0, 8.0],
-            Role::Wolf(WolfPart::Tail),
-            base,
-        ),
-        part(
-            [16, 14],
-            [-3.0, -5.0, 0.0],
-            [2, 2, 1],
-            0.0,
-            [-1.0, 13.5, -7.0],
-            head,
-            base,
-        ),
-        part(
-            [16, 14],
-            [1.0, -5.0, 0.0],
-            [2, 2, 1],
-            0.0,
-            [-1.0, 13.5, -7.0],
-            head,
-            base,
-        ),
-        part(
-            [0, 10],
-            [-2.0, 0.0, -5.0],
-            [3, 3, 4],
-            0.0,
-            [-0.5, 13.5, -7.0],
-            head,
-            base,
-        ),
-    ]
 }
 
 /// `ModelRenderer.render`: rotate about Z, then Y, then X.

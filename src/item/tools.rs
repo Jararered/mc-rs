@@ -7,6 +7,8 @@
 use super::Item;
 use super::ItemStack;
 use crate::block::blocks::Block;
+use crate::block::definition::Digger;
+use crate::block::definition::properties;
 use crate::block::properties::mine_progress_per_tick;
 
 /// `EnumToolMaterial` harvest level and `efficiencyOnProperMaterial`.
@@ -119,53 +121,9 @@ pub fn is_hoe(item: Item) -> bool {
     matches!(tool_type(item), Some(ToolType::Hoe(_)))
 }
 
-/// `ItemPickaxe.blocksEffectiveAgainst`. Obsidian, redstone ore, furnaces,
-/// dispensers, bricks, and glowstone are absent on purpose.
-fn pick_effective(block: Block) -> bool {
-    matches!(
-        block,
-        Block::Cobblestone
-            | Block::DoubleStoneSlab
-            | Block::StoneSlab
-            | Block::Stone
-            | Block::Sandstone
-            | Block::MossyCobblestone
-            | Block::IronOre
-            | Block::IronBlock
-            | Block::CoalOre
-            | Block::GoldBlock
-            | Block::GoldOre
-            | Block::DiamondOre
-            | Block::DiamondBlock
-            | Block::Ice
-            | Block::Netherrack
-            | Block::LapisOre
-            | Block::LapisBlock
-    )
-}
-
-/// `ItemAxe.blocksEffectiveAgainst`. Crafting tables, note blocks, jukeboxes,
-/// and pumpkins are wood or pumpkin and are not in this list.
-fn axe_effective(block: Block) -> bool {
-    block == Block::Wood
-        || block.is_chest()
-        || matches!(block, Block::WoodenPlanks | Block::Bookshelf)
-}
-
-/// `ItemSpade.blocksEffectiveAgainst`, which lists both the snow layer and
-/// the snow block.
-fn shovel_effective(block: Block) -> bool {
-    matches!(
-        block,
-        Block::Grass
-            | Block::Dirt
-            | Block::Sand
-            | Block::Gravel
-            | Block::SnowLayer
-            | Block::Snow
-            | Block::Farmland
-            | Block::Clay
-    )
+/// Whether `digger`'s `blocksEffectiveAgainst` lists the block.
+fn digs(block: Block, digger: Digger) -> bool {
+    properties(block).tool == Some(digger)
 }
 
 /// `Item.getStrVsBlock` for the held stack. An empty hand is `1.0`.
@@ -174,9 +132,9 @@ pub fn str_vs_block(tool: Option<ItemStack>, block: Block) -> f32 {
         return 1.0;
     };
     match tool_type(tool.item()) {
-        Some(ToolType::Pick(tier)) if pick_effective(block) => tier.efficiency(),
-        Some(ToolType::Axe(tier)) if axe_effective(block) => tier.efficiency(),
-        Some(ToolType::Shovel(tier)) if shovel_effective(block) => tier.efficiency(),
+        Some(ToolType::Pick(tier)) if digs(block, Digger::Pick) => tier.efficiency(),
+        Some(ToolType::Axe(tier)) if digs(block, Digger::Axe) => tier.efficiency(),
+        Some(ToolType::Shovel(tier)) if digs(block, Digger::Shovel) => tier.efficiency(),
         // `ItemSword.getStrVsBlock` is 15 on web and 1.5 on everything else.
         Some(ToolType::Sword(_)) if block == Block::Cobweb => 15.0,
         Some(ToolType::Sword(_)) => 1.5,
@@ -198,7 +156,11 @@ pub fn can_harvest(tool: Option<ItemStack>, block: Block) -> bool {
 
 fn tool_can_harvest(item: Item, block: Block) -> bool {
     match tool_type(item) {
-        Some(ToolType::Pick(tier)) => pick_can_harvest(tier, block),
+        // `ItemPickaxe.canHarvestBlock`: rock and iron take any pick, and the
+        // ores and their blocks ask for a level.
+        Some(ToolType::Pick(tier)) => properties(block)
+            .pick_level
+            .is_some_and(|level| tier.level() >= level),
         // `ItemSpade.canHarvestBlock`: the snow layer and the snow block.
         Some(ToolType::Shovel(_)) => matches!(block, Block::Snow | Block::SnowLayer),
         // `ItemSword` and `ItemShears` harvest web only. Leaves are already
@@ -206,50 +168,6 @@ fn tool_can_harvest(item: Item, block: Block) -> bool {
         Some(ToolType::Sword(_) | ToolType::Shears) => block == Block::Cobweb,
         _ => false,
     }
-}
-
-/// `ItemPickaxe.canHarvestBlock`. Rock and iron fall through to any pick.
-/// Iron blocks and the tiered ores are handled before that fallthrough.
-fn pick_can_harvest(tier: ToolTier, block: Block) -> bool {
-    let level = tier.level();
-    if block == Block::Obsidian {
-        return level == 3;
-    }
-    if matches!(block, Block::DiamondBlock | Block::DiamondOre) {
-        return level >= 2;
-    }
-    if matches!(block, Block::GoldBlock | Block::GoldOre) {
-        return level >= 2;
-    }
-    if matches!(block, Block::IronBlock | Block::IronOre) {
-        return level >= 1;
-    }
-    if matches!(block, Block::LapisBlock | Block::LapisOre) {
-        return level >= 1;
-    }
-    if matches!(block, Block::RedstoneOre | Block::LitRedstoneOre) {
-        return level >= 2;
-    }
-    matches!(
-        block,
-        Block::Stone
-            | Block::Cobblestone
-            | Block::Bedrock
-            | Block::CoalOre
-            | Block::Dispenser
-            | Block::Sandstone
-            | Block::DoubleStoneSlab
-            | Block::StoneSlab
-            | Block::Bricks
-            | Block::MossyCobblestone
-            | Block::Furnace
-            | Block::LitFurnace
-            | Block::CobblestoneStairs
-            | Block::StonePressurePlate
-            | Block::IronDoor
-            | Block::Netherrack
-            | Block::Glowstone
-    )
 }
 
 /// Damage from `onBlockDestroyed`. Picks, axes, and shovels always lose one

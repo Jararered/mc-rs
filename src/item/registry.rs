@@ -3,6 +3,9 @@
 use crate::block::blocks::Block;
 use num_enum::FromPrimitive;
 use num_enum::IntoPrimitive;
+use serde::Deserialize;
+use serde::de::IntoDeserializer;
+use serde::de::value::Error as NameError;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ItemData {
@@ -49,7 +52,7 @@ impl ItemProperties {
 /// Standalone variants use their Beta item ids as discriminants. Block item ids
 /// are represented by `BlockOrUnknown` and resolved through [`Self::block`].
 #[repr(u16)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, FromPrimitive, IntoPrimitive)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, FromPrimitive, IntoPrimitive, Deserialize)]
 pub enum Item {
     IronShovel = 256,
     IronPickaxe = 257,
@@ -158,6 +161,7 @@ pub enum Item {
     Record13 = 2256,
     RecordCat = 2257,
     #[num_enum(catch_all)]
+    #[serde(skip)]
     BlockOrUnknown(u16),
 }
 const fn standalone(item: Item, max_stack_size: u8, data: ItemData) -> ItemProperties {
@@ -174,6 +178,15 @@ impl Item {
         block
             .has_item_id()
             .then(|| Self::from(u16::from(block.as_u8())))
+    }
+
+    /// The item a data file names: a standalone item's variant, or else a
+    /// block's, as [`Display`](std::fmt::Display) writes them.
+    pub fn named(name: &str) -> Option<Self> {
+        let name = || IntoDeserializer::<NameError>::into_deserializer(name);
+        Self::deserialize(name())
+            .ok()
+            .or_else(|| Self::from_block(Block::deserialize(name()).ok()?))
     }
 
     pub fn as_u16(self) -> u16 {

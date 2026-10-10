@@ -1,0 +1,124 @@
+#![enable(implicit_some)]
+// Beta 1.7.3's `Block` registry: one row per block id, in id order. `base`
+// is a preset and the other fields are what differs from it:
+//
+//   Solid         an opaque, colliding cube that drops when broken by hand
+//   ToolOnly      the same, dropping only to the right tool
+//   NonColliding  no collision box, not opaque, lets all light through
+//   Fluid         NonColliding, not targetable, and replaced by placement
+//   CrossedPlant  NonColliding, drawn as two crossed quads
+//
+// Fluid and CrossedPlant are not `Material.isSolid`; `solid_material` says so
+// for anything else. `collision` and `selection` are (min, max) corners.
+//
+//   burn        `BlockFire.setBurnRate`: chance to encourage fire, ability to
+//               catch it
+//   resistance  `setResistance`'s argument where the block has one; the rest
+//               resist by their hardness
+//   tool        whose `blocksEffectiveAgainst` lists the block. Obsidian,
+//               redstone ore, furnaces, dispensers, bricks and glowstone are
+//               absent from the pickaxe's list on purpose, as crafting
+//               tables, note blocks, jukeboxes and pumpkins are from the axe's
+//   pick_level  the lowest pickaxe `ItemPickaxe.canHarvestBlock` accepts:
+//               0 wood or gold, 1 stone, 2 iron, 3 diamond
+//
+// The torch's selection box is computed from its tilt in `definition.rs`.
+{
+    Air: (base: Fluid),
+    Stone: (base: ToolOnly, hardness: 1.5, resistance: 10, tool: Pick, pick_level: 0),
+    Grass: (base: Solid, hardness: 0.6, tool: Shovel),
+    Dirt: (base: Solid, hardness: 0.5, tool: Shovel),
+    Cobblestone: (base: ToolOnly, hardness: 2, resistance: 10, tool: Pick, pick_level: 0),
+    WoodenPlanks: (base: Solid, hardness: 2, burn: (5, 20), resistance: 5, tool: Axe),
+    Sapling: (base: CrossedPlant, selection: ((0.1, 0, 0.1), (0.9, 0.8, 0.9))),
+    Bedrock: (base: ToolOnly, hardness: -1, resistance: 6000000, pick_level: 0),
+    FlowingWater: (base: Fluid, hardness: 100, light_opacity: 3),
+    Water: (base: Fluid, hardness: 100, light_opacity: 3),
+    FlowingLava: (base: Fluid, light_opacity: 15, light_emission: 15),
+    Lava: (base: Fluid, light_opacity: 15, light_emission: 15),
+    Sand: (base: Solid, hardness: 0.5, tool: Shovel),
+    Gravel: (base: Solid, hardness: 0.6, tool: Shovel),
+    GoldOre: (base: ToolOnly, hardness: 3, tool: Pick, pick_level: 2),
+    IronOre: (base: ToolOnly, hardness: 3, tool: Pick, pick_level: 1),
+    CoalOre: (base: ToolOnly, hardness: 3, tool: Pick, pick_level: 0),
+    Wood: (base: Solid, hardness: 2, burn: (5, 5), tool: Axe),
+    Leaves: (base: Solid, hardness: 0.2, opaque_cube: false, light_opacity: 1, burn: (30, 60)),
+    Sponge: (base: Solid, hardness: 0.6),
+    Glass: (base: Solid, hardness: 0.3, opaque_cube: false, light_opacity: 0),
+    LapisOre: (base: ToolOnly, hardness: 3, tool: Pick, pick_level: 1),
+    LapisBlock: (base: ToolOnly, hardness: 3, tool: Pick, pick_level: 1),
+    Dispenser: (base: ToolOnly, hardness: 3.5, pick_level: 0),
+    Sandstone: (base: ToolOnly, hardness: 0.8, tool: Pick, pick_level: 0),
+    NoteBlock: (base: Solid, hardness: 0.8),
+    Bed: (base: Solid, hardness: 0.2, opaque_cube: false, light_opacity: 0, collision: ((0, 0, 0), (1, 0.5625, 1)), selection: ((0, 0, 0), (1, 0.5625, 1))),
+    PoweredRail: (base: NonColliding, hardness: 0.7, selection: ((0, 0, 0), (1, 0.125, 1)), solid_material: false),
+    DetectorRail: (base: NonColliding, hardness: 0.7, selection: ((0, 0, 0), (1, 0.125, 1)), solid_material: false),
+    StickyPiston: (base: Solid, hardness: 0.5),
+    Cobweb: (base: NonColliding, hardness: 4, harvestable_by_hand: false, light_opacity: 1),
+    TallGrass: (base: CrossedPlant, selection: ((0.1, 0, 0.1), (0.9, 0.8, 0.9)), burn: (60, 100)),
+    DeadBush: (base: CrossedPlant, selection: ((0.1, 0, 0.1), (0.9, 0.8, 0.9))),
+    Piston: (base: Solid, hardness: 0.5),
+    PistonHead: (base: Solid, hardness: 0.5),
+    Wool: (base: Solid, hardness: 0.8, burn: (30, 60)),
+    MovingPiston: (base: Solid, hardness: -1, targetable: false),
+    Dandelion: (base: CrossedPlant, selection: ((0.3, 0, 0.3), (0.7, 0.6, 0.7))),
+    Rose: (base: CrossedPlant, selection: ((0.3, 0, 0.3), (0.7, 0.6, 0.7))),
+    BrownMushroom: (base: CrossedPlant, light_emission: 1, selection: ((0.3, 0, 0.3), (0.7, 0.4, 0.7))),
+    RedMushroom: (base: CrossedPlant, selection: ((0.3, 0, 0.3), (0.7, 0.4, 0.7))),
+    GoldBlock: (base: ToolOnly, hardness: 3, resistance: 10, tool: Pick, pick_level: 2),
+    IronBlock: (base: ToolOnly, hardness: 5, resistance: 10, tool: Pick, pick_level: 1),
+    DoubleStoneSlab: (base: ToolOnly, hardness: 2, resistance: 10, tool: Pick, pick_level: 0),
+    StoneSlab: (base: ToolOnly, hardness: 2, opaque_cube: false, collision: ((0, 0, 0), (1, 0.5, 1)), selection: ((0, 0, 0), (1, 0.5, 1)), resistance: 10, tool: Pick, pick_level: 0),
+    Bricks: (base: ToolOnly, hardness: 2, resistance: 10, pick_level: 0),
+    Tnt: (base: Solid, burn: (15, 100)),
+    Bookshelf: (base: Solid, hardness: 1.5, burn: (30, 20), tool: Axe),
+    MossyCobblestone: (base: ToolOnly, hardness: 2, resistance: 10, tool: Pick, pick_level: 0),
+    Obsidian: (base: ToolOnly, hardness: 10, resistance: 2000, pick_level: 3),
+    Torch: (base: NonColliding, light_emission: 14, solid_material: false),
+    Fire: (base: CrossedPlant, targetable: false, replaceable: true, light_emission: 15),
+    MobSpawner: (base: ToolOnly, hardness: 5, opaque_cube: false),
+    WoodenStairs: (base: Solid, hardness: 2, opaque_cube: false, burn: (5, 20), resistance: 5),
+    Chest: (base: Solid, hardness: 2.5, opaque_cube: false, tool: Axe),
+    RedstoneWire: (base: NonColliding, solid_material: false),
+    DiamondOre: (base: ToolOnly, hardness: 3, tool: Pick, pick_level: 2),
+    DiamondBlock: (base: ToolOnly, hardness: 5, resistance: 10, tool: Pick, pick_level: 2),
+    CraftingTable: (base: Solid, hardness: 2.5),
+    Crops: (base: NonColliding, selection: ((0, 0, 0), (1, 0.25, 1)), solid_material: false),
+    Farmland: (base: Solid, hardness: 0.6, opaque_cube: false, selection: ((0, 0, 0), (1, 0.9375, 1)), tool: Shovel),
+    Furnace: (base: ToolOnly, hardness: 3.5, pick_level: 0),
+    LitFurnace: (base: ToolOnly, hardness: 3.5, light_emission: 13, pick_level: 0),
+    StandingSign: (base: NonColliding, hardness: 1),
+    WoodenDoor: (base: Solid, hardness: 3, opaque_cube: false, light_opacity: 0),
+    Ladder: (base: Solid, hardness: 0.4, opaque_cube: false, light_opacity: 0, solid_material: false),
+    Rail: (base: NonColliding, hardness: 0.7, selection: ((0, 0, 0), (1, 0.125, 1)), solid_material: false),
+    CobblestoneStairs: (base: ToolOnly, hardness: 2, opaque_cube: false, resistance: 10, pick_level: 0),
+    WallSign: (base: NonColliding, hardness: 1),
+    Lever: (base: NonColliding, hardness: 0.5, solid_material: false),
+    StonePressurePlate: (base: NonColliding, hardness: 0.5, harvestable_by_hand: false, pick_level: 0),
+    IronDoor: (base: ToolOnly, hardness: 5, opaque_cube: false, light_opacity: 0, pick_level: 0),
+    WoodenPressurePlate: (base: NonColliding, hardness: 0.5),
+    RedstoneOre: (base: ToolOnly, hardness: 3, pick_level: 2),
+    LitRedstoneOre: (base: ToolOnly, hardness: 3, light_emission: 9, pick_level: 2),
+    UnlitRedstoneTorch: (base: NonColliding, solid_material: false),
+    RedstoneTorch: (base: NonColliding, light_emission: 7, solid_material: false),
+    StoneButton: (base: NonColliding, hardness: 0.5, solid_material: false),
+    SnowLayer: (base: NonColliding, hardness: 0.1, harvestable_by_hand: false, blocks_movement: true, selection: ((0, 0, 0), (1, 0.125, 1)), solid_material: false, tool: Shovel),
+    Ice: (base: ToolOnly, hardness: 0.5, opaque_cube: false, slipperiness: 0.98, light_opacity: 3, tool: Pick),
+    Snow: (base: ToolOnly, hardness: 0.2, tool: Shovel),
+    Cactus: (base: Solid, hardness: 0.4, opaque_cube: false, light_opacity: 0, collision: ((0.0625, 0, 0.0625), (0.9375, 0.9375, 0.9375)), selection: ((0.0625, 0, 0.0625), (0.9375, 1, 0.9375))),
+    Clay: (base: Solid, hardness: 0.6, tool: Shovel),
+    SugarCane: (base: CrossedPlant, selection: ((0.125, 0, 0.125), (0.875, 1, 0.875))),
+    Jukebox: (base: Solid, hardness: 2, resistance: 10),
+    Fence: (base: Solid, hardness: 2, opaque_cube: false, light_opacity: 0, collision: ((0, 0, 0), (1, 1.5, 1)), burn: (5, 20), resistance: 5),
+    Pumpkin: (base: Solid, hardness: 1),
+    Netherrack: (base: ToolOnly, hardness: 0.4, tool: Pick, pick_level: 0),
+    SoulSand: (base: Solid, hardness: 0.5, collision: ((0, 0, 0), (1, 0.875, 1))),
+    Glowstone: (base: ToolOnly, hardness: 0.3, light_emission: 15, pick_level: 0),
+    NetherPortal: (base: NonColliding, hardness: -1, targetable: false, light_emission: 11, solid_material: false),
+    JackOLantern: (base: Solid, hardness: 1, light_emission: 15),
+    Cake: (base: Solid, hardness: 0.5, opaque_cube: false, light_opacity: 0, collision: ((0.0625, 0, 0.0625), (0.9375, 0.5, 0.9375)), selection: ((0.0625, 0, 0.0625), (0.9375, 0.5, 0.9375))),
+    Repeater: (base: Solid, opaque_cube: false, light_opacity: 0, collision: ((0, 0, 0), (1, 0.125, 1)), selection: ((0, 0, 0), (1, 0.125, 1)), solid_material: false),
+    PoweredRepeater: (base: Solid, opaque_cube: false, light_opacity: 0, light_emission: 9, collision: ((0, 0, 0), (1, 0.125, 1)), selection: ((0, 0, 0), (1, 0.125, 1)), solid_material: false),
+    LockedChest: (base: Solid, light_emission: 15),
+    Trapdoor: (base: Solid, hardness: 3, opaque_cube: false, light_opacity: 0),
+}

@@ -2338,6 +2338,7 @@ dependencies = [
  "flate2",
  "libc",
  "num_enum",
+ "ron",
  "serde",
  "serde_json",
 ]

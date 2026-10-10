@@ -6,6 +6,8 @@
 use super::blocks::Block;
 use super::direction::Direction;
 use super::properties::torch_selection_bounds;
+use serde::Deserialize;
+use std::collections::HashMap;
 use std::sync::LazyLock;
 
 pub type BlockBounds = ([f32; 3], [f32; 3]);
@@ -24,13 +26,34 @@ pub struct BlockProperties {
     pub crossed_plant: bool,
     pub light_opacity: u8,
     pub light_emission: u8,
+    /// `BlockFire.setBurnRate`: `chanceToEncourageFire` (how readily fire
+    /// appears beside the block) and `abilityToCatchFire` (how readily it
+    /// burns away).
+    pub burn: (u8, u8),
+    /// `setResistance`'s argument, for a block that has one of its own.
+    pub resistance: Option<f32>,
+    /// Beta's `Material.isSolid` classification.
+    pub solid_material: bool,
+    /// The tool whose `blocksEffectiveAgainst` lists the block.
+    pub tool: Option<Digger>,
+    /// The lowest pickaxe harvest level `ItemPickaxe.canHarvestBlock`
+    /// accepts, for a block only a pickaxe harvests.
+    pub pick_level: Option<u8>,
+}
+
+/// A tool with a list of blocks it digs quickly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+pub enum Digger {
+    Pick,
+    Axe,
+    Shovel,
 }
 
 impl BlockProperties {
     pub const FULL_BOUNDS: BlockBounds = ([0.0; 3], [1.0; 3]);
 
-    /// Default opaque, colliding cube behavior. [`build`] overrides only the
-    /// fields which make a block special.
+    /// Default opaque, colliding cube behavior. A row of `data/blocks.ron`
+    /// overrides only the fields which make a block special.
     pub const fn solid(hardness: f32) -> Self {
         Self {
             hardness,
@@ -45,6 +68,11 @@ impl BlockProperties {
             crossed_plant: false,
             light_opacity: 15,
             light_emission: 0,
+            burn: (0, 0),
+            resistance: None,
+            solid_material: true,
+            tool: None,
+            pick_level: None,
         }
     }
 
@@ -79,247 +107,75 @@ impl BlockProperties {
     }
 }
 
-/// The properties of one block id, from Beta's `Block` registry. Every Beta
-/// id has an arm; [`Block::Unknown`] is the only fallback.
-fn build(block: Block) -> BlockProperties {
-    use BlockProperties as P;
-    match block {
-        Block::Air => P::fluid(0.0),
-        Block::Stone => P::tool_only(1.5),
-        Block::Grass | Block::Gravel | Block::Sponge | Block::Clay => P::solid(0.6),
-        Block::Farmland => P {
-            opaque_cube: false,
-            selection_bounds: ([0.0; 3], [1.0, 15.0 / 16.0, 1.0]),
-            ..P::solid(0.6)
-        },
-        Block::Dirt | Block::Sand => P::solid(0.5),
-        // `BlockSoulSand`: the collision box is an eighth short.
-        Block::SoulSand => P {
-            collision_bounds: Some(([0.0; 3], [1.0, 0.875, 1.0])),
-            ..P::solid(0.5)
-        },
-        Block::Cobblestone | Block::DoubleStoneSlab | Block::Bricks | Block::MossyCobblestone => {
-            P::tool_only(2.0)
-        }
-        Block::WoodenPlanks | Block::Wood | Block::Jukebox => P::solid(2.0),
-        Block::Bedrock => P::tool_only(-1.0),
-        Block::Sandstone => P::tool_only(0.8),
-        Block::NoteBlock | Block::Wool => P::solid(0.8),
-        Block::GoldBlock | Block::GoldOre | Block::IronOre | Block::CoalOre => P::tool_only(3.0),
-        Block::LapisOre | Block::LapisBlock | Block::DiamondOre | Block::RedstoneOre => {
-            P::tool_only(3.0)
-        }
-        Block::LitRedstoneOre => P {
-            light_emission: 9,
-            ..P::tool_only(3.0)
-        },
-        Block::IronBlock | Block::DiamondBlock => P::tool_only(5.0),
-        Block::Bookshelf => P::solid(1.5),
-        Block::Obsidian => P::tool_only(10.0),
-        Block::Tnt => P::solid(0.0),
-        Block::MobSpawner => P {
-            opaque_cube: false,
-            ..P::tool_only(5.0)
-        },
-        Block::Glass => P {
-            opaque_cube: false,
-            light_opacity: 0,
-            ..P::solid(0.3)
-        },
-        Block::Dispenser => P::tool_only(3.5),
-        Block::Bed => P {
-            opaque_cube: false,
-            light_opacity: 0,
-            selection_bounds: ([0.0; 3], [1.0, 9.0 / 16.0, 1.0]),
-            collision_bounds: Some(([0.0; 3], [1.0, 9.0 / 16.0, 1.0])),
-            ..P::solid(0.2)
-        },
-        Block::Rail | Block::PoweredRail | Block::DetectorRail => P {
-            selection_bounds: ([0.0; 3], [1.0, 0.125, 1.0]),
-            ..P::non_colliding(0.7)
-        },
-        Block::Piston | Block::StickyPiston | Block::PistonHead => P::solid(0.5),
-        Block::MovingPiston => P {
-            targetable: false,
-            ..P::solid(-1.0)
-        },
-        Block::Cobweb => P {
-            harvestable_by_hand: false,
-            light_opacity: 1,
-            ..P::non_colliding(4.0)
-        },
-        Block::StoneSlab => P {
-            opaque_cube: false,
-            collision_bounds: Some(([0.0; 3], [1.0, 0.5, 1.0])),
-            selection_bounds: ([0.0; 3], [1.0, 0.5, 1.0]),
-            ..P::tool_only(2.0)
-        },
-        Block::CobblestoneStairs => P {
-            opaque_cube: false,
-            ..P::tool_only(2.0)
-        },
-        Block::WoodenStairs => P {
-            opaque_cube: false,
-            ..P::solid(2.0)
-        },
-        Block::SnowLayer => P {
-            opaque_cube: false,
-            collision_bounds: None,
-            selection_bounds: ([0.0; 3], [1.0, 0.125, 1.0]),
-            light_opacity: 0,
-            ..P::tool_only(0.1)
-        },
-        Block::Ice => P {
-            opaque_cube: false,
-            slipperiness: 0.98,
-            light_opacity: 3,
-            ..P::tool_only(0.5)
-        },
-        Block::Snow => P::tool_only(0.2),
-        Block::Netherrack => P::tool_only(0.4),
-        // Water and lava.
-        Block::FlowingWater | Block::Water => P {
-            light_opacity: 3,
-            ..P::fluid(100.0)
-        },
-        Block::FlowingLava | Block::Lava => P {
-            light_opacity: 15,
-            light_emission: 15,
-            ..P::fluid(0.0)
-        },
-        // Plants.
-        Block::Leaves => P {
-            opaque_cube: false,
-            light_opacity: 1,
-            ..P::solid(0.2)
-        },
-        Block::Sapling | Block::TallGrass | Block::DeadBush => {
-            crossed_plant(([0.1, 0.0, 0.1], [0.9, 0.8, 0.9]))
-        }
-        Block::Dandelion | Block::Rose => crossed_plant(([0.3, 0.0, 0.3], [0.7, 0.6, 0.7])),
-        Block::RedMushroom => crossed_plant(([0.3, 0.0, 0.3], [0.7, 0.4, 0.7])),
-        Block::BrownMushroom => BlockProperties {
-            light_emission: 1,
-            ..crossed_plant(([0.3, 0.0, 0.3], [0.7, 0.4, 0.7]))
-        },
-        Block::SugarCane => crossed_plant(([0.125, 0.0, 0.125], [0.875, 1.0, 0.875])),
-        // `BlockCrops`: a quarter-block selection box and no collision.
-        Block::Crops => P {
-            selection_bounds: ([0.0; 3], [1.0, 0.25, 1.0]),
-            ..P::non_colliding(0.0)
-        },
-        Block::Cactus => P {
-            opaque_cube: false,
-            light_opacity: 0,
-            collision_bounds: Some(([0.0625, 0.0, 0.0625], [0.9375, 0.9375, 0.9375])),
-            selection_bounds: ([0.0625, 0.0, 0.0625], [0.9375, 1.0, 0.9375]),
-            ..P::solid(0.4)
-        },
-        // Light sources. Beta stores `(int)(15 * brightness)`.
-        Block::Torch => P {
-            light_emission: 14,
-            selection_bounds: oriented_bounds(Block::Torch, 0),
-            ..P::non_colliding(0.0)
-        },
-        Block::Fire => P {
-            light_emission: 15,
-            targetable: false,
-            replaceable: true,
-            crossed_plant: true,
-            ..P::non_colliding(0.0)
-        },
-        Block::Glowstone => P {
-            light_emission: 15,
-            ..P::tool_only(0.3)
-        },
-        Block::JackOLantern => P {
-            light_emission: 15,
-            ..P::solid(1.0)
-        },
-        Block::RedstoneTorch => P {
-            light_emission: 7,
-            ..P::non_colliding(0.0)
-        },
-        Block::UnlitRedstoneTorch | Block::RedstoneWire => P::non_colliding(0.0),
-        Block::NetherPortal => P {
-            light_emission: 11,
-            targetable: false,
-            ..P::non_colliding(-1.0)
-        },
-        Block::LockedChest => P {
-            light_emission: 15,
-            ..P::solid(0.0)
-        },
-        // Oriented blocks.
-        Block::Chest => P {
-            opaque_cube: false,
-            ..P::solid(2.5)
-        },
-        Block::Ladder => P {
-            opaque_cube: false,
-            light_opacity: 0,
-            ..P::solid(0.4)
-        },
-        Block::Furnace => P::tool_only(3.5),
-        Block::LitFurnace => P {
-            light_emission: 13,
-            ..P::tool_only(3.5)
-        },
-        Block::Pumpkin => P::solid(1.0),
-        Block::CraftingTable => P::solid(2.5),
-        // Wooden and iron fixtures.
-        // `BlockFence.getCollisionBoundingBoxFromPool`: half a block taller
-        // than the cell, so it cannot be jumped.
-        Block::Fence => P {
-            opaque_cube: false,
-            light_opacity: 0,
-            collision_bounds: Some(([0.0; 3], [1.0, 1.5, 1.0])),
-            ..P::solid(2.0)
-        },
-        Block::StandingSign | Block::WallSign => P::non_colliding(1.0),
-        Block::WoodenDoor | Block::Trapdoor => P {
-            opaque_cube: false,
-            light_opacity: 0,
-            ..P::solid(3.0)
-        },
-        Block::IronDoor => P {
-            opaque_cube: false,
-            light_opacity: 0,
-            ..P::tool_only(5.0)
-        },
-        Block::Lever | Block::StoneButton => P::non_colliding(0.5),
-        Block::StonePressurePlate => P {
-            harvestable_by_hand: false,
-            ..P::non_colliding(0.5)
-        },
-        Block::WoodenPressurePlate => P::non_colliding(0.5),
-        Block::Cake => P {
-            opaque_cube: false,
-            light_opacity: 0,
-            collision_bounds: Some(([0.0625, 0.0, 0.0625], [0.9375, 0.5, 0.9375])),
-            selection_bounds: ([0.0625, 0.0, 0.0625], [0.9375, 0.5, 0.9375]),
-            ..P::solid(0.5)
-        },
-        Block::Repeater => P {
-            opaque_cube: false,
-            light_opacity: 0,
-            collision_bounds: Some(([0.0; 3], [1.0, 0.125, 1.0])),
-            selection_bounds: ([0.0; 3], [1.0, 0.125, 1.0]),
-            ..P::solid(0.0)
-        },
-        Block::PoweredRepeater => P {
-            light_emission: 9,
-            ..build(Block::Repeater)
-        },
-        Block::Unknown(_) => P::unknown(),
-    }
+#[derive(Deserialize)]
+enum Base {
+    Solid,
+    ToolOnly,
+    NonColliding,
+    Fluid,
+    CrossedPlant,
 }
 
-fn crossed_plant(selection_bounds: BlockBounds) -> BlockProperties {
-    BlockProperties {
-        crossed_plant: true,
-        selection_bounds,
-        ..BlockProperties::non_colliding(0.0)
+/// One row of `data/blocks.ron`: a preset and what differs from it.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Row {
+    base: Base,
+    #[serde(default)]
+    hardness: f32,
+    harvestable_by_hand: Option<bool>,
+    targetable: Option<bool>,
+    replaceable: Option<bool>,
+    opaque_cube: Option<bool>,
+    blocks_movement: Option<bool>,
+    slipperiness: Option<f32>,
+    collision: Option<BlockBounds>,
+    selection: Option<BlockBounds>,
+    crossed_plant: Option<bool>,
+    light_opacity: Option<u8>,
+    light_emission: Option<u8>,
+    #[serde(default)]
+    burn: (u8, u8),
+    resistance: Option<f32>,
+    solid_material: Option<bool>,
+    tool: Option<Digger>,
+    pick_level: Option<u8>,
+}
+
+impl Row {
+    fn build(self) -> BlockProperties {
+        use BlockProperties as P;
+        let base = match self.base {
+            Base::Solid => P::solid(self.hardness),
+            Base::ToolOnly => P::tool_only(self.hardness),
+            Base::NonColliding => P::non_colliding(self.hardness),
+            Base::Fluid => P::fluid(self.hardness),
+            Base::CrossedPlant => P {
+                crossed_plant: true,
+                ..P::non_colliding(self.hardness)
+            },
+        };
+        P {
+            harvestable_by_hand: self.harvestable_by_hand.unwrap_or(base.harvestable_by_hand),
+            targetable: self.targetable.unwrap_or(base.targetable),
+            replaceable: self.replaceable.unwrap_or(base.replaceable),
+            opaque_cube: self.opaque_cube.unwrap_or(base.opaque_cube),
+            blocks_movement: self.blocks_movement.unwrap_or(base.blocks_movement),
+            slipperiness: self.slipperiness.unwrap_or(base.slipperiness),
+            collision_bounds: self.collision.or(base.collision_bounds),
+            selection_bounds: self.selection.unwrap_or(base.selection_bounds),
+            crossed_plant: self.crossed_plant.unwrap_or(base.crossed_plant),
+            light_opacity: self.light_opacity.unwrap_or(base.light_opacity),
+            light_emission: self.light_emission.unwrap_or(base.light_emission),
+            burn: self.burn,
+            resistance: self.resistance,
+            solid_material: self
+                .solid_material
+                .unwrap_or(!matches!(self.base, Base::Fluid | Base::CrossedPlant)),
+            tool: self.tool,
+            pick_level: self.pick_level,
+            ..base
+        }
     }
 }
 
@@ -485,11 +341,22 @@ pub(crate) fn stairs_boxes(metadata: u8) -> [BlockBounds; 2] {
 }
 
 /// Cached block properties for hot voxel queries, built once from [`build`].
+/// Beta's `Block` registry, read once from `data/blocks.ron`. Ids that are
+/// not blocks keep [`BlockProperties::unknown`].
 static BLOCK_PROPERTIES: LazyLock<[BlockProperties; 256]> = LazyLock::new(|| {
-    std::array::from_fn(|raw| {
-        let raw = raw as u8;
-        build(Block::from_u8(raw).unwrap_or(Block::Unknown(raw)))
-    })
+    let rows: HashMap<Block, Row> = ron::from_str(include_str!("../../data/blocks.ron"))
+        .unwrap_or_else(|error| panic!("data/blocks.ron: {error}"));
+    assert_eq!(
+        rows.len(),
+        usize::from(Block::MAX_ITEM_ID) + 1,
+        "data/blocks.ron has one row for every block id"
+    );
+    let mut table = [BlockProperties::unknown(); 256];
+    for (block, row) in rows {
+        table[usize::from(block.as_u8())] = row.build();
+    }
+    table[usize::from(Block::Torch.as_u8())].selection_bounds = oriented_bounds(Block::Torch, 0);
+    table
 });
 
 pub fn properties_table() -> &'static [BlockProperties; 256] {

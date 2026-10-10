@@ -7,9 +7,10 @@ use crate::item::registry::ItemData;
 
 use num_enum::FromPrimitive;
 use num_enum::IntoPrimitive;
+use serde::Deserialize;
 
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, FromPrimitive, IntoPrimitive)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, FromPrimitive, IntoPrimitive, Deserialize)]
 pub enum Block {
     Air = 0,
     Stone = 1,
@@ -109,6 +110,7 @@ pub enum Block {
     LockedChest = 95,
     Trapdoor = 96,
     #[num_enum(catch_all)]
+    #[serde(skip)]
     Unknown(u8),
 }
 
@@ -235,38 +237,7 @@ impl Block {
 
     /// Beta's `Material.isSolid` classification.
     pub fn is_solid_material(self) -> bool {
-        !matches!(
-            self,
-            Self::Air
-                | Self::Water
-                | Self::FlowingWater
-                | Self::Lava
-                | Self::FlowingLava
-                | Self::Torch
-                | Self::DeadBush
-                | Self::TallGrass
-                | Self::Dandelion
-                | Self::Rose
-                | Self::BrownMushroom
-                | Self::RedMushroom
-                | Self::Fire
-                | Self::RedstoneWire
-                | Self::Crops
-                | Self::Sapling
-                | Self::Rail
-                | Self::PoweredRail
-                | Self::DetectorRail
-                | Self::Ladder
-                | Self::Lever
-                | Self::UnlitRedstoneTorch
-                | Self::RedstoneTorch
-                | Self::StoneButton
-                | Self::SugarCane
-                | Self::SnowLayer
-                | Self::Repeater
-                | Self::PoweredRepeater
-                | Self::NetherPortal
-        )
+        definition::properties(self).solid_material
     }
 
     /// `BlockFlower.canThisPlantGrowOnThisBlockID`.
@@ -276,35 +247,14 @@ impl Block {
 
     /// Beta `Block.getExplosionResistance`.
     pub fn explosion_resistance(self) -> f32 {
-        let explicit = match self {
-            Self::Bedrock => Some(6_000_000.0),
-            Self::Obsidian => Some(2000.0),
-            Self::Stone
-            | Self::Cobblestone
-            | Self::GoldBlock
-            | Self::IronBlock
-            | Self::DoubleStoneSlab
-            | Self::StoneSlab
-            | Self::Bricks
-            | Self::MossyCobblestone
-            | Self::DiamondBlock
-            | Self::Jukebox
-            | Self::CobblestoneStairs => Some(10.0),
-            Self::WoodenPlanks
-            | Self::GoldOre
-            | Self::IronOre
-            | Self::CoalOre
-            | Self::LapisOre
-            | Self::LapisBlock
-            | Self::DiamondOre
-            | Self::RedstoneOre
-            | Self::LitRedstoneOre
-            | Self::Fence
-            | Self::WoodenStairs => Some(5.0),
-            Self::Lava => return 100.0,
-            _ => None,
-        };
-        explicit.map_or_else(|| self.hardness().max(0.0), |resistance| resistance * 0.6)
+        if self == Self::Lava {
+            return 100.0;
+        }
+        let properties = definition::properties(self);
+        properties.resistance.map_or_else(
+            || properties.hardness.max(0.0),
+            |resistance| resistance * 0.6,
+        )
     }
 
     /// The part of `metadata` that changes how the block is drawn: the

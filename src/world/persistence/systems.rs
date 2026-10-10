@@ -9,7 +9,7 @@ use super::player::full_player_health;
 use super::storage::WorldStorage;
 use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
-use crate::player::Player;
+use crate::player::LocalPlayer;
 use crate::world::block_ticks::BlockTicks;
 use crate::world::chunk::ChunkDroppedItem;
 use crate::world::chunk::ChunkPosition;
@@ -91,7 +91,6 @@ pub(super) fn install_world(
     let dimension = storage
         .load_player()
         .map_or_else(Dimension::default, |player| player.dimension);
-    storage.set_dimension(dimension);
     commands.insert_resource(ActiveDimension(dimension));
     info!(
         "World '{}' loaded from {}",
@@ -121,7 +120,7 @@ pub(super) fn install_world(
         }
         settings.difficulty = difficulty;
     }
-    commands.insert_resource(WorldPersistence::new(storage, autosave_seconds));
+    commands.insert_resource(WorldPersistence::new(storage, dimension, autosave_seconds));
 }
 
 /// Save what has changed, without stalling the frame.
@@ -146,7 +145,7 @@ pub(super) fn flush_persistence(
             Option<&crate::player::PlayerSurvival>,
             Option<&crate::player::sleep::PlayerSleep>,
         ),
-        With<Player>,
+        With<LocalPlayer>,
     >,
     items: Query<
         (
@@ -186,7 +185,7 @@ pub(super) fn flush_persistence(
     let autosave_due = requested || persistence.timer.just_finished();
     if autosave_due {
         persistence.start_drain();
-        persistence.player_pending = true;
+        persistence.player_pending = persistence.level;
     }
 
     if (autosave_due || exiting)
@@ -308,9 +307,7 @@ pub(super) fn flush_persistence(
         .as_deref()
         .map(BlockTicks::pending_ticks_by_chunk)
         .unwrap_or_default();
-    let dimension = persistence
-        .storage()
-        .map_or_else(Dimension::default, |storage| storage.dimension());
+    let dimension = persistence.dimension();
     let record = if persistence.player_pending {
         player.single().ok().map(
             |(

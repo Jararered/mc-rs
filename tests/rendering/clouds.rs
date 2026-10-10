@@ -4,6 +4,7 @@ use bevy::mesh::VertexAttributeValues;
 use bevy::prelude::MinimalPlugins;
 use bevy::prelude::*;
 use game::app::settings::GameSettings;
+use game::player::LocalPlayer;
 use game::player::Player;
 use game::rendering::clouds::CLOUD_HEIGHT;
 use game::rendering::clouds::cloud_color;
@@ -70,7 +71,7 @@ fn cloud_app() -> App {
 fn cloud_follow_runs_beside_the_player() {
     let mut app = cloud_app();
     app.world_mut()
-        .spawn((Player, Transform::from_xyz(10.0, 70.0, -4.0)));
+        .spawn((LocalPlayer, Transform::from_xyz(10.0, 70.0, -4.0)));
     app.update();
     app.update();
 
@@ -151,7 +152,7 @@ fn assert_cloud_anchor(placed: &[(String, Vec3)], player_x: f32, player_z: f32, 
 fn cloud_height_setting_moves_both_sheets() {
     let mut app = cloud_app();
     app.world_mut()
-        .spawn((Player, Transform::from_xyz(10.0, 70.0, -4.0)));
+        .spawn((LocalPlayer, Transform::from_xyz(10.0, 70.0, -4.0)));
     app.update();
 
     let default = GameSettings::default().cloud_height;
@@ -290,7 +291,7 @@ fn assert_fancy_window(app: &App, handle: &Handle<Mesh>, render_chunks: i32) {
 fn cloud_geometry_follows_the_render_distance() {
     let mut app = cloud_app();
     app.world_mut()
-        .spawn((Player, Transform::from_xyz(10.0, 70.0, -4.0)));
+        .spawn((LocalPlayer, Transform::from_xyz(10.0, 70.0, -4.0)));
     app.update();
 
     let (fast, fancy) = cloud_mesh_handles(&mut app);
@@ -428,7 +429,7 @@ fn hidden_cloud_material_stays_unchanged_and_switching_modes_synchronizes_it() {
     use game::world::tick::WorldTick;
     let mut app = cloud_app();
     app.world_mut()
-        .spawn((Player, Transform::from_xyz(400.0, 70.0, 48.0)));
+        .spawn((LocalPlayer, Transform::from_xyz(400.0, 70.0, 48.0)));
     app.update();
     app.update();
     let mut query = app

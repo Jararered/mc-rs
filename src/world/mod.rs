@@ -10,6 +10,7 @@ pub mod dispenser;
 pub mod environment;
 pub mod furnace;
 pub mod generation;
+pub mod host;
 pub mod lighting;
 pub mod persistence;
 pub mod plugin;

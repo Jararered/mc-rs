@@ -48,9 +48,18 @@ fn bedroom(time: u64) -> App {
 }
 
 fn use_bed(app: &mut App, position: IVec3) {
+    let player = app
+        .world_mut()
+        .query_filtered::<Entity, With<Player>>()
+        .single(app.world())
+        .unwrap();
+    use_bed_as(app, player, position);
+}
+
+fn use_bed_as(app: &mut App, player: Entity, position: IVec3) {
     app.world_mut()
         .resource_mut::<Messages<BedUse>>()
-        .write(BedUse { position });
+        .write(BedUse { player, position });
 }
 
 fn sleep(app: &mut App) -> PlayerSleep {
@@ -216,4 +225,35 @@ fn death_returns_the_player_to_their_bed_while_it_stands() {
         (stood.x - 8.5).abs() < 0.01 && (stood.z - 8.5).abs() < 0.01,
         "{stood}"
     );
+}
+
+#[test]
+fn the_night_is_skipped_only_once_every_player_is_asleep() {
+    let mut app = bedroom(MIDNIGHT);
+    let first = app
+        .world_mut()
+        .query_filtered::<Entity, With<Player>>()
+        .single(app.world())
+        .unwrap();
+    let second = crate::entity::mobs::second_player(&mut app, STANDING + Vec3::X);
+    let asleep = |app: &App, player| app.world().get::<PlayerSleep>(player).unwrap().sleeping;
+
+    use_bed_as(&mut app, first, HEAD);
+    run_ticks(&mut app, 150);
+    // One sleeper lies there all night while the other is up.
+    assert!(asleep(&app, first));
+    assert!(app.world().resource::<WorldTick>().world_time() < DAY_LENGTH);
+
+    use_bed_as(&mut app, second, HEAD);
+    run_ticks(&mut app, 99);
+    assert!(asleep(&app, second));
+    assert!(app.world().resource::<WorldTick>().world_time() < DAY_LENGTH);
+    run_ticks(&mut app, 3);
+    // `wakeUpAllPlayers`.
+    assert_eq!(
+        app.world().resource::<WorldTick>().world_time() / DAY_LENGTH,
+        1
+    );
+    assert!(!asleep(&app, first));
+    assert!(!asleep(&app, second));
 }

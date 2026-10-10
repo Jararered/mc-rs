@@ -89,12 +89,23 @@ records, and meshing. `setup_streaming` picks the generator from
 
 Changing dimension is owned by `app::session` (`WorldSession::request_travel`).
 It settles and saves like a leave, drops only the dimension's own state,
-points `WorldStorage` at the other dimension, and runs `world::portal` (Beta's
+points its `WorldPersistence` at the other dimension, and runs `world::portal` (Beta's
 `Teleporter`) on a background task over chunks held outside the live world.
 The chunks a new portal was built in are handed to `WorldChunks` before
 streaming restarts around the player. `WorldPersistence`'s bookkeeping is
-keyed by chunk position alone, so the storage's dimension only changes while
-it is idle with nothing unsaved.
+keyed by chunk position alone, so its dimension only changes while it is idle
+with nothing unsaved.
+
+`world::host::WorldHost` is the other way to run two dimensions, built for the
+server: one headless Bevy world per loaded dimension, as Beta runs a
+`WorldServer` each over a shared `WorldInfo`. Every system keeps reading the
+single-dimension resources of the world it is in, the host hands each world
+the shared clock and weather before its update, and each has its own
+`WorldPersistence` over the one `WorldStorage`. Players are the only thing
+that crosses, as a `StoredPlayer` record placed by the same teleporter. The
+game does not run on the host yet: that is the client/server split, after
+which the client's world is separate from the server's and a host holds chunk
+data twice.
 
 A third dimension would add a `Dimension` variant with its policies, a
 generator module, and a save folder; the session's travel path and the

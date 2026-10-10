@@ -24,7 +24,7 @@ use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
 use crate::inventory::session::InventorySession;
 use crate::item::Item;
-use crate::player::Player;
+use crate::player::LocalPlayer;
 use crate::player::sleep::PlayerSleep;
 use crate::random::ItemRng;
 use crate::random::JavaRandom;
@@ -91,9 +91,9 @@ pub(crate) fn use_items(
             Option<&Fishing>,
             Option<&BowDraw>,
         ),
-        With<Player>,
+        With<LocalPlayer>,
     >,
-    bobbers: Query<(&Bobber, &Transform), Without<Player>>,
+    bobbers: Query<(&Bobber, &Transform), Without<LocalPlayer>>,
     mut mobs: Query<&mut Velocity, With<Mob>>,
     mut rng: Local<LaunchRandom>,
     mut item_rng: Local<ItemRng>,
@@ -191,9 +191,9 @@ pub(crate) fn draw_bow(
             &mut BowDraw,
             Option<&PlayerSleep>,
         ),
-        With<Player>,
+        With<LocalPlayer>,
     >,
-    camera: Query<&Transform, (With<crate::player::PlayerCamera>, Without<Player>)>,
+    camera: Query<&Transform, (With<crate::player::PlayerCamera>, Without<LocalPlayer>)>,
     mut rng: Local<LaunchRandom>,
 ) {
     let Ok((entity, transform, mut hotbar, mut inventory, mut draw, sleep)) = player.single_mut()

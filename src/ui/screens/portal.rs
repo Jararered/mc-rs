@@ -14,7 +14,7 @@ use bevy::text::FontSource;
 
 use crate::app::session::WorldSession;
 use crate::app::state::AppScreen;
-use crate::player::Player;
+use crate::player::LocalPlayer;
 use crate::player::portal::PortalTravel;
 use crate::player::portal::overlay_alpha;
 use crate::rendering::textures::PortalTexture;
@@ -133,7 +133,7 @@ fn despawn(mut commands: Commands, roots: Query<Entity, With<PortalUiRoot>>) {
 
 fn update_overlay(
     tick: Res<WorldTick>,
-    players: Query<&PortalTravel, With<Player>>,
+    players: Query<&PortalTravel, With<LocalPlayer>>,
     mut images: ResMut<Assets<Image>>,
     mut overlays: Query<(&mut PortalOverlay, &mut ImageNode, &mut Visibility)>,
 ) {

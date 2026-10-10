@@ -20,7 +20,7 @@ use crate::entity::drops::items::PickupAnimation;
 use crate::entity::drops::items::pickup_dropped_items;
 use crate::entity::drops::items::pickup_position;
 use crate::item::ItemStack;
-use crate::player::Player;
+use crate::player::LocalPlayer;
 use crate::player::PlayerInterpolation;
 use crate::player::rendered_eye;
 use crate::random::JavaRandom;
@@ -195,7 +195,11 @@ fn sync_item_rendering(
     camera: Query<&GlobalTransform, With<crate::player::PlayerCamera>>,
     player: Query<
         (&Transform, Option<&PlayerInterpolation>),
-        (With<Player>, Without<DroppedItem>, Without<ItemPilePiece>),
+        (
+            With<LocalPlayer>,
+            Without<DroppedItem>,
+            Without<ItemPilePiece>,
+        ),
     >,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,

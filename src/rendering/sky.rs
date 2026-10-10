@@ -25,7 +25,7 @@ use bevy::render::render_resource::PrimitiveTopology;
 
 use crate::app::settings::GameSettings;
 use crate::block::blocks::Block;
-use crate::player::Player;
+use crate::player::LocalPlayer;
 use crate::player::PlayerCamera;
 use crate::random::JavaRandom;
 use crate::rendering::textures::InstanceTint;
@@ -105,7 +105,7 @@ struct SkyAssets {
 #[derive(SystemParam)]
 struct SkyViews<'w, 's> {
     player: Query<'w, 's, &'static GlobalTransform, With<PlayerCamera>>,
-    eyes: Query<'w, 's, &'static Transform, With<Player>>,
+    eyes: Query<'w, 's, &'static Transform, With<LocalPlayer>>,
     player_cameras: Query<
         'w,
         's,
@@ -149,7 +149,7 @@ struct SkyViews<'w, 's> {
             Without<StarField>,
             Without<CelestialRig>,
             Without<SunriseFan>,
-            Without<Player>,
+            Without<LocalPlayer>,
         ),
     >,
     rigs: Query<
@@ -160,7 +160,7 @@ struct SkyViews<'w, 's> {
             With<CelestialRig>,
             Without<SkyAnchor>,
             Without<SunriseFan>,
-            Without<Player>,
+            Without<LocalPlayer>,
         ),
     >,
     sunrises: Query<
@@ -175,7 +175,7 @@ struct SkyViews<'w, 's> {
             With<SunriseFan>,
             Without<StarField>,
             Without<SkyAnchor>,
-            Without<Player>,
+            Without<LocalPlayer>,
         ),
     >,
     stars: Query<

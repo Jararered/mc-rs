@@ -40,6 +40,7 @@ use game::world::chunk::WorldChunks;
 use super::mobs::creature_app;
 use super::mobs::feet_of;
 use super::mobs::run_ticks;
+use super::mobs::second_player;
 use super::mobs::summon;
 use super::pathfinding::field;
 
@@ -523,4 +524,24 @@ fn drawing_the_bow_narrows_the_view_by_up_to_fifteen_percent() {
     assert!((draw_fov_scale(10.0) - (1.0 - 0.25 * 0.15)).abs() < 1e-6);
     assert!((draw_fov_scale(20.0) - 0.85).abs() < 1e-6);
     assert!((draw_fov_scale(400.0) - 0.85).abs() < 1e-6);
+}
+
+#[test]
+fn a_stuck_arrow_goes_to_the_player_who_touches_it() {
+    let mut app = creature_app(walled(), Vec3::new(-6.5, 5.0, 8.5));
+    let far = equip(&mut app, None);
+    let near = second_player(&mut app, Vec3::new(-6.5, 5.0, -8.5));
+    app.world_mut()
+        .entity_mut(near)
+        .insert((Hotbar::default(), Inventory::default()));
+    let arrow = shoot_at_wall(&mut app, true);
+    run_ticks(&mut app, 40);
+    let lodged = feet_of(&app, arrow);
+    app.world_mut()
+        .get_mut::<Transform>(near)
+        .unwrap()
+        .translation = Vec3::new(lodged.x - 0.5, 5.0 + 1.62, lodged.z);
+    run_ticks(&mut app, 1);
+    assert_eq!(arrows_held(&app, near), 1);
+    assert_eq!(arrows_held(&app, far), 0);
 }

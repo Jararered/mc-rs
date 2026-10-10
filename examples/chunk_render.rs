@@ -33,7 +33,7 @@ use bevy::render::view::window::screenshot::save_to_disk;
 use bevy::window::PresentMode;
 use bevy::window::WindowResolution;
 use game::app::settings::GameSettings;
-use game::player::Player;
+use game::player::LocalPlayer;
 use game::rendering::WorldRenderingPlugin;
 use game::rendering::chunk_quads::ChunkQuads;
 use game::world::plugin::WorldPlugin;
@@ -165,7 +165,7 @@ fn spawn_view(mut commands: Commands) {
         2 => (Vec3::new(-20.0, 90.0, 30.0), Vec3::new(-70.0, 60.0, -20.0)),
         _ => (Vec3::new(8.0, 140.0, 8.0), Vec3::new(9.0, 60.0, 9.0)),
     };
-    commands.spawn((Player, Transform::from_translation(eye)));
+    commands.spawn((LocalPlayer, Transform::from_translation(eye)));
     commands.spawn((
         Camera3d::default(),
         Transform::from_translation(eye).looking_at(target, Vec3::Y),

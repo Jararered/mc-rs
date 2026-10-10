@@ -31,7 +31,7 @@ use crate::entity::projectiles::first_struck;
 use crate::entity::projectiles::hand_origin;
 use crate::entity::projectiles::heading_angles;
 use crate::entity::projectiles::scattered_heading;
-use crate::entity::projectiles::victim;
+use crate::entity::projectiles::victim_of;
 use crate::inventory::Inventory;
 use crate::item::Item;
 use crate::item::ItemStack;
@@ -182,17 +182,19 @@ pub(crate) fn tick_thrown(
         ),
         Without<Player>,
     >,
-    mut player: Query<
+    mut players: Query<
         (
-            &Transform,
-            Option<&mut PlayerHealth>,
-            Option<&mut PlayerCombat>,
-            &mut Velocity,
-            Option<&mut Inventory>,
+            Entity,
+            (
+                &Transform,
+                Option<&mut PlayerHealth>,
+                Option<&mut PlayerCombat>,
+                &mut Velocity,
+                Option<&mut Inventory>,
+            ),
         ),
         With<Player>,
     >,
-    player_entity: Query<Entity, With<Player>>,
     mut particles: Option<ResMut<EffectParticles>>,
     mut loot: Local<ItemRng>,
     mut rng: Local<ProjectileRandom>,
@@ -205,8 +207,11 @@ pub(crate) fn tick_thrown(
     let difficulty = settings
         .as_ref()
         .map_or(Difficulty::Normal, |settings| settings.difficulty);
-    let mut player = player.single_mut().ok();
-    let player_entity = player_entity.single().ok();
+    let mut players: Vec<_> = players.iter_mut().collect();
+    let player_boxes: Vec<(Entity, crate::physics::Aabb)> = players
+        .iter()
+        .map(|(entity, (transform, ..))| (*entity, EntitySize::PLAYER.aabb(transform.translation)))
+        .collect();
 
     for (entity, mut ball, mut transform, mut previous) in &mut thrown {
         let mut position = transform.translation;
@@ -228,14 +233,10 @@ pub(crate) fn tick_thrown(
                 .thrower
                 .filter(|_| ball.ticks_in_air < 5)
                 .map(|thrower| thrower.entity);
-            let player_box = player
-                .as_ref()
-                .filter(|_| ignore.is_none() || ignore != player_entity)
-                .map(|(transform, ..)| EntitySize::PLAYER.aabb(transform.translation));
             let struck = first_struck(
                 position,
                 to,
-                player_box,
+                &player_boxes,
                 mobs.iter().filter(|(_, mob, ..)| mob.health > 0).map(
                     |(entity, _, _, _, transform, size)| (entity, size.aabb(transform.translation)),
                 ),
@@ -246,8 +247,8 @@ pub(crate) fn tick_thrown(
                 let hit = Hit {
                     amount: 0,
                     from: ball.thrower.map(|thrower| {
-                        if Some(thrower.entity) == player_entity
-                            && let Some((transform, ..)) = player.as_ref()
+                        if let Some((_, (transform, ..))) =
+                            players.iter().find(|(entity, _)| *entity == thrower.entity)
                         {
                             return transform.translation;
                         }
@@ -259,8 +260,12 @@ pub(crate) fn tick_thrown(
                         .map_or(Source::Environment, |thrower| thrower.source),
                 };
                 match struck {
-                    Some(Struck::Player) => {
-                        if let Some(mut victim) = victim(&mut player, &mut spare_armor) {
+                    Some(Struck::Player(target)) => {
+                        if let Some(mut victim) = players
+                            .iter_mut()
+                            .find(|(entity, _)| *entity == target)
+                            .and_then(|(_, parts)| victim_of(parts, &mut spare_armor))
+                        {
                             hurt_player(&mut victim, hit, difficulty, &mut loot);
                         }
                     }

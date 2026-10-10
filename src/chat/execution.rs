@@ -12,8 +12,8 @@ use crate::entity::mobs::spawn;
 use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
 use crate::player::GameMode;
+use crate::player::LocalPlayer;
 use crate::player::MAX_PLAYER_HEALTH;
-use crate::player::Player;
 use crate::player::PlayerHealth;
 use crate::player::PlayerInterpolation;
 use crate::random::ItemRng;
@@ -56,7 +56,7 @@ pub(super) struct CommandContext<'w, 's> {
             &'static mut PlayerHealth,
             &'static mut GameMode,
         ),
-        With<Player>,
+        With<LocalPlayer>,
     >,
     chunks: ResMut<'w, WorldChunks>,
     streaming: Option<ResMut<'w, WorldStreaming>>,

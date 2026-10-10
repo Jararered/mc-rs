@@ -24,7 +24,7 @@ use crate::inventory::session::ActiveWorkbench;
 use crate::inventory::session::InventorySession;
 use crate::item::ItemData;
 use crate::item::ItemStack;
-use crate::player::Player;
+use crate::player::LocalPlayer;
 use crate::rendering::icons::BlockIcons;
 use crate::ui::icons::overlay::UiFont;
 use crate::ui::icons::overlay::count_label;
@@ -77,7 +77,7 @@ pub(super) fn stack_text(stack: Option<ItemStack>) -> String {
 
 pub(super) fn refresh(
     screen: Res<InventorySession>,
-    player: Query<(&Hotbar, &Inventory), With<Player>>,
+    player: Query<(&Hotbar, &Inventory), With<LocalPlayer>>,
     workbench: Res<ActiveWorkbench>,
     chunks: Res<WorldChunks>,
     drag: Res<SlotDrag>,

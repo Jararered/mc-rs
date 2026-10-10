@@ -83,9 +83,10 @@ impl PlayerSleep {
     }
 }
 
-/// The player right-clicked a bed block.
+/// A player right-clicked a bed block.
 #[derive(Message, Debug, Clone, Copy)]
 pub struct BedUse {
+    pub player: Entity,
     pub position: IVec3,
 }
 
@@ -168,7 +169,11 @@ fn use_bed(
     >,
 ) {
     let dimension = dimension.map_or_else(Dimension::default, |dimension| dimension.0);
-    for BedUse { position } in uses.read().copied() {
+    for BedUse {
+        player: user,
+        position,
+    } in uses.read().copied()
+    {
         if chunks.block_at(position.x, position.y, position.z) != Some(Block::Bed) {
             continue;
         }
@@ -218,7 +223,7 @@ fn use_bed(
         }
 
         let Ok((mut transform, mut velocity, mut sleep, health, mut interpolation)) =
-            player.single_mut()
+            player.get_mut(user)
         else {
             continue;
         };
@@ -327,16 +332,21 @@ fn tick_sleep(
     >,
 ) {
     let ticks = tick.ticks_this_frame();
-    let Ok((mut transform, mut sleep, health, mut interpolation)) = player.single_mut() else {
-        return;
-    };
-    if ticks == 0 || (!sleep.sleeping && sleep.timer == 0) {
+    if ticks == 0
+        || player
+            .iter()
+            .all(|(_, sleep, ..)| !sleep.sleeping && sleep.timer == 0)
+    {
         return;
     }
     let dimension = dimension.map_or_else(Dimension::default, |dimension| dimension.0);
     for _ in 0..ticks {
-        // `World.tick`: with everyone fully asleep the night is skipped.
-        if sleep.sleeping && sleep.timer >= FULLY_ASLEEP_TICKS {
+        // `World.tick`: with everyone fully asleep the night is skipped
+        // (`isAllPlayersFullyAsleep`, then `wakeUpAllPlayers`).
+        if player
+            .iter()
+            .all(|(_, sleep, ..)| sleep.sleeping && sleep.timer >= FULLY_ASLEEP_TICKS)
+        {
             let previous = tick.world_time();
             let morning = previous + DAY_LENGTH;
             let morning = morning - morning % DAY_LENGTH;
@@ -347,38 +357,7 @@ fn tick_sleep(
             if let Some(weather) = weather.as_deref_mut() {
                 weather.stop_precipitation();
             }
-            wake(
-                &mut sleep,
-                &mut transform,
-                &mut interpolation,
-                &mut chunks,
-                persistence.as_deref_mut(),
-                chat.as_deref_mut(),
-                false,
-                true,
-            );
-        }
-        // `EntityPlayer.onUpdate`.
-        if sleep.sleeping {
-            sleep.timer = (sleep.timer + 1).min(FULLY_ASLEEP_TICKS);
-            let in_bed = sleep
-                .bed
-                .is_some_and(|bed| chunks.block_at(bed.x, bed.y, bed.z) == Some(Block::Bed));
-            // `attackEntityFrom` wakes a sleeper too.
-            let hurt = health.current < sleep.last_health;
-            sleep.last_health = health.current;
-            if !in_bed || hurt {
-                wake(
-                    &mut sleep,
-                    &mut transform,
-                    &mut interpolation,
-                    &mut chunks,
-                    persistence.as_deref_mut(),
-                    None,
-                    true,
-                    false,
-                );
-            } else if is_daytime(dimension, &tick, weather.as_deref()) {
+            for (mut transform, mut sleep, _, mut interpolation) in &mut player {
                 wake(
                     &mut sleep,
                     &mut transform,
@@ -390,10 +369,45 @@ fn tick_sleep(
                     true,
                 );
             }
-        } else if sleep.timer > 0 {
-            sleep.timer += 1;
-            if sleep.timer >= FULLY_ASLEEP_TICKS + WAKE_FADE_TICKS {
-                sleep.timer = 0;
+        }
+        for (mut transform, mut sleep, health, mut interpolation) in &mut player {
+            // `EntityPlayer.onUpdate`.
+            if sleep.sleeping {
+                sleep.timer = (sleep.timer + 1).min(FULLY_ASLEEP_TICKS);
+                let in_bed = sleep
+                    .bed
+                    .is_some_and(|bed| chunks.block_at(bed.x, bed.y, bed.z) == Some(Block::Bed));
+                // `attackEntityFrom` wakes a sleeper too.
+                let hurt = health.current < sleep.last_health;
+                sleep.last_health = health.current;
+                if !in_bed || hurt {
+                    wake(
+                        &mut sleep,
+                        &mut transform,
+                        &mut interpolation,
+                        &mut chunks,
+                        persistence.as_deref_mut(),
+                        None,
+                        true,
+                        false,
+                    );
+                } else if is_daytime(dimension, &tick, weather.as_deref()) {
+                    wake(
+                        &mut sleep,
+                        &mut transform,
+                        &mut interpolation,
+                        &mut chunks,
+                        persistence.as_deref_mut(),
+                        chat.as_deref_mut(),
+                        false,
+                        true,
+                    );
+                }
+            } else if sleep.timer > 0 {
+                sleep.timer += 1;
+                if sleep.timer >= FULLY_ASLEEP_TICKS + WAKE_FADE_TICKS {
+                    sleep.timer = 0;
+                }
             }
         }
     }

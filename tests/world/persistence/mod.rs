@@ -22,6 +22,7 @@ use game::entity::mobs::MobRecord;
 use game::entity::mobs::MobSpawner;
 use game::entity::mobs::MobType;
 use game::item::ItemStack;
+use game::player::LocalPlayer;
 use game::player::Player;
 use game::world::chunk::CHUNK_HEIGHT;
 use game::world::chunk::CHUNK_SIZE;
@@ -527,7 +528,7 @@ fn the_world_is_saved_and_resumed_across_runs() {
 
     let mut first = persistence_app(&saves);
     first.world_mut().spawn((
-        Player,
+        LocalPlayer,
         Transform {
             translation: Vec3::new(48.0, 72.0, -24.0),
             rotation: Quat::from_euler(EulerRot::YXZ, 0.75, -0.2, 0.0),
@@ -590,7 +591,7 @@ fn exit_requested_during_update_saves_the_latest_player_pose() {
     let saves = temp_saves("exit-pose");
     let mut app = persistence_app(&saves);
     app.world_mut()
-        .spawn((Player, Transform::from_xyz(91.0, 73.0, -17.0)));
+        .spawn((LocalPlayer, Transform::from_xyz(91.0, 73.0, -17.0)));
     app.add_systems(Update, request_exit);
 
     app.update();
@@ -629,7 +630,7 @@ fn an_autosave_drain_reaches_disk_over_several_frames() {
     let saves = temp_saves("drain");
     let mut app = draining_app(&saves);
     app.world_mut()
-        .spawn((Player, Transform::from_xyz(8.0, 72.0, 8.0)));
+        .spawn((LocalPlayer, Transform::from_xyz(8.0, 72.0, 8.0)));
     run_until_spawn_chunk(&mut app);
 
     // The save is spread over the frames that follow, so nothing but the edit
@@ -673,7 +674,7 @@ fn a_save_request_drains_without_waiting_for_the_autosave_timer() {
     // The default timer is a minute, so only the request can save in time.
     let mut app = persistence_app(&saves);
     app.world_mut()
-        .spawn((Player, Transform::from_xyz(8.0, 72.0, 8.0)));
+        .spawn((LocalPlayer, Transform::from_xyz(8.0, 72.0, 8.0)));
     run_until_spawn_chunk(&mut app);
 
     {
@@ -746,7 +747,7 @@ fn a_chunk_unloads_without_the_mobs_that_left_it_since_the_autosave() {
     let mut app = draining_app(&saves);
     let player = app
         .world_mut()
-        .spawn((Player, Transform::from_xyz(8.0, 100.0, 8.0)))
+        .spawn((LocalPlayer, Transform::from_xyz(8.0, 100.0, 8.0)))
         .id();
     run_until_spawn_chunk(&mut app);
     assert!(run_until(&mut app, Duration::from_secs(30), |app| {

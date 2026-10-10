@@ -14,7 +14,7 @@ use crate::entity::creature::Living;
 use crate::entity::mobs::Mob;
 use crate::entity::mobs::MobType;
 use crate::entity::mobs::SpawnMob;
-use crate::entity::projectiles::victim;
+use crate::entity::projectiles::victim_of;
 use crate::inventory::Inventory;
 use crate::item::ItemStack;
 use crate::player::Player;
@@ -152,11 +152,18 @@ fn tick_weather(
     if dimension.is_some_and(|dimension| !dimension.0.has_weather()) {
         return;
     }
-    let Ok(player) = player.single() else {
+    let centers: Vec<_> = player
+        .iter()
+        .map(|player| {
+            crate::world::chunk::ChunkPosition::from_world(
+                player.translation.x,
+                player.translation.z,
+            )
+        })
+        .collect();
+    if centers.is_empty() {
         return;
-    };
-    let center =
-        crate::world::chunk::ChunkPosition::from_world(player.translation.x, player.translation.z);
+    }
     for _ in 0..tick.ticks_this_frame() {
         weather.step();
         if !weather.is_thundering() {
@@ -164,8 +171,9 @@ fn tick_weather(
         }
         let mut rng = JavaRandom::from_state(weather.rng_state);
         for pos in chunks.positions() {
-            if (pos.x - center.x).abs() > 8
-                || (pos.z - center.z).abs() > 8
+            if !centers
+                .iter()
+                .any(|center| (pos.x - center.x).abs() <= 8 && (pos.z - center.z).abs() <= 8)
                 || !light.contains(pos)
                 || rng.next_int(100_000) != 0
             {
@@ -217,13 +225,16 @@ fn apply_lightning(
     mut streaming: Option<ResMut<crate::world::streaming::WorldStreaming>>,
     mut persistence: Option<ResMut<crate::world::persistence::WorldPersistence>>,
     mut mobs: Query<(Entity, &mut Mob, &mut Living, &mut Velocity, &Transform), Without<Player>>,
-    mut player: Query<
+    mut players: Query<
         (
-            &Transform,
-            Option<&mut PlayerHealth>,
-            Option<&mut PlayerCombat>,
-            &mut Velocity,
-            Option<&mut Inventory>,
+            Entity,
+            (
+                &Transform,
+                Option<&mut PlayerHealth>,
+                Option<&mut PlayerCombat>,
+                &mut Velocity,
+                Option<&mut Inventory>,
+            ),
         ),
         With<Player>,
     >,
@@ -232,7 +243,6 @@ fn apply_lightning(
     mut loot: Local<ItemRng>,
     mut spare_armor: Local<[Option<ItemStack>; 4]>,
 ) {
-    let mut player = player.single_mut().ok();
     for &LightningStrike(center) in strikes.read() {
         let at = center.floor().as_ivec3();
         if chunks.block_at(at.x, at.y, at.z) == Some(Block::Air)
@@ -290,11 +300,13 @@ fn apply_lightning(
                 mob.fire_ticks += 1;
             }
         }
-        if player
-            .as_ref()
-            .is_some_and(|(transform, ..)| transform.translation.distance_squared(center) <= 9.0)
-            && let Some(mut victim) = victim(&mut player, &mut spare_armor)
-        {
+        for (entity, mut parts) in &mut players {
+            if parts.0.translation.distance_squared(center) > 9.0 {
+                continue;
+            }
+            let Some(mut victim) = victim_of(&mut parts, &mut spare_armor) else {
+                continue;
+            };
             hurt_player(
                 &mut victim,
                 Hit::environment(5),
@@ -303,7 +315,7 @@ fn apply_lightning(
             );
             // `++fire; if (fire == 0) fire = 300`. A player rests at -20, so
             // it is the fire the bolt leaves behind that sets them alight.
-            if let Ok(mut survival) = survival.single_mut() {
+            if let Ok(mut survival) = survival.get_mut(entity) {
                 survival.fire += 1;
                 if survival.fire == 0 {
                     survival.fire = 300;

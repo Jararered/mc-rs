@@ -32,7 +32,7 @@ use crate::inventory::sort_main_inventory;
 use crate::inventory::take_from_stack;
 use crate::inventory::take_matching_stacks;
 use crate::item::ItemStack;
-use crate::player::Player;
+use crate::player::LocalPlayer;
 use crate::random::ItemRng;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
@@ -130,7 +130,7 @@ pub(super) fn handle_slots(
     mouse: Res<ButtonInput<MouseButton>>,
     keys: Res<ButtonInput<KeyCode>>,
     slots: Query<(&RelativeCursorPosition, &Slot)>,
-    mut player: Query<(&Transform, &mut Hotbar, &mut Inventory), With<Player>>,
+    mut player: Query<(&Transform, &mut Hotbar, &mut Inventory), With<LocalPlayer>>,
     mut workbench: ResMut<ActiveWorkbench>,
     mut chunks: ResMut<WorldChunks>,
     mut persistence: Option<ResMut<WorldPersistence>>,

@@ -25,6 +25,7 @@ use crate::entity::drops::items::spawn_saved_item;
 use crate::entity::mobs::Mob;
 use crate::entity::mobs::MobRecord;
 use crate::entity::mobs::spawn_saved;
+use crate::player::LocalPlayer;
 use crate::player::Player;
 use crate::world::block_ticks::BlockTicks;
 use crate::world::lighting::LightCache;
@@ -37,17 +38,16 @@ use super::GENERATE_MARGIN;
 use super::PopulationJob;
 use super::StreamingDiagnostics;
 use super::UNLOAD_MARGIN;
+use super::Viewers;
 use super::WorldStreaming;
 use super::mesh_jobs::mesh_neighborhood_ready;
 use super::mesh_jobs::spawn_mesh_job;
 use super::population_footprint;
-use super::positions_in_radius;
 use super::render::ChunkMaterials;
 use super::render::LayerStore;
 use super::render::apply_sections;
 use super::render::despawn_rendered_chunk;
 use super::render::spawn_chunk;
-use super::within_radius;
 use crate::rendering::chunk_quads::ChunkQuads;
 use crate::rendering::textures::AlphaMaskMaterial;
 use crate::rendering::textures::CutoutMaterial;
@@ -131,10 +131,11 @@ fn spawn_area_chunk(storage: Option<&WorldStorage>, standing: Option<Vec3>) -> C
 fn build_spawn_area(
     generator: &dyn ChunkGenerator,
     storage: Option<&WorldStorage>,
+    dimension: Dimension,
     spawn_chunk: ChunkPosition,
 ) -> SpawnArea {
     let load_start = Instant::now();
-    if let Some(chunk) = storage.and_then(|storage| storage.load_chunk(spawn_chunk)) {
+    if let Some(chunk) = storage.and_then(|storage| storage.load_chunk_in(dimension, spawn_chunk)) {
         return SpawnArea {
             chunks: vec![(spawn_chunk, chunk, true)],
             load: Some(load_start.elapsed()),
@@ -151,7 +152,7 @@ fn build_spawn_area(
         .into_iter()
         .map(|(position, generated)| {
             let stored = (position != spawn_chunk)
-                .then(|| storage?.load_chunk(position))
+                .then(|| storage?.load_chunk_in(dimension, position))
                 .flatten();
             match stored {
                 Some(stored) => (position, stored, true),
@@ -185,7 +186,12 @@ pub(crate) fn start_spawn_area(
         let generator = Arc::clone(&generator);
         AsyncComputeTaskPool::get().spawn(async move {
             let spawn_chunk = spawn_area_chunk(storage.as_deref(), None);
-            build_spawn_area(generator.as_ref(), storage.as_deref(), spawn_chunk)
+            build_spawn_area(
+                generator.as_ref(),
+                storage.as_deref(),
+                dimension,
+                spawn_chunk,
+            )
         })
     };
     commands.insert_resource(SpawnAreaTask { task, generator });
@@ -213,8 +219,12 @@ pub(crate) fn setup_streaming(
     mut perf: ResMut<StreamingDiagnostics>,
     mut ticks: Option<ResMut<BlockTicks>>,
     mut light: Option<ResMut<LightCache>>,
-    dimension: Option<Res<ActiveDimension>>,
-    player: Query<&Transform, With<Player>>,
+    // Paired to stay within Bevy's sixteen system parameters.
+    (dimension, hosted): (
+        Option<Res<ActiveDimension>>,
+        Option<Res<crate::world::host::Hosted>>,
+    ),
+    player: Query<&Transform, With<LocalPlayer>>,
 ) {
     let dimension = dimension.map_or_else(Dimension::default, |dimension| dimension.0);
     // A world opened from the menu builds its spawn area in the background.
@@ -241,7 +251,9 @@ pub(crate) fn setup_streaming(
                 storage.as_deref(),
                 player.single().ok().map(|player| player.translation),
             );
-            let area = if chunks.contains(spawn_chunk) {
+            // A hosted dimension has no spawn area: it streams around
+            // whichever players are put into it.
+            let area = if hosted.is_some() || chunks.contains(spawn_chunk) {
                 // An arrival through a portal has already put its
                 // surroundings in.
                 SpawnArea {
@@ -250,7 +262,12 @@ pub(crate) fn setup_streaming(
                     generate: None,
                 }
             } else {
-                build_spawn_area(generator.as_ref(), storage.as_deref(), spawn_chunk)
+                build_spawn_area(
+                    generator.as_ref(),
+                    storage.as_deref(),
+                    dimension,
+                    spawn_chunk,
+                )
             };
             (generator, area)
         }
@@ -310,7 +327,7 @@ pub(crate) fn setup_streaming(
         remesh_sections: HashMap::new(),
         desired_generation: Vec::new(),
         desired_meshing: Vec::new(),
-        desired_center: None,
+        desired_viewers: None,
         desired_radius: 0,
         discovery_dirty: true,
         max_in_flight,
@@ -346,15 +363,19 @@ pub(crate) fn stream_chunks(
         Query<(Entity, &Transform, &Velocity, &Mob, Option<&Living>)>,
         Query<SavedBodyData, SavedBodyFilter>,
     ),
-    mut last_unload_sweep: Local<Option<(ChunkPosition, i32)>>,
+    mut last_unload_sweep: Local<Option<(Viewers, i32)>>,
     mut ticks: Option<ResMut<BlockTicks>>,
     mut light: Option<ResMut<LightCache>>,
     mut discovered_revision: Local<Option<u64>>,
 ) {
-    let Ok(player) = player.single() else {
+    let viewers = Viewers::new(
+        player
+            .iter()
+            .map(|player| ChunkPosition::from_world(player.translation.x, player.translation.z)),
+    );
+    if viewers.is_empty() {
         return;
-    };
-    let center = ChunkPosition::from_world(player.translation.x, player.translation.z);
+    }
     let load_radius = settings.render_distance;
     let generate_radius = load_radius + GENERATE_MARGIN;
     // Chunk data outlives the generation radius by a ring, so pacing over a
@@ -376,7 +397,7 @@ pub(crate) fn stream_chunks(
     // Dropping an unfinished task cancels work that is no longer useful.
     streaming
         .generating
-        .retain(|position, _| within_radius(*position, center, generate_radius));
+        .retain(|position, _| viewers.within(*position, generate_radius));
     // A chunk that is still shown keeps its remeshes after it leaves the
     // render distance. Its mesh would otherwise stay stale when the player
     // turns back before it expires.
@@ -384,14 +405,17 @@ pub(crate) fn stream_chunks(
         let streaming = &mut *streaming;
         let rendered = &streaming.rendered;
         streaming.meshing.retain(|position, _| {
-            within_radius(*position, center, load_radius) || rendered.contains_key(position)
+            viewers.within(*position, load_radius) || rendered.contains_key(position)
         });
     }
     // Chunks only leave the load/unload/generate radii when the player
     // crosses a chunk boundary or the render distance setting changes, so
     // skip these O(loaded-chunks) sweeps on the many frames in between.
-    if *last_unload_sweep != Some((center, load_radius)) {
-        *last_unload_sweep = Some((center, load_radius));
+    if last_unload_sweep
+        .as_ref()
+        .is_none_or(|(swept, radius)| *swept != viewers || *radius != load_radius)
+    {
+        *last_unload_sweep = Some((viewers.clone(), load_radius));
         let sweep_start = Instant::now();
 
         let mut forgotten = Vec::new();
@@ -400,7 +424,7 @@ pub(crate) fn stream_chunks(
             .rendered
             .keys()
             .copied()
-            .filter(|position| !within_radius(*position, center, generate_radius))
+            .filter(|position| !viewers.within(*position, generate_radius))
             .collect();
         for position in expired {
             // Its cached light stays until the chunk unloads: block ticks at
@@ -417,8 +441,8 @@ pub(crate) fn stream_chunks(
             let streaming = &mut *streaming;
             let rendered = &streaming.rendered;
             streaming.remesh_queue.retain(|position| {
-                let keep = within_radius(*position, center, load_radius)
-                    || rendered.contains_key(position);
+                let keep =
+                    viewers.within(*position, load_radius) || rendered.contains_key(position);
                 if !keep {
                     forgotten.push(*position);
                 }
@@ -434,7 +458,7 @@ pub(crate) fn stream_chunks(
         // more before they unload.
         let stale: Vec<_> = chunks
             .positions()
-            .filter(|position| !within_radius(*position, center, unload_radius))
+            .filter(|position| !viewers.within(*position, unload_radius))
             .collect();
         // Sort the entities into their chunks once rather than searching all
         // of them for every chunk that unloads.
@@ -553,7 +577,7 @@ pub(crate) fn stream_chunks(
         .filter(|(_, task)| task.is_finished())
         .map(|(source, _)| *source)
         .collect();
-    sort_by_distance(&mut populated, center);
+    viewers.sort_by_distance(&mut populated);
     for source in populated {
         if !within_budget(applied) {
             break;
@@ -567,7 +591,7 @@ pub(crate) fn stream_chunks(
         perf.populate.record(job.elapsed);
         for (position, generated) in population_footprint(source).into_iter().zip(job.chunks) {
             streaming.held.remove(&position);
-            if !within_radius(position, center, unload_radius) {
+            if !viewers.within(position, unload_radius) {
                 // A job may return outside the radii after the last sweep.
                 *last_unload_sweep = None;
             }
@@ -586,7 +610,7 @@ pub(crate) fn stream_chunks(
         .filter(|(_, task)| task.is_finished())
         .map(|(position, _)| *position)
         .collect();
-    sort_by_distance(&mut generated, center);
+    viewers.sort_by_distance(&mut generated);
     for position in generated {
         if !within_budget(applied) {
             break;
@@ -606,7 +630,7 @@ pub(crate) fn stream_chunks(
         } else {
             perf.generate.record(job.elapsed);
         }
-        if within_radius(position, center, generate_radius) {
+        if viewers.within(position, generate_radius) {
             if !job.loaded
                 && let Some(persistence) = persistence.as_deref_mut()
             {
@@ -631,7 +655,7 @@ pub(crate) fn stream_chunks(
         .filter(|(_, job)| job.task.is_finished())
         .map(|(position, _)| *position)
         .collect();
-    sort_by_distance(&mut meshed, center);
+    viewers.sort_by_distance(&mut meshed);
     for position in meshed {
         if !within_budget(applied) {
             break;
@@ -647,9 +671,7 @@ pub(crate) fn stream_chunks(
         streaming.discovery_dirty = true;
         streaming.meshing.remove(&position);
         perf.mesh.record(job.elapsed);
-        if !within_radius(position, center, load_radius)
-            && !streaming.rendered.contains_key(&position)
-        {
+        if !viewers.within(position, load_radius) && !streaming.rendered.contains_key(&position) {
             continue;
         }
         let materials = streaming.materials.clone();
@@ -720,8 +742,8 @@ pub(crate) fn stream_chunks(
         return;
     }
 
-    let desired_changed =
-        streaming.desired_center != Some(center) || streaming.desired_radius != load_radius;
+    let desired_changed = streaming.desired_viewers.as_ref() != Some(&viewers)
+        || streaming.desired_radius != load_radius;
     if !desired_changed
         && !streaming.discovery_dirty
         && *discovered_revision == Some(chunks.membership_revision())
@@ -733,11 +755,11 @@ pub(crate) fn stream_chunks(
     }
     perf.discovery_passes += 1;
     if desired_changed {
-        streaming.desired_generation = positions_in_radius(center, generate_radius);
-        sort_by_distance(&mut streaming.desired_generation, center);
-        streaming.desired_meshing = positions_in_radius(center, load_radius);
-        sort_by_distance(&mut streaming.desired_meshing, center);
-        streaming.desired_center = Some(center);
+        streaming.desired_generation = viewers.positions(generate_radius);
+        viewers.sort_by_distance(&mut streaming.desired_generation);
+        streaming.desired_meshing = viewers.positions(load_radius);
+        viewers.sort_by_distance(&mut streaming.desired_meshing);
+        streaming.desired_viewers = Some(viewers.clone());
         streaming.desired_radius = load_radius;
     }
 
@@ -796,10 +818,13 @@ pub(crate) fn stream_chunks(
             .and_then(WorldPersistence::storage)
             .filter(|_| !bypass_load)
             .cloned();
+        let dimension = persistence
+            .as_deref()
+            .map_or_else(Dimension::default, WorldPersistence::dimension);
         let task = AsyncComputeTaskPool::get().spawn(async move {
             let start = Instant::now();
             if let Some(storage) = storage
-                && let Some(chunk) = storage.load_chunk(position)
+                && let Some(chunk) = storage.load_chunk_in(dimension, position)
             {
                 return ChunkJob {
                     chunk,
@@ -835,7 +860,7 @@ pub(crate) fn stream_chunks(
         }
         let footprint = population_footprint(source);
         if !footprint.iter().all(|position| {
-            within_radius(*position, center, generate_radius) && chunks.contains(*position)
+            viewers.within(*position, generate_radius) && chunks.contains(*position)
         }) {
             continue;
         }
@@ -910,12 +935,4 @@ pub(crate) fn admit_chunk(
     for body in saved_bodies {
         body.spawn(commands);
     }
-}
-
-pub(super) fn sort_by_distance(positions: &mut [ChunkPosition], center: ChunkPosition) {
-    positions.sort_by_key(|position| {
-        let dx = i64::from(position.x) - i64::from(center.x);
-        let dz = i64::from(position.z) - i64::from(center.z);
-        (dx * dx + dz * dz, position.x, position.z)
-    });
 }

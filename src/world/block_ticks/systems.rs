@@ -91,22 +91,33 @@ impl Plugin for BlockTicksPlugin {
 /// With streaming, a chunk also waits for its first mesh job to light it. A
 /// tick that reads light across the border of an unlit neighbor gets an
 /// estimate, so nothing is relit on the main thread.
+/// `World.updateBlocksAndPlayCaveSounds`'s `positionsToUpdate`: the chunks
+/// around every player, each once.
 fn random_tick_chunks(
     chunks: &WorldChunks,
     streaming: Option<&WorldStreaming>,
     light: &LightCache,
-    center: ChunkPosition,
+    centers: &[ChunkPosition],
     radius: i32,
 ) -> Vec<ChunkPosition> {
-    positions_in_radius(center, radius)
-        .into_iter()
-        .filter(|&position| {
-            chunks.contains(position)
-                && streaming.is_none_or(|streaming| {
-                    light.contains(position) && streaming.neighborhood_finished(chunks, position)
-                })
-        })
-        .collect()
+    let mut positions = Vec::new();
+    for (nth, &center) in centers.iter().enumerate() {
+        positions.extend(
+            positions_in_radius(center, radius)
+                .into_iter()
+                .filter(|&position| {
+                    !centers[..nth].iter().any(|&earlier| {
+                        (position.x - earlier.x).abs() <= radius
+                            && (position.z - earlier.z).abs() <= radius
+                    }) && chunks.contains(position)
+                        && streaming.is_none_or(|streaming| {
+                            light.contains(position)
+                                && streaming.neighborhood_finished(chunks, position)
+                        })
+                }),
+        );
+    }
+    positions
 }
 
 pub(super) fn run_block_ticks(
@@ -157,21 +168,17 @@ pub(super) fn run_block_ticks(
     ticks.process_events(&mut chunks, &mut light, now);
 
     if count > 0 {
-        let random_chunks = player.single().map_or_else(
-            |_| Vec::new(),
-            |(player, _)| {
-                let radius = settings.as_ref().map_or(RANDOM_TICK_RADIUS, |settings| {
-                    settings.render_distance.min(RANDOM_TICK_RADIUS)
-                });
-                random_tick_chunks(
-                    &chunks,
-                    streaming.as_deref(),
-                    &light,
-                    ChunkPosition::from_world(player.translation.x, player.translation.z),
-                    radius,
-                )
-            },
-        );
+        let radius = settings.as_ref().map_or(RANDOM_TICK_RADIUS, |settings| {
+            settings.render_distance.min(RANDOM_TICK_RADIUS)
+        });
+        let centers: Vec<ChunkPosition> = player
+            .iter()
+            .map(|(player, _)| {
+                ChunkPosition::from_world(player.translation.x, player.translation.z)
+            })
+            .collect();
+        let random_chunks =
+            random_tick_chunks(&chunks, streaming.as_deref(), &light, &centers, radius);
         // `WorldTick` has already advanced past this frame's ticks.
         for step in 0..u64::from(count) {
             let time = now.wrapping_sub(u64::from(count) - 1 - step);

@@ -26,7 +26,7 @@ use crate::block::fluids::is_water;
 use crate::entity::projectiles::gaussian;
 use crate::item::Item;
 use crate::physics::PhysicsSet;
-use crate::player::Player;
+use crate::player::LocalPlayer;
 use crate::player::PlayerCamera;
 use crate::random::JavaRandom;
 use crate::rendering::appearance::item_tile;
@@ -950,7 +950,7 @@ fn update_particles(
     settings: Option<Res<GameSettings>>,
     chunks: Res<WorldChunks>,
     light: Option<Res<LightCache>>,
-    player: Query<&Transform, With<Player>>,
+    player: Query<&Transform, With<LocalPlayer>>,
     camera: Query<&GlobalTransform, With<PlayerCamera>>,
     mut particles: ResMut<EffectParticles>,
     mut renderer: ResMut<EffectRenderer>,

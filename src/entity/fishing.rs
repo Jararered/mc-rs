@@ -300,7 +300,7 @@ pub(crate) fn tick_bobbers(
                 let struck = first_struck(
                     position,
                     to,
-                    None,
+                    &[],
                     mobs.iter().filter(|(_, mob, ..)| mob.health > 0).map(
                         |(entity, _, _, _, transform, size)| {
                             (entity, size.aabb(transform.translation))

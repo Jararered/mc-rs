@@ -154,9 +154,6 @@ pub struct WorldStorage {
     pub(super) root: PathBuf,
     pub(super) manifest: Mutex<WorldManifest>,
     pub(super) backend: Backend,
-    /// The dimension [`Self::load_chunk`] and chunk writes address. It only
-    /// changes between drains, when nothing is in flight.
-    pub(super) dimension: Mutex<Dimension>,
 }
 
 impl WorldStorage {
@@ -216,7 +213,6 @@ impl WorldStorage {
             root,
             manifest: Mutex::new(manifest),
             backend,
-            dimension: Mutex::new(Dimension::Overworld),
         })
     }
 
@@ -241,7 +237,6 @@ impl WorldStorage {
             root,
             manifest: Mutex::new(manifest),
             backend,
-            dimension: Mutex::new(Dimension::Overworld),
         })
     }
 
@@ -320,6 +315,49 @@ impl WorldStorage {
         }
     }
 
+    /// Whether `name` can be a file name under `players/`.
+    fn is_player_name(name: &str) -> bool {
+        !name.is_empty()
+            && name.len() <= 16
+            && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+    }
+
+    /// Load the record of the player called `name`, or `None` if they have
+    /// never been in this world. These are the players other than the world's
+    /// own, which [`Self::load_player`] reads.
+    pub fn load_named_player(&self, name: &str) -> Option<StoredPlayer> {
+        if !Self::is_player_name(name) {
+            return None;
+        }
+        if matches!(self.backend, Backend::Original(_)) {
+            return original::read_named_player(&self.root, name);
+        }
+        let path = self.root.join("players").join(format!("{name}.json"));
+        let player = serde_json::from_slice::<StoredPlayer>(&fs::read(path).ok()?).ok()?;
+        (player.format_version == FORMAT_VERSION).then_some(player)
+    }
+
+    /// Write the record of the player called `name`: `players/<name>.json` in
+    /// a native world, `players/<name>.dat` in a Beta one.
+    pub fn save_named_player(&self, name: &str, player: &StoredPlayer) -> io::Result<()> {
+        if !Self::is_player_name(name) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "a player name is 1 to 16 letters, digits or underscores",
+            ));
+        }
+        if matches!(self.backend, Backend::Original(_)) {
+            return original::write_named_player(&self.root, name, player);
+        }
+        let folder = self.root.join("players");
+        fs::create_dir_all(&folder)?;
+        let bytes = serde_json::to_vec_pretty(player).map_err(io::Error::other)?;
+        let path = folder.join(format!("{name}.json"));
+        let temporary = path.with_extension("tmp");
+        fs::write(&temporary, bytes)?;
+        fs::rename(&temporary, path)
+    }
+
     /// Write the player state: `player.json` in a native world, the `Player`
     /// tag of `level.dat` in a Beta one.
     pub fn save_player(&self, player: &StoredPlayer) -> io::Result<()> {
@@ -335,18 +373,6 @@ impl WorldStorage {
         self.touch()
     }
 
-    /// The dimension chunk reads and writes address.
-    pub fn dimension(&self) -> Dimension {
-        *self.dimension.lock().unwrap()
-    }
-
-    /// Point chunk reads and writes at `dimension`. Call it only while no
-    /// save is in flight: a write that is running finishes where it started,
-    /// but one that has not begun would land in the new dimension.
-    pub fn set_dimension(&self, dimension: Dimension) {
-        *self.dimension.lock().unwrap() = dimension;
-    }
-
     /// Where a native world keeps `dimension`'s `regions` folder.
     pub(super) fn chunk_root(&self, dimension: Dimension) -> PathBuf {
         match dimension.folder() {
@@ -355,13 +381,12 @@ impl WorldStorage {
         }
     }
 
-    /// Load a stored chunk of the active dimension, or `None` if it was never
-    /// saved.
+    /// Load a stored Overworld chunk, or `None` if it was never saved.
     pub fn load_chunk(&self, position: ChunkPosition) -> Option<GeneratedChunk> {
-        self.load_chunk_in(self.dimension(), position)
+        self.load_chunk_in(Dimension::Overworld, position)
     }
 
-    /// [`Self::load_chunk`] for a named dimension.
+    /// Load a stored chunk of `dimension`, or `None` if it was never saved.
     pub fn load_chunk_in(
         &self,
         dimension: Dimension,
@@ -373,14 +398,23 @@ impl WorldStorage {
         }
     }
 
-    /// Save one chunk to its region.
+    /// Save one Overworld chunk to its region.
     pub fn save_chunk(&self, position: ChunkPosition, chunk: &GeneratedChunk) -> io::Result<()> {
         self.save_chunks([(position, chunk)]).map(|_| ())
     }
 
-    /// Save many chunks, creating each region as needed.
+    /// Save many Overworld chunks, creating each region as needed.
     pub fn save_chunks<'a>(
         &self,
+        chunks: impl IntoIterator<Item = (ChunkPosition, &'a GeneratedChunk)>,
+    ) -> io::Result<usize> {
+        self.save_chunks_in(Dimension::Overworld, chunks)
+    }
+
+    /// Save many chunks of `dimension`, creating each region as needed.
+    pub fn save_chunks_in<'a>(
+        &self,
+        dimension: Dimension,
         chunks: impl IntoIterator<Item = (ChunkPosition, &'a GeneratedChunk)>,
     ) -> io::Result<usize> {
         let format = self.format();
@@ -400,7 +434,7 @@ impl WorldStorage {
                 )
             })
             .collect();
-        let saved = self.write_stored_chunks(&stored)?;
+        let saved = self.write_stored_chunks(dimension, &stored)?;
         if saved > 0 {
             self.touch()?;
         }
@@ -417,12 +451,12 @@ impl WorldStorage {
     /// caller follows up with [`Self::touch`] or [`Self::save_player`].
     pub(super) fn write_stored_chunks(
         &self,
+        dimension: Dimension,
         chunks: &[(ChunkPosition, StoredChunkData)],
     ) -> io::Result<usize> {
         if chunks.is_empty() {
             return Ok(0);
         }
-        let dimension = self.dimension();
         match &self.backend {
             Backend::Binary => binary::write_chunks(
                 &self.chunk_root(dimension),
@@ -455,6 +489,11 @@ impl WorldStorage {
             Backend::Binary => write_manifest_file(&self.root, &manifest),
             Backend::Original(_) => original::write_level(&self.root, &manifest, player),
         }
+    }
+
+    /// Write the manifest now: the time, weather and difficulty last set.
+    pub fn save_level(&self) -> io::Result<()> {
+        self.touch()
     }
 
     pub(super) fn touch(&self) -> io::Result<()> {

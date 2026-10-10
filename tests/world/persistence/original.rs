@@ -24,7 +24,7 @@ use game::inventory::Hotbar;
 use game::inventory::Inventory;
 use game::item::Item;
 use game::item::ItemStack;
-use game::player::Player;
+use game::player::LocalPlayer;
 use game::world::biome::Biome;
 use game::world::chest::CHEST_SLOTS;
 use game::world::chest::Chest;
@@ -706,7 +706,7 @@ fn an_original_world_is_saved_and_resumed_by_the_app() {
 
     let mut first = persistence_app(&saves);
     first.world_mut().spawn((
-        Player,
+        LocalPlayer,
         Transform {
             translation: Vec3::new(48.0, 72.0, -24.0),
             rotation: Quat::from_euler(EulerRot::YXZ, 0.75, -0.2, 0.0),

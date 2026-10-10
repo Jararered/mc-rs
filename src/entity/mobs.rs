@@ -369,24 +369,29 @@ fn tick_spawners(
     {
         return;
     }
-    let Ok(player) = player.single() else {
-        return;
-    };
-    let center = ChunkPosition::from_world(player.translation.x, player.translation.z);
+    let players: Vec<Vec3> = player.iter().map(|player| player.translation).collect();
     candidates.clear();
-    for dx in -2..=2 {
-        for dz in -2..=2 {
-            let position = ChunkPosition {
-                x: center.x + dx,
-                z: center.z + dz,
-            };
-            if let Some(chunk) = chunks.get(position) {
-                candidates.extend(
-                    chunk
-                        .chunk
-                        .spawners()
-                        .map(|(index, spawner)| (position, index, *spawner)),
-                );
+    for (nth, player) in players.iter().enumerate() {
+        let center = ChunkPosition::from_world(player.x, player.z);
+        for dx in -2..=2 {
+            for dz in -2..=2 {
+                let position = ChunkPosition {
+                    x: center.x + dx,
+                    z: center.z + dz,
+                };
+                // A chunk two players share is ticked once.
+                let covered = players[..nth].iter().any(|earlier| {
+                    let earlier = ChunkPosition::from_world(earlier.x, earlier.z);
+                    (position.x - earlier.x).abs() <= 2 && (position.z - earlier.z).abs() <= 2
+                });
+                if !covered && let Some(chunk) = chunks.get(position) {
+                    candidates.extend(
+                        chunk
+                            .chunk
+                            .spawners()
+                            .map(|(index, spawner)| (position, index, *spawner)),
+                    );
+                }
             }
         }
     }
@@ -395,7 +400,11 @@ fn tick_spawners(
         let y = (index / 256) as i32;
         let z = position.z * 16 + (index / 16 % 16) as i32;
         let center = Vec3::new(x as f32 + 0.5, y as f32 + 0.5, z as f32 + 0.5);
-        if center.distance_squared(player.translation) > 256.0 {
+        // `anyPlayerInRange`.
+        if !players
+            .iter()
+            .any(|player| center.distance_squared(*player) <= 256.0)
+        {
             continue;
         }
         let before = spawner;
@@ -699,14 +708,15 @@ fn natural_spawning(
     mut random: ResMut<MobRandom>,
     persistence: Option<Res<crate::world::persistence::WorldPersistence>>,
     mut diagnostics: Option<ResMut<EntityDiagnostics>>,
-    mut eligible: Local<Vec<ChunkPosition>>,
+    mut eligible: Local<Vec<(ChunkPosition, bool)>>,
 ) {
     if tick.ticks_this_frame() == 0 {
         return;
     }
-    let Ok(player) = player.single() else {
+    let players: Vec<Vec3> = player.iter().map(|player| player.translation).collect();
+    if players.is_empty() {
         return;
-    };
+    }
     let start = std::time::Instant::now();
     spawn_naturally(
         &mut eligible,
@@ -715,7 +725,7 @@ fn natural_spawning(
         &light,
         weather.as_deref(),
         settings.as_deref(),
-        player,
+        &players,
         &mobs,
         &mut requests,
         &mut random,
@@ -726,46 +736,57 @@ fn natural_spawning(
     }
 }
 
-/// `SpawnerAnimals.performSpawning` around one player.
+/// `SpawnerAnimals.performSpawning`.
 #[allow(clippy::too_many_arguments)]
 fn spawn_naturally(
-    eligible: &mut Vec<ChunkPosition>,
+    eligible: &mut Vec<(ChunkPosition, bool)>,
     tick: &WorldTick,
     chunks: &WorldChunks,
     light: &LightCache,
     weather: Option<&crate::world::weather::WorldWeather>,
     settings: Option<&GameSettings>,
-    player: &Transform,
+    players: &[Vec3],
     mobs: &Query<(&Mob, &Transform)>,
     requests: &mut MessageWriter<SpawnMob>,
     random: &mut MobRandom,
     persistence: Option<&crate::world::persistence::WorldPersistence>,
 ) {
-    let center = ChunkPosition::from_world(player.translation.x, player.translation.z);
     let radius = settings.as_ref().map_or(4, |s| s.render_distance.min(8));
     let difficulty = settings
         .as_ref()
         .map_or(Difficulty::Normal, |s| s.difficulty);
+    // `eligibleChunksForSpawning`: the chunks around every player, each with
+    // whether it is on the outer ring of all the players that reach it.
     eligible.clear();
-    for dx in -radius..=radius {
-        for dz in -radius..=radius {
-            let pos = ChunkPosition {
-                x: center.x + dx,
-                z: center.z + dz,
-            };
-            if light.contains(pos)
-                && (-1..=1).all(|dx| {
-                    (-1..=1).all(|dz| {
-                        chunks
-                            .get(ChunkPosition {
-                                x: pos.x + dx,
-                                z: pos.z + dz,
-                            })
-                            .is_some_and(|c| c.populated)
+    for (nth, player) in players.iter().enumerate() {
+        let center = ChunkPosition::from_world(player.x, player.z);
+        for dx in -radius..=radius {
+            for dz in -radius..=radius {
+                let pos = ChunkPosition {
+                    x: center.x + dx,
+                    z: center.z + dz,
+                };
+                let edge = dx.abs() == radius || dz.abs() == radius;
+                if nth > 0
+                    && let Some(known) = eligible.iter_mut().find(|(known, _)| *known == pos)
+                {
+                    known.1 &= edge;
+                    continue;
+                }
+                if light.contains(pos)
+                    && (-1..=1).all(|dx| {
+                        (-1..=1).all(|dz| {
+                            chunks
+                                .get(ChunkPosition {
+                                    x: pos.x + dx,
+                                    z: pos.z + dz,
+                                })
+                                .is_some_and(|c| c.populated)
+                        })
                     })
-                })
-            {
-                eligible.push(pos);
+                {
+                    eligible.push((pos, edge));
+                }
             }
         }
     }
@@ -800,12 +821,12 @@ fn spawn_naturally(
         }
         // Keep the 20 Hz Beta spawn lottery, but only inspect loaded chunks.
         for offset in 0..eligible.len() {
-            let pos = eligible[(first + offset) % eligible.len()];
+            let (pos, edge) = eligible[(first + offset) % eligible.len()];
             if count > cap {
                 break;
             }
             // Beta counts the outer ring toward the cap but never spawns on it.
-            if (pos.x - center.x).abs() == radius || (pos.z - center.z).abs() == radius {
+            if edge {
                 continue;
             }
             let Some(chunk) = chunks.get(pos) else {
@@ -845,7 +866,10 @@ fn spawn_naturally(
                 } else {
                     0
                 };
-                if feet.distance_squared(player.translation) < 576.0
+                // `getClosestPlayer(x, y, z, 24) == null`.
+                if players
+                    .iter()
+                    .any(|player| feet.distance_squared(*player) < 576.0)
                     || feet.distance_squared(world_spawn) < 576.0
                     || !can_spawn_at(
                         kind,

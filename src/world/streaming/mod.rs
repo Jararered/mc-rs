@@ -155,7 +155,7 @@ pub struct WorldStreaming {
     remesh_sections: HashMap<ChunkPosition, SectionMask>,
     desired_generation: Vec<ChunkPosition>,
     desired_meshing: Vec<ChunkPosition>,
-    desired_center: Option<ChunkPosition>,
+    desired_viewers: Option<Viewers>,
     desired_radius: i32,
     discovery_dirty: bool,
     /// Jobs of each kind kept in flight. Enough to keep every compute thread
@@ -173,6 +173,12 @@ impl WorldStreaming {
     /// in flight still deliver their chunks.
     pub fn halt(&mut self) {
         self.halted = true;
+    }
+
+    /// Start jobs again after a [`Self::halt`] whose unload was called off.
+    pub fn resume(&mut self) {
+        self.halted = false;
+        self.discovery_dirty = true;
     }
 
     /// Despawn every chunk mesh and free its mesh assets. Call before dropping
@@ -208,6 +214,12 @@ impl WorldStreaming {
     /// index data in the packed vertex format.
     pub fn mesh_bytes(&self) -> usize {
         self.rendered.values().map(RenderedChunk::mesh_bytes).sum()
+    }
+
+    /// A job holds `position` outside [`WorldChunks`] or is about to deliver
+    /// it, so nothing else may put a chunk there yet.
+    pub fn is_busy(&self, position: ChunkPosition) -> bool {
+        self.generating.contains_key(&position) || self.held.contains_key(&position)
     }
 
     pub fn generating_job_count(&self) -> usize {
@@ -295,8 +307,8 @@ impl WorldStreaming {
         self.discovery_dirty = true;
         self.meshing.clear();
         let mut positions: Vec<_> = self.rendered.keys().copied().collect();
-        if let Some(center) = self.desired_center {
-            systems::sort_by_distance(&mut positions, center);
+        if let Some(viewers) = &self.desired_viewers {
+            viewers.sort_by_distance(&mut positions);
         }
         self.remesh_sections = positions
             .iter()
@@ -362,6 +374,67 @@ fn sections_near(y: i32, reach: i32) -> SectionMask {
 pub fn within_radius(position: ChunkPosition, center: ChunkPosition, radius: i32) -> bool {
     (i64::from(position.x) - i64::from(center.x)).abs() <= i64::from(radius)
         && (i64::from(position.z) - i64::from(center.z)).abs() <= i64::from(radius)
+}
+
+/// The chunks players stand in: what streaming loads around. One entry for a
+/// single player; several players are kept in a fixed order so two sets
+/// compare equal whatever order the players were listed in.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Viewers(Vec<ChunkPosition>);
+
+impl Viewers {
+    pub fn new(chunks: impl IntoIterator<Item = ChunkPosition>) -> Self {
+        let mut chunks: Vec<_> = chunks.into_iter().collect();
+        chunks.sort_by_key(|chunk| (chunk.x, chunk.z));
+        chunks.dedup();
+        Self(chunks)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Whether `position` is within `radius` chunks of any viewer.
+    pub fn within(&self, position: ChunkPosition, radius: i32) -> bool {
+        self.0
+            .iter()
+            .any(|&center| within_radius(position, center, radius))
+    }
+
+    /// Every chunk within `radius` of a viewer, each once.
+    pub fn positions(&self, radius: i32) -> Vec<ChunkPosition> {
+        let mut positions = Vec::new();
+        for (nth, &center) in self.0.iter().enumerate() {
+            let earlier = &self.0[..nth];
+            positions.extend(
+                positions_in_radius(center, radius)
+                    .into_iter()
+                    .filter(|&position| {
+                        !earlier
+                            .iter()
+                            .any(|&earlier| within_radius(position, earlier, radius))
+                    }),
+            );
+        }
+        positions
+    }
+
+    /// Order `positions` by distance to their nearest viewer.
+    pub fn sort_by_distance(&self, positions: &mut [ChunkPosition]) {
+        positions.sort_by_key(|position| {
+            let nearest = self
+                .0
+                .iter()
+                .map(|center| {
+                    let dx = i64::from(position.x) - i64::from(center.x);
+                    let dz = i64::from(position.z) - i64::from(center.z);
+                    dx * dx + dz * dz
+                })
+                .min()
+                .unwrap_or(0);
+            (nearest, position.x, position.z)
+        });
+    }
 }
 
 pub fn positions_in_radius(center: ChunkPosition, radius: i32) -> Vec<ChunkPosition> {

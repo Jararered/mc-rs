@@ -7,6 +7,7 @@ mod persistence;
 mod streaming;
 
 mod furnace;
+mod host;
 mod portal;
 mod runtime;
 mod weather;

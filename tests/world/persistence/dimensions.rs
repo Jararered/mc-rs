@@ -45,12 +45,13 @@ fn each_format_keeps_the_nether_apart_from_the_overworld() {
         storage.save_chunk(position, &overworld).unwrap();
 
         let nether = NetherGenerator::new(11).generate_base(position);
-        storage.set_dimension(Dimension::Nether);
         assert!(
-            storage.load_chunk(position).is_none(),
+            storage.load_chunk_in(Dimension::Nether, position).is_none(),
             "{format:?}: the Nether starts with no chunks"
         );
-        storage.save_chunk(position, &nether).unwrap();
+        storage
+            .save_chunks_in(Dimension::Nether, [(position, &nether)])
+            .unwrap();
         let folder = match format {
             SaveFormat::Binary => "DIM-1/regions",
             SaveFormat::Original => "DIM-1/region",
@@ -60,8 +61,6 @@ fn each_format_keeps_the_nether_apart_from_the_overworld() {
         let root = storage.root().to_path_buf();
         drop(storage);
         let storage = WorldStorage::open(root).unwrap();
-        // A reopened world addresses the Overworld until told otherwise.
-        assert_eq!(storage.dimension(), Dimension::Overworld);
         let loaded = storage.load_chunk(position).unwrap();
         assert_eq!(loaded.chunk.get(1, 1, 1), Some(Block::GoldBlock));
         let loaded = storage

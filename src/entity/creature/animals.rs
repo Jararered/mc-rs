@@ -211,7 +211,7 @@ impl Body<'_> {
         if !has_attacked
             && self.living.path.is_none()
             && self.mob.tamed
-            && let Some(owner) = world.player
+            && let Some(owner) = self.closest_player(world)
         {
             let distance = owner.eye.distance(self.feet);
             if distance > 5.0 {
@@ -326,7 +326,7 @@ impl Body<'_> {
                 from: Some(self.feet),
                 source: Source::Creature,
             };
-            self.strike(world, hit, fx);
+            self.strike(world, player.entity, hit, fx);
         }
     }
 
@@ -352,18 +352,16 @@ impl Body<'_> {
     }
 
     /// `player.attackEntityFrom(this, amount)`.
-    pub(super) fn strike(&self, world: &Surroundings, hit: Hit, fx: &mut Effects) -> bool {
-        match fx.victim.as_mut() {
-            Some(victim) => hurt_player(victim, hit, world.difficulty, fx.loot),
+    pub(super) fn strike(
+        &self,
+        world: &Surroundings,
+        player: Entity,
+        hit: Hit,
+        fx: &mut Effects,
+    ) -> bool {
+        match fx.victims.iter_mut().find(|(entity, _)| *entity == player) {
+            Some((_, victim)) => hurt_player(victim, hit, world.difficulty, fx.loot),
             None => false,
         }
-    }
-
-    /// `EntityWolf.findPlayerToAttack`.
-    pub(super) fn wolf_wants(&self, world: &Surroundings) -> bool {
-        self.mob.angry
-            && world
-                .player
-                .is_some_and(|player| player.eye.distance_squared(self.feet) < 256.0)
     }
 }

@@ -24,7 +24,7 @@ use crate::entity::EntitySize;
 use crate::entity::PreviousTick;
 use crate::entity::Shadow;
 use crate::physics::PhysicsSet;
-use crate::player::Player;
+use crate::player::LocalPlayer;
 use crate::rendering::textures::TintedMaterial;
 use crate::rendering::textures::tint_tag;
 use crate::world::chunk::WorldChunks;
@@ -173,7 +173,7 @@ fn update_shadow_quads(
     tick: Res<WorldTick>,
     environment: crate::world::dimension::Environment,
     chunks: Res<WorldChunks>,
-    camera: Query<&Transform, With<Player>>,
+    camera: Query<&Transform, With<LocalPlayer>>,
     owners: Query<(
         &Shadow,
         &Transform,
@@ -183,7 +183,7 @@ fn update_shadow_quads(
     )>,
     mut quads: Query<
         (&mut Transform, &mut MeshTag, &mut Visibility),
-        (With<ShadowOwner>, Without<Player>, Without<Shadow>),
+        (With<ShadowOwner>, Without<LocalPlayer>, Without<Shadow>),
     >,
 ) {
     let Ok(camera) = camera.single() else {

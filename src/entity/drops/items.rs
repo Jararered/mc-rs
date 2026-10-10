@@ -787,48 +787,52 @@ pub(crate) fn pickup_dropped_items(
         &ItemMotion,
     )>,
 ) {
-    let Ok((player_transform, player_size, mut hotbar, mut inventory)) = player.single_mut() else {
-        return;
-    };
-    for (entity, transform, state, mut dropped, _motion) in &mut items {
-        if state.pickup_delay_ticks > 0
-            || !item_reaches_player(
+    'items: for (entity, transform, state, mut dropped, _motion) in &mut items {
+        if state.pickup_delay_ticks > 0 {
+            continue;
+        }
+        // `onCollideWithPlayer` runs for each player touching the item; the
+        // first with room for any of it takes what fits.
+        for (player_transform, player_size, mut hotbar, mut inventory) in &mut player {
+            if !item_reaches_player(
                 *player_size,
                 player_transform.translation,
                 transform.translation,
-            )
-        {
-            continue;
-        }
-        let original = dropped.0;
-        // An item that does not fit changes nothing, so it must not flag the
-        // inventory and hotbar as changed every frame the player stands on it.
-        let remainder = inventory
-            .bypass_change_detection()
-            .insert(hotbar.bypass_change_detection(), original);
-        if remainder.is_none_or(|remainder| remainder.count() != original.count()) {
-            inventory.set_changed();
-            hotbar.set_changed();
-        }
-        if let Some(remainder) = remainder {
-            if remainder.count() == original.count() {
+            ) {
                 continue;
             }
-            dropped.0 = remainder;
-            let taken = original.count() - remainder.count();
-            if let Ok(stack) = ItemStack::with_data(original.item(), taken, original.data()) {
-                spawn_pickup_flyer(&mut commands, transform.translation, stack, state);
+            let original = dropped.0;
+            // An item that does not fit changes nothing, so it must not flag
+            // the inventory and hotbar as changed every frame the player
+            // stands on it.
+            let remainder = inventory
+                .bypass_change_detection()
+                .insert(hotbar.bypass_change_detection(), original);
+            if remainder.is_none_or(|remainder| remainder.count() != original.count()) {
+                inventory.set_changed();
+                hotbar.set_changed();
             }
-        } else {
-            commands
-                .entity(entity)
-                .remove::<ItemMotion>()
-                .insert(PickupAnimation {
-                    start: transform.translation,
-                    age_ticks: 0,
-                });
+            if let Some(remainder) = remainder {
+                if remainder.count() == original.count() {
+                    continue;
+                }
+                dropped.0 = remainder;
+                let taken = original.count() - remainder.count();
+                if let Ok(stack) = ItemStack::with_data(original.item(), taken, original.data()) {
+                    spawn_pickup_flyer(&mut commands, transform.translation, stack, state);
+                }
+            } else {
+                commands
+                    .entity(entity)
+                    .remove::<ItemMotion>()
+                    .insert(PickupAnimation {
+                        start: transform.translation,
+                        age_ticks: 0,
+                    });
+            }
+            mark_chunk(&mut persistence, transform.translation);
+            continue 'items;
         }
-        mark_chunk(&mut persistence, transform.translation);
     }
 }
 

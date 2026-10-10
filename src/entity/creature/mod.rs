@@ -58,7 +58,7 @@ use crate::entity::mount::Mounted;
 use crate::entity::pathfinding::LastSearch;
 use crate::entity::pathfinding::Path;
 use crate::entity::pathfinding::Pathfinder;
-use crate::entity::projectiles::victim;
+use crate::entity::projectiles::victim_of;
 use crate::inventory::Inventory;
 use crate::item::ItemStack;
 use crate::physics::Aabb;
@@ -130,8 +130,11 @@ pub struct Living {
     /// `heartsLife` and `field_9346_af`: the invulnerability window.
     pub(crate) hearts_life: i16,
     pub(crate) last_damage: i16,
-    /// `playerToAttack`: the player is this creature's target.
+    /// `playerToAttack`: a player is this creature's target.
     pub(crate) chasing: bool,
+    /// Which player that is. `None` while chasing means whoever is nearest,
+    /// which is what code that only sets `chasing` gets.
+    pub(crate) target: Option<Entity>,
     move_forward: f32,
     move_strafing: f32,
     random_yaw_velocity: f32,
@@ -185,6 +188,7 @@ impl Living {
             hearts_life: 0,
             last_damage: 0,
             chasing: false,
+            target: None,
             move_forward: 0.0,
             move_strafing: 0.0,
             random_yaw_velocity: 0.0,
@@ -218,9 +222,14 @@ impl Living {
         self.entity_age
     }
 
-    /// Whether the creature has the player as its target.
+    /// Whether the creature has a player as its target.
     pub fn chasing(&self) -> bool {
         self.chasing
+    }
+
+    /// The player it is chasing, once it has picked one out.
+    pub fn target(&self) -> Option<Entity> {
+        self.target.filter(|_| self.chasing)
     }
 
     /// Whether the creature is still within its post-hit invulnerability.
@@ -239,9 +248,10 @@ enum Fate {
     Removed,
 }
 
-/// The player, as creatures see it this frame.
+/// A player, as creatures see it this frame.
 #[derive(Clone, Copy)]
 pub(crate) struct Target {
+    pub entity: Entity,
     /// Beta's player `posY` sits at the eyes, so this is the player's `pos`.
     pub eye: Vec3,
     pub feet: Vec3,
@@ -254,9 +264,10 @@ impl Target {
     }
 }
 
-/// The player, when it is riding a creature.
+/// A player, when it is riding a creature.
 #[derive(Clone, Copy)]
 pub(crate) struct Rider {
+    pub player: Entity,
     /// The creature it sits on.
     pub vehicle: Entity,
     /// Beta `rotationYaw`, in degrees.
@@ -274,9 +285,10 @@ pub(crate) struct Surroundings<'a> {
     /// `Dimension::ambient_light`.
     ambient: f32,
     difficulty: Difficulty,
-    player: Option<Target>,
-    /// The player's mount (`riddenByEntity`, from the creature's side).
-    rider: Option<Rider>,
+    /// `World.playerEntities`.
+    players: &'a [Target],
+    /// Players' mounts (`riddenByEntity`, from the creature's side).
+    riders: &'a [Rider],
     /// `GameSettings::pig_steering`.
     pig_steering: bool,
     /// Pushable bodies at the start of the frame, for `applyEntityCollision`.
@@ -347,7 +359,8 @@ pub(crate) struct Effects<'a, 'w, 's> {
     pub loot: &'a mut ItemRng,
     pub explosions: &'a mut Vec<Explosion>,
     pub block_ticks: Option<&'a mut BlockTicks>,
-    pub victim: Option<Victim<'a>>,
+    /// Each player that can take damage.
+    pub victims: Vec<(Entity, Victim<'a>)>,
     pub particles: Option<&'a mut EffectParticles>,
 }
 
@@ -418,25 +431,28 @@ pub(crate) fn tick_creatures(
     settings: Option<Res<GameSettings>>,
     mut block_ticks: Option<ResMut<BlockTicks>>,
     mut explosion_writer: MessageWriter<Explosion>,
-    mut player: Query<
+    mut players: Query<
         (
-            &Transform,
-            Option<&mut PlayerHealth>,
-            Option<&mut PlayerCombat>,
-            &mut Velocity,
-            Option<&mut Inventory>,
+            Entity,
+            (
+                &Transform,
+                Option<&mut PlayerHealth>,
+                Option<&mut PlayerCombat>,
+                &mut Velocity,
+                Option<&mut Inventory>,
+            ),
         ),
         With<Player>,
     >,
     (riders, mut creatures): (
-        Query<(&Transform, &Mounted, Option<&PlayerMovementInput>), With<Player>>,
+        Query<(Entity, &Transform, &Mounted, Option<&PlayerMovementInput>), With<Player>>,
         Query<CreatureItem, Without<Player>>,
     ),
     mut pathfinder: Local<Pathfinder>,
     mut crowd: Local<Vec<(Entity, Aabb)>>,
     mut loot: Local<ItemRng>,
     mut explosions: Local<Vec<Explosion>>,
-    mut spare_armor: Local<[Option<ItemStack>; 4]>,
+    mut spare_armor: Local<Vec<[Option<ItemStack>; 4]>>,
     mut extras: CreatureExtras,
 ) {
     let ticks = tick.ticks_this_frame();
@@ -447,26 +463,40 @@ pub(crate) fn tick_creatures(
     let difficulty = settings
         .as_ref()
         .map_or(Difficulty::Normal, |settings| settings.difficulty);
-    let mut player = player.single_mut().ok();
-    let target = player
-        .as_ref()
-        .map(|(transform, health, combat, ..)| Target {
+    let mut players: Vec<_> = players.iter_mut().collect();
+    let targets: Vec<Target> = players
+        .iter()
+        .map(|(entity, (transform, health, combat, ..))| Target {
+            entity: *entity,
             eye: transform.translation,
             feet: transform.translation - Vec3::Y * EntitySize::PLAYER.y_offset,
             // Mobs leave a creative or spectating player alone, as they do a
             // dead one.
             alive: health.as_ref().is_none_or(|health| health.current > 0)
                 && combat.as_ref().is_none_or(|combat| !combat.invulnerable),
-        });
+        })
+        .collect();
+    let riders: Vec<Rider> = riders
+        .iter()
+        .map(|(player, look, mounted, input)| {
+            // Bevy's camera looks along local -Z; Beta's yaw 0 points
+            // along +Z.
+            let (bevy_yaw, _, _) = look.rotation.to_euler(EulerRot::YXZ);
+            Rider {
+                player,
+                vehicle: mounted.vehicle,
+                yaw: (std::f32::consts::PI - bevy_yaw).to_degrees(),
+                forward: input.is_some_and(|input| input.forward > 0.0),
+            }
+        })
+        .collect();
     crowd.clear();
     crowd.extend(
         creatures
             .iter()
             .map(|item| (item.entity, item.size.aabb(item.transform.translation))),
     );
-    if let Some(target) = target {
-        crowd.push((Entity::PLACEHOLDER, target.aabb()));
-    }
+    crowd.extend(targets.iter().map(|target| (target.entity, target.aabb())));
     let world = Surroundings {
         chunks: &chunks,
         light: &light,
@@ -474,30 +504,26 @@ pub(crate) fn tick_creatures(
         skylight_subtracted: environment.skylight_subtracted(0.0),
         ambient: environment.ambient_light(),
         difficulty,
-        player: target,
-        rider: riders.single().ok().map(|(look, mounted, input)| {
-            // Bevy's camera looks along local -Z; Beta's yaw 0 points
-            // along +Z.
-            let (bevy_yaw, _, _) = look.rotation.to_euler(EulerRot::YXZ);
-            Rider {
-                vehicle: mounted.vehicle,
-                yaw: (std::f32::consts::PI - bevy_yaw).to_degrees(),
-                forward: input.is_some_and(|input| input.forward > 0.0),
-            }
-        }),
+        players: &targets,
+        riders: &riders,
         pig_steering: settings
             .as_ref()
             .is_none_or(|settings| settings.pig_steering),
         crowd: crowd.as_slice(),
     };
-    let victim = victim(&mut player, &mut spare_armor);
+    spare_armor.resize_with(players.len(), Default::default);
+    let victims = players
+        .iter_mut()
+        .zip(spare_armor.iter_mut())
+        .filter_map(|((entity, parts), spare)| Some((*entity, victim_of(parts, spare)?)))
+        .collect();
     explosions.clear();
     let mut fx = Effects {
         commands: &mut commands,
         loot: &mut loot,
         explosions: &mut explosions,
         block_ticks: block_ticks.as_deref_mut(),
-        victim,
+        victims,
         particles: extras.particles.as_deref_mut(),
     };
 
@@ -562,7 +588,7 @@ pub(crate) fn tick_creatures(
         diagnostics.creatures.record(start.elapsed());
         diagnostics.ticks += u64::from(ticks);
         diagnostics.searches.add(pathfinder.take_stats());
-        diagnostics.mobs = crowd.len() - usize::from(target.is_some());
+        diagnostics.mobs = crowd.len() - targets.len();
     }
 }
 
@@ -764,9 +790,44 @@ impl Body<'_> {
         }
     }
 
-    /// The player, while it rides this creature.
+    /// The player riding this creature.
     fn rider(&self, world: &Surroundings) -> Option<Rider> {
-        world.rider.filter(|rider| rider.vehicle == self.entity)
+        world
+            .riders
+            .iter()
+            .copied()
+            .find(|rider| rider.vehicle == self.entity)
+    }
+
+    /// `World.getClosestPlayerToEntity(this, -1)`.
+    fn closest_player(&self, world: &Surroundings) -> Option<Target> {
+        let distance = |player: &Target| player.eye.distance_squared(self.feet);
+        world
+            .players
+            .iter()
+            .copied()
+            .min_by(|a, b| distance(a).total_cmp(&distance(b)))
+    }
+
+    /// The closest player a mob would go for: one that can be hurt, or
+    /// failing that the closest of all.
+    fn closest_prey(&self, world: &Surroundings) -> Option<Target> {
+        let distance = |player: &Target| player.eye.distance_squared(self.feet);
+        world.players.iter().copied().min_by(|a, b| {
+            b.alive
+                .cmp(&a.alive)
+                .then(distance(a).total_cmp(&distance(b)))
+        })
+    }
+
+    /// `playerToAttack` while chasing, and otherwise the player this creature
+    /// would turn on.
+    fn quarry(&self, world: &Surroundings) -> Option<Target> {
+        self.living
+            .target
+            .filter(|_| self.living.chasing)
+            .and_then(|target| world.players.iter().copied().find(|p| p.entity == target))
+            .or_else(|| self.closest_prey(world))
     }
 
     /// The Pig Steering feature, in place of `updatePlayerActionState`: a
@@ -817,13 +878,15 @@ impl Body<'_> {
             self.living.path = None;
         }
         if !self.living.chasing {
-            if self.find_player_to_attack(world) {
+            if let Some(found) = self.find_player_to_attack(world) {
                 self.living.chasing = true;
+                self.living.target = Some(found);
                 self.living.path = self.path_to_player(world, pathfinder);
             }
-        } else if !world.player.is_some_and(|player| player.alive) {
+        } else if !self.quarry(world).is_some_and(|player| player.alive) {
             self.living.chasing = false;
-        } else if let Some(player) = world.player {
+            self.living.target = None;
+        } else if let Some(player) = self.quarry(world) {
             let distance = player.eye.distance(self.feet);
             if self.can_see(world, &player) {
                 self.attack_player(world, &player, distance, traits, fx);
@@ -892,7 +955,7 @@ impl Body<'_> {
             self.living.yaw += turn;
             if has_attacked
                 && self.living.chasing
-                && let Some(player) = world.player
+                && let Some(player) = self.quarry(world)
             {
                 let previous = self.living.yaw;
                 self.living.yaw = (player.eye.z - feet.z)
@@ -909,7 +972,7 @@ impl Body<'_> {
             }
         }
         if self.living.chasing
-            && let Some(player) = world.player
+            && let Some(player) = self.quarry(world)
         {
             self.face_player(player, 30.0, 30.0);
         }
@@ -931,14 +994,14 @@ impl Body<'_> {
         let feet = self.feet;
         let near = |player: &Target| player.eye.distance_squared(feet) < 64.0;
         if self.mob.rng.next_float() < 0.02 {
-            if world.player.as_ref().is_some_and(near) {
+            if self.closest_player(world).as_ref().is_some_and(near) {
                 self.living.looking = Some(10 + self.mob.rng.next_int(20) as i32);
             } else {
                 self.living.random_yaw_velocity = (self.mob.rng.next_float() - 0.5) * 20.0;
             }
         }
         if let Some(ticks) = self.living.looking
-            && let Some(player) = world.player
+            && let Some(player) = self.closest_player(world)
         {
             self.face_player(player, 10.0, self.vertical_face_speed());
             let expired = ticks <= 0 || !player.alive || !near(&player);
@@ -991,7 +1054,7 @@ impl Body<'_> {
     /// `EntityLiving.despawnEntity`. Every mob despawns far from the player,
     /// except a tamed wolf.
     fn despawn(&mut self, world: &Surroundings) {
-        let Some(player) = world.player else {
+        let Some(player) = self.closest_player(world) else {
             return;
         };
         if self.is(MobType::Wolf) && self.mob.tamed {
@@ -1018,7 +1081,7 @@ impl Body<'_> {
         world: &Surroundings,
         pathfinder: &mut Pathfinder,
     ) -> Option<Path> {
-        let player = world.player?;
+        let player = self.quarry(world)?;
         pathfinder.path_to_feet_reusing(
             world.chunks,
             self.feet,
@@ -1293,10 +1356,10 @@ impl Body<'_> {
     /// A rider lands with its mount (`Entity.fall`).
     fn fall(&mut self, world: &Surroundings, fx: &mut Effects) {
         let distance = std::mem::take(&mut self.living.fall_distance);
-        if self.rider(world).is_some() {
+        if let Some(rider) = self.rider(world) {
             let damage = (distance - 3.0).ceil() as i16;
             if damage > 0 {
-                self.strike(world, Hit::environment(damage), fx);
+                self.strike(world, rider.player, Hit::environment(damage), fx);
             }
         }
         if matches!(self.mob.kind, MobType::Chicken | MobType::Ghast) {
@@ -1313,12 +1376,9 @@ impl Body<'_> {
     fn push_apart(&mut self, world: &Surroundings) {
         let area = grow(self.aabb(), Vec3::new(0.2, 0.0, 0.2));
         // A mount and its rider do not push each other.
-        let ridden = self.rider(world).is_some();
+        let rider = self.rider(world).map(|rider| rider.player);
         for &(other, aabb) in world.crowd {
-            if other == self.entity
-                || ridden && other == Entity::PLACEHOLDER
-                || !aabb.intersects(area)
-            {
+            if other == self.entity || rider == Some(other) || !aabb.intersects(area) {
                 continue;
             }
             let mut dx = (aabb.min.x + aabb.max.x) * 0.5 - self.feet.x;

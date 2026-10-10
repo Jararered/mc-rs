@@ -71,7 +71,7 @@ use super::mining::MiningState;
 use super::overlay::BlockFocus;
 use super::use_item::ItemUse;
 use super::use_item::launches;
-use crate::player::Player;
+use crate::player::LocalPlayer;
 use crate::player::PlayerCamera;
 use crate::player::PlayerHealth;
 use crate::player::sleep::BedUse;
@@ -143,7 +143,7 @@ pub(crate) fn interact_blocks(
             Option<&PlayerSleep>,
             &mut PlayerHealth,
         ),
-        With<Player>,
+        With<LocalPlayer>,
     >,
     camera: Query<&Transform, With<PlayerCamera>>,
     mut chunks: ResMut<WorldChunks>,
@@ -155,10 +155,10 @@ pub(crate) fn interact_blocks(
     (mut particles, mut effects, mut mobs, mut fireballs, mut carts, mut boats): (
         Option<ResMut<BlockParticles>>,
         Option<ResMut<EffectParticles>>,
-        Query<MobTarget, Without<Player>>,
-        Query<(Entity, &mut Fireball, &Transform), Without<Player>>,
-        Query<(Entity, &Transform, &mut Minecart, Option<&Cargo>), Without<Player>>,
-        Query<(Entity, &Transform, &mut Boat, &Seat), Without<Player>>,
+        Query<MobTarget, Without<LocalPlayer>>,
+        Query<(Entity, &mut Fireball, &Transform), Without<LocalPlayer>>,
+        Query<(Entity, &Transform, &mut Minecart, Option<&Cargo>), Without<LocalPlayer>>,
+        Query<(Entity, &Transform, &mut Boat, &Seat), Without<LocalPlayer>>,
     ),
     mut focus: ResMut<BlockFocus>,
     (mut state, frame): (Local<BlockInteractState>, Res<bevy::diagnostic::FrameCount>),
@@ -637,6 +637,7 @@ pub(crate) fn interact_blocks(
             // block behavior.
             if hit.block == Block::Bed {
                 bed_uses.write(BedUse {
+                    player: player_entity,
                     position: IVec3::new(hit.x, hit.y, hit.z),
                 });
             }

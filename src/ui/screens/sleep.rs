@@ -5,7 +5,7 @@ use bevy::picking::prelude::Pickable;
 use bevy::prelude::*;
 
 use crate::app::state::AppScreen;
-use crate::player::Player;
+use crate::player::LocalPlayer;
 use crate::player::sleep::PlayerSleep;
 
 pub struct SleepUiPlugin;
@@ -53,7 +53,7 @@ fn despawn(mut commands: Commands, fades: Query<Entity, With<SleepFade>>) {
 }
 
 fn update_fade(
-    players: Query<&PlayerSleep, With<Player>>,
+    players: Query<&PlayerSleep, With<LocalPlayer>>,
     mut fades: Query<(&mut BackgroundColor, &mut Visibility), With<SleepFade>>,
 ) {
     let strength = players.single().map_or(0.0, PlayerSleep::fade);

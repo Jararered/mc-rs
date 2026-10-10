@@ -319,7 +319,7 @@ pub fn spawn_fireball(
 /// Something a projectile can strike.
 #[derive(Clone, Copy)]
 pub(crate) enum Struck {
-    Player,
+    Player(Entity),
     Mob(Entity),
 }
 
@@ -327,7 +327,7 @@ pub(crate) enum Struck {
 pub(crate) fn first_struck(
     from: Vec3,
     to: Vec3,
-    player: Option<Aabb>,
+    players: &[(Entity, Aabb)],
     mobs: impl Iterator<Item = (Entity, Aabb)>,
     ignore: Option<Entity>,
 ) -> Option<Struck> {
@@ -355,8 +355,11 @@ pub(crate) fn first_struck(
             best = Some((distance, struck));
         }
     };
-    if let Some(player) = player {
-        consider(entry(player), Struck::Player);
+    // The shooter's own box does not count while it is ignored either.
+    for &(entity, aabb) in players {
+        if Some(entity) != ignore {
+            consider(entry(aabb), Struck::Player(entity));
+        }
     }
     for (entity, aabb) in mobs {
         if Some(entity) != ignore {
@@ -387,13 +390,13 @@ pub(crate) type PlayerParts<'a> = (
     Option<Mut<'a, Inventory>>,
 );
 
-/// The player as a target, if they can take damage. A player without an
+/// A player as a target, if they can take damage. A player without an
 /// inventory wears `spare` armor, which is empty.
-pub(crate) fn victim<'a>(
-    player: &'a mut Option<PlayerParts<'_>>,
+pub(crate) fn victim_of<'a>(
+    player: &'a mut PlayerParts<'_>,
     spare: &'a mut [Option<ItemStack>; 4],
 ) -> Option<Victim<'a>> {
-    let (transform, health, combat, velocity, inventory) = player.as_mut()?;
+    let (transform, health, combat, velocity, inventory) = player;
     let (bevy_yaw, _, _) = transform.rotation.to_euler(EulerRot::YXZ);
     Some(Victim {
         health: health.as_mut()?.as_mut(),
@@ -434,17 +437,19 @@ pub(crate) fn tick_projectiles(
         ),
         Without<Player>,
     >,
-    mut player: Query<
+    mut players: Query<
         (
-            &Transform,
-            Option<&mut PlayerHealth>,
-            Option<&mut PlayerCombat>,
-            &mut Velocity,
-            Option<&mut Inventory>,
+            Entity,
+            (
+                &Transform,
+                Option<&mut PlayerHealth>,
+                Option<&mut PlayerCombat>,
+                &mut Velocity,
+                Option<&mut Inventory>,
+            ),
         ),
         With<Player>,
     >,
-    player_entity: Query<Entity, With<Player>>,
     mut explosions: MessageWriter<Explosion>,
     mut particles: Option<ResMut<EffectParticles>>,
     mut loot: Local<ItemRng>,
@@ -458,8 +463,11 @@ pub(crate) fn tick_projectiles(
     let difficulty = settings
         .as_ref()
         .map_or(Difficulty::Normal, |settings| settings.difficulty);
-    let mut player = player.single_mut().ok();
-    let player_entity = player_entity.single().ok();
+    let mut players: Vec<_> = players.iter_mut().collect();
+    let player_boxes: Vec<(Entity, Aabb)> = players
+        .iter()
+        .map(|(entity, (transform, ..))| (*entity, EntitySize::PLAYER.aabb(transform.translation)))
+        .collect();
 
     for (entity, mut arrow, mut transform, mut previous) in &mut arrows {
         let mut position = transform.translation;
@@ -514,15 +522,10 @@ pub(crate) fn tick_projectiles(
                 .shooter
                 .filter(|_| arrow.ticks_in_air < 5)
                 .map(|shooter| shooter.entity);
-            // The shooter's own box does not count for those 5 ticks either.
-            let player_box = player
-                .as_ref()
-                .filter(|_| ignore.is_none() || ignore != player_entity)
-                .map(|(transform, ..)| EntitySize::PLAYER.aabb(transform.translation));
             let struck = first_struck(
                 position,
                 to,
-                player_box,
+                &player_boxes,
                 mobs.iter().filter(|(_, mob, ..)| mob.health > 0).map(
                     |(entity, _, _, _, transform, size)| (entity, size.aabb(transform.translation)),
                 ),
@@ -542,8 +545,8 @@ pub(crate) fn tick_projectiles(
             let hit = Hit {
                 amount,
                 from: arrow.shooter.map(|shooter| {
-                    if Some(shooter.entity) == player_entity
-                        && let Some((transform, ..)) = player.as_ref()
+                    if let Some((_, (transform, ..))) =
+                        players.iter().find(|(entity, _)| *entity == shooter.entity)
                     {
                         return transform.translation;
                     }
@@ -556,11 +559,13 @@ pub(crate) fn tick_projectiles(
             };
             if let Some(struck) = struck {
                 let landed = match struck {
-                    Struck::Player => {
-                        victim(&mut player, &mut spare_armor).is_some_and(|mut victim| {
+                    Struck::Player(target) => players
+                        .iter_mut()
+                        .find(|(entity, _)| *entity == target)
+                        .and_then(|(_, parts)| victim_of(parts, &mut spare_armor))
+                        .is_some_and(|mut victim| {
                             hurt_player(&mut victim, hit, difficulty, &mut loot)
-                        })
-                    }
+                        }),
                     Struck::Mob(target) => mobs.get_mut(target).is_ok_and(
                         |(_, mut mob, mut living, mut velocity, transform, _)| {
                             let feet = transform.translation;
@@ -634,13 +639,10 @@ pub(crate) fn tick_projectiles(
                 to = position;
             }
             let ignore = fireball.owner.filter(|_| fireball.ticks_in_air < 25);
-            let player_box = player
-                .as_ref()
-                .map(|(transform, ..)| EntitySize::PLAYER.aabb(transform.translation));
             let struck = first_struck(
                 position,
                 to,
-                player_box,
+                &player_boxes,
                 mobs.iter().filter(|(_, mob, ..)| mob.health > 0).map(
                     |(entity, _, _, _, transform, size)| (entity, size.aabb(transform.translation)),
                 ),
@@ -709,41 +711,39 @@ pub(crate) fn tick_projectiles(
 /// (`EntityPickupFX`). It stays where it is if there is no room.
 pub(crate) fn pickup_arrows(
     mut commands: Commands,
-    mut player: Query<(&Transform, &EntitySize, &mut Hotbar, &mut Inventory), With<Player>>,
+    mut players: Query<(&Transform, &EntitySize, &mut Hotbar, &mut Inventory), With<Player>>,
     mut arrows: Query<(Entity, &mut Arrow, &Transform), Without<Player>>,
 ) {
-    let Ok((at, size, mut hotbar, mut inventory)) = player.single_mut() else {
-        return;
-    };
-    // `boundingBox.expand(1, 0, 1)`, as for a dropped item.
-    let mut reach = size.aabb(at.translation);
-    reach.min -= Vec3::new(1.0, 0.0, 1.0);
-    reach.max += Vec3::new(1.0, 0.0, 1.0);
     for (entity, mut arrow, transform) in &mut arrows {
-        if !arrow.pickup
-            || arrow.taken.is_some()
-            || !arrow.is_stuck()
-            || arrow.shake > 0
-            || !reach.intersects(ARROW_SIZE.aabb(transform.translation))
-        {
+        if !arrow.pickup || arrow.taken.is_some() || !arrow.is_stuck() || arrow.shake > 0 {
             continue;
         }
-        let Ok(stack) = ItemStack::new(Item::Arrow, 1) else {
-            return;
-        };
-        // A full inventory changes nothing, so it must not be flagged as
-        // changed every frame the player stands on the arrow.
-        if inventory
-            .bypass_change_detection()
-            .insert(hotbar.bypass_change_detection(), stack)
-            .is_none()
-        {
-            inventory.set_changed();
-            hotbar.set_changed();
-            // The flight's last tick removes the arrow.
-            arrow.pickup = false;
-            arrow.taken = Some(0);
-            commands.entity(entity).remove::<Projectile>();
+        for (at, size, mut hotbar, mut inventory) in &mut players {
+            // `boundingBox.expand(1, 0, 1)`, as for a dropped item.
+            let mut reach = size.aabb(at.translation);
+            reach.min -= Vec3::new(1.0, 0.0, 1.0);
+            reach.max += Vec3::new(1.0, 0.0, 1.0);
+            if !reach.intersects(ARROW_SIZE.aabb(transform.translation)) {
+                continue;
+            }
+            let Ok(stack) = ItemStack::new(Item::Arrow, 1) else {
+                return;
+            };
+            // A full inventory changes nothing, so it must not be flagged as
+            // changed every frame the player stands on the arrow.
+            if inventory
+                .bypass_change_detection()
+                .insert(hotbar.bypass_change_detection(), stack)
+                .is_none()
+            {
+                inventory.set_changed();
+                hotbar.set_changed();
+                // The flight's last tick removes the arrow.
+                arrow.pickup = false;
+                arrow.taken = Some(0);
+                commands.entity(entity).remove::<Projectile>();
+                break;
+            }
         }
     }
 }

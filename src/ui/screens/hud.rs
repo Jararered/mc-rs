@@ -20,7 +20,7 @@ use crate::physics::BLOCK_REACH;
 use crate::physics::raycast_blocks;
 use crate::player::Bubble;
 use crate::player::HeartFill;
-use crate::player::Player;
+use crate::player::LocalPlayer;
 use crate::player::PlayerCamera;
 use crate::player::PlayerHealth;
 use crate::player::PlayerSurvival;
@@ -118,7 +118,7 @@ fn spawn_hud(
     font: Res<UiFont>,
     debug_visible: Res<DebugVisible>,
     settings: Res<GameSettings>,
-    player: Query<(&PlayerHealth, &Hotbar), With<Player>>,
+    player: Query<(&PlayerHealth, &Hotbar), With<LocalPlayer>>,
 ) {
     let Ok((health, hotbar)) = player.single() else {
         return;
@@ -184,7 +184,7 @@ fn update_debug_overlay(
             Option<&Flying>,
             &crate::player::GameMode,
         ),
-        With<Player>,
+        With<LocalPlayer>,
     >,
     camera: Query<&GlobalTransform, With<PlayerCamera>>,
     chunks: Res<WorldChunks>,
@@ -522,7 +522,7 @@ fn despawn_hud(mut commands: Commands, roots: Query<Entity, With<HudRoot>>) {
 }
 
 fn update_hearts(
-    health: Query<&PlayerHealth, (With<Player>, Changed<PlayerHealth>)>,
+    health: Query<&PlayerHealth, (With<LocalPlayer>, Changed<PlayerHealth>)>,
     mut hearts: Query<(&HudHeart, &mut ImageNode, &mut Visibility)>,
 ) {
     let Ok(health) = health.single() else {
@@ -540,7 +540,7 @@ fn update_hearts(
 }
 
 fn update_bubbles(
-    survival: Query<&PlayerSurvival, With<Player>>,
+    survival: Query<&PlayerSurvival, With<LocalPlayer>>,
     mut bubbles: Query<(&HudBubble, &mut ImageNode, &mut Visibility)>,
 ) {
     let Ok(survival) = survival.single() else {
@@ -565,7 +565,7 @@ fn update_bubbles(
 }
 
 fn update_hotbar_selector(
-    hotbar: Query<&Hotbar, (With<Player>, Changed<Hotbar>)>,
+    hotbar: Query<&Hotbar, (With<LocalPlayer>, Changed<Hotbar>)>,
     mut selector: Query<&mut Node, With<HotbarSelector>>,
     settings: Res<GameSettings>,
 ) {
@@ -580,7 +580,7 @@ fn update_hotbar_selector(
 }
 
 fn update_hotbar_items(
-    hotbar: Query<Ref<Hotbar>, With<Player>>,
+    hotbar: Query<Ref<Hotbar>, With<LocalPlayer>>,
     mut labels: Query<(
         &HotbarItem,
         &mut Text,
@@ -632,7 +632,7 @@ fn update_hotbar_items(
 }
 
 fn update_hotbar_icons(
-    hotbar: Query<&Hotbar, With<Player>>,
+    hotbar: Query<&Hotbar, With<LocalPlayer>>,
     icons: Res<BlockIcons>,
     clock: Option<Res<WorldTick>>,
     mut images: Query<(&HotbarBlockIcon, &mut ImageNode, &mut Visibility, &mut Node)>,
@@ -667,7 +667,7 @@ fn update_hotbar_icons(
 }
 
 fn update_hotbar_bars(
-    hotbar: Query<&Hotbar, With<Player>>,
+    hotbar: Query<&Hotbar, With<LocalPlayer>>,
     mut bars: Query<(
         &HotbarDurability,
         &mut Node,

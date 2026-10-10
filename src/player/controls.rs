@@ -3,9 +3,9 @@
 
 use super::state::FlySpeed;
 use super::state::GameMode;
+use super::state::LocalPlayer;
 use super::state::MAX_FLY_SPEED;
 use super::state::MIN_FLY_SPEED;
-use super::state::Player;
 use super::state::PlayerMovementInput;
 use crate::app::settings::GameSettings;
 use crate::app::state::PauseMenu;
@@ -111,7 +111,10 @@ pub(super) fn toggle_flying(
     keys: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
     mut last_jump: Local<Option<f32>>,
-    mut player: Query<(Entity, &GameMode, Has<Flying>, &mut FlySpeed, &mut Velocity), With<Player>>,
+    mut player: Query<
+        (Entity, &GameMode, Has<Flying>, &mut FlySpeed, &mut Velocity),
+        With<LocalPlayer>,
+    >,
     mut commands: Commands,
 ) {
     let mut toggle = keys.just_pressed(KeyCode::KeyF);
@@ -149,7 +152,7 @@ pub(super) fn toggle_flying(
 pub(super) fn adjust_fly_speed(
     keys: Res<ButtonInput<KeyCode>>,
     scroll: Res<AccumulatedMouseScroll>,
-    mut player: Query<(&GameMode, &mut FlySpeed), (With<Player>, With<Flying>)>,
+    mut player: Query<(&GameMode, &mut FlySpeed), (With<LocalPlayer>, With<Flying>)>,
 ) {
     let Ok((mode, mut fly_speed)) = player.single_mut() else {
         return;
@@ -174,7 +177,7 @@ pub(super) fn look_player(
     settings: Res<GameSettings>,
     mouse_motion: Res<AccumulatedMouseMotion>,
     windows: Query<(&Window, &CursorOptions), With<PrimaryWindow>>,
-    mut player: Query<&mut Transform, With<Player>>,
+    mut player: Query<&mut Transform, With<LocalPlayer>>,
 ) {
     let Ok((window, cursor)) = windows.single() else {
         return;
@@ -212,7 +215,7 @@ pub(super) fn apply_player_input(
             &mut PlayerMovementInput,
             Option<&BowDraw>,
         ),
-        With<Player>,
+        With<LocalPlayer>,
     >,
 ) {
     let Ok((transform, mut velocity, _collision, flying, fly_speed, mut movement_input, draw)) =
@@ -313,7 +316,7 @@ pub(super) fn select_hotbar(
     keys: Res<ButtonInput<KeyCode>>,
     scroll: Res<AccumulatedMouseScroll>,
     inventory_screen: Option<Res<crate::inventory::session::InventorySession>>,
-    mut hotbar: Query<(&mut Hotbar, &GameMode), With<Player>>,
+    mut hotbar: Query<(&mut Hotbar, &GameMode), With<LocalPlayer>>,
 ) {
     let Ok((mut hotbar, mode)) = hotbar.single_mut() else {
         return;

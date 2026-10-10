@@ -25,7 +25,7 @@ use crate::rendering::appearance::item_tile;
 use crate::world::tick::WorldTick;
 
 use super::mesh;
-use crate::player::Player;
+use crate::player::LocalPlayer;
 use crate::player::camera::CameraBobbing;
 use crate::player::camera::camera_bob_pose;
 use crate::player::camera::update_camera_bobbing;
@@ -231,7 +231,10 @@ fn animate_arm(
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<(&Window, &CursorOptions), With<PrimaryWindow>>,
     settings: Res<GameSettings>,
-    players: Query<(&CameraBobbing, &Hotbar, Option<&Fishing>, Option<&BowDraw>), With<Player>>,
+    players: Query<
+        (&CameraBobbing, &Hotbar, Option<&Fishing>, Option<&BowDraw>),
+        With<LocalPlayer>,
+    >,
     mut arms: Query<(&mut FirstPersonArm, &mut Transform, &mut Visibility)>,
     mut held: Query<
         (

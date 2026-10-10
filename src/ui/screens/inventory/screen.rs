@@ -19,7 +19,7 @@ use crate::inventory::Inventory;
 use crate::inventory::session::ActiveWorkbench;
 use crate::inventory::session::InventorySession;
 use crate::inventory::session::close_crafting_session;
-use crate::player::Player;
+use crate::player::LocalPlayer;
 use crate::random::ItemRng;
 use crate::rendering::icons::BlockIcons;
 use crate::ui::icons::overlay::UiFont;
@@ -59,7 +59,7 @@ pub(super) fn toggle(
     font: Res<UiFont>,
     settings: Res<GameSettings>,
     roots: Query<Entity, With<InventoryRoot>>,
-    mut player: Query<(&Transform, &mut Hotbar, &mut Inventory), With<Player>>,
+    mut player: Query<(&Transform, &mut Hotbar, &mut Inventory), With<LocalPlayer>>,
     mut windows: Query<(&Window, &mut CursorOptions), With<PrimaryWindow>>,
     mut item_rng: Local<ItemRng>,
 ) {
@@ -163,7 +163,7 @@ pub(super) fn close(
     mut screen: ResMut<InventorySession>,
     mut workbench: ResMut<ActiveWorkbench>,
     roots: Query<Entity, With<InventoryRoot>>,
-    mut player: Query<(&Transform, &mut Hotbar, &mut Inventory), With<Player>>,
+    mut player: Query<(&Transform, &mut Hotbar, &mut Inventory), With<LocalPlayer>>,
     mut item_rng: Local<ItemRng>,
 ) {
     if let Ok((transform, mut hotbar, mut inventory)) = player.single_mut() {

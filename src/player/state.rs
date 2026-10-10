@@ -17,7 +17,7 @@ use serde::Serialize;
 /// Full player health in half-hearts. Ten hearts on the HUD.
 pub const MAX_PLAYER_HEALTH: u8 = 20;
 
-#[derive(Component)]
+#[derive(Component, Default)]
 #[require(
     Transform,
     Velocity,
@@ -36,6 +36,18 @@ pub const MAX_PLAYER_HEALTH: u8 = 20;
     sleep::PlayerSleep
 )]
 pub struct Player;
+
+/// Who a player is: the name their record is saved under and other players
+/// know them by. The world's own player has none and uses the world's record.
+#[derive(Component, Clone, Debug, PartialEq, Eq)]
+pub struct PlayerName(pub String);
+
+/// The player this client controls and draws the world for. `Player` alone is
+/// any player in the world: simulation iterates those, and only input, the
+/// camera, the HUD and the saved player record ask for this one.
+#[derive(Component, Default)]
+#[require(Player)]
+pub struct LocalPlayer;
 
 /// What the world lets the player do, set with `/gamemode`.
 #[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

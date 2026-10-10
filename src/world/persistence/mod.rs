@@ -107,6 +107,16 @@ pub(crate) fn starts_with_world(config: Option<Res<PersistenceConfig>>) -> bool 
     config.is_none_or(|config| !config.deferred)
 }
 
+/// Add only the per-frame save pump, for an app whose [`WorldPersistence`] is
+/// put in by hand rather than opened by [`PersistencePlugin`]: one dimension
+/// of a [`WorldHost`](crate::world::host::WorldHost).
+pub fn add_saving(app: &mut App) {
+    app.add_systems(
+        Last,
+        flush_persistence.run_if(resource_exists::<WorldPersistence>),
+    );
+}
+
 /// A world chosen at runtime, waiting for the load chain to install it.
 #[derive(Resource)]
 pub struct PendingWorld(pub Option<WorldStorage>);
@@ -207,6 +217,13 @@ struct SaveOutcome {
 #[derive(Resource)]
 pub struct WorldPersistence {
     storage: Option<Arc<WorldStorage>>,
+    /// The dimension whose chunks this loads and saves. Several of these can
+    /// share one storage, one to a dimension.
+    dimension: Dimension,
+    /// This one also writes what the dimensions share: the manifest (time,
+    /// weather, difficulty) and the local player's record. Exactly one of
+    /// those sharing a storage does.
+    level: bool,
     /// Chunks that changed since the last save and are still loaded.
     dirty: HashSet<ChunkPosition>,
     /// Dirty chunks that were unloaded before a save could reach them, each
@@ -248,9 +265,25 @@ pub struct WorldPersistence {
 }
 
 impl WorldPersistence {
-    fn new(storage: WorldStorage, autosave_seconds: f32) -> Self {
+    fn new(storage: WorldStorage, dimension: Dimension, autosave_seconds: f32) -> Self {
         Self {
-            storage: Some(Arc::new(storage)),
+            level: true,
+            ..Self::for_dimension(Arc::new(storage), dimension, autosave_seconds)
+        }
+    }
+
+    /// Saving for one more dimension of a world that is already open. It
+    /// writes only its own chunks; the [`WorldPersistence`] the world was
+    /// opened with keeps writing the manifest and the player.
+    pub fn for_dimension(
+        storage: Arc<WorldStorage>,
+        dimension: Dimension,
+        autosave_seconds: f32,
+    ) -> Self {
+        Self {
+            storage: Some(storage),
+            dimension,
+            level: false,
             dirty: HashSet::new(),
             pending: Vec::new(),
             retry: Vec::new(),
@@ -272,6 +305,8 @@ impl WorldPersistence {
     fn disabled() -> Self {
         Self {
             storage: None,
+            dimension: Dimension::Overworld,
+            level: true,
             dirty: HashSet::new(),
             pending: Vec::new(),
             retry: Vec::new(),
@@ -376,15 +411,18 @@ impl WorldPersistence {
     /// keyed by chunk position alone.
     pub fn set_dimension(&mut self, dimension: Dimension) {
         debug_assert!(self.is_idle() && !self.has_unsaved_chunks());
-        if let Some(storage) = &self.storage {
-            storage.set_dimension(dimension);
-        }
+        self.dimension = dimension;
     }
 
     pub fn dimension(&self) -> Dimension {
+        self.dimension
+    }
+
+    /// Load one of this dimension's stored chunks.
+    pub fn load_chunk(&self, position: ChunkPosition) -> Option<GeneratedChunk> {
         self.storage
-            .as_ref()
-            .map_or_else(Dimension::default, |storage| storage.dimension())
+            .as_ref()?
+            .load_chunk_in(self.dimension, position)
     }
 
     /// Start a save on the next frame instead of waiting for the autosave
@@ -459,7 +497,7 @@ impl WorldPersistence {
         self.draining = true;
         self.drained.clear();
         self.retry_due = true;
-        self.manifest_pending = true;
+        self.manifest_pending = self.level;
     }
 
     /// Account for a write that finished. Chunks of a failed write are kept:
@@ -637,6 +675,7 @@ impl WorldPersistence {
         let Some(storage) = self.storage.clone() else {
             return;
         };
+        let dimension = self.dimension;
         self.writer = Some(IoTaskPool::get().spawn(async move {
             let SaveBatch {
                 positions,
@@ -644,7 +683,7 @@ impl WorldPersistence {
                 player,
                 manifest,
             } = batch;
-            let saved = match storage.write_stored_chunks(&chunks) {
+            let saved = match storage.write_stored_chunks(dimension, &chunks) {
                 Ok(saved) => saved,
                 Err(error) => {
                     return SaveOutcome {
@@ -755,9 +794,13 @@ impl WorldPersistence {
         }
         if !batch.is_empty() {
             match storage
-                .write_stored_chunks(&batch)
-                .and_then(|count| storage.touch().map(|()| count))
-            {
+                .write_stored_chunks(self.dimension, &batch)
+                .and_then(|count| {
+                    if self.level {
+                        storage.touch()?;
+                    }
+                    Ok(count)
+                }) {
                 Ok(count) => info!("Saved {count} chunks to {}", storage.root().display()),
                 Err(error) => warn!("Failed to save world: {error}"),
             }
@@ -775,7 +818,7 @@ impl WorldPersistence {
         )) = player
             && let Err(error) = storage.save_player(
                 &StoredPlayer::from_transform(transform)
-                    .with_dimension(storage.dimension())
+                    .with_dimension(self.dimension)
                     .with_flying(flying, fly_speed)
                     .with_game_mode(game_mode)
                     .with_health(health)

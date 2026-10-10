@@ -340,6 +340,7 @@ fn submitted_commands_change_player_inventory_and_world() {
     use bevy::window::PrimaryWindow;
     use game::app::state::AppScreen;
     use game::chat::ChatPlugin;
+    use game::player::LocalPlayer;
     use game::player::Player;
     use game::ui::ChatUiPlugin;
     use game::ui::icons::overlay::UiFont;
@@ -374,7 +375,7 @@ fn submitted_commands_change_player_inventory_and_world() {
         ))
         .id();
     app.world_mut().spawn((
-        Player,
+        LocalPlayer,
         game::player::PlayerHealth::default(),
         Hotbar::default(),
         Inventory::default(),

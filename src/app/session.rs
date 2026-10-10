@@ -52,6 +52,7 @@ use crate::entity::projectiles::Fireball;
 use crate::entity::thrown::Thrown;
 use crate::inventory::session::ActiveWorkbench;
 use crate::inventory::session::InventorySession;
+use crate::player::LocalPlayer;
 use crate::player::Player;
 use crate::player::PlayerInterpolation;
 use crate::player::interaction::overlay::BlockFocus;
@@ -312,11 +313,11 @@ struct WorldState<'w, 's> {
             &'static mut CollisionState,
             &'static mut PlayerInterpolation,
         ),
-        With<Player>,
+        With<LocalPlayer>,
     >,
-    sleep: Query<'w, 's, &'static PlayerSleep, With<Player>>,
+    sleep: Query<'w, 's, &'static PlayerSleep, With<LocalPlayer>>,
     /// What a change of dimension leaves standing.
-    kept: Query<'w, 's, (), Or<(With<Player>, With<SkyAnchor>, With<ShadowOwner>)>>,
+    kept: Query<'w, 's, (), Or<(With<LocalPlayer>, With<SkyAnchor>, With<ShadowOwner>)>>,
     entities: Query<
         'w,
         's,
@@ -751,7 +752,7 @@ fn admit_arrival(
             &mut CollisionState,
             &mut PlayerInterpolation,
         ),
-        With<Player>,
+        With<LocalPlayer>,
     >,
 ) {
     let Some(arrival) = pending.arrival.take() else {
@@ -809,7 +810,10 @@ fn finish_arrival(
     chunks: Res<WorldChunks>,
     pending: Option<Res<PendingArrival>>,
     mut chat: Option<ResMut<ChatHistory>>,
-    mut player: Query<(&mut Transform, &mut PlayerInterpolation, &mut PlayerSleep), With<Player>>,
+    mut player: Query<
+        (&mut Transform, &mut PlayerInterpolation, &mut PlayerSleep),
+        With<LocalPlayer>,
+    >,
 ) {
     let placed = pending.as_ref().is_some_and(|pending| pending.placed);
     let bed_missing = pending.as_ref().is_some_and(|pending| pending.bed_missing);

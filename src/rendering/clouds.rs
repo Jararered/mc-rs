@@ -31,7 +31,7 @@ use bevy::render::render_resource::PrimitiveTopology;
 use crate::app::settings::DEFAULT_CLOUD_HEIGHT;
 use crate::app::settings::GameSettings;
 use crate::physics::PhysicsSet;
-use crate::player::Player;
+use crate::player::LocalPlayer;
 
 use super::textures::InstanceTint;
 use super::textures::TintedMaterial;
@@ -453,7 +453,7 @@ fn update_clouds(
     dimension: Option<Res<crate::world::dimension::ActiveDimension>>,
     settings: Res<GameSettings>,
     spawned: Option<ResMut<CloudsSpawned>>,
-    player: Query<&Transform, (With<Player>, Without<FastClouds>, Without<FancyClouds>)>,
+    player: Query<&Transform, (With<LocalPlayer>, Without<FastClouds>, Without<FancyClouds>)>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<TintedMaterial>>,
     mut fast: Query<
@@ -464,7 +464,7 @@ fn update_clouds(
             &mut Mesh3d,
             &MeshMaterial3d<TintedMaterial>,
         ),
-        (With<FastClouds>, Without<FancyClouds>, Without<Player>),
+        (With<FastClouds>, Without<FancyClouds>, Without<LocalPlayer>),
     >,
     mut fancy: Query<
         (
@@ -474,7 +474,7 @@ fn update_clouds(
             &mut Mesh3d,
             &MeshMaterial3d<TintedMaterial>,
         ),
-        (With<FancyClouds>, Without<FastClouds>, Without<Player>),
+        (With<FancyClouds>, Without<FastClouds>, Without<LocalPlayer>),
     >,
 ) {
     let Some(mut spawned) = spawned else {

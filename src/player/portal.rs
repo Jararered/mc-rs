@@ -5,6 +5,7 @@ use bevy::camera::visibility::VisibilitySystems;
 use bevy::math::Affine3A;
 use bevy::prelude::*;
 
+use super::LocalPlayer;
 use super::Player;
 use super::PlayerCamera;
 use crate::app::session::Travel;
@@ -57,6 +58,11 @@ impl PortalTravel {
         } else {
             self.in_portal = true;
         }
+    }
+
+    /// Whether a portal block has touched the player since the last tick.
+    pub fn touching(&self) -> bool {
+        self.in_portal
     }
 
     /// One tick of `onLivingUpdate`'s portal block. Returns true on the tick
@@ -138,7 +144,7 @@ pub(super) fn plugin(app: &mut App) {
 
 fn tick_portal_travel(
     tick: Res<WorldTick>,
-    mut players: Query<&mut PortalTravel, With<Player>>,
+    mut players: Query<(&mut PortalTravel, Has<LocalPlayer>), With<Player>>,
     mut session: Option<ResMut<WorldSession>>,
     mut inventory: Option<ResMut<InventorySession>>,
 ) {
@@ -146,20 +152,23 @@ fn tick_portal_travel(
     if ticks == 0 {
         return;
     }
-    for mut portal in &mut players {
+    for (mut portal, local) in &mut players {
         // Physics reports contact once for the frame's ticks; spend it on
         // each of them, as the player has not moved between.
         let touching = portal.in_portal;
         for _ in 0..ticks {
             portal.in_portal = touching;
             if touching
+                && local
                 && let Some(inventory) = inventory.as_deref_mut()
                 && inventory.open
             {
                 // `mc.displayGuiScreen(null)`.
                 inventory.close_requested = true;
             }
+            // Only this client's player takes the session with it.
             if portal.tick()
+                && local
                 && let Some(session) = session.as_deref_mut()
             {
                 session.request_travel(Travel::Portal);
@@ -174,7 +183,7 @@ fn tick_portal_travel(
 /// transform directly. The arm is drawn undistorted, as in Beta.
 fn distort_view(
     tick: Option<Res<WorldTick>>,
-    players: Query<&PortalTravel, With<Player>>,
+    players: Query<&PortalTravel, With<LocalPlayer>>,
     mut cameras: Query<
         &mut GlobalTransform,
         Or<(With<PlayerCamera>, With<SkyCamera>, With<CelestialCamera>)>,

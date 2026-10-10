@@ -27,7 +27,7 @@ use crate::entity::projectiles::Fireball;
 use crate::entity::thrown::Thrown;
 use crate::entity::thrown::ThrownKind;
 use crate::item::Item;
-use crate::player::Player;
+use crate::player::LocalPlayer;
 use crate::player::PlayerCamera;
 use crate::player::PlayerInterpolation;
 use crate::player::rendered_eye;
@@ -313,7 +313,7 @@ pub(super) fn pose_projectiles(
     light: Option<Res<LightCache>>,
     environment: crate::world::dimension::Environment,
     camera: Query<&GlobalTransform, With<PlayerCamera>>,
-    player: Query<(&Transform, Option<&PlayerInterpolation>), With<Player>>,
+    player: Query<(&Transform, Option<&PlayerInterpolation>), With<LocalPlayer>>,
     bodies: Query<
         (&Transform, &PreviousTick, Option<&Arrow>, &Children),
         Or<(With<Arrow>, With<Fireball>, With<Thrown>, With<Bobber>)>,
@@ -323,7 +323,7 @@ pub(super) fn pose_projectiles(
         (
             With<ProjectileModel>,
             Without<PreviousTick>,
-            Without<Player>,
+            Without<LocalPlayer>,
         ),
     >,
 ) {

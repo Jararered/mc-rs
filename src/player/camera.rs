@@ -1,7 +1,7 @@
 //! The first-person camera: field of view, view bobbing, and the hurt roll.
 
 use super::interaction::use_item::BowDraw;
-use super::state::Player;
+use super::state::LocalPlayer;
 use super::state::PlayerInterpolation;
 use crate::app::settings::GameSettings;
 use crate::entity::CollisionState;
@@ -68,7 +68,7 @@ impl Default for FovZoom {
 pub(super) fn apply_camera_fov(
     settings: Res<GameSettings>,
     tick: Option<Res<WorldTick>>,
-    draws: Query<&BowDraw, With<Player>>,
+    draws: Query<&BowDraw, With<LocalPlayer>>,
     mut cameras: Query<&mut Projection, With<PlayerCamera>>,
     mut zoom: Local<FovZoom>,
 ) {
@@ -116,7 +116,7 @@ pub(super) fn update_camera_bobbing(
             Option<&PlayerCombat>,
             Has<Flying>,
         ),
-        (With<Player>, Without<PlayerCamera>),
+        (With<LocalPlayer>, Without<PlayerCamera>),
     >,
     mut cameras: Query<&mut Transform, With<PlayerCamera>>,
 ) {

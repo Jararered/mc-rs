@@ -91,6 +91,35 @@ impl StoredStack {
 }
 
 impl StoredPlayer {
+    /// The record of the player `entity` is, standing in `dimension`.
+    pub fn of(entity: EntityRef, dimension: Dimension) -> Option<Self> {
+        let record = Self::from_transform(entity.get::<Transform>()?)
+            .with_dimension(dimension)
+            .with_flying(
+                entity.contains::<crate::entity::Flying>(),
+                entity
+                    .get::<crate::player::FlySpeed>()
+                    .map_or(1.0, |speed| speed.0),
+            )
+            .with_game_mode(
+                entity
+                    .get::<crate::player::GameMode>()
+                    .copied()
+                    .unwrap_or_default(),
+            )
+            .with_health(
+                entity
+                    .get::<crate::player::PlayerHealth>()
+                    .map_or(full_player_health(), |health| health.current),
+            )
+            .with_survival(entity.get::<crate::player::PlayerSurvival>())
+            .with_sleep(entity.get::<crate::player::sleep::PlayerSleep>());
+        Some(match (entity.get::<Hotbar>(), entity.get::<Inventory>()) {
+            (Some(hotbar), Some(inventory)) => record.with_inventory(hotbar, inventory),
+            _ => record,
+        })
+    }
+
     pub fn from_transform(transform: &Transform) -> Self {
         let (yaw, pitch, _) = transform.rotation.to_euler(EulerRot::YXZ);
         Self {

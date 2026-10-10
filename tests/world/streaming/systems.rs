@@ -583,3 +583,36 @@ fn proxy_meshes_come_in_few_sizes_that_waste_little() {
         Some(bevy::mesh::Indices::U32(_))
     ));
 }
+
+#[test]
+fn chunks_stream_around_every_player_and_unload_when_one_leaves() {
+    let mut app = test_app();
+    app.world_mut()
+        .spawn((Player, Transform::from_xyz(8.0, 80.0, 8.0)));
+    let traveller = app
+        .world_mut()
+        .spawn((Player, Transform::from_xyz(648.0, 80.0, 8.0)))
+        .id();
+    let distant = ChunkPosition { x: 40, z: 0 };
+    assert!(run_until(&mut app, Duration::from_secs(5), |app| {
+        let rendered = rendered_positions(app);
+        rendered.contains(&ChunkPosition::ZERO) && rendered.contains(&distant)
+    }));
+    // Nothing is loaded in the gap between them.
+    assert!(
+        app.world()
+            .resource::<WorldChunks>()
+            .get(ChunkPosition { x: 20, z: 0 })
+            .is_none()
+    );
+
+    app.world_mut().entity_mut(traveller).despawn();
+    app.update();
+    assert!(app.world().resource::<WorldChunks>().get(distant).is_none());
+    assert!(
+        app.world()
+            .resource::<WorldChunks>()
+            .get(ChunkPosition::ZERO)
+            .is_some()
+    );
+}

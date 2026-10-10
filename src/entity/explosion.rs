@@ -32,7 +32,7 @@ use crate::entity::drops::blocks::natural_drops_with_metadata;
 use crate::entity::drops::items::spawn_block_drop;
 use crate::entity::drops::items::spawn_chest_drops;
 use crate::entity::mobs::Mob;
-use crate::entity::projectiles::victim;
+use crate::entity::projectiles::victim_of;
 use crate::inventory::Inventory;
 use crate::item::ItemStack;
 use crate::physics::Aabb;
@@ -267,7 +267,6 @@ pub(crate) fn apply_explosions(
     let difficulty = settings
         .as_ref()
         .map_or(Difficulty::Normal, |settings| settings.difficulty);
-    let mut player = player.single_mut().ok();
     for blast in blasts.read().copied().collect::<Vec<_>>() {
         let center = blast.center;
         let cells = blast_cells(&chunks, center, blast.strength, &mut rng.0);
@@ -296,17 +295,16 @@ pub(crate) fn apply_explosions(
                 velocity.0 += fling / TICK_SECONDS;
             }
         }
-        if let Some(eye) = player.as_ref().map(|(transform, ..)| transform.translation) {
+        for mut parts in &mut player {
+            let eye = parts.0.translation;
             let aabb = EntitySize::PLAYER.aabb(eye);
             if within.intersects(aabb)
                 && let Some((damage, fling)) = impact(&chunks, center, eye, aabb, reach)
             {
-                if let Some(mut victim) = victim(&mut player, &mut spare_armor) {
+                if let Some(mut victim) = victim_of(&mut parts, &mut spare_armor) {
                     hurt_player(&mut victim, hit(damage), difficulty, &mut loot);
                 }
-                if let Some((.., velocity, _)) = player.as_mut() {
-                    velocity.0 += fling / TICK_SECONDS;
-                }
+                parts.3.0 += fling / TICK_SECONDS;
             }
         }
         for (transform, mut velocity) in &mut tnt {

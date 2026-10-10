@@ -35,7 +35,7 @@ use bevy::shader::ShaderRef;
 
 use crate::app::settings::GameSettings;
 use crate::app::state::AppScreen;
-use crate::player::Player;
+use crate::player::LocalPlayer;
 use crate::random::JavaRandom;
 use crate::world::biome::Biome;
 use crate::world::chunk::CHUNK_HEIGHT;
@@ -436,7 +436,7 @@ fn update_precipitation(
     settings: Option<Res<GameSettings>>,
     chunks: Res<WorldChunks>,
     light: Option<Res<LightCache>>,
-    player: Query<&Transform, (With<Player>, Without<PrecipitationSheet>)>,
+    player: Query<&Transform, (With<LocalPlayer>, Without<PrecipitationSheet>)>,
     mut state: ResMut<PrecipitationState>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut sheets: Query<
@@ -446,7 +446,7 @@ fn update_precipitation(
             &mut Visibility,
             &mut MeshTag,
         ),
-        Without<Player>,
+        Without<LocalPlayer>,
     >,
 ) {
     let (strength, _) = environment.weather_strength();

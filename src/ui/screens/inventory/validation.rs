@@ -10,7 +10,7 @@ use crate::inventory::Inventory;
 use crate::inventory::session::ActiveWorkbench;
 use crate::inventory::session::InventorySession;
 use crate::inventory::session::close_crafting_session;
-use crate::player::Player;
+use crate::player::LocalPlayer;
 use crate::random::ItemRng;
 use crate::world::chunk::WorldChunks;
 use bevy::prelude::*;
@@ -23,8 +23,8 @@ pub(super) fn validate_workbench(
     mut screen: ResMut<InventorySession>,
     mut session: ResMut<ActiveWorkbench>,
     chunks: Res<WorldChunks>,
-    player_transform: Query<&Transform, With<Player>>,
-    mut player: Query<(&mut Hotbar, &mut Inventory), With<Player>>,
+    player_transform: Query<&Transform, With<LocalPlayer>>,
+    mut player: Query<(&mut Hotbar, &mut Inventory), With<LocalPlayer>>,
     roots: Query<Entity, With<InventoryRoot>>,
     mut windows: Query<&mut CursorOptions, With<PrimaryWindow>>,
     mut item_rng: Local<ItemRng>,
@@ -72,8 +72,8 @@ pub(super) fn validate_furnace(
     mut commands: Commands,
     mut screen: ResMut<InventorySession>,
     chunks: Res<WorldChunks>,
-    player_transform: Query<&Transform, With<Player>>,
-    mut player: Query<(&mut Hotbar, &mut Inventory), With<Player>>,
+    player_transform: Query<&Transform, With<LocalPlayer>>,
+    mut player: Query<(&mut Hotbar, &mut Inventory), With<LocalPlayer>>,
     mut workbench: ResMut<ActiveWorkbench>,
     roots: Query<Entity, With<InventoryRoot>>,
     mut windows: Query<&mut CursorOptions, With<PrimaryWindow>>,
@@ -120,7 +120,7 @@ pub(super) fn validate_furnace(
 pub(super) fn close_when_requested(
     mut commands: Commands,
     mut screen: ResMut<InventorySession>,
-    mut player: Query<(&Transform, &mut Hotbar, &mut Inventory), With<Player>>,
+    mut player: Query<(&Transform, &mut Hotbar, &mut Inventory), With<LocalPlayer>>,
     mut workbench: ResMut<ActiveWorkbench>,
     roots: Query<Entity, With<InventoryRoot>>,
     mut windows: Query<&mut CursorOptions, With<PrimaryWindow>>,
@@ -178,9 +178,9 @@ pub(super) fn validate_chest(
     mut commands: Commands,
     mut screen: ResMut<InventorySession>,
     chunks: Res<WorldChunks>,
-    carts: Query<&Transform, (With<Minecart>, Without<Player>)>,
-    player_transform: Query<&Transform, With<Player>>,
-    mut player: Query<(&Transform, &mut Hotbar, &mut Inventory), With<Player>>,
+    carts: Query<&Transform, (With<Minecart>, Without<LocalPlayer>)>,
+    player_transform: Query<&Transform, With<LocalPlayer>>,
+    mut player: Query<(&Transform, &mut Hotbar, &mut Inventory), With<LocalPlayer>>,
     mut workbench: ResMut<ActiveWorkbench>,
     roots: Query<Entity, With<InventoryRoot>>,
     mut windows: Query<&mut CursorOptions, With<PrimaryWindow>>,

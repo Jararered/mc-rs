@@ -45,11 +45,13 @@ pub use model::arm::interpolated_swing;
 pub use state::FlySpeed;
 pub use state::GameMode;
 pub use state::HeartFill;
+pub use state::LocalPlayer;
 pub use state::MAX_PLAYER_HEALTH;
 pub use state::Player;
 pub use state::PlayerHealth;
 pub(crate) use state::PlayerInterpolation;
 pub use state::PlayerMovementInput;
+pub use state::PlayerName;
 pub use survival::Bubble;
 pub use survival::PlayerSurvival;
 pub use survival::SurvivalPlugin;
@@ -57,6 +59,7 @@ pub use survival::SurvivalPlugin;
 use crate::physics::PhysicsSet;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
+use crate::world::persistence::StoredPlayer;
 use crate::world::persistence::WorldPersistence;
 
 pub struct PlayerPlugin;
@@ -115,6 +118,49 @@ impl Plugin for PlayerPlugin {
     }
 }
 
+/// Spawn a player's simulated body from its saved record, or a new one at
+/// `fallback`. This is every component the simulation reads; what a client
+/// adds for its own player (camera, arm, [`LocalPlayer`]) is not here.
+pub fn spawn_player_body(
+    commands: &mut Commands,
+    saved: Option<&StoredPlayer>,
+    fallback: Transform,
+) -> Entity {
+    let transform = saved.map_or(fallback, StoredPlayer::to_transform);
+    let (hotbar, inventory) = saved.map(StoredPlayer::to_inventory).unwrap_or_default();
+    let game_mode = saved.map(|p| p.game_mode).unwrap_or_default();
+    let flying = match game_mode {
+        GameMode::Survival => false,
+        GameMode::Creative => saved.is_some_and(|p| p.flying),
+        GameMode::Spectator => true,
+    };
+    let fly_speed = saved.map_or(1.0, |p| p.fly_speed);
+    let interpolation = PlayerInterpolation {
+        previous_position: transform.translation,
+    };
+    let mut entity = commands.spawn((
+        Name::new("Player"),
+        Player,
+        PlayerHealth {
+            current: saved.map_or(MAX_PLAYER_HEALTH, |p| p.health.min(MAX_PLAYER_HEALTH)),
+        },
+        saved.map_or_else(PlayerSurvival::default, |p| {
+            PlayerSurvival::restored(p.air, p.fire, p.fall_distance)
+        }),
+        hotbar,
+        inventory,
+        FlySpeed(fly_speed),
+        game_mode,
+        interpolation,
+        transform,
+        sleep::PlayerSleep::with_spawn(saved.and_then(|p| p.spawn).map(IVec3::from_array)),
+    ));
+    if flying {
+        entity.insert(Flying);
+    }
+    entity.id()
+}
+
 pub(crate) fn spawn_player(
     mut commands: Commands,
     chunks: Res<WorldChunks>,
@@ -126,47 +172,13 @@ pub(crate) fn spawn_player(
         .as_ref()
         .and_then(|persistence| persistence.storage())
         .and_then(|storage| storage.load_player());
-    let transform = saved
-        .as_ref()
-        .map(|player| player.to_transform())
-        .unwrap_or_else(|| default_spawn_transform(&chunks));
-    let (hotbar, inventory) = saved
-        .as_ref()
-        .map(|player| player.to_inventory())
-        .unwrap_or_default();
-    let game_mode = saved.as_ref().map(|p| p.game_mode).unwrap_or_default();
-    let flying = match game_mode {
-        GameMode::Survival => false,
-        GameMode::Creative => saved.as_ref().is_some_and(|p| p.flying),
-        GameMode::Spectator => true,
-    };
-    let fly_speed = saved.as_ref().map(|p| p.fly_speed).unwrap_or(1.0);
-    let interpolation = PlayerInterpolation {
-        previous_position: transform.translation,
-    };
-    let mut entity = commands.spawn((
-        Name::new("Player"),
-        Player,
-        PlayerHealth {
-            current: saved
-                .as_ref()
-                .map_or(MAX_PLAYER_HEALTH, |p| p.health.min(MAX_PLAYER_HEALTH)),
-        },
-        saved.as_ref().map_or_else(PlayerSurvival::default, |p| {
-            PlayerSurvival::restored(p.air, p.fire, p.fall_distance)
-        }),
-        hotbar,
-        inventory,
-        camera::CameraBobbing::default(),
-        FlySpeed(fly_speed),
-        game_mode,
-        interpolation,
-        transform,
-        sleep::PlayerSleep::with_spawn(saved.as_ref().and_then(|p| p.spawn).map(IVec3::from_array)),
-    ));
-    if flying {
-        entity.insert(Flying);
-    }
+    let body = spawn_player_body(
+        &mut commands,
+        saved.as_ref(),
+        default_spawn_transform(&chunks),
+    );
+    let mut entity = commands.entity(body);
+    entity.insert((LocalPlayer, camera::CameraBobbing::default()));
     entity.with_children(|parent| {
         parent
             .spawn((

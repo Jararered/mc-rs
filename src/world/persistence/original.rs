@@ -971,6 +971,32 @@ pub(super) fn write_level(
     write_sidecar(root, &sidecar)
 }
 
+/// `PlayerNBTManager`: where a Beta server keeps each player by name.
+fn named_player_path(root: &Path, name: &str) -> PathBuf {
+    root.join("players").join(format!("{name}.dat"))
+}
+
+/// A named player's record, as a Beta server stores it. The sidecar's fields
+/// (flight, game mode, the selected slot) belong to the world's own player,
+/// so a named one comes back with their defaults.
+pub(super) fn read_named_player(root: &Path, name: &str) -> Option<StoredPlayer> {
+    let player = read_level_file(&named_player_path(root, name)).ok()?;
+    player_from_nbt(&player, &Sidecar::default())
+}
+
+pub(super) fn write_named_player(root: &Path, name: &str, player: &StoredPlayer) -> io::Result<()> {
+    let path = named_player_path(root, name);
+    if let Some(folder) = path.parent() {
+        fs::create_dir_all(folder)?;
+    }
+    // Keep whatever tags Beta wrote that this game does not model.
+    let base = read_level_file(&path).unwrap_or_default();
+    let compressed = gzip(&nbt::write_root(&player_to_nbt(player, base)))?;
+    let temporary = path.with_extension("tmp");
+    fs::write(&temporary, compressed)?;
+    fs::rename(&temporary, path)
+}
+
 /// Claim the world like Beta does: its lock holds the time it was opened. This
 /// game never checks the lock, since a second session saving over the first
 /// is the player's doing, so a failure only warns.

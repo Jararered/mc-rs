@@ -8,6 +8,7 @@
 use bevy::prelude::*;
 
 use super::GameMode;
+use super::LocalPlayer;
 use super::MAX_PLAYER_HEALTH;
 use super::Player;
 use super::PlayerHealth;
@@ -191,20 +192,19 @@ fn apply_game_mode(
     mut player: Query<(Entity, &GameMode, Has<Flying>, &mut PlayerCombat), With<Player>>,
     mut commands: Commands,
 ) {
-    let Ok((entity, mode, flying, mut combat)) = player.single_mut() else {
-        return;
-    };
-    match mode {
-        GameMode::Survival if flying => {
-            commands.entity(entity).remove::<Flying>();
+    for (entity, mode, flying, mut combat) in &mut player {
+        match mode {
+            GameMode::Survival if flying => {
+                commands.entity(entity).remove::<Flying>();
+            }
+            GameMode::Spectator if !flying => {
+                commands.entity(entity).insert(Flying);
+            }
+            _ => {}
         }
-        GameMode::Spectator if !flying => {
-            commands.entity(entity).insert(Flying);
+        if combat.invulnerable == mode.takes_damage() {
+            combat.invulnerable = !mode.takes_damage();
         }
-        _ => {}
-    }
-    if combat.invulnerable == mode.takes_damage() {
-        combat.invulnerable = !mode.takes_damage();
     }
 }
 
@@ -238,6 +238,7 @@ fn tick_player_survival(
             Option<&mut Inventory>,
             &GameMode,
             &mut PlayerSleep,
+            Has<LocalPlayer>,
         ),
         With<Player>,
     >,
@@ -249,7 +250,7 @@ fn tick_player_survival(
     mut session: Option<ResMut<WorldSession>>,
     mut effects: Option<ResMut<EffectParticles>>,
 ) {
-    let Ok((
+    for (
         player_entity,
         mut transform,
         mut health,
@@ -262,235 +263,239 @@ fn tick_player_survival(
         mut inventory,
         mode,
         mut sleep,
-    )) = player.single_mut()
-    else {
-        return;
-    };
-    let raining = environment.is_raining();
-    // The HUD and inventory screens redraw on change, so hits write through
-    // and the change is flagged once below.
-    let health_before = health.current;
-    let armor_before = inventory.as_deref().map(|inventory| inventory.armor);
-    for _ in 0..tick.ticks_this_frame() {
-        let health = health.bypass_change_detection();
-        if health.current == 0 {
-            if survival.death_ticks == 0 {
-                let cell = (transform.translation - Vec3::Y * EntitySize::PLAYER.y_offset)
-                    .floor()
-                    .as_ivec3();
-                let mut drop = |slot: &mut Option<ItemStack>| {
-                    if let Some(stack) = slot.take() {
-                        spawn_block_drop(&mut commands, &mut rng, cell, stack);
-                    }
-                };
-                if let Some(hotbar) = hotbar.as_deref_mut() {
-                    hotbar.slots.iter_mut().for_each(&mut drop);
-                }
-                if let Some(inventory) = inventory.as_deref_mut() {
-                    let Inventory {
-                        main,
-                        crafting,
-                        armor,
-                        carried,
-                    } = inventory;
-                    main.iter_mut()
-                        .chain(crafting.iter_mut())
-                        .chain(armor.iter_mut())
-                        .chain(std::iter::once(carried))
-                        .for_each(&mut drop);
-                }
-                if let Some(persistence) = persistence.as_deref_mut() {
-                    persistence.mark_dirty(ChunkPosition::from_block(cell.x, cell.z));
-                }
-                survival.death_ticks = RESPAWN_TICKS;
-            } else {
-                survival.death_ticks -= 1;
+        local,
+    ) in &mut player
+    {
+        let raining = environment.is_raining();
+        // The HUD and inventory screens redraw on change, so hits write through
+        // and the change is flagged once below.
+        let health_before = health.current;
+        let armor_before = inventory.as_deref().map(|inventory| inventory.armor);
+        for _ in 0..tick.ticks_this_frame() {
+            let health = health.bypass_change_detection();
+            if health.current == 0 {
                 if survival.death_ticks == 0 {
-                    // `Minecraft.respawn`: where `canRespawnHere` is false
-                    // the player leaves for the Overworld first, and is put
-                    // at the spawn point once it has loaded.
-                    // A bed whose chunks are not loaded is looked at the same
-                    // way: the world is reloaded around it.
-                    let here = environment.dimension().can_respawn();
-                    let bed = sleep.spawn.filter(|_| here);
-                    let bed_loaded =
-                        bed.is_some_and(|bed| bed_chunks(bed).all(|chunk| chunks.contains(chunk)));
-                    if (!here || (bed.is_some() && !bed_loaded))
-                        && let Some(session) = session.as_deref_mut()
-                    {
-                        session.request_travel(Travel::Respawn);
-                    } else {
-                        *transform = default_spawn_transform(&chunks);
-                        if let Some(bed) = bed.filter(|_| bed_loaded) {
-                            match bed_respawn_feet(&chunks, bed) {
-                                Some(feet) => {
-                                    *transform = Transform::from_translation(
-                                        feet + Vec3::Y * EntitySize::PLAYER.y_offset,
-                                    )
-                                    .looking_to(Vec3::Z, Vec3::Y);
-                                }
-                                None => {
-                                    sleep.spawn = None;
-                                    if let Some(chat) = chat.as_deref_mut() {
-                                        chat.push(BED_MISSING_MESSAGE);
+                    let cell = (transform.translation - Vec3::Y * EntitySize::PLAYER.y_offset)
+                        .floor()
+                        .as_ivec3();
+                    let mut drop = |slot: &mut Option<ItemStack>| {
+                        if let Some(stack) = slot.take() {
+                            spawn_block_drop(&mut commands, &mut rng, cell, stack);
+                        }
+                    };
+                    if let Some(hotbar) = hotbar.as_deref_mut() {
+                        hotbar.slots.iter_mut().for_each(&mut drop);
+                    }
+                    if let Some(inventory) = inventory.as_deref_mut() {
+                        let Inventory {
+                            main,
+                            crafting,
+                            armor,
+                            carried,
+                        } = inventory;
+                        main.iter_mut()
+                            .chain(crafting.iter_mut())
+                            .chain(armor.iter_mut())
+                            .chain(std::iter::once(carried))
+                            .for_each(&mut drop);
+                    }
+                    if let Some(persistence) = persistence.as_deref_mut() {
+                        persistence.mark_dirty(ChunkPosition::from_block(cell.x, cell.z));
+                    }
+                    survival.death_ticks = RESPAWN_TICKS;
+                } else {
+                    survival.death_ticks -= 1;
+                    if survival.death_ticks == 0 {
+                        // `Minecraft.respawn`: where `canRespawnHere` is false
+                        // the player leaves for the Overworld first, and is put
+                        // at the spawn point once it has loaded.
+                        // A bed whose chunks are not loaded is looked at the same
+                        // way: the world is reloaded around it.
+                        let here = environment.dimension().can_respawn();
+                        let bed = sleep.spawn.filter(|_| here);
+                        let bed_loaded = bed
+                            .is_some_and(|bed| bed_chunks(bed).all(|chunk| chunks.contains(chunk)));
+                        // Only this client's player can take the session
+                        // with it; another respawns where this world can
+                        // put it.
+                        if local
+                            && (!here || (bed.is_some() && !bed_loaded))
+                            && let Some(session) = session.as_deref_mut()
+                        {
+                            session.request_travel(Travel::Respawn);
+                        } else {
+                            *transform = default_spawn_transform(&chunks);
+                            if let Some(bed) = bed.filter(|_| bed_loaded) {
+                                match bed_respawn_feet(&chunks, bed) {
+                                    Some(feet) => {
+                                        *transform = Transform::from_translation(
+                                            feet + Vec3::Y * EntitySize::PLAYER.y_offset,
+                                        )
+                                        .looking_to(Vec3::Z, Vec3::Y);
+                                    }
+                                    None => {
+                                        sleep.spawn = None;
+                                        if let Some(chat) = chat.as_deref_mut() {
+                                            chat.push(BED_MISSING_MESSAGE);
+                                        }
                                     }
                                 }
                             }
+                            interpolation.previous_position = transform.translation;
                         }
-                        interpolation.previous_position = transform.translation;
+                        // The new body is not on the old one's cart.
+                        crate::entity::mount::detach(&mut commands, player_entity);
+                        sleep.sleeping = false;
+                        sleep.timer = 0;
+                        velocity.0 = Vec3::ZERO;
+                        *collision = CollisionState::default();
+                        *combat = PlayerCombat::default();
+                        *survival = PlayerSurvival::default();
+                        health.current = MAX_PLAYER_HEALTH;
                     }
-                    // The new body is not on the old one's cart.
-                    crate::entity::mount::detach(&mut commands, player_entity);
-                    sleep.sleeping = false;
-                    sleep.timer = 0;
-                    velocity.0 = Vec3::ZERO;
-                    *collision = CollisionState::default();
-                    *combat = PlayerCombat::default();
-                    *survival = PlayerSurvival::default();
-                    health.current = MAX_PLAYER_HEALTH;
                 }
+                continue;
             }
-            continue;
-        }
-        if !mode.takes_damage() {
-            // Nothing burns, drowns, or bruises this player, and no fall
-            // waits for a return to survival.
-            // The splash on entering water is not a hazard, so it still plays.
-            let aabb = EntitySize::PLAYER.aabb(transform.translation);
+            if !mode.takes_damage() {
+                // Nothing burns, drowns, or bruises this player, and no fall
+                // waits for a return to survival.
+                // The splash on entering water is not a hazard, so it still plays.
+                let aabb = EntitySize::PLAYER.aabb(transform.translation);
+                let band = Aabb::new(
+                    aabb.min + Vec3::new(0.001, 0.401, 0.001),
+                    aabb.max - Vec3::new(0.001, 0.401, 0.001),
+                );
+                let in_water = water_movement(band, &chunks).0;
+                if in_water
+                    && !survival.in_water
+                    && let Some(effects) = effects.as_deref_mut()
+                {
+                    effects.water_entry(
+                        transform.translation,
+                        aabb.min.y.floor(),
+                        EntitySize::PLAYER.width,
+                        velocity.0 * TICK_SECONDS,
+                    );
+                }
+                *survival = PlayerSurvival::default();
+                survival.in_water = in_water;
+                continue;
+            }
+
+            let position = transform.translation;
+            let aabb = EntitySize::PLAYER.aabb(position);
+            let eye = position + Vec3::Y * PLAYER_EYE_HEIGHT;
+            let (bevy_yaw, _, _) = transform.rotation.to_euler(EulerRot::YXZ);
+            let motion = velocity.0 * TICK_SECONDS;
+            let mut victim = Victim {
+                health,
+                combat: &mut combat,
+                velocity: &mut velocity,
+                armor: match inventory.as_mut() {
+                    Some(inventory) => &mut inventory.bypass_change_detection().armor,
+                    None => &mut spare_armor,
+                },
+                eye: position,
+                yaw: (std::f32::consts::PI - bevy_yaw).to_degrees(),
+            };
+            // No hazard has an attacker, so difficulty never scales one.
+            let mut hurt = |amount: i16| {
+                hurt_player(
+                    &mut victim,
+                    Hit::environment(amount),
+                    Difficulty::Normal,
+                    &mut rng,
+                );
+            };
+            let state = &mut *survival;
+
+            // `Entity.onEntityUpdate`.
             let band = Aabb::new(
                 aabb.min + Vec3::new(0.001, 0.401, 0.001),
                 aabb.max - Vec3::new(0.001, 0.401, 0.001),
             );
-            let in_water = water_movement(band, &chunks).0;
-            if in_water
-                && !survival.in_water
-                && let Some(effects) = effects.as_deref_mut()
-            {
-                effects.water_entry(
-                    transform.translation,
-                    aabb.min.y.floor(),
-                    EntitySize::PLAYER.width,
-                    velocity.0 * TICK_SECONDS,
-                );
+            let (in_water, _) = water_movement(band, &chunks);
+            if in_water {
+                if !state.in_water
+                    && let Some(effects) = effects.as_deref_mut()
+                {
+                    effects.water_entry(
+                        position,
+                        aabb.min.y.floor(),
+                        EntitySize::PLAYER.width,
+                        motion,
+                    );
+                }
+                state.fire = 0;
             }
-            *survival = PlayerSurvival::default();
-            survival.in_water = in_water;
-            continue;
-        }
-
-        let position = transform.translation;
-        let aabb = EntitySize::PLAYER.aabb(position);
-        let eye = position + Vec3::Y * PLAYER_EYE_HEIGHT;
-        let (bevy_yaw, _, _) = transform.rotation.to_euler(EulerRot::YXZ);
-        let motion = velocity.0 * TICK_SECONDS;
-        let mut victim = Victim {
-            health,
-            combat: &mut combat,
-            velocity: &mut velocity,
-            armor: match inventory.as_mut() {
-                Some(inventory) => &mut inventory.bypass_change_detection().armor,
-                None => &mut spare_armor,
-            },
-            eye: position,
-            yaw: (std::f32::consts::PI - bevy_yaw).to_degrees(),
-        };
-        // No hazard has an attacker, so difficulty never scales one.
-        let mut hurt = |amount: i16| {
-            hurt_player(
-                &mut victim,
-                Hit::environment(amount),
-                Difficulty::Normal,
-                &mut rng,
-            );
-        };
-        let state = &mut *survival;
-
-        // `Entity.onEntityUpdate`.
-        let band = Aabb::new(
-            aabb.min + Vec3::new(0.001, 0.401, 0.001),
-            aabb.max - Vec3::new(0.001, 0.401, 0.001),
-        );
-        let (in_water, _) = water_movement(band, &chunks);
-        if in_water {
-            if !state.in_water
-                && let Some(effects) = effects.as_deref_mut()
-            {
-                effects.water_entry(
-                    position,
-                    aabb.min.y.floor(),
-                    EntitySize::PLAYER.width,
-                    motion,
-                );
+            state.in_water = in_water;
+            if state.fire > 0 {
+                if state.fire % 20 == 0 {
+                    hurt(1);
+                }
+                state.fire -= 1;
             }
-            state.fire = 0;
-        }
-        state.in_water = in_water;
-        if state.fire > 0 {
-            if state.fire % 20 == 0 {
+            if lava_contains(aabb, &chunks) {
+                hurt(4);
+                state.fire = 600;
+            }
+            if position.y < -64.0 {
+                hurt(4);
+            }
+
+            // `EntityLiving.onEntityUpdate`.
+            // `EntityPlayer.isEntityInsideOpaqueBlock`: never while asleep.
+            if !sleep.sleeping && inside_opaque_block(eye, EntitySize::PLAYER.width, &chunks) {
                 hurt(1);
             }
-            state.fire -= 1;
-        }
-        if lava_contains(aabb, &chunks) {
-            hurt(4);
-            state.fire = 600;
-        }
-        if position.y < -64.0 {
-            hurt(4);
-        }
-
-        // `EntityLiving.onEntityUpdate`.
-        // `EntityPlayer.isEntityInsideOpaqueBlock`: never while asleep.
-        if !sleep.sleeping && inside_opaque_block(eye, EntitySize::PLAYER.width, &chunks) {
-            hurt(1);
-        }
-        state.head_in_water = eye_in_water(eye, &chunks);
-        if state.head_in_water {
-            state.air -= 1;
-            if state.air == DROWNING_AIR {
-                state.air = 0;
-                if let Some(effects) = effects.as_deref_mut() {
-                    effects.drown(eye, motion);
+            state.head_in_water = eye_in_water(eye, &chunks);
+            if state.head_in_water {
+                state.air -= 1;
+                if state.air == DROWNING_AIR {
+                    state.air = 0;
+                    if let Some(effects) = effects.as_deref_mut() {
+                        effects.drown(eye, motion);
+                    }
+                    hurt(2);
                 }
-                hurt(2);
+                state.fire = 0;
+            } else {
+                state.air = MAX_AIR;
             }
-            state.fire = 0;
-        } else {
-            state.air = MAX_AIR;
-        }
 
-        // The tail of `Entity.moveEntity`.
-        let fallen = std::mem::take(&mut state.landed);
-        let damage = (fallen - 3.0).ceil() as i16;
-        if damage > 0 {
-            hurt(damage);
-        }
-        if touches_cactus(aabb, &chunks) {
-            hurt(1);
-        }
-        let wet = in_water || (raining && rained_on(&chunks, position.floor().as_ivec3()));
-        let inset = Aabb::new(aabb.min + Vec3::splat(0.001), aabb.max - Vec3::splat(0.001));
-        if burning_in(inset, &chunks) {
-            hurt(1);
-            if !wet {
-                state.fire += 1;
-                if state.fire == 0 {
-                    state.fire = 300;
-                }
+            // The tail of `Entity.moveEntity`.
+            let fallen = std::mem::take(&mut state.landed);
+            let damage = (fallen - 3.0).ceil() as i16;
+            if damage > 0 {
+                hurt(damage);
             }
-        } else if state.fire <= 0 {
-            state.fire = -FIRE_RESISTANCE;
+            if touches_cactus(aabb, &chunks) {
+                hurt(1);
+            }
+            let wet = in_water || (raining && rained_on(&chunks, position.floor().as_ivec3()));
+            let inset = Aabb::new(aabb.min + Vec3::splat(0.001), aabb.max - Vec3::splat(0.001));
+            if burning_in(inset, &chunks) {
+                hurt(1);
+                if !wet {
+                    state.fire += 1;
+                    if state.fire == 0 {
+                        state.fire = 300;
+                    }
+                }
+            } else if state.fire <= 0 {
+                state.fire = -FIRE_RESISTANCE;
+            }
+            if wet && state.fire > 0 {
+                state.fire = -FIRE_RESISTANCE;
+            }
         }
-        if wet && state.fire > 0 {
-            state.fire = -FIRE_RESISTANCE;
+        if health.current != health_before {
+            health.set_changed();
         }
-    }
-    if health.current != health_before {
-        health.set_changed();
-    }
-    if let Some(inventory) = inventory.as_mut()
-        && Some(inventory.armor) != armor_before
-    {
-        inventory.set_changed();
+        if let Some(inventory) = inventory.as_mut()
+            && Some(inventory.armor) != armor_before
+        {
+            inventory.set_changed();
+        }
     }
 }

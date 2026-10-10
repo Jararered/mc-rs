@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use game::entity::EntitySize;
 use game::entity::StepDistance;
+use game::entity::combat::PlayerCombat;
 use game::entity::creature::Bounce;
 use game::entity::creature::Fuse;
 use game::entity::creature::Hover;
@@ -488,4 +489,104 @@ fn a_rider_lands_as_hard_as_its_pig() {
     let health = app.world().get::<PlayerHealth>(rider).unwrap().current;
     // Ten blocks: three free, then a point a block.
     assert!((12..=14).contains(&health), "the rider has {health}");
+}
+
+/// Another player in the world, standing at `feet`.
+pub fn second_player(app: &mut App, feet: Vec3) -> Entity {
+    app.world_mut()
+        .spawn((
+            Player,
+            PlayerHealth::default(),
+            Transform::from_translation(feet + Vec3::Y * EntitySize::PLAYER.y_offset),
+        ))
+        .id()
+}
+
+fn first_player(app: &mut App) -> Entity {
+    app.world_mut()
+        .query_filtered::<Entity, With<Player>>()
+        .iter(app.world())
+        .next()
+        .unwrap()
+}
+
+#[test]
+fn a_zombie_goes_for_the_nearer_of_two_players() {
+    let mut app = creature_app(super::pathfinding::field(4), Vec3::new(-10.5, 5.0, 0.5));
+    let far = first_player(&mut app);
+    let near = second_player(&mut app, Vec3::new(6.5, 5.0, 0.5));
+    let zombie = summon(
+        &mut app,
+        Mob::new(MobType::Zombie, 3),
+        Vec3::new(0.5, 5.0, 0.5),
+    );
+    run_ticks(&mut app, 2);
+    let living = app.world().get::<Living>(zombie).unwrap();
+    assert_eq!(living.target(), Some(near));
+    assert_ne!(living.target(), Some(far));
+    // It keeps the one it picked, even once the other comes closer.
+    app.world_mut()
+        .get_mut::<Transform>(far)
+        .unwrap()
+        .translation = Vec3::new(-2.5, 5.0 + EntitySize::PLAYER.y_offset, 0.5);
+    run_ticks(&mut app, 2);
+    assert_eq!(
+        app.world().get::<Living>(zombie).unwrap().target(),
+        Some(near)
+    );
+}
+
+#[test]
+fn a_zombie_passes_over_a_player_it_cannot_hurt_for_one_it_can() {
+    let mut app = creature_app(super::pathfinding::field(4), Vec3::new(3.5, 5.0, 0.5));
+    let creative = first_player(&mut app);
+    let mut untouchable = PlayerCombat::default();
+    untouchable.invulnerable = true;
+    app.world_mut().entity_mut(creative).insert(untouchable);
+    let survivor = second_player(&mut app, Vec3::new(-9.5, 5.0, 0.5));
+    let zombie = summon(
+        &mut app,
+        Mob::new(MobType::Zombie, 3),
+        Vec3::new(0.5, 5.0, 0.5),
+    );
+    run_ticks(&mut app, 2);
+    assert_eq!(
+        app.world().get::<Living>(zombie).unwrap().target(),
+        Some(survivor)
+    );
+}
+
+#[test]
+fn a_creature_stays_while_any_player_is_near() {
+    // Far from the first player, as in the despawn test, but beside another.
+    let mut app = creature_app(super::pathfinding::field(4), Vec3::new(140.5, 5.0, 0.5));
+    second_player(&mut app, Vec3::new(8.5, 5.0, 0.5));
+    let pig = summon(
+        &mut app,
+        Mob::new(MobType::Pig, 1),
+        Vec3::new(0.5, 5.0, 0.5),
+    );
+    run_ticks(&mut app, 40);
+    assert!(app.world().get_entity(pig).is_ok());
+}
+
+#[test]
+fn a_melee_hit_lands_on_the_player_the_zombie_chose() {
+    let mut app = creature_app(super::pathfinding::field(4), Vec3::new(1.5, 5.0, 0.5));
+    let victim = first_player(&mut app);
+    let bystander = second_player(&mut app, Vec3::new(-12.5, 5.0, 0.5));
+    for player in [victim, bystander] {
+        app.world_mut()
+            .entity_mut(player)
+            .insert(PlayerCombat::default());
+    }
+    summon(
+        &mut app,
+        Mob::new(MobType::Zombie, 3),
+        Vec3::new(0.5, 5.0, 0.5),
+    );
+    run_ticks(&mut app, 30);
+    let health = |app: &App, player| app.world().get::<PlayerHealth>(player).unwrap().current;
+    assert!(health(&app, victim) < 20);
+    assert_eq!(health(&app, bystander), 20);
 }

@@ -94,7 +94,12 @@ pub fn advance_world_tick(
     time: Res<Time>,
     state: Option<Res<State<AppScreen>>>,
     persistence: Option<Res<WorldPersistence>>,
+    hosted: Option<Res<crate::world::host::Hosted>>,
 ) {
+    // A hosted dimension is handed the world's clock each frame.
+    if hosted.is_some() {
+        return;
+    }
     let playing = matches!(state.as_deref().map(State::get), Some(AppScreen::Playing));
     // A world being saved to unload holds still, so no chunk changes after
     // its last snapshot.

@@ -100,12 +100,10 @@ impl Body<'_> {
     }
 
     /// `findPlayerToAttack`.
-    pub(super) fn find_player_to_attack(&self, world: &Surroundings) -> bool {
-        let Some(player) = world.player else {
-            return false;
-        };
+    pub(super) fn find_player_to_attack(&self, world: &Surroundings) -> Option<Entity> {
+        let player = self.closest_prey(world)?;
         let within = |range: f32| player.eye.distance_squared(self.feet) < range * range;
-        match self.mob.kind {
+        let found = match self.mob.kind {
             // `EntityMob`: the nearest player within 16 it can see.
             MobType::Zombie | MobType::Skeleton | MobType::Creeper => {
                 within(16.0) && self.can_see(world, &player)
@@ -113,9 +111,11 @@ impl Body<'_> {
             MobType::PigZombie => self.mob.angry && within(16.0) && self.can_see(world, &player),
             // Spiders hunt only in the dark, but need no line of sight.
             MobType::Spider => self.brightness(world) < 0.5 && within(16.0),
-            MobType::Wolf => self.wolf_wants(world),
+            // `EntityWolf.findPlayerToAttack`.
+            MobType::Wolf => self.mob.angry && within(16.0),
             _ => false,
-        }
+        };
+        found.then_some(player.entity)
     }
 
     /// `attackEntity`, called while the target is in sight.
@@ -132,6 +132,7 @@ impl Body<'_> {
             MobType::Spider => {
                 if self.brightness(world) > 0.5 && self.mob.rng.next_int(100) == 0 {
                     self.living.chasing = false;
+                    self.living.target = None;
                 } else if distance > 2.0 && distance < 6.0 && self.mob.rng.next_int(10) == 0 {
                     self.leap_at(player);
                 } else {
@@ -172,7 +173,7 @@ impl Body<'_> {
                 from: Some(self.feet),
                 source: Source::Monster,
             };
-            self.strike(world, hit, fx);
+            self.strike(world, player.entity, hit, fx);
         }
     }
 
@@ -244,8 +245,8 @@ impl Body<'_> {
     /// often toward a player within 16.
     pub(super) fn slime_action(&mut self, world: &Surroundings, bounce: Option<&mut Bounce>) {
         self.despawn(world);
-        let near = world
-            .player
+        let near = self
+            .closest_player(world)
             .filter(|player| player.eye.distance_squared(self.feet) < 256.0);
         if let Some(player) = near {
             self.face_player(player, 10.0, 20.0);
@@ -280,23 +281,24 @@ impl Body<'_> {
     /// update: a slime bigger than the smallest hurts by its size on contact.
     fn slime_touch(&mut self, world: &Surroundings, fx: &mut Effects) {
         let size = self.mob.variant.max(1);
-        let Some(player) = world.player else {
-            return;
-        };
-        if size <= 1
-            || !player.alive
-            || !grow(player.aabb(), Vec3::new(1.0, 0.0, 1.0)).intersects(self.aabb())
-            || player.eye.distance(self.feet) >= 0.6 * f32::from(size)
-            || !self.can_see(world, &player)
-        {
+        if size <= 1 {
             return;
         }
-        let hit = Hit {
-            amount: i16::from(size),
-            from: Some(self.feet),
-            source: Source::Creature,
-        };
-        self.strike(world, hit, fx);
+        for player in world.players {
+            if !player.alive
+                || !grow(player.aabb(), Vec3::new(1.0, 0.0, 1.0)).intersects(self.aabb())
+                || player.eye.distance(self.feet) >= 0.6 * f32::from(size)
+                || !self.can_see(world, player)
+            {
+                continue;
+            }
+            let hit = Hit {
+                amount: i16::from(size),
+                from: Some(self.feet),
+                source: Source::Creature,
+            };
+            self.strike(world, player.entity, hit, fx);
+        }
     }
 
     /// `EntityGhast.updatePlayerActionState`: drift between random waypoints,
@@ -335,7 +337,7 @@ impl Body<'_> {
                 hover.waypoint = self.feet;
             }
         }
-        let player = world.player.filter(|player| player.alive);
+        let player = self.closest_prey(world).filter(|player| player.alive);
         if player.is_none() {
             hover.targeting = false;
         }

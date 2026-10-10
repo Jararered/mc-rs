@@ -25,8 +25,8 @@ Usage: server [options]
   --seed <number>    Seed for a world that has to be created
   --beta-format      Create the world in Beta 1.7.3's own save format
   --view <chunks>    Chunks each way sent to a client (default 8)
-  --monsters         Use the world's own difficulty instead of Peaceful.
-                     Clients cannot see mobs yet.
+  --peaceful         Run the world on Peaceful whatever difficulty it was
+                     saved with
 ";
 
 struct Options {
@@ -36,7 +36,7 @@ struct Options {
     seed: Option<u64>,
     format: SaveFormat,
     view: i32,
-    monsters: bool,
+    peaceful: bool,
 }
 
 fn options() -> Result<Options, String> {
@@ -47,7 +47,7 @@ fn options() -> Result<Options, String> {
         seed: None,
         format: SaveFormat::Binary,
         view: 8,
-        monsters: false,
+        peaceful: false,
     };
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -71,7 +71,7 @@ fn options() -> Result<Options, String> {
             }
             "--beta-format" => options.format = SaveFormat::Original,
             "--view" => options.view = value()?.parse().map_err(|_| "bad view distance")?,
-            "--monsters" => options.monsters = true,
+            "--peaceful" => options.peaceful = true,
             "--help" | "-h" => return Err(String::new()),
             other => return Err(format!("unknown option {other}")),
         }
@@ -126,7 +126,7 @@ fn main() {
     );
     let config = ServerConfig {
         view_distance: options.view,
-        peaceful: !options.monsters,
+        peaceful: options.peaceful,
         ..ServerConfig::default()
     };
     let mut server = match BetaServer::bind(("0.0.0.0", options.port), storage, config) {

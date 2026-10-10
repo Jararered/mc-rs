@@ -66,6 +66,14 @@ const RESPAWN_TICKS: u16 = 40;
 
 /// Runs the player's hazards after physics. It works in an app without
 /// [`AppScreen`], where it always runs.
+/// A player whose client decides when they respawn (`Packet9Respawn` from
+/// the death screen): the body stays dead until `requested` is set, rather
+/// than getting up by itself once the death animation has played.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct ClientRespawn {
+    pub requested: bool,
+}
+
 pub struct SurvivalPlugin;
 
 impl Plugin for SurvivalPlugin {
@@ -239,6 +247,7 @@ fn tick_player_survival(
             &GameMode,
             &mut PlayerSleep,
             Has<LocalPlayer>,
+            Option<&mut ClientRespawn>,
         ),
         With<Player>,
     >,
@@ -264,6 +273,7 @@ fn tick_player_survival(
         mode,
         mut sleep,
         local,
+        mut respawn,
     ) in &mut player
     {
         let raining = environment.is_raining();
@@ -304,8 +314,17 @@ fn tick_player_survival(
                     }
                     survival.death_ticks = RESPAWN_TICKS;
                 } else {
+                    // A remote player lies dead until their client asks.
+                    if survival.death_ticks == 1
+                        && respawn.as_deref().is_some_and(|respawn| !respawn.requested)
+                    {
+                        continue;
+                    }
                     survival.death_ticks -= 1;
                     if survival.death_ticks == 0 {
+                        if let Some(respawn) = respawn.as_deref_mut() {
+                            respawn.requested = false;
+                        }
                         // `Minecraft.respawn`: where `canRespawnHere` is false
                         // the player leaves for the Overworld first, and is put
                         // at the spawn point once it has loaded.

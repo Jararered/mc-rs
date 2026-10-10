@@ -347,6 +347,24 @@ impl WorldHost {
         }
         for hosting in &mut self.worlds {
             let world = hosting.app.world_mut();
+            // No physics runs here, so a player's contact with a portal
+            // block is looked for where the client put them.
+            let mut bodies =
+                world.query_filtered::<(Entity, &Transform, &mut PortalTravel), With<Player>>();
+            let contacts: Vec<(Entity, Vec3)> = bodies
+                .iter(world)
+                .map(|(entity, transform, _)| (entity, transform.translation))
+                .collect();
+            for (entity, translation) in contacts {
+                let chunks = world.resource::<WorldChunks>();
+                let aabb = EntitySize::PLAYER.aabb(translation);
+                let mut charge = world
+                    .get::<PortalTravel>(entity)
+                    .copied()
+                    .unwrap_or_default();
+                crate::physics::touch_portals(aabb, chunks, &mut charge);
+                *world.get_mut::<PortalTravel>(entity).unwrap() = charge;
+            }
             let mut players = world.query_filtered::<(Entity, &mut PortalTravel), With<Player>>();
             for (entity, mut portal) in players.iter_mut(world) {
                 // Physics reports contact once for the frame's ticks.

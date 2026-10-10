@@ -64,6 +64,15 @@ pub struct Explosion {
     pub source: Source,
 }
 
+/// `Packet60Explosion`: an [`Explosion`] went off and took `cells` with it.
+/// The blocks are already gone when this is read.
+#[derive(Message, Clone, Debug)]
+pub struct Exploded {
+    pub center: Vec3,
+    pub strength: f32,
+    pub cells: Vec<IVec3>,
+}
+
 /// `EntityTNTPrimed`. Its `Transform` is the bottom center of its box.
 #[derive(Component)]
 pub struct PrimedTnt {
@@ -263,6 +272,7 @@ pub(crate) fn apply_explosions(
     mut particles: Option<ResMut<EffectParticles>>,
     mut loot: Local<ItemRng>,
     mut spare_armor: Local<[Option<ItemStack>; 4]>,
+    mut exploded: MessageWriter<Exploded>,
 ) {
     let difficulty = settings
         .as_ref()
@@ -270,6 +280,11 @@ pub(crate) fn apply_explosions(
     for blast in blasts.read().copied().collect::<Vec<_>>() {
         let center = blast.center;
         let cells = blast_cells(&chunks, center, blast.strength, &mut rng.0);
+        exploded.write(Exploded {
+            center,
+            strength: blast.strength,
+            cells: cells.clone(),
+        });
         let reach = blast.strength * 2.0;
         let hit = |damage: i16| Hit {
             amount: damage,

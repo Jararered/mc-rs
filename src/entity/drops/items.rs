@@ -6,7 +6,6 @@
 use bevy::prelude::*;
 
 use crate::app::settings::GameSettings;
-use crate::app::state::AppScreen;
 use crate::block::blocks::Block;
 use crate::block::fluids::is_lava;
 use crate::entity::CollisionState;
@@ -59,7 +58,8 @@ impl Plugin for DroppedItemPlugin {
             (tick_dropped_items, pickup_dropped_items)
                 .chain()
                 .after(PhysicsSet::Integrate)
-                .run_if(in_state(AppScreen::Playing)),
+                // A hosted dimension has no screen state and always plays.
+                .run_if(crate::world::tick::playing),
         );
     }
 }

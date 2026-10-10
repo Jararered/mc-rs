@@ -64,6 +64,9 @@ pub struct PlayerSleep {
     pub spawn: Option<IVec3>,
     /// Health as of the last sleeping tick; a drop wakes the player.
     last_health: u8,
+    /// The player asked to get up (`Packet19EntityAction` state 3, the
+    /// "Leave Bed" button of a client in multiplayer).
+    pub leave: bool,
 }
 
 impl PlayerSleep {
@@ -380,7 +383,19 @@ fn tick_sleep(
                 // `attackEntityFrom` wakes a sleeper too.
                 let hurt = health.current < sleep.last_health;
                 sleep.last_health = health.current;
-                if !in_bed || hurt {
+                if std::mem::take(&mut sleep.leave) {
+                    // `wakeUpPlayer(false, true, true)`.
+                    wake(
+                        &mut sleep,
+                        &mut transform,
+                        &mut interpolation,
+                        &mut chunks,
+                        persistence.as_deref_mut(),
+                        chat.as_deref_mut(),
+                        false,
+                        true,
+                    );
+                } else if !in_bed || hurt {
                     wake(
                         &mut sleep,
                         &mut transform,

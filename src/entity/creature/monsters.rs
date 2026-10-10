@@ -30,6 +30,11 @@ pub struct Fuse {
 }
 
 impl Fuse {
+    /// `getCreeperState`: 1 while hissing, -1 while cooling off.
+    pub fn state(&self) -> i8 {
+        self.state
+    }
+
     /// `EntityCreeper.setCreeperFlashTime`: how near the blast, from 0 to
     /// just past 1. It drives the swell and the white flashes.
     pub fn flash(&self, fuse: i16, partial: f32) -> f32 {

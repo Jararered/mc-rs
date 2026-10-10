@@ -789,6 +789,17 @@ fn touch_blocks(
     }
 }
 
+/// `touch_blocks` for a player nothing integrates (a remote player on the
+/// server, whose client does the moving): the portal charge is all it keeps.
+pub fn touch_portals(
+    aabb: Aabb,
+    chunks: &WorldChunks,
+    portal: &mut crate::player::portal::PortalTravel,
+) {
+    let mut motion = Vec3::ZERO;
+    touch_blocks(aabb, chunks, &mut motion, Some(portal));
+}
+
 /// `Entity.moveEntity`'s step tracking: a finished step calls
 /// `onEntityWalking` on the block 0.2 below the feet.
 pub(crate) fn step_on_block(

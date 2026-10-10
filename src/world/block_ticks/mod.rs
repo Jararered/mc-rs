@@ -37,6 +37,7 @@ use std::collections::HashMap;
 use std::collections::VecDeque;
 
 use bevy::math::IVec3;
+use bevy::prelude::Message;
 use bevy::prelude::Resource;
 
 use crate::block::blocks::Block;
@@ -161,6 +162,17 @@ pub enum TickEffect {
     LavaMix { position: IVec3 },
     /// Move an entity out of the cell newly occupied by a piston extension.
     PistonPush { position: IVec3, direction: IVec3 },
+}
+
+/// `World.playNoteAt`: a note block sounded. Nothing in the game plays it
+/// yet; a server tells its clients.
+#[derive(Message, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct NotePlayed {
+    pub position: IVec3,
+    /// 0..4, from the block underneath.
+    pub instrument: u8,
+    /// 0..24.
+    pub pitch: u8,
 }
 
 /// The block update state of the loaded world.

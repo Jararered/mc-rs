@@ -21,12 +21,12 @@ when it lands and add what you find missing.
 
 ## Verify first
 
-- [ ] Connect the original Beta 1.7.3 client to the server. Nothing below matters until this works; so far
+- [x] Connect the original Beta 1.7.3 client to the server. Nothing below matters until this works; so far
       only a test client has spoken to it.
 - [ ] Two original clients at once: see each other, dig and place near each other, chat
-- [ ] Walk far enough to load and unload chunks; leave and rejoin at the same place
+- [x] Walk far enough to load and unload chunks; leave and rejoin at the same place
 - [ ] Go through a Nether portal and back on the server
-- [ ] Play singleplayer through the changed paths: mining and instant breaks, placing, buckets, doors, beds,
+- [x] Play singleplayer through the changed paths: mining and instant breaks, placing, buckets, doors, beds,
       all container types, boats, carts, bow, rod, chat commands
 
 ## Beta server: what clients are not told

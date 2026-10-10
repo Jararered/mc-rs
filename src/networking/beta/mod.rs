@@ -3,10 +3,15 @@
 //!
 //! `codec` is the wire format, transcribed from the reference `Packet*`
 //! classes; `server` is `NetLoginHandler` and `NetServerHandler` over a
-//! [`WorldHost`](crate::world::host::WorldHost).
+//! [`WorldHost`](crate::world::host::WorldHost); `tracker` is
+//! `EntityTracker`, which shows clients the entities near them; and
+//! `windows` is `Container`, the inventory and container windows and the
+//! clicks made in them.
 
 pub mod codec;
 mod server;
+mod tracker;
+mod windows;
 
 pub use server::BetaServer;
 pub use server::ServerConfig;

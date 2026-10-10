@@ -327,6 +327,7 @@ impl Plugin for MobPlugin {
             .add_message::<SpawnMob>()
             .init_resource::<ExplosionRandom>()
             .add_message::<Explosion>()
+            .add_message::<crate::entity::explosion::Exploded>()
             .add_systems(
                 Update,
                 (

@@ -201,3 +201,39 @@ fn a_player_comes_back_to_the_dimension_and_place_they_left() {
         );
     }
 }
+
+/// Nothing integrates a hosted player, so standing in a portal block has to
+/// be noticed from where the client put them.
+#[test]
+fn standing_in_a_portal_sends_a_player_through() {
+    let mut host = host("standing", SaveFormat::Binary);
+    let (_, alice) = host.join("alice");
+    let at = eye(&host, Dimension::Overworld, alice);
+    let cell = IVec3::new(
+        at.x.floor() as i32,
+        (at.y - 1.62 + 0.1).floor() as i32,
+        at.z.floor() as i32,
+    );
+    assert!(run_until(&mut host, Duration::from_secs(60), |host| {
+        host.world(Dimension::Overworld)
+            .unwrap()
+            .resource::<WorldChunks>()
+            .block_at(cell.x, cell.y, cell.z)
+            .is_some()
+    }));
+    // A new arrival cannot start a trip until `timeUntilPortal` has run out.
+    for _ in 0..30 {
+        host.update(0.05);
+    }
+    host.world_mut(Dimension::Overworld)
+        .unwrap()
+        .resource_mut::<WorldChunks>()
+        .set_block(cell.x, cell.y, cell.z, Block::NetherPortal);
+    assert!(
+        run_until(&mut host, Duration::from_secs(120), |host| {
+            host.find("alice")
+                .is_some_and(|(dimension, _)| dimension == Dimension::Nether)
+        }),
+        "a player standing in a portal never travelled"
+    );
+}

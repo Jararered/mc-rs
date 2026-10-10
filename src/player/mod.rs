@@ -54,6 +54,7 @@ pub(crate) use state::PlayerInterpolation;
 pub use state::PlayerMovementInput;
 pub use state::PlayerName;
 pub use survival::Bubble;
+pub use survival::ClientRespawn;
 pub use survival::PlayerSurvival;
 pub use survival::SurvivalPlugin;
 

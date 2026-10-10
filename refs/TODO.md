@@ -52,10 +52,8 @@ jukebox discs, and the volume options. Sound assets must come from the player's 
 
 ## Particles and presentation hooks
 
-Smoke, flames, lava pops, redstone dust, portal swirls, explosion puffs, bubbles, splashes, hearts and note
-particles are implemented (`rendering/particles/`). Still missing: the slime drops (`EntitySlimeFX`) and the
-`snowballpoof` burst of a snowball or egg (both item-sprite particles rather than `particles.png`), the wolf shaking spray (wolves do not shake dry yet), and the `spawnExplosionParticle` puffs when
-a spawner releases a mob. Creative and spectator players make no water splash.
+All of Beta's `Entity*FX` particles and `randomDisplayTick` effects are implemented (`rendering/particles/`).
+A wolf shakes dry and sprays, but its model does not play the shake animation (`RenderWolf`).
 
 ## Projectile leftovers
 

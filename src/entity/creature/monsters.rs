@@ -436,7 +436,12 @@ impl Body<'_> {
     }
 
     /// Each kind's work after the whole `onUpdate`.
-    pub(super) fn update_epilogue(&mut self, was_on_ground: bool, traits: &mut Traits) {
+    pub(super) fn update_epilogue(
+        &mut self,
+        was_on_ground: bool,
+        traits: &mut Traits,
+        fx: &mut Effects,
+    ) {
         if let Some(fuse) = traits.fuse.as_deref_mut()
             && !self.living.chasing
             && self.mob.fuse > 0
@@ -446,6 +451,9 @@ impl Body<'_> {
         if let Some(bounce) = traits.bounce.as_deref_mut() {
             if self.collision.on_ground && !was_on_ground {
                 bounce.squish = -0.5;
+                if let Some(particles) = fx.particles.as_deref_mut() {
+                    particles.slime_splat(self.feet, self.mob.variant);
+                }
             }
             bounce.squish *= 0.6;
         }

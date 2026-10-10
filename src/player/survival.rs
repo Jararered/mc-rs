@@ -355,7 +355,26 @@ fn tick_player_survival(
         if !mode.takes_damage() {
             // Nothing burns, drowns, or bruises this player, and no fall
             // waits for a return to survival.
+            // The splash on entering water is not a hazard, so it still plays.
+            let aabb = EntitySize::PLAYER.aabb(transform.translation);
+            let band = Aabb::new(
+                aabb.min + Vec3::new(0.001, 0.401, 0.001),
+                aabb.max - Vec3::new(0.001, 0.401, 0.001),
+            );
+            let in_water = water_movement(band, &chunks).0;
+            if in_water
+                && !survival.in_water
+                && let Some(effects) = effects.as_deref_mut()
+            {
+                effects.water_entry(
+                    transform.translation,
+                    aabb.min.y.floor(),
+                    EntitySize::PLAYER.width,
+                    velocity.0 * TICK_SECONDS,
+                );
+            }
             *survival = PlayerSurvival::default();
+            survival.in_water = in_water;
             continue;
         }
 

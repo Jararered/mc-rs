@@ -450,6 +450,8 @@ fn tick_spawners(
                     spawned += 1;
                     if let Some(effects) = effects.as_deref_mut() {
                         effects.spawner_burst(IVec3::new(x, y, z));
+                        let size = spawner.kind.size(0);
+                        effects.spawn_puffs(feet, size.width, size.height);
                     }
                     spawner.delay = 200 + rng.next_int(600) as u16;
                 }

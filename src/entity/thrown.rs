@@ -280,6 +280,11 @@ pub(crate) fn tick_thrown(
                         spawn_facing(&mut commands, chicken, position, ball.yaw);
                     }
                 }
+                if let Some(particles) = particles.as_deref_mut() {
+                    for _ in 0..8 {
+                        particles.spawn(FxKind::SnowballPoof, position, Vec3::ZERO);
+                    }
+                }
                 burst = true;
                 break;
             }

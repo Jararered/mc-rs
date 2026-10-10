@@ -1,12 +1,10 @@
 //! Beta's `EntityFX` particles: rain splashes, smoke, flames, lava pops,
 //! redstone dust, portal swirls, explosion puffs, bubbles, splashes, hearts
-//! and notes. Producers call [`EffectParticles::spawn`], which is
+//! notes, and the snowball and slime drops (item-sheet sprites on a second
+//! mesh). Producers call [`EffectParticles::spawn`], which is
 //! `World.spawnParticle`: it drops anything more than 16 blocks from the
 //! viewer and builds the particle from its Java constructor. One dynamic mesh
 //! draws the bounded pool from `particles.png`.
-//!
-//! Beta also has slime and snowball drops, which are item-sheet sprites and
-//! are not drawn yet.
 
 use std::collections::VecDeque;
 
@@ -26,10 +24,12 @@ use crate::block::fluids::Fluid;
 use crate::block::fluids::is_liquid;
 use crate::block::fluids::is_water;
 use crate::entity::projectiles::gaussian;
+use crate::item::Item;
 use crate::physics::PhysicsSet;
 use crate::player::Player;
 use crate::player::PlayerCamera;
 use crate::random::JavaRandom;
+use crate::rendering::appearance::item_tile;
 use crate::rendering::weather::Precipitation;
 use crate::world::chunk::WorldChunks;
 use crate::world::environment::celestial_angle;
@@ -82,6 +82,10 @@ pub enum FxKind {
     /// The velocity is the dust's red, green and blue.
     Reddust,
     Heart,
+    /// `snowballpoof`: a snowball's burst, drawn from the snowball icon.
+    SnowballPoof,
+    /// `slime`: a drop of the slimeball icon.
+    Slime,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -97,6 +101,16 @@ enum Kind {
     Bubble,
     Heart,
     Note,
+    /// `EntitySlimeFX`.
+    ItemBreak,
+}
+
+/// The part of `gui/items.png` an `EntitySlimeFX` draws.
+#[derive(Clone, Copy)]
+struct ItemSprite {
+    tile: u8,
+    /// `particleTextureJitterX/Y`, in quarters of a tile.
+    jitter: Vec2,
 }
 
 #[derive(Clone, Copy)]
@@ -120,6 +134,8 @@ struct Particle {
     brightness: f32,
     on_ground: bool,
     no_clip: bool,
+    /// Set for the drops drawn from the item sheet.
+    item: Option<ItemSprite>,
 }
 
 /// The effects drawn around the player.
@@ -184,6 +200,8 @@ impl EffectParticles {
             FxKind::Splash => self.water_splash(position, velocity),
             FxKind::Reddust => self.reddust(position, velocity, 1.0),
             FxKind::Heart => self.heart(position, 2.0),
+            FxKind::SnowballPoof => self.item_break(position, Item::Snowball),
+            FxKind::Slime => self.item_break(position, Item::Slimeball),
         };
         self.push(particle);
     }
@@ -258,6 +276,34 @@ impl EffectParticles {
         }
     }
 
+    /// `EntityWolf.onUpdate`'s shake: up to seven drops of spray at the
+    /// wolf's back, most when the shake is a quarter through.
+    pub fn wolf_spray(&mut self, feet: Vec3, width: f32, shake_time: f32, motion: Vec3) {
+        let count = ((shake_time - 0.4) * std::f32::consts::PI).sin() * 7.0;
+        for _ in 0..count.max(0.0) as usize {
+            let dx = (self.random.next_float() * 2.0 - 1.0) * width * 0.5;
+            let dz = (self.random.next_float() * 2.0 - 1.0) * width * 0.5;
+            let at = Vec3::new(feet.x + dx, feet.y + 0.8, feet.z + dz);
+            self.spawn(FxKind::Splash, at, motion);
+        }
+    }
+
+    /// `EntitySlime.onUpdate`'s landing: a ring of slimeball drops, eight per
+    /// size, thrown out around the slime.
+    pub fn slime_splat(&mut self, feet: Vec3, size: u8) {
+        for _ in 0..u32::from(size) * 8 {
+            let angle = self.random.next_float() * std::f32::consts::PI * 2.0;
+            let reach = self.random.next_float() * 0.5 + 0.5;
+            let radius = f32::from(size) * 0.5 * reach;
+            let at = Vec3::new(
+                feet.x + angle.sin() * radius,
+                feet.y,
+                feet.z + angle.cos() * radius,
+            );
+            self.spawn(FxKind::Slime, at, Vec3::ZERO);
+        }
+    }
+
     /// `EntityLiving.onEntityUpdate`'s last gasp: eight bubbles round the
     /// body as it takes a drowning hit.
     pub fn drown(&mut self, position: Vec3, motion: Vec3) {
@@ -274,6 +320,16 @@ impl EffectParticles {
         for _ in 0..20 {
             let velocity = self.gaussian_velocity();
             let at = self.body_point(feet, width, height, 0.0);
+            self.spawn(FxKind::Explode, at, velocity);
+        }
+    }
+
+    /// `EntityLiving.spawnExplosionParticle`: twenty puffs around a mob that
+    /// has just appeared, each thrown back from where it flies out.
+    pub fn spawn_puffs(&mut self, feet: Vec3, width: f32, height: f32) {
+        for _ in 0..20 {
+            let velocity = self.gaussian_velocity();
+            let at = self.body_point(feet, width, height, 0.0) - velocity * 10.0;
             self.spawn(FxKind::Explode, at, velocity);
         }
     }
@@ -394,6 +450,7 @@ impl EffectParticles {
             brightness: 1.0,
             on_ground: false,
             no_clip: false,
+            item: None,
         }
     }
 
@@ -511,6 +568,20 @@ impl EffectParticles {
         let mut jitter = || (self.random.next_float() * 2.0 - 1.0) * 0.02;
         particle.velocity = velocity * 0.2 + Vec3::new(jitter(), jitter(), jitter());
         particle.max_age = self.lifetime() as u16;
+        particle
+    }
+
+    /// `EntitySlimeFX`: a half-size fleck of the item's icon that falls like
+    /// debris.
+    fn item_break(&mut self, position: Vec3, item: Item) -> Particle {
+        let mut particle = self.base(Kind::ItemBreak, position, Vec3::ZERO);
+        particle.size /= 2.0;
+        particle.gravity = 1.0;
+        let jitter = Vec2::new(
+            self.random.next_float() * 3.0,
+            self.random.next_float() * 3.0,
+        );
+        particle.item = item_tile(item.as_u16(), 0).map(|tile| ItemSprite { tile, jitter });
         particle
     }
 
@@ -676,6 +747,16 @@ impl Particle {
                 }
                 self.max_age -= 1;
             }
+            Kind::ItemBreak => {
+                self.age += 1;
+                if self.age > self.max_age {
+                    return false;
+                }
+                self.velocity.y -= 0.04 * self.gravity;
+                self.travel(chunks);
+                self.velocity *= 0.98;
+                self.ground_friction();
+            }
             Kind::Heart => {
                 self.age += 1;
                 if self.age > self.max_age {
@@ -773,7 +854,7 @@ impl Particle {
                 let rest = 1.0 - life;
                 self.size * (1.0 - rest * rest)
             }
-            Kind::Splash | Kind::Explode | Kind::Bubble => self.size,
+            Kind::Splash | Kind::Explode | Kind::Bubble | Kind::ItemBreak => self.size,
         }
     }
 
@@ -806,44 +887,60 @@ fn collides(chunks: &WorldChunks, point: Vec3) -> bool {
         .is_some_and(Block::blocks_movement)
 }
 
-#[derive(Resource)]
-struct EffectRenderer {
+/// One mesh and its entity: the `particles.png` sheet, or the item sheet.
+struct Layer {
     entity: Entity,
     mesh: Handle<Mesh>,
     has_geometry: bool,
 }
 
+#[derive(Resource)]
+struct EffectRenderer {
+    sheet: Layer,
+    items: Layer,
+}
+
 fn setup_renderer(
     mut commands: Commands,
     atlas: Option<Res<ParticleAtlas>>,
+    asset_server: Option<Res<AssetServer>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    // Bevy 0.19 does not allocate zero-vertex meshes but may still try to
-    // upload their data. Keep a nonempty mesh allocated and hide it while idle.
-    let mesh = meshes.add(placeholder_mesh());
-    let material = materials.add(StandardMaterial {
-        base_color_texture: atlas.map(|atlas| atlas.0.clone()),
-        alpha_mode: AlphaMode::Mask(0.1),
-        unlit: true,
-        double_sided: true,
-        cull_mode: None,
-        ..default()
-    });
-    let entity = commands
-        .spawn((
-            Name::new("Effect particles"),
-            Mesh3d(mesh.clone()),
-            MeshMaterial3d(material),
-            Visibility::Hidden,
-            NoFrustumCulling,
-        ))
-        .id();
-    commands.insert_resource(EffectRenderer {
-        entity,
-        mesh,
-        has_geometry: false,
-    });
+    let mut layer = |name: &'static str, texture: Option<Handle<Image>>| {
+        // Bevy 0.19 does not allocate zero-vertex meshes but may still try to
+        // upload their data. Keep a nonempty mesh allocated and hide it while
+        // idle.
+        let mesh = meshes.add(placeholder_mesh());
+        let material = materials.add(StandardMaterial {
+            base_color_texture: texture,
+            alpha_mode: AlphaMode::Mask(0.1),
+            unlit: true,
+            double_sided: true,
+            cull_mode: None,
+            ..default()
+        });
+        let entity = commands
+            .spawn((
+                Name::new(name),
+                Mesh3d(mesh.clone()),
+                MeshMaterial3d(material),
+                Visibility::Hidden,
+                NoFrustumCulling,
+            ))
+            .id();
+        Layer {
+            entity,
+            mesh,
+            has_geometry: false,
+        }
+    };
+    let sheet = layer("Effect particles", atlas.map(|atlas| atlas.0.clone()));
+    let items = layer(
+        "Item effect particles",
+        asset_server.map(|server| server.load("gui/items.png")),
+    );
+    commands.insert_resource(EffectRenderer { sheet, items });
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -888,29 +985,35 @@ fn update_particles(
             particles.spawn_rain(&chunks, player, strength, fancy);
         }
     }
-    let has_geometry = !particles.active.is_empty();
-    if has_geometry {
-        let rotation = camera
-            .single()
-            .map_or(Quat::IDENTITY, GlobalTransform::rotation);
-        if let Some(mut mesh) = meshes.get_mut(&renderer.mesh) {
+    let rotation = camera
+        .single()
+        .map_or(Quat::IDENTITY, GlobalTransform::rotation);
+    let renderer = &mut *renderer;
+    for (layer, items) in [(&mut renderer.sheet, false), (&mut renderer.items, true)] {
+        let mut drawn = particles
+            .active
+            .iter()
+            .filter(|particle| particle.item.is_some() == items)
+            .peekable();
+        let has_geometry = drawn.peek().is_some();
+        if has_geometry && let Some(mut mesh) = meshes.get_mut(&layer.mesh) {
             *mesh = particle_mesh(
-                particles.active.iter(),
+                drawn,
                 rotation * Vec3::X,
                 rotation * Vec3::Y,
                 tick.partial(),
             );
         }
-    }
-    if renderer.has_geometry != has_geometry {
-        if let Ok(mut visible) = visibility.get_mut(renderer.entity) {
-            *visible = if has_geometry {
-                Visibility::Visible
-            } else {
-                Visibility::Hidden
-            };
+        if layer.has_geometry != has_geometry {
+            if let Ok(mut visible) = visibility.get_mut(layer.entity) {
+                *visible = if has_geometry {
+                    Visibility::Visible
+                } else {
+                    Visibility::Hidden
+                };
+            }
+            layer.has_geometry = has_geometry;
         }
-        renderer.has_geometry = has_geometry;
     }
 }
 
@@ -927,12 +1030,12 @@ fn placeholder_mesh() -> Mesh {
 }
 
 fn particle_mesh<'a>(
-    particles: impl ExactSizeIterator<Item = &'a Particle>,
+    particles: impl Iterator<Item = &'a Particle>,
     right: Vec3,
     up: Vec3,
     partial: f32,
 ) -> Mesh {
-    let count = particles.len();
+    let count = particles.size_hint().0;
     let mut positions = Vec::with_capacity(count * 4);
     let mut normals = Vec::with_capacity(count * 4);
     let mut colors = Vec::with_capacity(count * 4);
@@ -962,7 +1065,15 @@ fn particle_mesh<'a>(
                 .to_linear()
                 .to_f32_array(); 4],
         );
-        let (u0, v0, u1, v1) = particle.sprite.uvs().unwrap_or((0.0, 0.0, 0.0, 0.0));
+        let (u0, v0, u1, v1) = match particle.item {
+            // `EntitySlimeFX.renderParticle`: a quarter-tile sample of the icon.
+            Some(item) => {
+                let u0 = (f32::from(item.tile % 16) + item.jitter.x / 4.0) / 16.0;
+                let v0 = (f32::from(item.tile / 16) + item.jitter.y / 4.0) / 16.0;
+                (u0, v0, u0 + 0.015_609_375, v0 + 0.015_609_375)
+            }
+            None => particle.sprite.uvs().unwrap_or((0.0, 0.0, 0.0, 0.0)),
+        };
         uvs.extend([[u0, v1], [u1, v1], [u1, v0], [u0, v0]]);
         indices.extend([base, base + 1, base + 2, base, base + 2, base + 3]);
     }

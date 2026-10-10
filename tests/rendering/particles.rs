@@ -475,6 +475,8 @@ fn every_effect_kind_spawns_and_eventually_dies() {
         FxKind::Splash,
         FxKind::Reddust,
         FxKind::Heart,
+        FxKind::SnowballPoof,
+        FxKind::Slime,
     ] {
         let mut particles = EffectParticles::default();
         particles.spawn(kind, Vec3::new(8.0, 70.0, 8.0), Vec3::new(0.0, 0.1, 0.0));
@@ -595,4 +597,21 @@ fn a_fast_boat_throws_a_wake_and_a_slow_one_does_not() {
         Vec3::new(0.3, 0.0, 0.0),
     );
     assert_eq!(particles.active_count(), 19);
+}
+
+#[test]
+fn slime_wolf_and_spawner_bursts_match_beta_counts() {
+    let feet = Vec3::new(8.0, 65.0, 8.0);
+    let mut particles = EffectParticles::default();
+    particles.slime_splat(feet, 2);
+    assert_eq!(particles.active_count(), 16);
+    let mut particles = EffectParticles::default();
+    particles.spawn_puffs(feet, 0.6, 1.8);
+    assert_eq!(particles.active_count(), 20);
+    let mut particles = EffectParticles::default();
+    // The spray starts after 0.4 and peaks at seven drops, 0.9 into the shake.
+    particles.wolf_spray(feet, 0.6, 0.3, Vec3::ZERO);
+    assert_eq!(particles.active_count(), 0);
+    particles.wolf_spray(feet, 0.6, 0.9, Vec3::ZERO);
+    assert_eq!(particles.active_count(), 7);
 }

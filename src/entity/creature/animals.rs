@@ -205,7 +205,9 @@ impl Body<'_> {
         world: &Surroundings,
         pathfinder: &mut Pathfinder,
         has_attacked: bool,
+        fx: &mut Effects,
     ) {
+        self.wolf_shake(world, fx);
         if !has_attacked
             && self.living.path.is_none()
             && self.mob.tamed
@@ -218,6 +220,44 @@ impl Body<'_> {
         }
         if self.living.in_water {
             self.mob.sitting = false;
+        }
+    }
+
+    /// The shaking half of `EntityWolf.onUpdate`: a wet wolf waits until it
+    /// stands on the ground with no path, then shakes itself dry over forty
+    /// ticks, spraying water.
+    fn wolf_shake(&mut self, world: &Surroundings, fx: &mut Effects) {
+        let wet = self.living.in_water || world.rained_on(self.feet.floor().as_ivec3());
+        let living = &mut *self.living;
+        if living.wolf_shaking
+            && !living.wolf_drying
+            && living.path.is_none()
+            && self.collision.on_ground
+        {
+            living.wolf_drying = true;
+            living.wolf_shake_time = 0.0;
+        }
+        if wet {
+            living.wolf_shaking = true;
+            living.wolf_drying = false;
+            living.wolf_shake_time = 0.0;
+        } else if living.wolf_drying {
+            let before = living.wolf_shake_time;
+            living.wolf_shake_time += 0.05;
+            if before >= 2.0 {
+                living.wolf_shaking = false;
+                living.wolf_drying = false;
+                living.wolf_shake_time = 0.0;
+            } else if living.wolf_shake_time > 0.4
+                && let Some(particles) = fx.particles.as_deref_mut()
+            {
+                particles.wolf_spray(
+                    self.feet,
+                    self.size.width,
+                    living.wolf_shake_time,
+                    self.motion,
+                );
+            }
         }
     }
 

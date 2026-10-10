@@ -152,6 +152,12 @@ pub struct Living {
     /// `EntityCreature.hasAttacked`: this tick's attack holds the creature in
     /// place instead of letting it wander.
     has_attacked: bool,
+    /// `EntityWolf.isWolfShaking`: wet, and waiting to shake dry.
+    pub(crate) wolf_shaking: bool,
+    /// `EntityWolf.field_25052_g`: shaking right now.
+    pub(crate) wolf_drying: bool,
+    /// `EntityWolf.timeWolfIsShaking`, the shake's progress from 0 to 2.
+    pub(crate) wolf_shake_time: f32,
 }
 
 impl Default for Living {
@@ -191,6 +197,9 @@ impl Living {
             fall_distance: 0.0,
             air: MAX_AIR,
             has_attacked: false,
+            wolf_shaking: false,
+            wolf_drying: false,
+            wolf_shake_time: 0.0,
         }
     }
 
@@ -715,7 +724,7 @@ impl Body<'_> {
                 _ => {
                     let has_attacked = self.creature_action(world, pathfinder, traits, fx);
                     if self.is(MobType::Wolf) {
-                        self.wolf_action(world, pathfinder, has_attacked);
+                        self.wolf_action(world, pathfinder, has_attacked, fx);
                     }
                 }
             }
@@ -747,7 +756,7 @@ impl Body<'_> {
 
         // The tail of `EntityLiving.onUpdate`, then each kind's `onUpdate`.
         self.update_body_yaw();
-        self.update_epilogue(was_on_ground, traits);
+        self.update_epilogue(was_on_ground, traits, fx);
         if self.dead {
             Fate::Despawned
         } else {
@@ -801,7 +810,8 @@ impl Body<'_> {
         traits: &mut Traits,
         fx: &mut Effects,
     ) -> bool {
-        self.living.has_attacked = self.is(MobType::Wolf) && self.mob.sitting;
+        self.living.has_attacked =
+            self.is(MobType::Wolf) && (self.mob.sitting || self.living.wolf_drying);
         if self.mob.sitting {
             // `EntityWolf.interact` drops the path when told to sit.
             self.living.path = None;

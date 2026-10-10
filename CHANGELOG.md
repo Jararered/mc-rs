@@ -111,6 +111,8 @@ from `git log --date=format:'%Y-%m-%d %H:%M'`). A commit cannot name its own has
 
 #### Interactions
 
+- [ ] Shift-clicking an item out of a chest puts it in the hotbar first, then the rest of the inventory.
+      `pending`
 - [ ] Using a bow, snowball, egg or rod while pointing at a block does not place or activate anything extra, but
       doors, levers, chests and other blocks that react to a right-click still take the click first.
       `a22f8d3 · 2026-10-09 07:55`

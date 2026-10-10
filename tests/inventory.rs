@@ -579,6 +579,41 @@ fn quick_move_drag_respects_furnace_slot_eligibility_and_empty_slots() {
 }
 
 #[test]
+fn shift_click_from_chest_fills_the_hotbar_before_main_storage() {
+    use game::inventory::SlotId;
+    use game::inventory::shift_click_chest_slot;
+    let mut inventory = game::inventory::Inventory::default();
+    let mut hotbar = Hotbar::default();
+    let mut chest = [None; 27];
+    chest[0] = Some(stack(Item::Diamond, 5));
+
+    assert!(shift_click_chest_slot(
+        &mut inventory,
+        &mut hotbar,
+        &mut chest,
+        SlotId::Chest(0)
+    ));
+    assert!(chest[0].is_none());
+    assert_eq!(hotbar.slots[0], Some(stack(Item::Diamond, 5)));
+    assert!(inventory.main[0].is_none());
+
+    // Matching stacks in main storage are topped up only after the hotbar.
+    hotbar.slots[0] = Some(stack(Item::Coal, 60));
+    inventory.main[0] = Some(stack(Item::Coal, 60));
+    chest[1] = Some(stack(Item::Coal, 10));
+    assert!(shift_click_chest_slot(
+        &mut inventory,
+        &mut hotbar,
+        &mut chest,
+        SlotId::Chest(1)
+    ));
+    assert!(chest[1].is_none());
+    assert_eq!(hotbar.slots[0], Some(stack(Item::Coal, 64)));
+    assert_eq!(inventory.main[0], Some(stack(Item::Coal, 64)));
+    assert_eq!(hotbar.slots[1], Some(stack(Item::Coal, 2)));
+}
+
+#[test]
 fn shift_click_returns_crafting_inputs_to_main_storage_first() {
     use game::crafting::CraftingGrid;
     use game::inventory::SlotId;

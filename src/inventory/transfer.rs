@@ -4,7 +4,8 @@
 //! the hotbar and main storage exchange stacks, crafting inputs move into
 //! main storage and then the hotbar, and a crafting result is crafted again
 //! until another output will not fit. Results fill the hotbar from the right,
-//! then main storage from the bottom-right.
+//! then main storage from the bottom-right. Chest slots prefer the hotbar
+//! before main storage, matching pickup insertion.
 //!
 //! Shift+left-drag quick-moves each newly hovered source slot immediately.
 //! Drag placement runs when the cursor is released over more than one accepting
@@ -201,7 +202,7 @@ pub fn shift_click_chest_slot(
                 return false;
             };
             let before = stack.count();
-            chest[index] = place_stack(inventory, hotbar, stack, &player_slots_forward());
+            chest[index] = place_stack(inventory, hotbar, stack, &player_slots_hotbar_first());
             chest[index].is_none_or(|rest| rest.count() != before)
         }
         SlotId::Main(index) if index < inventory.main.len() => {
@@ -795,6 +796,10 @@ fn hotbar_slots() -> Vec<Dest> {
 
 fn player_slots_forward() -> Vec<Dest> {
     main_slots().into_iter().chain(hotbar_slots()).collect()
+}
+
+fn player_slots_hotbar_first() -> Vec<Dest> {
+    hotbar_slots().into_iter().chain(main_slots()).collect()
 }
 
 fn player_slots_reverse() -> Vec<Dest> {

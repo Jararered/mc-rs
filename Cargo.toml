@@ -1,5 +1,6 @@
 [package]
 name = "game"
+default-run = "game"
 version = "0.1.0"
 edition = "2024"
 # One test binary (`tests/main.rs`); every extra target links all of Bevy again.
@@ -88,6 +89,12 @@ doctest = false
 [[bin]]
 name = "game"
 path = "src/main.rs"
+test = false
+
+# The dedicated server: the same library with no window or renderer started.
+[[bin]]
+name = "server"
+path = "src/bin/server.rs"
 test = false
 
 [[test]]

@@ -494,6 +494,47 @@ fn read_mob_entity(entity: &Compound, kind: MobType, position: [f64; 3]) -> Opti
     })
 }
 
+/// `Chunk.getChunkData` for a whole chunk: what `Packet51MapChunk` carries
+/// before it is deflated. Blocks, then the metadata, block light and sky light
+/// nibbles, each in Beta's `x << 11 | z << 7 | y` order.
+///
+/// `light` is the chunk's cells from its last mesh job; without them the
+/// chunk is lit alone.
+pub fn beta_chunk_bytes(chunk: &Chunk, light: Option<&[u8]>, has_sky: bool) -> Vec<u8> {
+    let raw = chunk.raw_blocks();
+    let metadata = chunk.raw_metadata();
+    let lit_alone;
+    let light = match light.filter(|cells| cells.len() == BLOCKS) {
+        Some(cells) => cells,
+        None => {
+            lit_alone = Skylight::from_chunk_enclosed(chunk).chunk_cells();
+            &lit_alone
+        }
+    };
+    let mut bytes = vec![0u8; BLOCKS + 3 * NIBBLES];
+    let (blocks, rest) = bytes.split_at_mut(BLOCKS);
+    let (data, rest) = rest.split_at_mut(NIBBLES);
+    let (block_light, sky) = rest.split_at_mut(NIBBLES);
+    for x in 0..CHUNK_SIZE {
+        for z in 0..CHUNK_SIZE {
+            for y in 0..CHUNK_HEIGHT {
+                let ours = Chunk::index(x, y, z);
+                let beta = beta_index(x, y, z);
+                blocks[beta] = raw[ours];
+                if let Some(metadata) = metadata {
+                    set_nibble(data, beta, nibble(metadata, ours));
+                }
+                let (sky_level, block_level) = unpack(light[ours]);
+                if has_sky {
+                    set_nibble(sky, beta, sky_level);
+                }
+                set_nibble(block_light, beta, block_level);
+            }
+        }
+    }
+    bytes
+}
+
 /// A chunk copied out of the live world, waiting to be encoded and written.
 ///
 /// Taking the copy is cheap (blocks are shared), so it happens on the main

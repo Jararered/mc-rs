@@ -79,6 +79,8 @@ pub struct WorldHost {
     autosave_seconds: f32,
     /// `WorldInfo`'s time, advanced once a frame for every dimension.
     clock: WorldTick,
+    /// The difficulty every dimension runs at.
+    difficulty: Option<crate::world::difficulty::Difficulty>,
     /// `WorldInfo`'s weather. Only the Overworld steps it.
     weather: WorldWeather,
     worlds: Vec<Hosting>,
@@ -103,6 +105,7 @@ impl WorldHost {
             build: Box::new(build),
             autosave_seconds,
             clock,
+            difficulty: manifest.difficulty,
             weather: manifest.weather,
             worlds: Vec::new(),
             waiting: Vec::new(),
@@ -112,6 +115,21 @@ impl WorldHost {
 
     pub fn storage(&self) -> &Arc<WorldStorage> {
         &self.storage
+    }
+
+    /// Run every dimension at `difficulty` instead of the one the world was
+    /// saved with. The saved one is left as it is.
+    pub fn set_difficulty(&mut self, difficulty: crate::world::difficulty::Difficulty) {
+        self.difficulty = Some(difficulty);
+        for hosting in &mut self.worlds {
+            if let Some(mut settings) = hosting
+                .app
+                .world_mut()
+                .get_resource_mut::<crate::app::settings::GameSettings>()
+            {
+                settings.difficulty = difficulty;
+            }
+        }
     }
 
     pub fn world_time(&self) -> u64 {
@@ -181,7 +199,7 @@ impl WorldHost {
             ticks.rebase_time(previous, self.clock.world_time());
             ticks.set_dimension(dimension);
         }
-        if let Some(difficulty) = self.storage.manifest().difficulty
+        if let Some(difficulty) = self.difficulty
             && let Some(mut settings) =
                 world.get_resource_mut::<crate::app::settings::GameSettings>()
         {

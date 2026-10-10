@@ -51,6 +51,7 @@ use crate::world::chunk::WorldChunks;
 use crate::world::dimension::Dimension;
 use crate::world::lighting::LightCache;
 use crate::world::streaming::setup_streaming;
+pub use original::beta_chunk_bytes;
 
 mod player;
 mod storage;

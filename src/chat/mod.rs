@@ -53,10 +53,19 @@ pub struct ChatMessage {
 #[derive(Resource, Default)]
 pub struct ChatHistory {
     messages: VecDeque<ChatMessage>,
+    /// How many messages have ever been pushed.
+    pushed: u64,
 }
 
 impl ChatHistory {
+    /// How many messages have ever been pushed, so a reader can tell how
+    /// many of the newest it has not seen.
+    pub fn pushed(&self) -> u64 {
+        self.pushed
+    }
+
     pub fn push(&mut self, text: impl Into<String>) {
+        self.pushed += 1;
         self.messages.push_front(ChatMessage {
             text: text.into(),
             age_ticks: 0,

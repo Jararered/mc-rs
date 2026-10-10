@@ -319,8 +319,11 @@ pub(crate) fn apply_player_actions(
                 );
             }
             Action::Break { hit } => {
-                // The block may have gone since the player's hit was taken.
-                if chunks.block_at(hit.x, hit.y, hit.z) == Some(hit.block) {
+                // The block may have gone since the player's hit was taken, and
+                // bedrock goes for nobody.
+                if hit.block.is_breakable()
+                    && chunks.block_at(hit.x, hit.y, hit.z) == Some(hit.block)
+                {
                     apply_break(
                         &mut commands,
                         &mut item_rng,

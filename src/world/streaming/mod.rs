@@ -149,6 +149,9 @@ pub struct WorldStreaming {
     quad_layers: bool,
     /// Chunk meshes include only this block while it is set.
     wireframe_block: Option<Block>,
+    /// Every block that changed since [`Self::take_block_updates`], while a
+    /// server is listening for them.
+    block_log: Option<Vec<IVec3>>,
     remesh_queue: VecDeque<ChunkPosition>,
     /// Sections each queued chunk must rebuild even if its light did not
     /// change, because blocks they draw or sample changed.
@@ -216,6 +219,20 @@ impl WorldStreaming {
         self.rendered.values().map(RenderedChunk::mesh_bytes).sum()
     }
 
+    /// Start recording which blocks change, for a server to tell its
+    /// clients. Whoever turns this on must keep taking them.
+    pub fn log_block_updates(&mut self) {
+        self.block_log.get_or_insert_default();
+    }
+
+    /// The blocks that changed since the last call, oldest first.
+    pub fn take_block_updates(&mut self) -> Vec<IVec3> {
+        self.block_log
+            .as_mut()
+            .map(std::mem::take)
+            .unwrap_or_default()
+    }
+
     /// A job holds `position` outside [`WorldChunks`] or is about to deliver
     /// it, so nothing else may put a chunk there yet.
     pub fn is_busy(&self, position: ChunkPosition) -> bool {
@@ -263,6 +280,9 @@ impl WorldStreaming {
     /// can reach, and rebuild the sections whose geometry reads that block.
     /// Other sections of those chunks rebuild only if their light changed.
     pub fn request_block_update(&mut self, x: i32, y: i32, z: i32) {
+        if let Some(log) = &mut self.block_log {
+            log.push(IVec3::new(x, y, z));
+        }
         let mut sections = HashMap::new();
         affected_sections(x, y, z, true, &mut sections);
         for (position, mask) in sections {
@@ -280,6 +300,9 @@ impl WorldStreaming {
     ) {
         let mut sections = HashMap::new();
         for (x, y, z, light) in changes {
+            if let Some(log) = &mut self.block_log {
+                log.push(IVec3::new(x, y, z));
+            }
             affected_sections(x, y, z, light, &mut sections);
         }
         for (position, mask) in sections {

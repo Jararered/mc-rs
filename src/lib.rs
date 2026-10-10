@@ -9,6 +9,7 @@ pub mod crafting;
 pub mod entity;
 pub mod inventory;
 pub mod item;
+pub mod networking;
 pub mod physics;
 pub mod player;
 pub mod random;

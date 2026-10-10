@@ -12,6 +12,7 @@ mod crafting;
 mod entity;
 mod inventory;
 mod item;
+mod networking;
 mod physics;
 mod player;
 mod random;

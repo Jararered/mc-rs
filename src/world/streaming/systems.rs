@@ -324,6 +324,7 @@ pub(crate) fn setup_streaming(
         quad_layers,
         wireframe_block: wireframe.block,
         remesh_queue: VecDeque::new(),
+        block_log: None,
         remesh_sections: HashMap::new(),
         desired_generation: Vec::new(),
         desired_meshing: Vec::new(),

@@ -57,6 +57,9 @@ from `git log --date=format:'%Y-%m-%d %H:%M'`). A commit cannot name its own has
       `48841f5 · 2026-10-11 08:39`
 - [ ] Asleep in a bed, the mouse does not turn the view: you look from the pillow down the bed whichever way
       you faced when you lay down, and face that way again on waking.
+      `26cef9e · 2026-10-11 09:21`
+- [ ] Water or lava beside farmland, a slab, stairs or a bed does not flicker along the side they share, seen
+      from the liquid's side.
       `pending`
 
 ### Items

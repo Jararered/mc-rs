@@ -429,6 +429,36 @@ fn isolated_water_renders_every_open_face_below_its_neighbors() {
 }
 
 #[test]
+fn water_draws_no_side_behind_the_farmland_beside_it() {
+    let mut chunk = Chunk::new();
+    chunk.set(1, 1, 1, Block::Water);
+    chunk.set(2, 1, 1, Block::Farmland);
+    let meshes = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true);
+    // The surface is below the farmland's top, so that whole side is covered.
+    assert_eq!(meshes.water.vertex_count(), 20);
+
+    // Under more water the side reaches the top of its cell, and only the
+    // strip above the farmland is left.
+    chunk.set(1, 2, 1, Block::Water);
+    let stacked = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true);
+    let positions = stacked.water.positions();
+    let shared: Vec<_> = positions
+        .chunks(4)
+        .filter(|quad| {
+            quad.iter()
+                .all(|position| position[0] == 2.0 && position[1] <= 2.0)
+        })
+        .flatten()
+        .map(|position| position[1])
+        .collect();
+    assert!(!shared.is_empty());
+    assert!(
+        shared.iter().all(|&y| y >= 1.0 + 15.0 / 16.0 - 0.001),
+        "{shared:?}"
+    );
+}
+
+#[test]
 fn flowing_water_slopes_toward_its_lower_levels_and_uses_the_flow_tile() {
     let mut chunk = Chunk::new();
     for x in 0..4 {

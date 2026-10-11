@@ -223,6 +223,19 @@ pub(super) fn fluid_shell_face_visible(fluid: Fluid, neighbor: Option<Block>, dy
     }
 }
 
+/// How far up the shared side a short block beside a fluid covers it. The
+/// fluid's side is drawn from both directions, so the part behind the
+/// neighbor's own side would lie in the same plane and flicker against it.
+pub(super) fn fluid_side_cover(neighbor: Option<Block>) -> f32 {
+    match neighbor {
+        Some(Block::Farmland) => 15.0 / 16.0,
+        Some(Block::Bed) => 9.0 / 16.0,
+        Some(Block::StoneSlab) => 0.5,
+        Some(neighbor) if neighbor.is_stairs() => 0.5,
+        _ => 0.0,
+    }
+}
+
 /// `BlockGrass.getBlockTexture` reads the block above and swaps a grass side
 /// for the snow-capped tile when that material is `Material.snow` (the snow
 /// layer) or `Material.builtSnow` (the snow block). The block is always in the

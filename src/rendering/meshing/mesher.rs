@@ -26,6 +26,7 @@ use super::faces::face_corner_ao;
 use super::faces::face_corner_light;
 use super::faces::face_texels;
 use super::faces::fluid_shell_face_visible;
+use super::faces::fluid_side_cover;
 use super::faces::neighbor_hides_face_at;
 use super::faces::snow_above;
 use super::fluid_top_texels;
@@ -171,11 +172,25 @@ impl<'a> Mesher<'a> {
                 ao: face_corner_ao(chunk, neighbors, x, y, z, face, unit),
                 shade: true,
             };
+            let [dx, dy, dz] = face.neighbor;
+            let cover = if dy == 0 {
+                fluid_side_cover(neighbors.get(chunk, xi + dx, yi, zi + dz))
+            } else {
+                0.0
+            };
+            if cover > 0.0
+                && unit
+                    .corners
+                    .iter()
+                    .all(|corner| corner[1] <= 0.5 || corner_top(*corner) <= cover)
+            {
+                continue;
+            }
             let corners = unit.corners.map(|corner| {
                 let top = if corner[1] > 0.5 {
-                    corner_top(corner)
+                    corner_top(corner).max(cover)
                 } else {
-                    0.0
+                    cover
                 };
                 [corner[0], top, corner[2]]
             });
@@ -187,7 +202,7 @@ impl<'a> Mesher<'a> {
                 // Sides show the flowing tile cut off at the surface.
                 let mut texels = face_texels(flow.0, flow.1, face_index);
                 for (texel, corner) in texels.iter_mut().zip(corners) {
-                    if texel.texel[1] == 0 {
+                    if texel.texel[1] == 0 || cover > 0.0 {
                         texel.texel[1] = ((1.0 - corner[1]) * 16.0).round() as u8;
                     }
                 }

@@ -197,7 +197,13 @@ pub(crate) fn spawn_player(
         default_spawn_transform(&chunks),
     );
     let mut entity = commands.entity(body);
-    entity.insert((LocalPlayer, camera::CameraBobbing::default()));
+    // The cameras below are drawn children, and Bevy propagates visibility
+    // only through parents that have it.
+    entity.insert((
+        LocalPlayer,
+        camera::CameraBobbing::default(),
+        Visibility::default(),
+    ));
     entity.with_children(|parent| {
         parent
             .spawn((

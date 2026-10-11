@@ -157,6 +157,11 @@ from `git log --date=format:'%Y-%m-%d %H:%M'`). A commit cannot name its own has
       `pending`
 - [ ] Dyes mix: rose red and bone meal make pink, rose red and dandelion yellow make orange, and the rest of
       Beta's mixes (lime, gray, light gray, light blue, cyan, purple, magenta) work.
+- [ ] View bobbing: the view and the held item or arm swing as far and as fast as Beta's when walking, the same
+      at any frame rate, instead of a slower, smaller sway. The swing does not advance while sneaking.
+      `pending`
+- [ ] Holding sneak dips the view a little at once, and it eases back up on release. Blocks are still picked
+      where the crosshair points.
       `pending`
 - [ ] Arrows (yours, skeletons' and dispensers') no longer flicker where their faces overlap.
       `f1418cc · 2026-10-09 08:18`

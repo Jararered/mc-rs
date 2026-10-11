@@ -16,7 +16,9 @@ pub mod sleep;
 mod state;
 mod survival;
 
+pub use camera::CameraBobbing;
 pub use camera::PlayerCamera;
+pub use camera::camera_bob_pose;
 pub use camera::draw_fov_scale;
 pub use camera::hurt_roll_degrees;
 pub(crate) use camera::rendered_eye;

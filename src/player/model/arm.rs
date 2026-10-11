@@ -280,7 +280,7 @@ fn animate_arm(
         return;
     };
     let walk_pose = if settings.view_bobbing {
-        camera_bob_pose(bobbing)
+        camera_bob_pose(bobbing, tick.partial().clamp(0.0, 1.0))
     } else {
         Mat4::IDENTITY
     };

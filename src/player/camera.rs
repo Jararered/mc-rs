@@ -2,13 +2,17 @@
 
 use super::interaction::use_item::BowDraw;
 use super::state::LocalPlayer;
+use super::state::PlayerHealth;
 use super::state::PlayerInterpolation;
+use super::state::PlayerMovementInput;
 use crate::app::settings::GameSettings;
 use crate::entity::CollisionState;
 use crate::entity::Flying;
 use crate::entity::Velocity;
 use crate::entity::combat::HURT_TICKS;
 use crate::entity::combat::PlayerCombat;
+use crate::entity::mount::Mounted;
+use crate::world::tick::TICK_SECONDS;
 use crate::world::tick::WorldTick;
 use bevy::prelude::*;
 
@@ -17,11 +21,75 @@ use bevy::prelude::*;
 #[derive(Component)]
 pub struct PlayerCamera;
 
-#[derive(Component, Default)]
-pub(super) struct CameraBobbing {
-    distance_walked: f32,
-    camera_yaw: f32,
-    camera_pitch: f32,
+/// The local player's view state from Beta's `Entity` and `EntityPlayer`,
+/// stepped once a world tick and drawn between the last two ticks.
+#[derive(Component, Default, Clone, Copy, Debug)]
+pub struct CameraBobbing {
+    /// `distanceWalkedModified`: the bob's phase.
+    pub distance_walked: f32,
+    pub prev_distance_walked: f32,
+    /// `cameraYaw`: the bob's size, from horizontal motion.
+    pub camera_yaw: f32,
+    pub prev_camera_yaw: f32,
+    /// `cameraPitch`: the tilt of a fall or jump, in degrees.
+    pub camera_pitch: f32,
+    pub prev_camera_pitch: f32,
+    /// `ySize`: how far the eyes sit below their standing height.
+    pub y_size: f32,
+    pub prev_y_size: f32,
+}
+
+/// `EntityPlayerSP.onLivingUpdate` holds `ySize` at least this high while
+/// sneaking, before the move scales it.
+const SNEAK_Y_SIZE: f32 = 0.2;
+/// `Entity.moveEntity` scales `ySize` by this every tick.
+const Y_SIZE_DECAY: f32 = 0.4;
+
+impl CameraBobbing {
+    /// One tick of the view. `moved` is the horizontal distance the tick's
+    /// move covered and `motion` the velocity it left, both in blocks a tick
+    /// (Beta's `motionX/Y/Z`).
+    pub fn tick(
+        &mut self,
+        moved: f32,
+        motion: Vec3,
+        on_ground: bool,
+        sneaking: bool,
+        alive: bool,
+        flying: bool,
+    ) {
+        self.prev_distance_walked = self.distance_walked;
+        self.prev_camera_yaw = self.camera_yaw;
+        self.prev_camera_pitch = self.camera_pitch;
+        self.prev_y_size = self.y_size;
+
+        if sneaking && self.y_size < SNEAK_Y_SIZE {
+            self.y_size = SNEAK_Y_SIZE;
+        }
+        self.y_size *= Y_SIZE_DECAY;
+        // `moveEntity` counts no walked distance for a sneak on the ground.
+        if !(on_ground && sneaking) {
+            self.distance_walked += moved * 0.6;
+        }
+
+        let target_yaw = if on_ground && alive {
+            motion.xz().length().min(0.1)
+        } else {
+            0.0
+        };
+        let target_pitch = if on_ground || !alive || flying {
+            0.0
+        } else {
+            (-motion.y * 0.2).atan() * 15.0
+        };
+        self.camera_yaw += (target_yaw - self.camera_yaw) * 0.4;
+        self.camera_pitch += (target_pitch - self.camera_pitch) * 0.8;
+    }
+
+    /// How far below standing height the eyes are drawn.
+    pub fn eye_drop(&self, partial: f32) -> f32 {
+        self.prev_y_size + (self.y_size - self.prev_y_size) * partial
+    }
 }
 
 /// Where the player's eyes are drawn this frame: between the last tick's
@@ -98,12 +166,10 @@ pub(super) fn apply_camera_fov(
     }
 }
 
-/// Reproduces the Beta view-bobbing transform from `EntityRenderer`: walking
-/// distance drives the phase while smoothed horizontal and vertical motion
-/// control the bob's amplitude.
+/// Steps Beta's view state each world tick and poses the camera: the sneak
+/// dip, the hurt roll, and `EntityRenderer.setupViewBobbing`.
 pub(super) fn update_camera_bobbing(
     settings: Res<GameSettings>,
-    time: Res<Time>,
     tick: Res<WorldTick>,
     mut players: Query<
         (
@@ -111,45 +177,54 @@ pub(super) fn update_camera_bobbing(
             &PlayerInterpolation,
             &Velocity,
             &CollisionState,
+            &PlayerMovementInput,
+            &PlayerHealth,
             &mut CameraBobbing,
             &Children,
             Option<&PlayerCombat>,
             Has<Flying>,
+            Has<Mounted>,
         ),
         (With<LocalPlayer>, Without<PlayerCamera>),
     >,
     mut cameras: Query<&mut Transform, With<PlayerCamera>>,
 ) {
-    let dt = time.delta_secs();
-    if dt <= 0.0 {
-        return;
-    }
-
-    for (transform, interpolation, velocity, collision, mut bob, children, combat, flying) in
-        &mut players
+    let partial = tick.partial().clamp(0.0, 1.0);
+    for (
+        transform,
+        interpolation,
+        velocity,
+        collision,
+        input,
+        health,
+        mut bob,
+        children,
+        combat,
+        flying,
+        mounted,
+    ) in &mut players
     {
-        let horizontal_motion = velocity.0.xz().length() * dt;
-        bob.distance_walked += horizontal_motion * 0.6;
-
-        let target_yaw = if collision.on_ground {
-            horizontal_motion.min(0.1)
-        } else {
-            0.0
-        };
-        let vertical_motion = velocity.0.y * dt;
-        let target_pitch = if collision.on_ground || flying {
-            0.0
-        } else {
-            (-vertical_motion * 0.2).atan() * 15.0
-        };
-        bob.camera_yaw += (target_yaw - bob.camera_yaw) * 0.4;
-        bob.camera_pitch += (target_pitch - bob.camera_pitch) * 0.8;
         let current = transform.translation;
-        let interpolated = interpolation
-            .previous_position
-            .lerp(current, tick.partial().clamp(0.0, 1.0));
-        let render_offset = transform.rotation.inverse() * (interpolated - current);
-        let hurt = combat.map_or(Mat4::IDENTITY, |combat| hurt_pose(combat, tick.partial()));
+        // A rider is carried (`ridingEntity == null` in `moveEntity`).
+        let moved = if mounted {
+            0.0
+        } else {
+            (current - interpolation.previous_position).xz().length()
+        };
+        for _ in 0..tick.ticks_this_frame() {
+            bob.tick(
+                moved,
+                velocity.0 * TICK_SECONDS,
+                collision.on_ground,
+                input.sneaking && !flying && !mounted,
+                health.current > 0,
+                flying,
+            );
+        }
+        let interpolated = interpolation.previous_position.lerp(current, partial);
+        let render_offset = transform.rotation.inverse() * (interpolated - current)
+            - Vec3::Y * bob.eye_drop(partial);
+        let hurt = combat.map_or(Mat4::IDENTITY, |combat| hurt_pose(combat, partial));
 
         for child in children {
             if let Ok(mut camera) = cameras.get_mut(*child) {
@@ -157,7 +232,7 @@ pub(super) fn update_camera_bobbing(
                     Mat4::from_translation(render_offset)
                         * hurt
                         * if settings.view_bobbing {
-                            camera_bob_pose(&bob)
+                            camera_bob_pose(&bob, partial)
                         } else {
                             Mat4::IDENTITY
                         },
@@ -205,12 +280,16 @@ pub(super) fn hurt_pose(combat: &PlayerCombat, partial: f32) -> Mat4 {
         * Mat4::from_rotation_y(side)
 }
 
-pub(super) fn camera_bob_pose(bob: &CameraBobbing) -> Mat4 {
-    let phase = -bob.distance_walked * std::f32::consts::PI;
-    let lateral = phase.sin() * bob.camera_yaw * 0.5;
-    let vertical = -(phase.cos() * bob.camera_yaw).abs();
-    let roll = (phase.sin() * bob.camera_yaw * 3.0).to_radians();
-    let pitch = ((phase - 0.2).cos() * bob.camera_yaw).abs() * 5.0 + bob.camera_pitch;
+/// `EntityRenderer.setupViewBobbing` at `partial` of the way to the next tick.
+pub fn camera_bob_pose(bob: &CameraBobbing, partial: f32) -> Mat4 {
+    let walked = bob.distance_walked + (bob.distance_walked - bob.prev_distance_walked) * partial;
+    let yaw = bob.prev_camera_yaw + (bob.camera_yaw - bob.prev_camera_yaw) * partial;
+    let fall = bob.prev_camera_pitch + (bob.camera_pitch - bob.prev_camera_pitch) * partial;
+    let phase = -walked * std::f32::consts::PI;
+    let lateral = phase.sin() * yaw * 0.5;
+    let vertical = -(phase.cos() * yaw).abs();
+    let roll = (phase.sin() * yaw * 3.0).to_radians();
+    let pitch = ((phase - 0.2).cos() * yaw).abs() * 5.0 + fall;
     Mat4::from_translation(Vec3::new(lateral, vertical, 0.0))
         * Mat4::from_rotation_z(roll)
         * Mat4::from_rotation_x(pitch.to_radians())

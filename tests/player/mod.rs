@@ -842,3 +842,59 @@ fn hurt_camera_roll_eases_in_and_out_without_jumps() {
     // At 60 fps the roll may not move more than a degree per frame.
     assert!(largest_step < 1.0, "largest step {largest_step}");
 }
+
+#[test]
+fn view_bob_steps_per_tick_at_beta_walking_speed() {
+    use game::player::CameraBobbing;
+    use game::player::camera_bob_pose;
+
+    // A walk's displacement and the motion friction leaves, per tick.
+    let moved = 0.2158;
+    let motion = Vec3::new(0.118, 0.0, 0.0);
+    let mut bob = CameraBobbing::default();
+    for _ in 0..40 {
+        bob.tick(moved, motion, true, false, true, false);
+    }
+    assert!((bob.camera_yaw - 0.1).abs() < 1.0e-4, "{}", bob.camera_yaw);
+    assert!((bob.distance_walked - 40.0 * moved * 0.6).abs() < 1.0e-3);
+    assert!((bob.distance_walked - bob.prev_distance_walked - moved * 0.6).abs() < 1.0e-5);
+
+    // The phase runs on past the last tick by the partial.
+    let next = {
+        let mut next = bob;
+        next.tick(moved, motion, true, false, true, false);
+        next
+    };
+    let ahead = camera_bob_pose(&bob, 1.0);
+    let arrived = camera_bob_pose(&next, 0.0);
+    assert!(ahead.abs_diff_eq(arrived, 1.0e-4));
+
+    // In the air the bob fades and the fall tilts the view.
+    let falling = Vec3::new(0.118, -0.5, 0.0);
+    for _ in 0..40 {
+        bob.tick(moved, falling, false, false, true, false);
+    }
+    assert!(bob.camera_yaw.abs() < 1.0e-4);
+    assert!((bob.camera_pitch - (0.5_f32 * 0.2).atan() * 15.0).abs() < 1.0e-3);
+}
+
+#[test]
+fn sneaking_dips_the_view_and_stops_the_bob_phase() {
+    use game::player::CameraBobbing;
+
+    let mut bob = CameraBobbing::default();
+    let motion = Vec3::new(0.035, 0.0, 0.0);
+    for _ in 0..5 {
+        bob.tick(0.065, motion, true, true, true, false);
+        assert!((bob.y_size - 0.08).abs() < 1.0e-6);
+    }
+    assert_eq!(bob.distance_walked, 0.0);
+    assert!((bob.eye_drop(1.0) - 0.08).abs() < 1.0e-6);
+
+    bob.tick(0.065, motion, true, false, true, false);
+    assert!((bob.y_size - 0.032).abs() < 1.0e-6);
+    assert!((bob.eye_drop(0.5) - 0.056).abs() < 1.0e-6);
+    bob.tick(0.065, motion, true, false, true, false);
+    assert!((bob.y_size - 0.0128).abs() < 1.0e-6);
+    assert!(bob.distance_walked > 0.0);
+}

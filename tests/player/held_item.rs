@@ -451,6 +451,16 @@ fn disabling_bobbing_removes_walk_pose_but_keeps_interpolation_and_equip() {
         .unwrap()
         .on_ground = true;
     app.world_mut().get_mut::<Velocity>(player).unwrap().0 = Vec3::new(4.0, 0.0, 0.0);
+    // The bob steps on world ticks, which a single frame here may not reach.
+    *app.world_mut()
+        .get_mut::<game::player::CameraBobbing>(player)
+        .unwrap() = game::player::CameraBobbing {
+        distance_walked: 0.3,
+        prev_distance_walked: 0.3,
+        camera_yaw: 0.1,
+        prev_camera_yaw: 0.1,
+        ..Default::default()
+    };
     let resting_arm = visual(&mut app, "Right arm").2;
     // Move without a physics integration pass: the previous position stays at spawn.
     app.world_mut()

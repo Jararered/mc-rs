@@ -33,6 +33,16 @@ opt-level = 3
 lto = "fat"
 codegen-units = 1
 
+# Release without the LTO pass, for judging performance while iterating:
+# `cargo run --profile fast`. Dependencies are built once into `target/fast/`
+# and an edit recompiles only the game crate. Confirm final numbers on
+# `release`, which inlines across crates.
+[profile.fast]
+inherits = "release"
+lto = "off"
+codegen-units = 16
+incremental = true
+
 [dependencies]
 # Only what the game uses. Bevy's defaults also start audio, gamepads, glTF,
 # animation, scenes, sprites, and the post-processing and anti-aliasing

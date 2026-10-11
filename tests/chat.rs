@@ -27,6 +27,12 @@ fn parses_heal_without_arguments() {
 }
 
 #[test]
+fn parses_clear_without_arguments() {
+    assert_eq!(parse_command("/clear").unwrap(), ChatCommand::ClearCommand);
+    assert!(parse_command("/clear all").is_err());
+}
+
+#[test]
 fn parses_the_three_game_modes() {
     use game::player::GameMode;
 
@@ -965,6 +971,7 @@ fn suggestions_complete_command_names_then_their_arguments() {
     assert_eq!(
         items(&registry, "/"),
         [
+            "/clear",
             "/gamemode",
             "/give",
             "/heal",
@@ -1030,7 +1037,7 @@ fn suggestions_complete_command_names_then_their_arguments() {
             parse_clock,
         )
         .unwrap();
-    assert_eq!(items(&registry, "/cl"), ["/clock"]);
+    assert_eq!(items(&registry, "/clo"), ["/clock"]);
     assert!(items(&registry, "/clock ").is_empty());
     assert!(items(&registry, "/help cl").contains(&"clock".to_owned()));
 }
@@ -1131,17 +1138,17 @@ fn chat_input_lists_suggestions_and_tab_accepts_the_selected_one() {
     app.world_mut()
         .resource_mut::<ButtonInput<KeyCode>>()
         .clear();
-    // Eight commands scroll through six rows.
+    // Eleven commands scroll through six rows.
     let rows = shown(&mut app);
     assert_eq!(rows.len(), 6);
-    assert_eq!(rows[0], ("/gamemode".to_owned(), true));
+    assert_eq!(rows[0], ("/clear".to_owned(), true));
     key(&mut app, KeyCode::ArrowUp, Key::ArrowUp, None);
     let rows = shown(&mut app);
     assert_eq!(rows.len(), 6);
     assert_eq!(rows[5], ("/wireframe".to_owned(), true));
     assert_eq!(rows[0].0, "/setblock");
     key(&mut app, KeyCode::ArrowDown, Key::ArrowDown, None);
-    assert_eq!(shown(&mut app)[0], ("/gamemode".to_owned(), true));
+    assert_eq!(shown(&mut app)[0], ("/clear".to_owned(), true));
 
     key(
         &mut app,
@@ -1222,6 +1229,35 @@ fn a_command_acts_on_the_player_who_sent_it() {
     };
     assert_eq!(diamonds(&app, bob), 3);
     assert_eq!(diamonds(&app, host), 0);
+
+    // `/clear` empties every slot of its sender and nobody else's.
+    let stack = ItemStack::new(Item::Diamond, 2).unwrap();
+    for player in [bob, host] {
+        let mut inventory = app.world_mut().get_mut::<Inventory>(player).unwrap();
+        inventory.main[4] = Some(stack);
+        inventory.armor[0] = Some(stack);
+        inventory.crafting[1] = Some(stack);
+        inventory.carried = Some(stack);
+    }
+    app.world_mut()
+        .write_message(ChatSubmission::from_player(bob, "/clear"));
+    app.update();
+    assert_eq!(diamonds(&app, bob), 0);
+    let inventory = app.world().get::<Inventory>(bob).unwrap();
+    assert!(inventory.main.iter().all(Option::is_none));
+    assert!(inventory.armor.iter().all(Option::is_none));
+    assert!(inventory.crafting.iter().all(Option::is_none));
+    assert!(inventory.carried.is_none());
+    assert_eq!(
+        app.world().get::<Inventory>(host).unwrap().main[4],
+        Some(stack)
+    );
+    assert!(
+        app.world()
+            .resource::<ChatHistory>()
+            .messages()
+            .any(|message| message.text == "Cleared 11 items")
+    );
     assert!(
         app.world()
             .resource::<ChatHistory>()

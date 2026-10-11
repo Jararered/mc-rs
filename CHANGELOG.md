@@ -144,6 +144,9 @@ from `git log --date=format:'%Y-%m-%d %H:%M'`). A commit cannot name its own has
       `a22f8d3 · 2026-10-09 07:55`
 - [ ] A thrown item, arrow or bobber does not hit you as it leaves your hand.
       `a22f8d3 · 2026-10-09 07:55`
+- [ ] `/clear` empties your whole inventory: hotbar, main slots, armor, the 2×2 crafting grid and anything held
+      on the cursor. Chat reports how many items went.
+      `pending`
 
 #### Fixes
 
@@ -203,9 +206,9 @@ from `git log --date=format:'%Y-%m-%d %H:%M'`). A commit cannot name its own has
 
 - [ ] In creative or spectator mode, hostile mobs no longer walk up to you, slimes no longer hop after you, and
       mobs do not turn to look at you. Back in survival they hunt you again.
-      `pending`
+      `2316921 · 2026-10-11 03:26`
 - [ ] The hearts and air bubbles are hidden in creative and spectator mode and return with `/gamemode survival`.
-      `pending`
+      `2316921 · 2026-10-11 03:26`
 
 ### Generation
 

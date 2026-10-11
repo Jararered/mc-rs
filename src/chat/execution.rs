@@ -275,6 +275,14 @@ impl CommandContext<'_, '_> {
                     "Restored health".to_owned()
                 }
             }
+            ChatCommand::ClearCommand => {
+                let cleared = inventory.clear(&mut hotbar);
+                match cleared {
+                    0 => "Inventory is already empty".to_owned(),
+                    1 => "Cleared 1 item".to_owned(),
+                    count => format!("Cleared {count} items"),
+                }
+            }
             ChatCommand::GameModeCommand(mode) => {
                 // `player::survival` moves flight and invulnerability over.
                 game_mode.set_if_neq(mode);

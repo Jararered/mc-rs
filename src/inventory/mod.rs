@@ -108,6 +108,22 @@ impl Inventory {
     }
 
     /// Whether any hotbar or main slot holds `item`.
+    /// Empty every slot the player carries: hotbar, main, armor, the 2×2
+    /// grid and the stack on the cursor. Returns how many items went.
+    pub fn clear(&mut self, hotbar: &mut Hotbar) -> u32 {
+        let slots = hotbar
+            .slots
+            .iter_mut()
+            .chain(&mut self.main)
+            .chain(&mut self.crafting)
+            .chain(&mut self.armor)
+            .chain(std::iter::once(&mut self.carried));
+        slots
+            .filter_map(Option::take)
+            .map(|stack| u32::from(stack.count()))
+            .sum()
+    }
+
     pub fn holds(&self, hotbar: &Hotbar, item: Item) -> bool {
         hotbar
             .slots

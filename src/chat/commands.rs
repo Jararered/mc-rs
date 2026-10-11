@@ -32,6 +32,7 @@ pub enum ChatCommand {
     TeleportCommand(Vec3),
     SummonCommand(MobType),
     HealCommand,
+    ClearCommand,
     GameModeCommand(GameMode),
     WeatherCommand {
         raining: bool,
@@ -73,6 +74,14 @@ pub(super) fn register_builtin_commands(registry: &mut CommandRegistry) {
             parse_heal,
         )
         .expect("valid heal command");
+    registry
+        .register(
+            "clear",
+            "Empty the player's inventory.",
+            ["/clear"],
+            parse_clear,
+        )
+        .expect("valid clear command");
     registry
         .register_with_completions(
             "gamemode",
@@ -161,6 +170,14 @@ fn parse_summon(_: &CommandRegistry, args: &[&str]) -> Result<ChatCommand, Comma
 fn parse_heal(_: &CommandRegistry, args: &[&str]) -> Result<ChatCommand, CommandParseError> {
     if args.is_empty() {
         Ok(ChatCommand::HealCommand)
+    } else {
+        Err(CommandParseError::Usage)
+    }
+}
+
+fn parse_clear(_: &CommandRegistry, args: &[&str]) -> Result<ChatCommand, CommandParseError> {
+    if args.is_empty() {
+        Ok(ChatCommand::ClearCommand)
     } else {
         Err(CommandParseError::Usage)
     }

@@ -54,6 +54,48 @@ fn run_until(
     }
 }
 
+/// Like [`run_until`], but the clock resets whenever `progress` changes, so a
+/// shared compute pool that is slow but still moving does not fail the case.
+/// Fails when progress stalls for `stall` or the absolute `timeout` elapses.
+fn run_until_progressing(
+    app: &mut App,
+    stall: Duration,
+    timeout: Duration,
+    mut progress: impl FnMut(&App) -> u64,
+    mut condition: impl FnMut(&mut App) -> bool,
+) -> bool {
+    let start = Instant::now();
+    let mut last_progress_at = Instant::now();
+    let mut last = progress(app);
+    loop {
+        if condition(app) {
+            return true;
+        }
+        if start.elapsed() >= timeout {
+            return false;
+        }
+        let now = progress(app);
+        if now != last {
+            last = now;
+            last_progress_at = Instant::now();
+        } else if last_progress_at.elapsed() >= stall {
+            return false;
+        }
+        thread::sleep(Duration::from_millis(5));
+        app.update();
+    }
+}
+
+fn streaming_progress(app: &App) -> u64 {
+    let streaming = app.world().resource::<WorldStreaming>();
+    // More rendered meshes and fewer in-flight jobs both count as progress.
+    let jobs = streaming.generating_job_count()
+        + streaming.populating_job_count()
+        + streaming.meshing_job_count();
+    ((streaming.rendered_mesh_count() as u64) << 16)
+        | (u16::MAX as u64 - jobs.min(u16::MAX as usize) as u64)
+}
+
 fn rendered_positions(app: &mut App) -> Vec<ChunkPosition> {
     let mut query = app.world_mut().query::<&ChunkPosition>();
     query.iter(app.world()).copied().collect()
@@ -344,15 +386,21 @@ fn settled_streaming_skips_discovery_and_wakes_for_chunk_changes_and_movement() 
         .spawn((Player, Transform::from_xyz(8.0, 80.0, 8.0)))
         .id();
     app.update();
-    // Under a full `cargo test` the compute pool is shared with other cases;
-    // give settlement longer than a quiet run needs.
-    assert!(run_until(&mut app, Duration::from_secs(60), |app| {
-        let streaming = app.world().resource::<WorldStreaming>();
-        streaming.generating_job_count() == 0
-            && streaming.populating_job_count() == 0
-            && streaming.meshing_job_count() == 0
-            && streaming.rendered_mesh_count() == ((LOAD_RADIUS * 2 + 1).pow(2) as usize)
-    }));
+    // Stall if the pool makes no progress for 20s; allow up to 120s wall time
+    // when other tests share the compute threads.
+    assert!(run_until_progressing(
+        &mut app,
+        Duration::from_secs(20),
+        Duration::from_secs(120),
+        streaming_progress,
+        |app| {
+            let streaming = app.world().resource::<WorldStreaming>();
+            streaming.generating_job_count() == 0
+                && streaming.populating_job_count() == 0
+                && streaming.meshing_job_count() == 0
+                && streaming.rendered_mesh_count() == ((LOAD_RADIUS * 2 + 1).pow(2) as usize)
+        }
+    ));
     let passes = app
         .world()
         .resource::<StreamingDiagnostics>()
@@ -402,6 +450,79 @@ fn settled_streaming_skips_discovery_and_wakes_for_chunk_changes_and_movement() 
             .discovery_passes
             > passes
     );
+}
+
+#[test]
+fn halted_empty_viewers_drain_population_and_cancel_generation() {
+    use game::world::generation::WorldGeneration;
+    use std::sync::atomic::Ordering;
+
+    let generator = test_generator();
+    let mut app = test_app();
+    app.insert_resource(WorldGeneration::new(generator.clone()));
+    // Startup installs `WorldStreaming` and builds the spawn area.
+    app.update();
+    let player = app
+        .world_mut()
+        .spawn((Player, Transform::from_xyz(8.0, 80.0, 8.0)))
+        .id();
+    assert!(run_until(&mut app, Duration::from_secs(20), |app| {
+        let streaming = app.world().resource::<WorldStreaming>();
+        streaming.generating_job_count() + streaming.populating_job_count() > 0
+    }));
+    let jobs_before = {
+        let streaming = app.world().resource::<WorldStreaming>();
+        (
+            streaming.generating_job_count(),
+            streaming.populating_job_count(),
+        )
+    };
+    assert!(jobs_before.0 + jobs_before.1 > 0);
+
+    // Empty viewers without halt must not drop in-flight work.
+    app.world_mut().entity_mut(player).despawn();
+    app.update();
+    {
+        let streaming = app.world().resource::<WorldStreaming>();
+        assert_eq!(
+            (
+                streaming.generating_job_count(),
+                streaming.populating_job_count(),
+            ),
+            jobs_before,
+            "empty viewers without halt must not cancel in-flight jobs"
+        );
+    }
+
+    app.world_mut().resource_mut::<WorldStreaming>().halt();
+    assert!(run_until_progressing(
+        &mut app,
+        Duration::from_secs(20),
+        Duration::from_secs(60),
+        |app| {
+            let streaming = app.world().resource::<WorldStreaming>();
+            let jobs = streaming.generating_job_count() + streaming.populating_job_count();
+            u64::MAX - jobs as u64
+        },
+        |app| {
+            let streaming = app.world().resource::<WorldStreaming>();
+            streaming.generating_job_count() == 0 && streaming.populating_job_count() == 0
+        }
+    ));
+
+    // Finished population puts its footprint back; the test generator's
+    // marker should be present wherever a population job completed.
+    if generator.populations.load(Ordering::Relaxed) > 0 {
+        let chunks = app.world().resource::<WorldChunks>();
+        assert!(
+            chunks.positions().any(|position| {
+                chunks.get(position).is_some_and(|generated| {
+                    generated.chunk.get(1, 40, 1) == Some(Block::GoldBlock)
+                })
+            }),
+            "halted empty drain should re-admit populated chunks"
+        );
+    }
 }
 
 #[derive(Clone)]

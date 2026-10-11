@@ -1,5 +1,6 @@
 mod actions;
 mod held_item;
+mod portal;
 mod sleep;
 
 use bevy::mesh::VertexAttributeValues;

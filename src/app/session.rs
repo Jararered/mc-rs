@@ -56,6 +56,7 @@ use crate::player::LocalPlayer;
 use crate::player::Player;
 use crate::player::PlayerInterpolation;
 use crate::player::interaction::overlay::BlockFocus;
+use crate::player::portal::PortalTravel;
 use crate::player::sleep::BED_MISSING_MESSAGE;
 use crate::player::sleep::PlayerSleep;
 use crate::player::sleep::bed_chunks;
@@ -811,14 +812,20 @@ fn finish_arrival(
     pending: Option<Res<PendingArrival>>,
     mut chat: Option<ResMut<ChatHistory>>,
     mut player: Query<
-        (&mut Transform, &mut PlayerInterpolation, &mut PlayerSleep),
+        (
+            &mut Transform,
+            &mut PlayerInterpolation,
+            &mut PlayerSleep,
+            &mut PortalTravel,
+        ),
         With<LocalPlayer>,
     >,
 ) {
     let placed = pending.as_ref().is_some_and(|pending| pending.placed);
     let bed_missing = pending.as_ref().is_some_and(|pending| pending.bed_missing);
-    if let Some((Travel::Respawn, _)) = session.travelling
-        && let Ok((mut transform, mut interpolation, mut sleep)) = player.single_mut()
+    let travelling = session.travelling.as_ref().map(|(travel, _)| *travel);
+    if let Some(Travel::Respawn) = travelling
+        && let Ok((mut transform, mut interpolation, mut sleep, _)) = player.single_mut()
     {
         if !placed {
             *transform = crate::player::default_spawn_transform(&chunks);
@@ -830,6 +837,12 @@ fn finish_arrival(
                 chat.push(BED_MISSING_MESSAGE);
             }
         }
+    }
+    // Clear the charge that triggered the trip; keep the post-portal cooldown.
+    if let Some(Travel::Portal) = travelling
+        && let Ok((.., mut portal)) = player.single_mut()
+    {
+        *portal = PortalTravel::after_arrival();
     }
     if let Some(persistence) = persistence.as_deref_mut() {
         persistence.resume();

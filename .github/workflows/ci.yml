@@ -58,7 +58,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # The action runs in Docker; feed it the channel from rust-toolchain.toml
+      # so the pin is not duplicated in this workflow.
+      - name: Read toolchain channel
+        id: toolchain
+        run: |
+          channel=$(sed -n 's/^channel = "\(.*\)"/\1/p' rust-toolchain.toml)
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check
-          rust-version: nightly-2026-10-10
+          rust-version: ${{ steps.toolchain.outputs.channel }}

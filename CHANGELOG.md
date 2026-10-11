@@ -55,6 +55,9 @@ from `git log --date=format:'%Y-%m-%d %H:%M'`). A commit cannot name its own has
 - [ ] A slab, glass, a fence or any other block you would collide with cannot be placed where you are standing.
       A slab can still go under you when only its upper half would overlap.
       `48841f5 · 2026-10-11 08:39`
+- [ ] Travelling through a Nether portal clears the charge and starts a half-second cooldown, so standing in the
+      exit portal does not send you straight back.
+      `2e3dbe6 · 2026-10-11 23:37`
 
 ### Items
 
@@ -146,20 +149,21 @@ from `git log --date=format:'%Y-%m-%d %H:%M'`). A commit cannot name its own has
       `a22f8d3 · 2026-10-09 07:55`
 - [ ] `/clear` empties your whole inventory: hotbar, main slots, armor, the 2×2 crafting grid and anything held
       on the cursor. Chat reports how many items went.
-      `pending`
+      `3966173 · 2026-10-11 03:31`
 
 #### Fixes
 
 - [ ] Each dye shows its own icon: a bone crafts into white bone meal, not what looked like yellow dye, and ink
       sacs, lapis and cocoa beans look like themselves.
-      `pending`
+      `a722019 · 2026-10-11 09:06`
 - [ ] Bone meal used on a sapling grows its tree at once (the bone meal is spent even when there is no room), on
       wheat ripens it, and on a grass block sprouts tall grass with the odd dandelion and rose around it.
-      `pending`
+      `2505096 · 2026-10-11 09:10`
 - [ ] A dye and white wool craft wool of that dye's color (bone meal leaves it white, an ink sac makes black).
-      `pending`
+      `a722019 · 2026-10-11 09:06`
 - [ ] Dyes mix: rose red and bone meal make pink, rose red and dandelion yellow make orange, and the rest of
       Beta's mixes (lime, gray, light gray, light blue, cyan, purple, magenta) work.
+      `a722019 · 2026-10-11 09:06`
 - [ ] View bobbing: the view and the held item or arm swing as far and as fast as Beta's when walking, the same
       at any frame rate, instead of a slower, smaller sway. The swing does not advance while sneaking.
       `cb5dc12 · 2026-10-11 03:19`

@@ -19,13 +19,13 @@ from `git log --date=format:'%Y-%m-%d %H:%M'`). A commit cannot name its own has
 - [ ] Right-click with a sign on top of a solid block stands a post turned to face you; on the side of one it
       hangs a board. It cannot go on the underside of a block or on glass. A post is drawn square to the
       nearer axis, not at its sixteenth of a turn.
-      `pending`
+      `de86ed1 · 2026-10-10 07:44`
 - [ ] A sign pops off as an item when the block under a post or behind a board is taken away.
-      `pending`
+      `de86ed1 · 2026-10-10 07:44`
 - [ ] A sign keeps its four lines through a save in either format, and one in a Beta world loads with its text.
       Nothing draws the text or lets you write it in this game yet: on the server, a Beta client writes a new
       sign once and every client reads it.
-      `pending`
+      `de86ed1 · 2026-10-10 07:44`
 
 #### Interactions
 
@@ -39,7 +39,22 @@ from `git log --date=format:'%Y-%m-%d %H:%M'`). A commit cannot name its own has
 
 #### Fixes
 
-- Nothing this round.
+- [ ] Three stone, sandstone, planks or cobblestone in a row craft three slabs of that material. A full grid of
+      nine no longer does.
+      `pending`
+- [ ] A fence is two rows of three sticks and sandstone is four sand in a square, not a full grid of nine.
+      `pending`
+- [ ] A slab resting on a slab of another material shows its underside from below.
+      `pending`
+- [ ] The side of a block next to a slab, stair or farmland is lit, not black, and a slab's top under a ceiling
+      is lit from the open sides.
+      `pending`
+- [ ] Crops, grass and saplings read the light of a slab, stair or farmland cell as the brightest cell beside or
+      above it.
+      `pending`
+- [ ] A slab, glass, a fence or any other block you would collide with cannot be placed where you are standing.
+      A slab can still go under you when only its upper half would overlap.
+      `pending`
 
 ### Items
 
@@ -123,7 +138,7 @@ from `git log --date=format:'%Y-%m-%d %H:%M'`). A commit cannot name its own has
 #### Interactions
 
 - [ ] Shift-clicking an item out of a chest puts it in the hotbar first, then the rest of the inventory.
-      `pending`
+      `6c8444b · 2026-10-10 01:52`
 - [ ] Using a bow, snowball, egg or rod while pointing at a block does not place or activate anything extra, but
       doors, levers, chests and other blocks that react to a right-click still take the click first.
       `a22f8d3 · 2026-10-09 07:55`

@@ -145,7 +145,8 @@ pub struct ChunkNeighbors<'a> {
 }
 
 impl ChunkNeighbors<'_> {
-    fn get(&self, center: &Chunk, x: i32, y: i32, z: i32) -> Option<Block> {
+    /// The block at a chunk-local cell, reading into the neighbors.
+    pub fn get(&self, center: &Chunk, x: i32, y: i32, z: i32) -> Option<Block> {
         if !(0..CHUNK_HEIGHT as i32).contains(&y) {
             return None;
         }

@@ -361,7 +361,19 @@ impl<'a> TickWorld<'a> {
 
     /// `World.getBlockLightValue`: the brighter of sky light, dimmed by the
     /// time of day, and block light.
+    /// A slab, farmland or stairs cell answers with the brightest of the
+    /// cell above and its four sides.
     pub fn light(&mut self, position: IVec3) -> u8 {
+        if self.block(position).uses_neighbor_brightness() {
+            return [IVec3::Y, IVec3::X, IVec3::NEG_X, IVec3::Z, IVec3::NEG_Z]
+                .into_iter()
+                .map(|offset| {
+                    let (sky, block) = self.light_channels(position + offset);
+                    combined_light(sky, block, self.skylight_subtracted)
+                })
+                .max()
+                .unwrap_or(0);
+        }
         let (sky, block) = self.light_channels(position);
         combined_light(sky, block, self.skylight_subtracted)
     }

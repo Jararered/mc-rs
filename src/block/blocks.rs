@@ -314,6 +314,16 @@ impl Block {
         matches!(self, Self::WoodenStairs | Self::CobblestoneStairs)
     }
 
+    /// The blocks `World.getBlockLightValue` and `ChunkCache.getLightValueExt`
+    /// light from outside: opaque to light but not a full cube, so the cell
+    /// reads as the brightest of the cell above and its four sides.
+    pub const fn uses_neighbor_brightness(self) -> bool {
+        matches!(
+            self,
+            Self::StoneSlab | Self::Farmland | Self::WoodenStairs | Self::CobblestoneStairs
+        )
+    }
+
     /// Picking bounds for the block with `metadata`. Torches, ladders,
     /// doors, trapdoors, and the redstone family depend on it.
     pub fn selection_bounds_for(self, metadata: u8) -> definition::BlockBounds {

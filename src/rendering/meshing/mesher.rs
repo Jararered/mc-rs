@@ -382,8 +382,11 @@ impl<'a> Mesher<'a> {
         };
         let tint = block_tint(block, metadata, None);
         // A block that lets light through lights its inner faces from its
-        // own cell, as `renderBlockDoor` does. Slabs and stairs hold no light.
-        let own_light = (block.light_opacity() == 0)
+        // own cell, as `renderBlockDoor` does. So do a slab's top and the
+        // step of a stair (`renderStandardBlock`'s `maxY != 1.0D` and its
+        // like), whose cell reads as its brightest neighbor
+        // ([`Skylight::with_neighbor_brightness`]).
+        let own_light = (block.light_opacity() == 0 || block.uses_neighbor_brightness())
             .then(|| [[skylight.channels_at(x as i32, y as i32, z as i32); 4]; 4]);
         for bounds in block_boxes(block, metadata, links).as_slice() {
             let geometry = BlockFaceGeometry::from_bounds(*bounds);

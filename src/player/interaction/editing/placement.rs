@@ -211,11 +211,16 @@ pub fn place_selected_block_facing(
         }
         _ => (selected, species),
     };
-    if block.is_opaque_cube()
-        && player.intersects(Aabb::new(
-            Vec3::new(x as f32, y as f32, z as f32),
-            Vec3::new(x as f32 + 1.0, y as f32 + 1.0, z as f32 + 1.0),
-        ))
+    // `World.canBlockBePlacedAt`: nothing may stand in the block's own
+    // collision box, which for a slab is the lower half of the cell.
+    let cell = Vec3::new(x as f32, y as f32, z as f32);
+    if block
+        .collision_boxes_for(metadata)
+        .into_iter()
+        .flatten()
+        .any(|(min, max)| {
+            player.intersects(Aabb::new(cell + Vec3::from(min), cell + Vec3::from(max)))
+        })
     {
         return false;
     }

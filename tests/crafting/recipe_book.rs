@@ -125,3 +125,55 @@ fn minecart_and_piston_upgrades_stack_the_part_above_the_base() {
         assert_eq!(book.find(&grid), None);
     }
 }
+
+/// `CraftingManager`: `"###"` makes three slabs, not a full grid of nine.
+#[test]
+fn three_blocks_in_a_row_craft_three_slabs_of_their_material() {
+    let book = beta_recipe_book();
+    for (input, data) in [
+        (Block::Stone, 0),
+        (Block::Sandstone, 1),
+        (Block::WoodenPlanks, 2),
+        (Block::Cobblestone, 3),
+    ] {
+        for row in 0..3 {
+            let mut grid = CraftingGrid::workbench();
+            for x in 0..3 {
+                grid.set(x, row, Some(stack(block(input), 1)));
+            }
+            let slabs = book.find(&grid).unwrap();
+            assert_eq!(slabs.item(), block(Block::StoneSlab), "{input:?}");
+            assert_eq!(slabs.data(), data, "{input:?}");
+            assert_eq!(slabs.count(), 3);
+        }
+        let mut full = CraftingGrid::workbench();
+        for y in 0..3 {
+            for x in 0..3 {
+                full.set(x, y, Some(stack(block(input), 1)));
+            }
+        }
+        assert!(book.find(&full).is_none(), "nine {input:?}");
+    }
+}
+
+#[test]
+fn fences_take_two_rows_of_sticks_and_sandstone_four_sand() {
+    let book = beta_recipe_book();
+    let mut grid = CraftingGrid::workbench();
+    for y in 0..2 {
+        for x in 0..3 {
+            grid.set(x, y, Some(stack(Item::Stick, 1)));
+        }
+    }
+    let fences = book.find(&grid).unwrap();
+    assert_eq!(fences.item(), block(Block::Fence));
+    assert_eq!(fences.count(), 2);
+
+    let mut player = CraftingGrid::player();
+    for y in 0..2 {
+        for x in 0..2 {
+            player.set(x, y, Some(stack(block(Block::Sand), 1)));
+        }
+    }
+    assert_eq!(book.find(&player).unwrap().item(), block(Block::Sandstone));
+}

@@ -133,15 +133,15 @@ pub fn block_appearance(id: u8, data: u16) -> Appearance {
         40 => Appearance::flat(28),
         41 => Appearance::cube(23),
         42 => Appearance::cube(22),
-        43 => Appearance::faces(Shape::Cube, 6, 5, 5),
-        44 => {
+        43 | 44 => {
             let (top, side) = match data {
                 1 => (176, 192),
                 2 => (4, 4),
                 3 => (16, 16),
                 _ => (6, 5),
             };
-            Appearance::faces(Shape::Slab, top, side, side)
+            let shape = if id == 43 { Shape::Cube } else { Shape::Slab };
+            Appearance::faces(shape, top, side, side)
         }
         45 => Appearance::cube(7),
         46 => Appearance::faces(Shape::Cube, 9, 8, 8),

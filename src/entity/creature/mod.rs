@@ -310,12 +310,11 @@ impl Surroundings<'_> {
                 combined_light(sky, block, self.skylight_subtracted)
             })
         };
-        if matches!(
-            self.chunks.block_at(x, y, z),
-            Some(
-                Block::StoneSlab | Block::Farmland | Block::CobblestoneStairs | Block::WoodenStairs
-            )
-        ) {
+        if self
+            .chunks
+            .block_at(x, y, z)
+            .is_some_and(Block::uses_neighbor_brightness)
+        {
             [(0, 1, 0), (1, 0, 0), (-1, 0, 0), (0, 0, 1), (0, 0, -1)]
                 .into_iter()
                 .map(|(dx, dy, dz)| raw(x + dx, y + dy, z + dz))

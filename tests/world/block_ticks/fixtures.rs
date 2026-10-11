@@ -251,6 +251,90 @@ fn a_slab_on_a_matching_slab_becomes_a_double_slab() {
     assert_eq!(world.block(at(4, 65, 4)), Block::StoneSlab);
 }
 
+/// `BlockStep.onBlockAdded` runs for the double slab too.
+#[test]
+fn a_double_slab_set_on_a_matching_slab_merges_into_it() {
+    let mut world = floor();
+    world.set_with_metadata(at(8, 64, 8), Block::StoneSlab, 1);
+    world.set_with_metadata(at(8, 65, 8), Block::DoubleStoneSlab, 1);
+    world.ticks.block_changed(at(8, 65, 8), Block::Air, 0);
+    world.process_events();
+    assert_eq!(world.block(at(8, 65, 8)), Block::Air);
+    assert_eq!(world.block(at(8, 64, 8)), Block::DoubleStoneSlab);
+    assert_eq!(world.metadata(at(8, 64, 8)), 1);
+}
+
+/// `BlockStep.shouldSideBeRendered`: slabs share their sides, never the
+/// face one rests on.
+#[test]
+fn slabs_hide_the_sides_between_them_but_not_the_face_between_two_stacked() {
+    let mesh = |chunk: &Chunk| mesh_chunk_with_settings(chunk, &Skylight::from_chunk(chunk), true);
+    let mut chunk = Chunk::new();
+    chunk.set_with_metadata(8, 64, 8, Block::StoneSlab, 0);
+    chunk.set_with_metadata(8, 65, 8, Block::StoneSlab, 3);
+    assert_eq!(mesh(&chunk).opaque.vertex_count(), 48, "stacked");
+
+    let mut chunk = Chunk::new();
+    chunk.set_with_metadata(8, 64, 8, Block::StoneSlab, 0);
+    chunk.set_with_metadata(9, 64, 8, Block::StoneSlab, 3);
+    assert_eq!(mesh(&chunk).opaque.vertex_count(), 40, "side by side");
+}
+
+/// `ChunkCache.getLightValueExt`: a slab's cell holds no light and is drawn
+/// with the brightest of the cell above and its sides.
+#[test]
+fn a_slab_cell_is_drawn_with_its_brightest_neighbor() {
+    let mut chunk = Chunk::new();
+    chunk.set(8, 64, 8, Block::StoneSlab);
+    chunk.set(8, 65, 8, Block::Stone);
+    chunk.set(4, 64, 4, Block::Stone);
+    let raw = Skylight::from_chunk(&chunk);
+    assert_eq!(raw.sky(8, 64, 8), Some(0));
+    let cached = raw.chunk_cells();
+    let drawn = raw.with_neighbor_brightness(&chunk, |_, _, _| None);
+    assert_eq!(drawn.sky(8, 64, 8), Some(15), "lit from the sides");
+    assert_eq!(drawn.sky(4, 64, 4), Some(0), "a full cube stays dark");
+    assert_eq!(cached[Chunk::index(8, 64, 8)], 0, "ticks keep the raw cell");
+}
+
+/// `World.getBlockLightValue` has the same rule for block ticks.
+#[test]
+fn block_ticks_read_a_slab_cell_as_its_brightest_neighbor() {
+    let mut world = floor();
+    world.set(at(8, 64, 8), Block::StoneSlab);
+    world.set(at(8, 65, 8), Block::Stone);
+    world.set(at(4, 64, 4), Block::Stone);
+    world.relight();
+    let mut ticks = world.ticks.world(&mut world.chunks, &mut world.light, NOON);
+    assert_eq!(ticks.light(at(8, 64, 8)), 15);
+    assert_eq!(ticks.light(at(4, 64, 4)), 0);
+}
+
+/// `World.canBlockBePlacedAt` tests the new block's own collision box.
+#[test]
+fn a_slab_is_not_placed_where_the_player_stands() {
+    let mut world = floor();
+    let ground = |x| hit(x, 63, 8, BlockFace::Up, Block::Stone);
+    let place = |world: &mut TestWorld, target, player, block| {
+        place_selected_block_facing(
+            &mut world.chunks,
+            target,
+            player,
+            block,
+            0,
+            Direction::South,
+        )
+    };
+    let standing = Aabb::new(Vec3::new(8.2, 64.0, 8.2), Vec3::new(8.8, 65.8, 8.8));
+    assert!(!place(&mut world, ground(8), standing, Block::StoneSlab));
+    assert!(!place(&mut world, ground(8), standing, Block::Glass));
+    assert!(place(&mut world, ground(9), standing, Block::StoneSlab));
+    // Only the lower half of the cell has to be clear.
+    let above = Aabb::new(Vec3::new(8.2, 64.5, 8.2), Vec3::new(8.8, 66.3, 8.8));
+    assert!(place(&mut world, ground(8), above, Block::StoneSlab));
+    assert_eq!(world.block(at(8, 64, 8)), Block::StoneSlab);
+}
+
 #[test]
 fn stairs_face_away_from_the_player_and_collide_as_two_boxes() {
     let mut world = floor();

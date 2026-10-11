@@ -467,6 +467,58 @@ impl Skylight {
         if has_sky { self } else { self.without_sky() }
     }
 
+    /// The light a renderer reads, as `ChunkCache.getLightValueExt` answers
+    /// it: a slab, farmland or stairs cell holds no light of its own and
+    /// shows the brightest of the cell above and its four sides. `ring` is
+    /// the block at a cell of the one-cell ring around `chunk`. Each channel
+    /// takes its own maximum, which gives Beta's maximum of the combined
+    /// values at any time of day. Simulation reads the raw cells, so take
+    /// [`Self::chunk_cells`] first.
+    pub fn with_neighbor_brightness(
+        mut self,
+        chunk: &Chunk,
+        ring: impl Fn(i32, i32, i32) -> Option<Block>,
+    ) -> Self {
+        const SIZE: i32 = CHUNK_SIZE as i32;
+        let mut cells = Vec::new();
+        let raw = chunk.raw_blocks();
+        for y in 0..CHUNK_HEIGHT {
+            for z in 0..CHUNK_SIZE {
+                let row = Chunk::index(0, y, z);
+                for (x, &id) in raw[row..row + CHUNK_SIZE].iter().enumerate() {
+                    if Block::from_u8(id).is_some_and(Block::uses_neighbor_brightness) {
+                        cells.push((x as i32, y as i32, z as i32));
+                    }
+                }
+            }
+            let y = y as i32;
+            for along in -1..=SIZE {
+                for (x, z) in [(along, -1), (along, SIZE), (-1, along), (SIZE, along)] {
+                    // The corners come up twice; the second write is the same.
+                    if ring(x, y, z).is_some_and(Block::uses_neighbor_brightness) {
+                        cells.push((x, y, z));
+                    }
+                }
+            }
+        }
+        // Every cell reads its neighbors' raw light, so work the values out
+        // before writing any of them.
+        let lit: Vec<(usize, u8)> = cells
+            .into_iter()
+            .map(|(x, y, z)| {
+                let (sky, block) = [(0, 1, 0), (1, 0, 0), (-1, 0, 0), (0, 0, 1), (0, 0, -1)]
+                    .into_iter()
+                    .map(|(dx, dy, dz)| unpack(self.channels_at(x + dx, y + dy, z + dz)))
+                    .fold((0, 0), |(sky, block), (s, b)| (sky.max(s), block.max(b)));
+                (padded_index(x, y as usize, z), pack(sky, block))
+            })
+            .collect();
+        for (index, light) in lit {
+            self.cells[index] = light;
+        }
+        self
+    }
+
     fn center(&self, x: usize, y: usize, z: usize) -> Option<(u8, u8)> {
         if x >= CHUNK_SIZE || y >= CHUNK_HEIGHT || z >= CHUNK_SIZE {
             return None;

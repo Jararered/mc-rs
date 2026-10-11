@@ -455,7 +455,9 @@ fn quick_move_drag_moves_slots_in_both_directions_once_per_gesture() {
         None,
         SlotId::Chest(0),
     ));
-    assert_eq!(inventory.main[0], Some(stack(Item::Diamond, 5)));
+    // Out of a chest goes to the hotbar first.
+    assert_eq!(hotbar.slots[0], Some(stack(Item::Diamond, 5)));
+    assert!(inventory.main[0].is_none());
     assert!(chest[0].is_none());
 }
 

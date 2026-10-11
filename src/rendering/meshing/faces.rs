@@ -351,6 +351,11 @@ pub(super) fn neighbor_hides_face_at(
             }
         }
     }
+    // `BlockStep.shouldSideBeRendered` shares only the four sides: a slab
+    // below leaves its upper half open, so the face resting on it is seen.
+    if neighbor == Some(Block::StoneSlab) && matches!(face, FACE_TOP | FACE_BOTTOM) {
+        return false;
+    }
     neighbor_hides_face(block, neighbor, fancy_graphics)
 }
 

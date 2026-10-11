@@ -93,12 +93,9 @@ pub(super) fn spawn_mesh_job(
             southeast.as_ref(),
         )
         .for_sky(has_sky);
-        let fingerprints = skylight.section_fingerprints();
-        let rebuild = previous.map_or(ALL_SECTIONS, |previous| {
-            (0..SECTIONS_PER_CHUNK)
-                .filter(|&section| previous[section] != fingerprints[section])
-                .fold(forced, |mask, section| mask | (1 << section))
-        });
+        // Block ticks read the raw cells; the mesh reads them as Beta's
+        // renderer does.
+        let light = skylight.chunk_cells();
         let neighbors = ChunkNeighbors {
             west: west.as_ref(),
             east: east.as_ref(),
@@ -109,6 +106,14 @@ pub(super) fn spawn_mesh_job(
             southwest: southwest.as_ref(),
             southeast: southeast.as_ref(),
         };
+        let skylight =
+            skylight.with_neighbor_brightness(&chunk, |x, y, z| neighbors.get(&chunk, x, y, z));
+        let fingerprints = skylight.section_fingerprints();
+        let rebuild = previous.map_or(ALL_SECTIONS, |previous| {
+            (0..SECTIONS_PER_CHUNK)
+                .filter(|&section| previous[section] != fingerprints[section])
+                .fold(forced, |mask, section| mask | (1 << section))
+        });
         let mesher = SectionMesher::new(
             &chunk,
             &neighbors,
@@ -127,7 +132,7 @@ pub(super) fn spawn_mesh_job(
         MeshJob {
             sections,
             fingerprints,
-            light: skylight.chunk_cells(),
+            light,
             elapsed: start.elapsed(),
         }
     });

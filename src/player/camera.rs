@@ -1,6 +1,7 @@
 //! The first-person camera: field of view, view bobbing, and the hurt roll.
 
 use super::interaction::use_item::BowDraw;
+use super::sleep::PlayerSleep;
 use super::state::LocalPlayer;
 use super::state::PlayerInterpolation;
 use crate::app::settings::GameSettings;
@@ -9,6 +10,7 @@ use crate::entity::Flying;
 use crate::entity::Velocity;
 use crate::entity::combat::HURT_TICKS;
 use crate::entity::combat::PlayerCombat;
+use crate::entity::creature::PLAYER_EYE_HEIGHT;
 use crate::world::tick::WorldTick;
 use bevy::prelude::*;
 
@@ -36,6 +38,14 @@ pub(crate) fn rendered_eye(
             .previous_position
             .lerp(transform.translation, partial.clamp(0.0, 1.0))
     })
+}
+
+/// The world-space orientation of a sleeper's view: `EntityRenderer.orientCamera`
+/// cancels the player's yaw and pitch and turns the view `direction * 90`
+/// degrees about Y, so it looks level along the bed away from the pillow
+/// (direction 0 looks toward -Z).
+pub fn sleeping_view(direction: u8) -> Quat {
+    Quat::from_rotation_y(-f32::from(direction & 3) * std::f32::consts::FRAC_PI_2)
 }
 
 /// How much a full bow draw narrows the view.
@@ -115,6 +125,7 @@ pub(super) fn update_camera_bobbing(
             &Children,
             Option<&PlayerCombat>,
             Has<Flying>,
+            &PlayerSleep,
         ),
         (With<LocalPlayer>, Without<PlayerCamera>),
     >,
@@ -125,7 +136,7 @@ pub(super) fn update_camera_bobbing(
         return;
     }
 
-    for (transform, interpolation, velocity, collision, mut bob, children, combat, flying) in
+    for (transform, interpolation, velocity, collision, mut bob, children, combat, flying, sleep) in
         &mut players
     {
         let horizontal_motion = velocity.0.xz().length() * dt;
@@ -148,13 +159,25 @@ pub(super) fn update_camera_bobbing(
         let interpolated = interpolation
             .previous_position
             .lerp(current, tick.partial().clamp(0.0, 1.0));
-        let render_offset = transform.rotation.inverse() * (interpolated - current);
+        // A sleeper's eye sits a little above the body and looks down the
+        // bed whichever way the player was facing, so the parent's rotation
+        // is undone and the bed's put in its place.
+        let (eye_lift, orientation) = if sleep.sleeping {
+            (
+                Vec3::Y * PLAYER_EYE_HEIGHT,
+                Mat4::from_quat(transform.rotation.inverse() * sleeping_view(sleep.direction)),
+            )
+        } else {
+            (Vec3::ZERO, Mat4::IDENTITY)
+        };
+        let render_offset = transform.rotation.inverse() * (interpolated - current + eye_lift);
         let hurt = combat.map_or(Mat4::IDENTITY, |combat| hurt_pose(combat, tick.partial()));
 
         for child in children {
             if let Ok(mut camera) = cameras.get_mut(*child) {
                 camera.set_if_neq(Transform::from_matrix(
                     Mat4::from_translation(render_offset)
+                        * orientation
                         * hurt
                         * if settings.view_bobbing {
                             camera_bob_pose(&bob)

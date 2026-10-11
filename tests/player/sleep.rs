@@ -118,6 +118,7 @@ fn sleeping_skips_the_night_and_sets_the_spawn_point() {
     let state = sleep(&mut app);
     assert!(state.sleeping);
     assert_eq!(state.bed, Some(FOOT));
+    assert_eq!(state.direction, 0);
     assert_eq!(metadata(&app, FOOT), 8 | 4, "the bed is marked occupied");
     // Lying on the mattress, and held there.
     let lying = feet(&mut app) + Vec3::Y * EntitySize::PLAYER.y_offset;
@@ -147,6 +148,22 @@ fn sleeping_skips_the_night_and_sets_the_spawn_point() {
     // The wash fades back out.
     run_ticks(&mut app, 12);
     assert_eq!(sleep(&mut app).timer, 0);
+}
+
+#[test]
+fn a_sleeper_remembers_which_way_the_bed_points() {
+    let mut app = bedroom(MIDNIGHT);
+    // A second bed pointing the other way: its pillow half is at `z = 2`.
+    let head = IVec3::new(0, 61, 3);
+    let mut chunks = app.world_mut().resource_mut::<WorldChunks>();
+    chunks.set_block_with_metadata(head.x, head.y, head.z, Block::Bed, 2);
+    chunks.set_block_with_metadata(head.x, head.y, head.z - 1, Block::Bed, 2 | 8);
+    use_bed(&mut app, head);
+    run_ticks(&mut app, 1);
+    let state = sleep(&mut app);
+    assert!(state.sleeping);
+    assert_eq!(state.bed, Some(head - IVec3::Z));
+    assert_eq!(state.direction, 2);
 }
 
 #[test]

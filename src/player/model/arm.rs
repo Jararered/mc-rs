@@ -31,6 +31,7 @@ use crate::player::camera::camera_bob_pose;
 use crate::player::camera::update_camera_bobbing;
 use crate::player::interaction::use_item::BowDraw;
 use crate::player::interaction::use_item::draw_power;
+use crate::player::sleep::PlayerSleep;
 
 const ARM_LAYER: usize = 1;
 /// [`VisualKey::data`] of a fishing rod whose line is out.
@@ -232,7 +233,13 @@ fn animate_arm(
     windows: Query<(&Window, &CursorOptions), With<PrimaryWindow>>,
     settings: Res<GameSettings>,
     players: Query<
-        (&CameraBobbing, &Hotbar, Option<&Fishing>, Option<&BowDraw>),
+        (
+            &CameraBobbing,
+            &Hotbar,
+            Option<&Fishing>,
+            Option<&BowDraw>,
+            &PlayerSleep,
+        ),
         With<LocalPlayer>,
     >,
     mut arms: Query<(&mut FirstPersonArm, &mut Transform, &mut Visibility)>,
@@ -275,7 +282,7 @@ fn animate_arm(
         *wait_for_release = mouse.pressed(MouseButton::Left);
     }
     let carried = *wait_for_release;
-    let Ok((bobbing, hotbar, fishing, draw)) = players.single() else {
+    let Ok((bobbing, hotbar, fishing, draw, sleep)) = players.single() else {
         return;
     };
     let walk_pose = if settings.view_bobbing {
@@ -372,12 +379,13 @@ fn animate_arm(
         let partial = tick.partial();
         let progress = interpolated_swing(arm.prev_swing, arm.swing, partial);
         let equip = arm.prev_equip + (arm.equip - arm.prev_equip) * partial;
-        arm_visibility.set_if_neq(if arm.displayed.is_none() {
+        // `EntityRenderer.renderHand` is skipped for a sleeper.
+        arm_visibility.set_if_neq(if arm.displayed.is_none() && !sleep.sleeping {
             Visibility::Visible
         } else {
             Visibility::Hidden
         });
-        held_visibility.set_if_neq(if arm.displayed.is_some() {
+        held_visibility.set_if_neq(if arm.displayed.is_some() && !sleep.sleeping {
             Visibility::Visible
         } else {
             Visibility::Hidden

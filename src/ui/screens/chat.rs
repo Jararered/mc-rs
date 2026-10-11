@@ -4,6 +4,7 @@ use bevy::input::ButtonState;
 use bevy::input::keyboard::KeyboardInput;
 use bevy::prelude::*;
 use bevy::text::FontSmoothing;
+use bevy::text::LineHeight;
 use bevy::window::CursorGrabMode;
 use bevy::window::CursorOptions;
 use bevy::window::PrimaryWindow;
@@ -208,6 +209,7 @@ fn spawn_chat(
                 Text::new(""),
                 TextLayout::no_wrap(),
                 font,
+                LineHeight::Px(8.0 * scale),
                 TextColor(Color::srgb_u8(224, 224, 224)),
                 BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.5)),
                 Visibility::Hidden,
@@ -217,6 +219,9 @@ fn spawn_chat(
                     right: px(2.0 * scale),
                     bottom: px(2.0 * scale),
                     height: px(12.0 * scale),
+                    // `GuiIngame` draws the bar at (2, h-14) and the text at
+                    // (4, h-12): two pixels in from the left and down from the top.
+                    padding: UiRect::new(px(2.0 * scale), Val::ZERO, px(2.0 * scale), Val::ZERO),
                     overflow: Overflow::clip(),
                     ..default()
                 },

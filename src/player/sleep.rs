@@ -3,8 +3,9 @@
 //! `World.tick`, and the bed spawn point `Minecraft.respawn` returns to.
 //!
 //! Not copied: `SpawnerAnimals.performSleepSpawning` (the monster that wakes
-//! a sleeper), the lying third-person pose, and the bed-relative turn of the
-//! camera; the player keeps looking where they looked.
+//! a sleeper) and the lying third-person pose. The first-person view is turned
+//! to look down the bed, as `EntityRenderer.orientCamera` does (see
+//! `camera.rs`); the player's own yaw and pitch are left as they were.
 
 use bevy::prelude::*;
 
@@ -60,6 +61,9 @@ pub struct PlayerSleep {
     pub timer: u8,
     /// The bed's foot half, as `BlockBed.blockActivated` resolves it.
     pub bed: Option<IVec3>,
+    /// The occupied bed's `BlockBed.getDirectionFromMetadata`, which turns
+    /// the sleeper's view (`orientCamera`).
+    pub direction: u8,
     /// The bed the player last woke up in.
     pub spawn: Option<IVec3>,
     /// Health as of the last sleeping tick; a drop wakes the player.
@@ -257,6 +261,7 @@ fn use_bed(
         sleep.sleeping = true;
         sleep.timer = 0;
         sleep.bed = Some(foot);
+        sleep.direction = bed::direction(metadata) as u8;
         sleep.last_health = health.current;
         set_occupied(&mut chunks, persistence.as_deref_mut(), foot, true);
     }

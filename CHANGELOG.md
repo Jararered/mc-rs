@@ -19,13 +19,13 @@ from `git log --date=format:'%Y-%m-%d %H:%M'`). A commit cannot name its own has
 - [ ] Right-click with a sign on top of a solid block stands a post turned to face you; on the side of one it
       hangs a board. It cannot go on the underside of a block or on glass. A post is drawn square to the
       nearer axis, not at its sixteenth of a turn.
-      `pending`
+      `de86ed1 · 2026-10-10 07:44`
 - [ ] A sign pops off as an item when the block under a post or behind a board is taken away.
-      `pending`
+      `de86ed1 · 2026-10-10 07:44`
 - [ ] A sign keeps its four lines through a save in either format, and one in a Beta world loads with its text.
       Nothing draws the text or lets you write it in this game yet: on the server, a Beta client writes a new
       sign once and every client reads it.
-      `pending`
+      `de86ed1 · 2026-10-10 07:44`
 
 #### Interactions
 
@@ -36,6 +36,9 @@ from `git log --date=format:'%Y-%m-%d %H:%M'`). A commit cannot name its own has
 - [ ] An arrow, snowball, egg or fishing bobber resting on a wooden pressure plate presses it; a stone plate ignores
       them.
       `a22f8d3 · 2026-10-09 07:55`
+- [ ] Sleeping in a bed turns the view to look level along the bed, away from the pillow, whichever way you were
+      facing; moving the mouse does not turn it while you lie there, and the held item and arm are not drawn.
+      `pending`
 
 #### Fixes
 
@@ -123,7 +126,7 @@ from `git log --date=format:'%Y-%m-%d %H:%M'`). A commit cannot name its own has
 #### Interactions
 
 - [ ] Shift-clicking an item out of a chest puts it in the hotbar first, then the rest of the inventory.
-      `pending`
+      `6c8444b · 2026-10-10 01:52`
 - [ ] Using a bow, snowball, egg or rod while pointing at a block does not place or activate anything extra, but
       doors, levers, chests and other blocks that react to a right-click still take the click first.
       `a22f8d3 · 2026-10-09 07:55`

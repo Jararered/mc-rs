@@ -485,6 +485,92 @@ fn disabling_bobbing_removes_walk_pose_but_keeps_interpolation_and_equip() {
 }
 
 #[test]
+fn a_sleeper_looks_down_the_bed_whichever_way_they_faced() {
+    use game::player::PlayerCamera;
+    use game::player::sleep::PlayerSleep;
+    use game::player::sleeping_view;
+    use std::f32::consts::FRAC_PI_2;
+
+    // Beta's `orientCamera`: direction 0 looks along -Z, each step a quarter
+    // turn on from there (+X, +Z, -X).
+    for (direction, looks) in [
+        (0, Vec3::NEG_Z),
+        (1, Vec3::X),
+        (2, Vec3::Z),
+        (3, Vec3::NEG_X),
+    ] {
+        let forward = sleeping_view(direction) * Vec3::NEG_Z;
+        assert!((forward - looks).length() < 1e-5, "direction {direction}");
+    }
+
+    let mut app = app();
+    // `SleepPlugin` wakes a sleeper whose bed is gone or whose night is over,
+    // so give them both.
+    const BED: IVec3 = IVec3::new(2, 61, 2);
+    let mut chunks = crate::entity::pathfinding::field(60);
+    chunks.set_block_with_metadata(BED.x, BED.y, BED.z, game::block::blocks::Block::Bed, 8);
+    *app.world_mut().resource_mut::<WorldChunks>() = chunks;
+    app.world_mut()
+        .resource_mut::<WorldTick>()
+        .set_world_time(18_000);
+    let player = app
+        .world_mut()
+        .query_filtered::<Entity, With<Player>>()
+        .single(app.world())
+        .unwrap();
+    let facing = Quat::from_euler(EulerRot::YXZ, 1.1, -0.4, 0.0);
+    app.world_mut()
+        .get_mut::<Transform>(player)
+        .unwrap()
+        .rotation = facing;
+    let mut cameras = app
+        .world_mut()
+        .query_filtered::<&Transform, With<PlayerCamera>>();
+    app.update();
+    assert!(
+        cameras
+            .single(app.world())
+            .unwrap()
+            .rotation
+            .angle_between(Quat::IDENTITY)
+            < 1e-4
+    );
+
+    for direction in 0..4u8 {
+        {
+            let mut sleep = app.world_mut().get_mut::<PlayerSleep>(player).unwrap();
+            sleep.sleeping = true;
+            sleep.bed = Some(BED);
+            sleep.direction = direction;
+        }
+        app.update();
+        let camera = *cameras.single(app.world()).unwrap();
+        let world = facing * camera.rotation;
+        let wanted = Quat::from_rotation_y(-f32::from(direction) * FRAC_PI_2);
+        assert!(
+            world.angle_between(wanted) < 1e-3,
+            "direction {direction}: {world:?}"
+        );
+        // The eye sits 0.12 above the body, in world space.
+        let lift = facing * camera.translation;
+        assert!((lift.y - 0.12).abs() < 1e-3 && lift.xz().length() < 1e-3);
+        // The hand is not drawn while asleep.
+        assert_eq!(visual(&mut app, "Right arm").0, Visibility::Hidden);
+        assert_eq!(visual(&mut app, "Held stack").0, Visibility::Hidden);
+    }
+
+    app.world_mut()
+        .get_mut::<PlayerSleep>(player)
+        .unwrap()
+        .sleeping = false;
+    app.update();
+    let camera = *cameras.single(app.world()).unwrap();
+    assert!(camera.rotation.angle_between(Quat::IDENTITY) < 1e-4);
+    assert!(camera.translation.length() < 1e-4);
+    assert_eq!(visual(&mut app, "Right arm").0, Visibility::Visible);
+}
+
+#[test]
 fn icon_atlas_is_rebuilt_at_the_gui_scale() {
     use game::rendering::icons::BlockIcons;
 

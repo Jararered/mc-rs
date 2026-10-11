@@ -1,29 +1,31 @@
-#import bevy_pbr::{
+import bevy_pbr::render::{
     mesh_functions,
     forward_io::VertexOutput,
     mesh_view_bindings::globals,
     view_transformations::position_world_to_clip,
-}
-#import game::block_vertex::{
+};
+import package::rendering::textures::block_vertex::{
     BlockShadingSettings, DecodedBlockVertex, QUAD_WORDS, decode_block_quad, decode_block_vertex,
     leaf_offset,
-}
+};
 
-@group(#{MATERIAL_BIND_GROUP}) @binding(100)
+@group(constants::MATERIAL_BIND_GROUP) @binding(100)
 var<uniform> block_shading: BlockShadingSettings;
 
-#ifdef PULLED_QUADS
 // Chunk layers: every quad record of every layer, each layer behind a header
 // record that holds its quad count. `MeshTag` is the layer's header index.
-@group(#{MATERIAL_BIND_GROUP}) @binding(101)
+@if(PULLED_QUADS)
+@group(constants::MATERIAL_BIND_GROUP) @binding(101)
 var<storage, read> chunk_quads: array<u32>;
 
+@if(PULLED_QUADS)
 struct Vertex {
     @builtin(instance_index) instance_index: u32,
     // `quad << 2 | corner` from the shared proxy mesh.
     @location(0) quad_corner: u32,
 };
 
+@if(PULLED_QUADS)
 fn decode(vertex: Vertex) -> DecodedBlockVertex {
     let header = mesh_functions::get_tag(vertex.instance_index) * QUAD_WORDS;
     let quad = vertex.quad_corner >> 2u;
@@ -40,16 +42,17 @@ fn decode(vertex: Vertex) -> DecodedBlockVertex {
         block_shading,
     );
 }
-#else
+
+@if(!PULLED_QUADS)
 struct Vertex {
     @builtin(instance_index) instance_index: u32,
     @location(0) packed: vec4<u32>,
 };
 
+@if(!PULLED_QUADS)
 fn decode(vertex: Vertex) -> DecodedBlockVertex {
     return decode_block_vertex(vertex.packed, block_shading);
 }
-#endif
 
 @vertex
 fn vertex(vertex: Vertex) -> VertexOutput {
@@ -76,20 +79,16 @@ fn vertex(vertex: Vertex) -> VertexOutput {
         decoded.normal,
         vertex.instance_index,
     );
-#ifdef VERTEX_UVS_A
+@if(VERTEX_UVS_A)
     out.uv = decoded.uv;
-#endif
-#ifdef VERTEX_COLORS
+@if(VERTEX_COLORS)
     out.color = decoded.color;
-#endif
-#ifdef VERTEX_OUTPUT_INSTANCE_INDEX
+@if(VERTEX_OUTPUT_INSTANCE_INDEX)
     out.instance_index = vertex.instance_index;
-#endif
-#ifdef VISIBILITY_RANGE_DITHER
+@if(VISIBILITY_RANGE_DITHER)
     out.visibility_range_dither = mesh_functions::get_visibility_range_dither_level(
         vertex.instance_index,
         world_from_local[3],
     );
-#endif
     return out;
 }

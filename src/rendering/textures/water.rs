@@ -583,7 +583,7 @@ pub(super) struct FluidFrames {
     version: u64,
 }
 
-impl ExtractResource for FluidFrames {
+impl ExtractResource<RenderApp> for FluidFrames {
     type Source = Self;
 
     fn extract_resource(source: &Self) -> Self {

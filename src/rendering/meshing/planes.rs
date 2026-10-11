@@ -215,7 +215,7 @@ pub(super) fn push_greedy_quad(
             corner[1] *= 0.125;
         }
     }
-    // The nonzero texel flags the snow side UV scale in block_vertex.wgsl.
+    // The nonzero texel flags the snow side UV scale in block_vertex.wesl.
     let texel = AtlasTexel::new(
         tile[0],
         tile[1],

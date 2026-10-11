@@ -49,7 +49,7 @@ const BLOCK_FRAGMENT_SHADER_HANDLE: Handle<Shader> =
 /// Atlas-textured block shading shared by terrain layers and dropped blocks.
 pub type BlockMaterial = ExtendedMaterial<StandardMaterial, BlockShading>;
 
-/// GPU uniform for [`BlockShading`]. Mirrored in `block_vertex.wgsl`.
+/// GPU uniform for [`BlockShading`]. Mirrored in `block_vertex.wesl`.
 #[derive(Clone, Copy, Debug, PartialEq, ShaderType, Reflect)]
 pub struct BlockShadingSettings {
     pub skylight_subtracted: f32,
@@ -197,19 +197,19 @@ pub(super) fn plugin(app: &mut App) {
     load_internal_asset!(
         app,
         BLOCK_VERTEX_IMPORT_HANDLE,
-        "block_vertex.wgsl",
-        Shader::from_wgsl
+        "block_vertex.wesl",
+        crate::rendering::wesl_shader
     );
     load_internal_asset!(
         app,
         BLOCK_VERTEX_SHADER_HANDLE,
-        "block_vertex_main.wgsl",
-        Shader::from_wgsl
+        "block_vertex_main.wesl",
+        crate::rendering::wesl_shader
     );
     load_internal_asset!(
         app,
         BLOCK_FRAGMENT_SHADER_HANDLE,
-        "block_fragment.wgsl",
-        Shader::from_wgsl
+        "block_fragment.wesl",
+        crate::rendering::wesl_shader
     );
 }

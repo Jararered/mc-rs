@@ -2,7 +2,7 @@
 //!
 //! The mesher emits [`BlockVertex`] values: positions, atlas texels, biome
 //! tint, ambient occlusion, and raw sky and block light samples. Nothing
-//! time-of-day dependent is baked in. `block_vertex.wgsl` decodes the packed
+//! time-of-day dependent is baked in. `block_vertex.wesl` decodes the packed
 //! form and evaluates Beta's brightness curve with the current
 //! `skylight_subtracted`, so dusk never rebuilds a mesh.
 //!
@@ -139,7 +139,7 @@ impl Default for BlockLighting {
 }
 
 impl BlockVertex {
-    /// The color `block_vertex.wgsl` computes for this vertex, before 8-bit
+    /// The color `block_vertex.wesl` computes for this vertex, before 8-bit
     /// tint quantization. Alpha comes from the material.
     pub fn color(&self, lighting: BlockLighting) -> [f32; 4] {
         let light = {
@@ -162,7 +162,7 @@ impl BlockVertex {
             }
         };
         // Beta has no occlusion term beyond the averaged samples. Its factor is
-        // gamma-encoded, so linearize it as `block_vertex.wgsl` does.
+        // gamma-encoded, so linearize it as `block_vertex.wesl` does.
         let factor = if light <= 0.04045 {
             light / 12.92
         } else {

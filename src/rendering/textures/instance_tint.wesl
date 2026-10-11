@@ -1,10 +1,9 @@
-#import bevy_pbr::{
-    pbr_functions::alpha_discard,
+import bevy_pbr::render::{
+    pbr_functions::{alpha_discard, main_pass_post_lighting_processing},
     pbr_fragment::pbr_input_from_standard_material,
     forward_io::{VertexOutput, FragmentOutput},
-    pbr_functions::main_pass_post_lighting_processing,
     mesh_functions,
-}
+};
 
 fn srgb_to_linear(color: vec3<f32>) -> vec3<f32> {
     let low = color / 12.92;
@@ -23,7 +22,11 @@ fn instance_tint(instance_index: u32) -> vec4<f32> {
 fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> FragmentOutput {
     var pbr_input = pbr_input_from_standard_material(in, is_front);
     pbr_input.material.base_color *= instance_tint(in.instance_index);
-    pbr_input.material.base_color = alpha_discard(pbr_input.material, pbr_input.material.base_color);
+    pbr_input.material.base_color = alpha_discard(
+        pbr_input.material.flags,
+        pbr_input.material.alpha_cutoff,
+        pbr_input.material.base_color,
+    );
 
     var out: FragmentOutput;
     out.color = pbr_input.material.base_color;

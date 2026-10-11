@@ -1,11 +1,10 @@
-#import bevy_pbr::{
-    pbr_functions::alpha_discard,
+import bevy_pbr::render::{
+    pbr_functions::{alpha_discard, main_pass_post_lighting_processing},
     pbr_fragment::pbr_input_from_standard_material,
     forward_io::{VertexOutput, FragmentOutput},
-    pbr_functions::main_pass_post_lighting_processing,
     mesh_functions,
     mesh_view_bindings::{globals, view},
-}
+};
 
 /// World ticks per second; the scroll rates in `uv_b` are per tick.
 const TICKS_PER_SECOND: f32 = 20.0;
@@ -29,7 +28,11 @@ fn fragment(vertex: VertexOutput, @builtin(front_facing) is_front: bool) -> Frag
     let edge = 1.0 - dot(offset, offset);
     let fade = select(edge * 0.5 + 0.5, edge * 0.3 + 0.5, snow);
     pbr_input.material.base_color.a *= max(fade, 0.0) * strength;
-    pbr_input.material.base_color = alpha_discard(pbr_input.material, pbr_input.material.base_color);
+    pbr_input.material.base_color = alpha_discard(
+        pbr_input.material.flags,
+        pbr_input.material.alpha_cutoff,
+        pbr_input.material.base_color,
+    );
 
     var out: FragmentOutput;
     out.color = pbr_input.material.base_color;

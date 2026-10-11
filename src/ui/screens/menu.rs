@@ -1,5 +1,7 @@
 //! The main menu and the options screen behind it.
 
+use crate::ui::Button;
+use crate::ui::Interaction;
 use bevy::ecs::hierarchy::ChildSpawnerCommands;
 use bevy::input::mouse::MouseScrollUnit;
 use bevy::input::mouse::MouseWheel;

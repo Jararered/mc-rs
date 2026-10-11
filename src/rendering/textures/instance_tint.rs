@@ -47,7 +47,7 @@ pub fn tint_tag(color: Color) -> MeshTag {
     let byte = |channel: f32| (channel.clamp(0.0, 1.0) * 255.0).round() as u32;
     let packed =
         byte(srgba.red) | byte(srgba.green) << 8 | byte(srgba.blue) << 16 | byte(srgba.alpha) << 24;
-    MeshTag(!packed)
+    MeshTag::new(!packed)
 }
 
 pub(super) fn plugin(app: &mut App) {
@@ -58,7 +58,7 @@ pub(super) fn plugin(app: &mut App) {
     load_internal_asset!(
         app,
         INSTANCE_TINT_SHADER_HANDLE,
-        "instance_tint.wgsl",
-        Shader::from_wgsl
+        "instance_tint.wesl",
+        crate::rendering::wesl_shader
     );
 }

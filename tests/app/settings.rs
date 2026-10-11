@@ -31,6 +31,8 @@ use game::player::PlayerCamera;
 use game::player::PlayerPlugin;
 use game::rendering::meshing::WATER_ALPHA;
 use game::rendering::textures::BlockMaterial;
+use game::ui::Button;
+use game::ui::Interaction;
 use game::ui::UiCameraPlugin;
 use game::world::chunk::WorldChunks;
 use game::world::difficulty::Difficulty;

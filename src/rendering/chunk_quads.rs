@@ -142,10 +142,14 @@ pub struct ChunkQuads {
 
 impl ChunkQuads {
     fn new(buffers: &mut Assets<ShaderBuffer>) -> Self {
-        let buffer = buffers.add(ShaderBuffer::with_size(
-            INITIAL_RECORDS as usize * RECORD_BYTES,
-            RenderAssetUsages::RENDER_WORLD,
-        ));
+        // There is no main-world copy, so growing has to copy on the GPU.
+        let buffer = buffers.add(ShaderBuffer {
+            copy_on_resize: true,
+            ..ShaderBuffer::with_size(
+                u64::from(INITIAL_RECORDS) * RECORD_BYTES as u64,
+                RenderAssetUsages::RENDER_WORLD,
+            )
+        });
         let mut free = FreeRanges::default();
         free.release(0, INITIAL_RECORDS);
         Self {
@@ -218,7 +222,7 @@ impl ChunkQuads {
         if self.capacity != self.sized
             && let Some(mut buffer) = buffers.get_mut(&self.buffer)
         {
-            buffer.resize_in_place(self.capacity as u64 * RECORD_BYTES as u64);
+            buffer.resize(self.capacity as u64 * RECORD_BYTES as u64);
             self.sized = self.capacity;
             self.rebind_frames = REBIND_FRAMES;
         }

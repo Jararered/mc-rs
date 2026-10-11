@@ -131,6 +131,8 @@ fn apply_graphics_pipeline(
         commands.entity(entity).insert((
             bevy::light::cluster::ClusterConfig::None,
             bevy::core_pipeline::tonemapping::Tonemapping::None,
+            // Dithering runs in the tonemapping pass, so it has nothing to do.
+            bevy::core_pipeline::tonemapping::DebandDither::Disabled,
         ));
     }
     if !settings.is_changed() && new_cameras.is_empty() {

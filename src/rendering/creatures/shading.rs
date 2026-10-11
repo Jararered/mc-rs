@@ -23,7 +23,7 @@ const CREATURE_SHADER_HANDLE: Handle<Shader> = uuid_handle!("8d1e4c7a-52b3-4f69-
 /// `StandardMaterial` lit like a Beta entity.
 pub type CreatureMaterial = ExtendedMaterial<StandardMaterial, CreatureShading>;
 
-/// How a creature material draws, as `creature.wgsl` reads it.
+/// How a creature material draws, as `creature.wesl` reads it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Pass {
     /// A skin, lit like an entity.
@@ -76,7 +76,7 @@ pub fn creature_tag(brightness: f32, hurt: bool, flash: f32, alpha: f32) -> Mesh
         | u32::from(hurt) * 255 << 8
         | byte(flash) << 16
         | (255 - byte(alpha)) << 24;
-    MeshTag(packed)
+    MeshTag::new(packed)
 }
 
 pub(super) fn plugin(app: &mut App) {
@@ -87,7 +87,7 @@ pub(super) fn plugin(app: &mut App) {
     load_internal_asset!(
         app,
         CREATURE_SHADER_HANDLE,
-        "creature.wgsl",
-        Shader::from_wgsl
+        "creature.wesl",
+        crate::rendering::wesl_shader
     );
 }

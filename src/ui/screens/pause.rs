@@ -4,6 +4,8 @@
 //! inventory, over the same dimmed backdrop. Opening it asks persistence for a
 //! save, so a pause doubles as a checkpoint.
 
+use crate::ui::Button;
+use crate::ui::Interaction;
 use bevy::prelude::*;
 use bevy::ui::widget::NodeImageMode;
 use bevy::window::CursorGrabMode;

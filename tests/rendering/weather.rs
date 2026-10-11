@@ -174,13 +174,16 @@ fn column_scroll_follows_beta_rates() {
 
 #[test]
 fn tag_packs_strength_radius_and_kind() {
-    assert_eq!(precipitation_tag(0.0, 10, Precipitation::Rain).0, 10 << 8);
     assert_eq!(
-        precipitation_tag(1.0, 5, Precipitation::Rain).0,
+        precipitation_tag(0.0, 10, Precipitation::Rain).value,
+        10 << 8
+    );
+    assert_eq!(
+        precipitation_tag(1.0, 5, Precipitation::Rain).value,
         255 | 5 << 8
     );
     assert_eq!(
-        precipitation_tag(1.0, 10, Precipitation::Snow).0,
+        precipitation_tag(1.0, 10, Precipitation::Snow).value,
         255 | 10 << 8 | 1 << 16
     );
 }

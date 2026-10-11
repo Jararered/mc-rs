@@ -1,5 +1,3 @@
-#define_import_path game::block_vertex
-
 // Mirrors `BlockShadingSettings` in `block_material.rs`.
 struct BlockShadingSettings {
     skylight_subtracted: f32,
@@ -108,15 +106,15 @@ fn face_block_uv(position: vec3<f32>, face: u32) -> vec2<f32> {
 }
 
 fn atlas_uv(tile: vec2<f32>, texel: vec2<f32>) -> vec2<f32> {
-    let pad = f32(#{ATLAS_PAD_TEXELS});
-    let stride = f32(#{ATLAS_TILE_PX}) + 2.0 * pad;
+    let pad = f32(constants::ATLAS_PAD_TEXELS);
+    let stride = f32(constants::ATLAS_TILE_PX) + 2.0 * pad;
     // Beta repeats the flowing-fluid frame over 2×2 tiles. Local texels
     // 16..31 must land in the *next padded tile*, not the intervening gutter
     // or the unrelated still-water tile. Keep this in step with AtlasTexel::uv.
     let flowing = tile.x == 14.0 && (tile.y == 12.0 || tile.y == 14.0);
     let step = floor(texel / 16.0) * select(0.0, 1.0, flowing);
     return ((tile + step) * stride + pad + texel - step * 16.0)
-        / (f32(#{ATLAS_GRID}) * stride);
+        / (f32(constants::ATLAS_GRID) * stride);
 }
 
 /// Greedy quads store the tile in vertex alpha as `(tile + 0.5) / 256` and the

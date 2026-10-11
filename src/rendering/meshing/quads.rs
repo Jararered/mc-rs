@@ -4,7 +4,7 @@
 //! vertices that repeat its tint, tile, normal, and flags, plus six indices.
 //! A [`QuadRecord`] stores the quad once. Chunk layers keep their records in
 //! one storage buffer and draw a shared proxy mesh whose vertices only name a
-//! quad and a corner; `block_vertex.wgsl` (`decode_block_quad`) rebuilds the
+//! quad and a corner; `block_vertex.wesl` (`decode_block_quad`) rebuilds the
 //! vertex from the record. Dropped and falling blocks still use the vertex
 //! format.
 //!

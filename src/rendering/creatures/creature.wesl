@@ -1,15 +1,14 @@
-#import bevy_pbr::{
-    pbr_functions::alpha_discard,
+import bevy_pbr::render::{
+    pbr_functions::{alpha_discard, main_pass_post_lighting_processing},
     pbr_fragment::pbr_input_from_standard_material,
     forward_io::{VertexOutput, FragmentOutput},
-    pbr_functions::main_pass_post_lighting_processing,
     mesh_functions,
     mesh_view_bindings::globals,
-}
+};
 
 /// `x` is the layer: 0 a lit skin, 1 a glow (spider eyes), 2 an additive
 /// charge. `y` scrolls the texture, in UV units per second.
-@group(#{MATERIAL_BIND_GROUP}) @binding(100)
+@group(constants::MATERIAL_BIND_GROUP) @binding(100)
 var<uniform> creature_params: vec4<f32>;
 
 /// Per-box state packed in `MeshTag`. See `creature_tag` in `shading.rs`.
@@ -41,9 +40,8 @@ fn gamma_factor(value: f32) -> f32 {
 @fragment
 fn fragment(vertex: VertexOutput, @builtin(front_facing) is_front: bool) -> FragmentOutput {
     var in = vertex;
-#ifdef VERTEX_UVS_A
+@if(VERTEX_UVS_A)
     in.uv += vec2(globals.time * creature_params.y);
-#endif
     var pbr_input = pbr_input_from_standard_material(in, is_front);
     let tag = creature_tag(in.instance_index);
     let mode = u32(creature_params.x + 0.5);
@@ -65,7 +63,11 @@ fn fragment(vertex: VertexOutput, @builtin(front_facing) is_front: bool) -> Frag
         return out;
     }
 
-    pbr_input.material.base_color = alpha_discard(pbr_input.material, pbr_input.material.base_color);
+    pbr_input.material.base_color = alpha_discard(
+        pbr_input.material.flags,
+        pbr_input.material.alpha_cutoff,
+        pbr_input.material.base_color,
+    );
     let base = pbr_input.material.base_color;
     var color: vec3<f32>;
     var hurt_tone: vec3<f32>;

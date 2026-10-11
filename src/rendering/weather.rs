@@ -53,7 +53,7 @@ const WEATHER_SHADER_HANDLE: Handle<Shader> = uuid_handle!("7c1e52a4-3b0d-4f86-9
 pub const FANCY_RADIUS: i32 = 10;
 pub const FAST_RADIUS: i32 = 5;
 
-/// `StandardMaterial` with the scrolling, fading fragment stage in `weather.wgsl`.
+/// `StandardMaterial` with the scrolling, fading fragment stage in `weather.wesl`.
 pub type PrecipitationMaterial = ExtendedMaterial<StandardMaterial, PrecipitationExtension>;
 
 #[derive(Asset, AsBindGroup, Reflect, Debug, Clone, Default)]
@@ -297,11 +297,11 @@ fn placeholder_mesh() -> Mesh {
     )
 }
 
-/// The tag `weather.wgsl` unpacks: strength, column radius, and the snow flag.
+/// The tag `weather.wesl` unpacks: strength, column radius, and the snow flag.
 pub fn precipitation_tag(strength: f32, radius: i32, kind: Precipitation) -> MeshTag {
     let strength = (strength.clamp(0.0, 1.0) * 255.0).round() as u32;
     let radius = radius.clamp(1, 255) as u32;
-    MeshTag(strength | radius << 8 | u32::from(kind == Precipitation::Snow) << 16)
+    MeshTag::new(strength | radius << 8 | u32::from(kind == Precipitation::Snow) << 16)
 }
 
 #[derive(Component)]
@@ -348,8 +348,8 @@ pub(super) fn plugin(app: &mut App) {
     load_internal_asset!(
         app,
         WEATHER_SHADER_HANDLE,
-        "weather.wgsl",
-        Shader::from_wgsl
+        "weather.wesl",
+        crate::rendering::wesl_shader
     );
     app.init_resource::<PrecipitationState>()
         .init_resource::<SkyFlash>()

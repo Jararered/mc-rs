@@ -18,3 +18,14 @@ pub mod textures;
 pub mod weather;
 
 pub use plugin::WorldRenderingPlugin;
+
+/// A `load_internal_asset!` loader for the game's WESL shaders. Bevy names a
+/// WESL module after its embedded path, so `src/rendering/weather.wesl` is
+/// `game::rendering::weather` to an `import`.
+pub(crate) fn wesl_shader(source: &'static str, path: impl AsRef<str>) -> bevy::shader::Shader {
+    let path = path.as_ref().replace('\\', "/");
+    let module = path
+        .rsplit_once("src/")
+        .map_or(path.as_str(), |(_, module)| module);
+    bevy::shader::Shader::from_wesl(source, format!("embedded://game/{module}"))
+}

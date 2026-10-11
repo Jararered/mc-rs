@@ -282,7 +282,7 @@ fn apply_layer(
             let mut layer = commands.entity(entity);
             layer.insert((Mesh3d(handle), built.aabb));
             match tag {
-                Some(tag) => layer.insert(MeshTag(tag)),
+                Some(tag) => layer.insert(MeshTag::new(tag)),
                 None => layer.remove::<MeshTag>(),
             };
             entity
@@ -298,7 +298,7 @@ fn apply_layer(
                 ChildOf(parent),
             ));
             if let Some(tag) = tag {
-                spawned.insert(MeshTag(tag));
+                spawned.insert(MeshTag::new(tag));
             }
             if culling == ChunkCulling::Gpu {
                 // The GPU pass culls against the same `Aabb`.

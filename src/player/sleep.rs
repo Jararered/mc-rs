@@ -84,6 +84,24 @@ impl PlayerSleep {
             timer / full
         }
     }
+
+    /// `EntityRenderer.orientCamera` for a sleeper: the view turns with the
+    /// bed's direction alone, looking from the pillow down the bed, whichever
+    /// way the player faced when lying down. `None` while awake.
+    pub fn view_rotation(&self, chunks: &WorldChunks) -> Option<Quat> {
+        if !self.sleeping {
+            return None;
+        }
+        let direction = self
+            .bed
+            .filter(|bed| chunks.block_at(bed.x, bed.y, bed.z) == Some(Block::Bed))
+            .map_or(0, |bed| {
+                bed::direction(chunks.metadata_at(bed.x, bed.y, bed.z))
+            });
+        Some(Quat::from_rotation_y(
+            -(direction as f32) * std::f32::consts::FRAC_PI_2,
+        ))
+    }
 }
 
 /// A player right-clicked a bed block.

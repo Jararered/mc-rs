@@ -1,6 +1,7 @@
 //! The first-person camera: field of view, view bobbing, and the hurt roll.
 
 use super::interaction::use_item::BowDraw;
+use super::sleep::PlayerSleep;
 use super::state::LocalPlayer;
 use super::state::PlayerHealth;
 use super::state::PlayerInterpolation;
@@ -12,6 +13,7 @@ use crate::entity::Velocity;
 use crate::entity::combat::HURT_TICKS;
 use crate::entity::combat::PlayerCombat;
 use crate::entity::mount::Mounted;
+use crate::world::chunk::WorldChunks;
 use crate::world::tick::TICK_SECONDS;
 use crate::world::tick::WorldTick;
 use bevy::prelude::*;
@@ -184,9 +186,11 @@ pub(super) fn update_camera_bobbing(
             Option<&PlayerCombat>,
             Has<Flying>,
             Has<Mounted>,
+            Option<&PlayerSleep>,
         ),
         (With<LocalPlayer>, Without<PlayerCamera>),
     >,
+    chunks: Option<Res<WorldChunks>>,
     mut cameras: Query<&mut Transform, With<PlayerCamera>>,
 ) {
     let partial = tick.partial().clamp(0.0, 1.0);
@@ -202,6 +206,7 @@ pub(super) fn update_camera_bobbing(
         combat,
         flying,
         mounted,
+        sleep,
     ) in &mut players
     {
         let current = transform.translation;
@@ -225,11 +230,19 @@ pub(super) fn update_camera_bobbing(
         let render_offset = transform.rotation.inverse() * (interpolated - current)
             - Vec3::Y * bob.eye_drop(partial);
         let hurt = combat.map_or(Mat4::IDENTITY, |combat| hurt_pose(combat, partial));
+        // A sleeper's view is the bed's, not their own look.
+        let lying = sleep
+            .zip(chunks.as_deref())
+            .and_then(|(sleep, chunks)| sleep.view_rotation(chunks))
+            .map_or(Mat4::IDENTITY, |view| {
+                Mat4::from_quat(transform.rotation.inverse() * view)
+            });
 
         for child in children {
             if let Ok(mut camera) = cameras.get_mut(*child) {
                 camera.set_if_neq(Transform::from_matrix(
                     Mat4::from_translation(render_offset)
+                        * lying
                         * hurt
                         * if settings.view_bobbing {
                             camera_bob_pose(&bob, partial)

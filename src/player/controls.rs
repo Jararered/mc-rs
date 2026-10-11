@@ -1,6 +1,7 @@
 //! Keyboard and mouse: mouse capture, look, movement input, flight, and the
 //! hotbar keys.
 
+use super::sleep::PlayerSleep;
 use super::state::FlySpeed;
 use super::state::GameMode;
 use super::state::LocalPlayer;
@@ -177,7 +178,7 @@ pub(super) fn look_player(
     settings: Res<GameSettings>,
     mouse_motion: Res<AccumulatedMouseMotion>,
     windows: Query<(&Window, &CursorOptions), With<PrimaryWindow>>,
-    mut player: Query<&mut Transform, With<LocalPlayer>>,
+    mut player: Query<(&mut Transform, Option<&PlayerSleep>), With<LocalPlayer>>,
 ) {
     let Ok((window, cursor)) = windows.single() else {
         return;
@@ -186,9 +187,13 @@ pub(super) fn look_player(
         return;
     }
 
-    let Ok(mut transform) = player.single_mut() else {
+    let Ok((mut transform, sleep)) = player.single_mut() else {
         return;
     };
+    // Beta's sleep screen holds the mouse, so a sleeper cannot turn.
+    if sleep.is_some_and(|sleep| sleep.sleeping) {
+        return;
+    }
 
     let (mut yaw, mut pitch, _) = transform.rotation.to_euler(EulerRot::YXZ);
     yaw -= mouse_motion.delta.x * MOUSE_SENSITIVITY * settings.mouse_sensitivity;

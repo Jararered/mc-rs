@@ -110,6 +110,38 @@ fn a_bed_refuses_sleep_by_day() {
 }
 
 #[test]
+fn a_sleeper_looks_down_the_bed_whichever_way_they_faced() {
+    for (direction, step, toward_feet) in [
+        (0, IVec3::Z, Vec3::NEG_Z),
+        (1, IVec3::NEG_X, Vec3::X),
+        (2, IVec3::NEG_Z, Vec3::Z),
+        (3, IVec3::X, Vec3::NEG_X),
+    ] {
+        let mut app = bedroom(MIDNIGHT);
+        let pillow = HEAD + step;
+        {
+            let mut chunks = app.world_mut().resource_mut::<WorldChunks>();
+            chunks.set_block(FOOT.x, FOOT.y, FOOT.z, Block::Air);
+            chunks.set_block_with_metadata(HEAD.x, HEAD.y, HEAD.z, Block::Bed, direction);
+            chunks.set_block_with_metadata(pillow.x, pillow.y, pillow.z, Block::Bed, direction | 8);
+        }
+        let view = |app: &mut App| {
+            let state = sleep(app);
+            state.view_rotation(app.world().resource::<WorldChunks>())
+        };
+        assert_eq!(view(&mut app), None);
+
+        use_bed(&mut app, HEAD);
+        run_ticks(&mut app, 1);
+        let lying = view(&mut app).expect("a sleeper's view is the bed's");
+        assert!(
+            (lying * Vec3::NEG_Z - toward_feet).length() < 0.001,
+            "direction {direction}"
+        );
+    }
+}
+
+#[test]
 fn sleeping_skips_the_night_and_sets_the_spawn_point() {
     let mut app = bedroom(MIDNIGHT);
     // Either half works; both resolve to the second.

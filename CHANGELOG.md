@@ -163,6 +163,7 @@ from `git log --date=format:'%Y-%m-%d %H:%M'`). A commit cannot name its own has
       `a722019 · 2026-10-11 09:06`
 - [ ] Dyes mix: rose red and bone meal make pink, rose red and dandelion yellow make orange, and the rest of
       Beta's mixes (lime, gray, light gray, light blue, cyan, purple, magenta) work.
+      `a722019 · 2026-10-11 09:06`
 - [ ] View bobbing: the view and the held item or arm swing as far and as fast as Beta's when walking, the same
       at any frame rate, instead of a slower, smaller sway. The swing does not advance while sneaking.
       `cb5dc12 · 2026-10-11 03:19`

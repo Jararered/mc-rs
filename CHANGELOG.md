@@ -55,6 +55,9 @@ from `git log --date=format:'%Y-%m-%d %H:%M'`). A commit cannot name its own has
 - [ ] A slab, glass, a fence or any other block you would collide with cannot be placed where you are standing.
       A slab can still go under you when only its upper half would overlap.
       `48841f5 · 2026-10-11 08:39`
+- [ ] Travelling through a Nether portal clears the charge and starts a half-second cooldown, so standing in the
+      exit portal does not send you straight back.
+      `pending`
 
 ### Items
 

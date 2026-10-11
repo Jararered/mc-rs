@@ -375,10 +375,14 @@ pub(crate) fn stream_chunks(
             .map(|player| ChunkPosition::from_world(player.translation.x, player.translation.z)),
     );
     if viewers.is_empty() {
-        // A dimension with no players still has to take back chunks from
-        // in-flight jobs before `WorldHost` can finish settling to unload.
-        // Generation tasks do not hold live chunk data, so cancel them; a
-        // population job owns its four chunks until it is applied.
+        // Only a dimension that is unloading cancels in-flight work. A brief
+        // empty gap (last player left, halt not set yet) must not drop
+        // finished generation that a returning viewer still needs.
+        if !streaming.halted {
+            return;
+        }
+        // Generation and mesh tasks do not hold live chunk data, so cancel
+        // them; a population job owns its four chunks until it is applied.
         streaming.generating.clear();
         streaming.meshing.clear();
         streaming.remesh_queue.clear();

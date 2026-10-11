@@ -15,10 +15,10 @@ use crate::rendering::sky::CelestialCamera;
 use crate::rendering::sky::SkyCamera;
 use crate::world::tick::WorldTick;
 
-/// `EntityPlayer.timeUntilPortal` on spawning and after any arrival.
+/// `EntityPlayer.timeUntilPortal` on spawning.
 const SPAWN_COOLDOWN: u8 = 20;
 /// The cooldown a portal holds a freshly arrived player at, and the one set
-/// on leaving through it.
+/// on leaving through it (`timeUntilPortal` after a portal trip).
 const PORTAL_COOLDOWN: u8 = 10;
 /// Charge gained per tick in a portal: eighty ticks to travel.
 const CHARGE_PER_TICK: f32 = 0.0125;
@@ -50,6 +50,18 @@ impl Default for PortalTravel {
 }
 
 impl PortalTravel {
+    /// Fresh state after a cross-dimension portal trip: charge cleared and
+    /// `timeUntilPortal` set to the post-portal cooldown (10), so landing in
+    /// the exit portal cannot travel again until the player steps out.
+    pub fn after_arrival() -> Self {
+        Self {
+            in_portal: false,
+            time: 0.0,
+            previous_time: 0.0,
+            cooldown: PORTAL_COOLDOWN,
+        }
+    }
+
     /// `EntityPlayer.setInPortal`, called by a portal block the player's box
     /// overlaps.
     pub fn set_in_portal(&mut self) {

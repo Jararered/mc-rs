@@ -3,4 +3,23 @@
 /saves/
 /settings.json
 
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
 .DS_Store
+Thumbs.db
+
+# Env / local secrets
+.env
+.env.*
+
+# Profiling / coverage
+*.profraw
+*.profdata
+/coverage/
+/lcov.info

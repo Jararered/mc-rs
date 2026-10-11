@@ -188,7 +188,8 @@ fn handle_buttons(
             Color::srgb(0.44, 0.44, 0.44)
         };
     }
-    for action in &pressed {
+    // One click acts once, even if several buttons somehow changed.
+    if let Some(action) = pressed.iter().next() {
         match action {
             PauseAction::Resume => {
                 pause.open = false;
@@ -206,8 +207,6 @@ fn handle_buttons(
                 next_screen.set(AppScreen::Menu);
             }
         }
-        // One click acts once, even if several buttons somehow changed.
-        break;
     }
 }
 

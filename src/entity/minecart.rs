@@ -742,25 +742,28 @@ pub(crate) fn tick_minecarts(
     order.sort();
     for _ in 0..ticks {
         for &entity in order.iter() {
-            let Ok((_, mut cart, mut transform, mut previous)) = carts.get_mut(entity) else {
-                continue;
+            // Step one cart inside this block so its exclusive borrow ends before
+            // the cart-to-cart bumps call `get_many_mut`.
+            let (reach, before) = {
+                let Ok((_, mut cart, mut transform, mut previous)) = carts.get_mut(entity) else {
+                    continue;
+                };
+                if !chunks.contains(ChunkPosition::from_world(
+                    transform.translation.x,
+                    transform.translation.z,
+                )) {
+                    continue;
+                }
+                previous.0 = transform.translation;
+                let mut center = transform.translation;
+                let smoked = step_minecart(&mut cart, &mut center, &chunks, &mut random.0);
+                if smoked && let Some(particles) = particles.as_deref_mut() {
+                    particles.spawn(FxKind::LargeSmoke, center + Vec3::Y * 0.8, Vec3::ZERO);
+                }
+                transform.translation = center;
+                let reach = grow(CART_SIZE.aabb(center), Vec3::new(0.2, 0.0, 0.2));
+                (reach, previous.0)
             };
-            if !chunks.contains(ChunkPosition::from_world(
-                transform.translation.x,
-                transform.translation.z,
-            )) {
-                continue;
-            }
-            previous.0 = transform.translation;
-            let mut center = transform.translation;
-            let smoked = step_minecart(&mut cart, &mut center, &chunks, &mut random.0);
-            if smoked && let Some(particles) = particles.as_deref_mut() {
-                particles.spawn(FxKind::LargeSmoke, center + Vec3::Y * 0.8, Vec3::ZERO);
-            }
-            transform.translation = center;
-            let reach = grow(CART_SIZE.aabb(center), Vec3::new(0.2, 0.0, 0.2));
-            let before = previous.0;
-            drop((cart, transform, previous));
             for &other in order.iter() {
                 if other == entity {
                     continue;

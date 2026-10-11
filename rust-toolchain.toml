@@ -1,2 +1,5 @@
+# Date-pinned so CI and local builds share one compiler. Bump deliberately
+# when updating Bevy or when rustfmt/clippy need a newer nightly.
 [toolchain]
-channel = "nightly"
+channel = "nightly-2026-10-10"
+components = ["rustfmt", "clippy"]

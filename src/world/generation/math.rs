@@ -35,4 +35,5 @@ pub fn floor_double(value: f64) -> i32 {
 }
 
 /// The float value of pi Beta uses throughout generation.
+#[allow(clippy::approx_constant)]
 pub const PI: f32 = 3.141_592_7;

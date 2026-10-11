@@ -39,6 +39,7 @@ use crate::world::tick::WorldTick;
 
 const SKY_LAYER: usize = 2;
 /// `MathHelper` and the fog code use this float, not `std` PI.
+#[allow(clippy::approx_constant)]
 const MC_PI: f32 = 3.141_592_7;
 const SUN_DISTANCE: f32 = 100.0;
 const SUN_SIZE: f32 = 30.0;

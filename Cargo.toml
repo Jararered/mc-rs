@@ -1,8 +1,12 @@
 [package]
-name = "game"
-default-run = "game"
+name = "mc-rs"
 version = "0.1.0"
 edition = "2024"
+description = "A Minecraft Beta 1.7.3–inspired voxel game in Rust with Bevy"
+repository = "https://github.com/Jararered/mc-rs"
+# Nightly-only: rustfmt.toml uses unstable options; rust-toolchain.toml pins the date.
+publish = false
+default-run = "game"
 # One test binary (`tests/main.rs`); every extra target links all of Bevy again.
 autotests = false
 
@@ -91,12 +95,21 @@ serde_json = "1.0.151"
 libc = "0.2"
 
 [lints.clippy]
-all = "warn"
-pedantic = "warn"
+# Groups at a lower priority so per-lint allows below can override them.
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+# Bevy `SystemParam` queries and systems trip these constantly; leave them off
+# so the rest of `clippy::all` stays usable.
+type_complexity = "allow"
+too_many_arguments = "allow"
 
 # Tests live under `tests/`, never in `src/`, so skip the empty unit-test and
-# doctest harnesses; each one would be another Bevy link.
+# doctest harnesses; each one would be another Bevy link. The lib crate stays
+# `game` so `use game::…` in tests and examples is unchanged after the package
+# rename to `mc-rs`.
 [lib]
+name = "game"
+path = "src/lib.rs"
 test = false
 doctest = false
 

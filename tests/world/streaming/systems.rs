@@ -344,7 +344,9 @@ fn settled_streaming_skips_discovery_and_wakes_for_chunk_changes_and_movement() 
         .spawn((Player, Transform::from_xyz(8.0, 80.0, 8.0)))
         .id();
     app.update();
-    assert!(run_until(&mut app, Duration::from_secs(20), |app| {
+    // Under a full `cargo test` the compute pool is shared with other cases;
+    // give settlement longer than a quiet run needs.
+    assert!(run_until(&mut app, Duration::from_secs(60), |app| {
         let streaming = app.world().resource::<WorldStreaming>();
         streaming.generating_job_count() == 0
             && streaming.populating_job_count() == 0

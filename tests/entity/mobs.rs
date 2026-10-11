@@ -557,6 +557,28 @@ fn a_zombie_passes_over_a_player_it_cannot_hurt_for_one_it_can() {
 }
 
 #[test]
+fn monsters_leave_a_lone_player_they_cannot_hurt_alone() {
+    for kind in [MobType::Zombie, MobType::Slime] {
+        let mut app = creature_app(super::pathfinding::field(4), Vec3::new(6.5, 5.0, 0.5));
+        let creative = first_player(&mut app);
+        let mut untouchable = PlayerCombat::default();
+        untouchable.invulnerable = true;
+        app.world_mut().entity_mut(creative).insert(untouchable);
+        let start = Vec3::new(0.5, 5.0, 0.5);
+        let monster = summon(&mut app, Mob::new(kind, 3), start);
+        let mut nearest = f32::MAX;
+        for _ in 0..100 {
+            run_ticks(&mut app, 1);
+            assert_eq!(app.world().get::<Living>(monster).unwrap().target(), None);
+            let at = app.world().get::<Transform>(monster).unwrap().translation;
+            nearest = nearest.min((6.5 - at.x).abs());
+        }
+        // It may wander, but it does not close on the player.
+        assert!(nearest > 3.0, "{kind:?} came within {nearest}");
+    }
+}
+
+#[test]
 fn a_creature_stays_while_any_player_is_near() {
     // Far from the first player, as in the despawn test, but beside another.
     let mut app = creature_app(super::pathfinding::field(4), Vec3::new(140.5, 5.0, 0.5));

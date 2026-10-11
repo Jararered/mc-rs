@@ -814,15 +814,16 @@ impl Body<'_> {
             .min_by(|a, b| distance(a).total_cmp(&distance(b)))
     }
 
-    /// The closest player a mob would go for: one that can be hurt, or
-    /// failing that the closest of all.
+    /// The closest player a mob would go for: one that can be hurt. A dead,
+    /// creative or spectating player is nobody's prey.
     fn closest_prey(&self, world: &Surroundings) -> Option<Target> {
         let distance = |player: &Target| player.eye.distance_squared(self.feet);
-        world.players.iter().copied().min_by(|a, b| {
-            b.alive
-                .cmp(&a.alive)
-                .then(distance(a).total_cmp(&distance(b)))
-        })
+        world
+            .players
+            .iter()
+            .copied()
+            .filter(|player| player.alive)
+            .min_by(|a, b| distance(a).total_cmp(&distance(b)))
     }
 
     /// `playerToAttack` while chasing, and otherwise the player this creature
@@ -999,7 +1000,11 @@ impl Body<'_> {
         let feet = self.feet;
         let near = |player: &Target| player.eye.distance_squared(feet) < 64.0;
         if self.mob.rng.next_float() < 0.02 {
-            if self.closest_player(world).as_ref().is_some_and(near) {
+            if self
+                .closest_player(world)
+                .as_ref()
+                .is_some_and(|player| player.alive && near(player))
+            {
                 self.living.looking = Some(10 + self.mob.rng.next_int(20) as i32);
             } else {
                 self.living.random_yaw_velocity = (self.mob.rng.next_float() - 0.5) * 20.0;

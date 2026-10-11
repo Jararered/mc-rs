@@ -159,10 +159,10 @@ from `git log --date=format:'%Y-%m-%d %H:%M'`). A commit cannot name its own has
       Beta's mixes (lime, gray, light gray, light blue, cyan, purple, magenta) work.
 - [ ] View bobbing: the view and the held item or arm swing as far and as fast as Beta's when walking, the same
       at any frame rate, instead of a slower, smaller sway. The swing does not advance while sneaking.
-      `pending`
+      `cb5dc12 · 2026-10-11 03:19`
 - [ ] Holding sneak dips the view a little at once, and it eases back up on release. Blocks are still picked
       where the crosshair points.
-      `pending`
+      `cb5dc12 · 2026-10-11 03:19`
 - [ ] Arrows (yours, skeletons' and dispensers') no longer flicker where their faces overlap.
       `f1418cc · 2026-10-09 08:18`
 - [ ] Dropped items fly smoothly to the player when picked up, including while walking or sprinting into them,
@@ -201,7 +201,11 @@ from `git log --date=format:'%Y-%m-%d %H:%M'`). A commit cannot name its own has
 
 #### Fixes
 
-- Nothing this round.
+- [ ] In creative or spectator mode, hostile mobs no longer walk up to you, slimes no longer hop after you, and
+      mobs do not turn to look at you. Back in survival they hunt you again.
+      `pending`
+- [ ] The hearts and air bubbles are hidden in creative and spectator mode and return with `/gamemode survival`.
+      `pending`
 
 ### Generation
 

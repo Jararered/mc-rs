@@ -251,7 +251,7 @@ impl Body<'_> {
     pub(super) fn slime_action(&mut self, world: &Surroundings, bounce: Option<&mut Bounce>) {
         self.despawn(world);
         let near = self
-            .closest_player(world)
+            .closest_prey(world)
             .filter(|player| player.eye.distance_squared(self.feet) < 256.0);
         if let Some(player) = near {
             self.face_player(player, 10.0, 20.0);
@@ -342,7 +342,7 @@ impl Body<'_> {
                 hover.waypoint = self.feet;
             }
         }
-        let player = self.closest_prey(world).filter(|player| player.alive);
+        let player = self.closest_prey(world);
         if player.is_none() {
             hover.targeting = false;
         }

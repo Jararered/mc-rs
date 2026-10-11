@@ -19,6 +19,7 @@ use crate::item::ItemStack;
 use crate::physics::BLOCK_REACH;
 use crate::physics::raycast_blocks;
 use crate::player::Bubble;
+use crate::player::GameMode;
 use crate::player::HeartFill;
 use crate::player::LocalPlayer;
 use crate::player::PlayerCamera;
@@ -58,6 +59,7 @@ impl Plugin for HudPlugin {
             .add_systems(
                 Update,
                 (
+                    update_status_row,
                     update_hearts,
                     update_bubbles,
                     update_hotbar_selector,
@@ -89,6 +91,10 @@ struct DebugOverlay;
 #[derive(Component)]
 struct HudHeart(usize);
 
+/// The hearts and air bubbles, hidden for a player who takes no damage.
+#[derive(Component)]
+struct HudStatusRow;
+
 /// One of the ten air bubbles above the hearts, counted from the left.
 #[derive(Component)]
 struct HudBubble(usize);
@@ -118,9 +124,9 @@ fn spawn_hud(
     font: Res<UiFont>,
     debug_visible: Res<DebugVisible>,
     settings: Res<GameSettings>,
-    player: Query<(&PlayerHealth, &Hotbar), With<LocalPlayer>>,
+    player: Query<(&PlayerHealth, &Hotbar, &GameMode), With<LocalPlayer>>,
 ) {
-    let Ok((health, hotbar)) = player.single() else {
+    let Ok((health, hotbar, mode)) = player.single() else {
         return;
     };
     let scale = settings.gui_scale;
@@ -144,6 +150,7 @@ fn spawn_hud(
                 &icons,
                 &font.minecraft,
                 health,
+                *mode,
                 hotbar,
             );
             root.spawn((
@@ -177,15 +184,7 @@ fn update_debug_overlay(
     chat: Option<Res<crate::chat::ChatFocus>>,
     keys: Option<Res<ButtonInput<KeyCode>>>,
     mut visible: ResMut<DebugVisible>,
-    player: Query<
-        (
-            &Transform,
-            &CollisionState,
-            Option<&Flying>,
-            &crate::player::GameMode,
-        ),
-        With<LocalPlayer>,
-    >,
+    player: Query<(&Transform, &CollisionState, Option<&Flying>, &GameMode), With<LocalPlayer>>,
     camera: Query<&GlobalTransform, With<PlayerCamera>>,
     chunks: Res<WorldChunks>,
     mut overlay: Query<(&mut Text, &mut Visibility), With<DebugOverlay>>,
@@ -282,6 +281,7 @@ fn spawn_status(
     icons: &BlockIcons,
     font: &Handle<Font>,
     health: &PlayerHealth,
+    mode: GameMode,
     hotbar: &Hotbar,
 ) {
     parent
@@ -298,7 +298,7 @@ fn spawn_status(
             },
         ))
         .with_children(|bottom| {
-            spawn_hearts(bottom, scale, textures, health);
+            spawn_hearts(bottom, scale, textures, health, mode);
             spawn_hotbar(bottom, scale, textures, icons, font, hotbar);
         });
 }
@@ -308,9 +308,12 @@ fn spawn_hearts(
     scale: f32,
     textures: &HudTextures,
     health: &PlayerHealth,
+    mode: GameMode,
 ) {
     parent
         .spawn((
+            HudStatusRow,
+            status_row_visibility(mode),
             Pickable::IGNORE,
             Node {
                 width: px(HOTBAR_WIDTH * scale),
@@ -519,6 +522,24 @@ fn despawn_hud(mut commands: Commands, roots: Query<Entity, With<HudRoot>>) {
     for root in &roots {
         commands.entity(root).despawn();
     }
+}
+
+fn status_row_visibility(mode: GameMode) -> Visibility {
+    if mode.takes_damage() {
+        Visibility::Inherited
+    } else {
+        Visibility::Hidden
+    }
+}
+
+fn update_status_row(
+    mode: Query<&GameMode, With<LocalPlayer>>,
+    mut row: Query<&mut Visibility, With<HudStatusRow>>,
+) {
+    let (Ok(mode), Ok(mut visibility)) = (mode.single(), row.single_mut()) else {
+        return;
+    };
+    visibility.set_if_neq(status_row_visibility(*mode));
 }
 
 fn update_hearts(

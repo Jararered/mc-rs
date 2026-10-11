@@ -267,7 +267,13 @@ fn zombies_chase_and_strike_the_player() {
         Mob::new(MobType::Zombie, 3),
         Vec3::new(0.5, 5.0, 1.5),
     );
-    run_ticks(&mut app, 200);
+    // Up to the first blow: a zombie gives up on a player it has killed.
+    for _ in 0..200 {
+        run_ticks(&mut app, 1);
+        if player_health(&mut app) < 20 {
+            break;
+        }
+    }
     assert!(app.world().get::<Living>(zombie).unwrap().chasing());
     assert!(player_health(&mut app) < 20);
 }

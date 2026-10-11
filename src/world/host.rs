@@ -416,7 +416,10 @@ impl WorldHost {
             return true;
         };
         let name = player.get::<PlayerName>().cloned();
-        let portal = player.get::<PortalTravel>().copied();
+        // Arrival always gets a fresh cooldown (`timeUntilPortal` after a
+        // portal trip); copying the charged state would let a player who
+        // lands in the exit portal charge again immediately.
+        let portal = Some(PortalTravel::default());
         let (x, z) = source.scale_position_to(target, f64::from(record.x), f64::from(record.z));
         let at = DVec3::new(x, f64::from(record.y) + PORTAL_Y_DRIFT, z);
         // Beta's teleporter draws the rotation it tries first from an

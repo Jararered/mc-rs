@@ -503,7 +503,8 @@ fn handle_buttons(
             Color::srgb(0.44, 0.44, 0.44)
         };
     }
-    for action in &pressed {
+    // One click acts once, even if several buttons somehow changed.
+    if let Some(action) = pressed.iter().next() {
         match *action {
             WorldsAction::Select(index) => {
                 if let Some(world) = list.0.get(index)
@@ -537,8 +538,6 @@ fn handle_buttons(
                 *delete = DeleteWorld::default();
             }
         }
-        // One click acts once, even if several buttons somehow changed.
-        break;
     }
 }
 

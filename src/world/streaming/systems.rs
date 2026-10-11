@@ -375,6 +375,33 @@ pub(crate) fn stream_chunks(
             .map(|player| ChunkPosition::from_world(player.translation.x, player.translation.z)),
     );
     if viewers.is_empty() {
+        // A dimension with no players still has to take back chunks from
+        // in-flight jobs before `WorldHost` can finish settling to unload.
+        // Generation tasks do not hold live chunk data, so cancel them; a
+        // population job owns its four chunks until it is applied.
+        streaming.generating.clear();
+        streaming.meshing.clear();
+        streaming.remesh_queue.clear();
+        streaming.remesh_sections.clear();
+        let finished: Vec<_> = streaming
+            .populating
+            .iter()
+            .filter(|(_, task)| task.is_finished())
+            .map(|(source, _)| *source)
+            .collect();
+        for source in finished {
+            let Some(job) = streaming.populating.get_mut(&source).and_then(check_ready) else {
+                continue;
+            };
+            streaming.populating.remove(&source);
+            for (position, generated) in population_footprint(source).into_iter().zip(job.chunks) {
+                streaming.held.remove(&position);
+                if let Some(persistence) = persistence.as_deref_mut() {
+                    persistence.mark_dirty(position);
+                }
+                chunks.insert(position, generated);
+            }
+        }
         return;
     }
     let load_radius = settings.render_distance;

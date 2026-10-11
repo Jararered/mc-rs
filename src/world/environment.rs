@@ -2,6 +2,8 @@
 
 use super::tick::DAY_LENGTH;
 
+// Beta's `MathHelper` float, not `std::f32::consts::PI`.
+#[allow(clippy::approx_constant)]
 const MC_PI: f32 = 3.141_592_7;
 
 /// Day length fraction after Beta's sunrise offset and cosine smoothing.

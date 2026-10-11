@@ -1092,6 +1092,27 @@ fn shift_click_falls_back_to_the_fuel_slot_when_the_input_is_taken() {
 }
 
 #[test]
+fn shift_click_sends_hotbar_gold_ore_to_the_furnace_input() {
+    use game::inventory::SlotId;
+    use game::inventory::shift_click_furnace_slot;
+    let mut inventory = game::inventory::Inventory::default();
+    let mut hotbar = Hotbar::default();
+    let ore = stack(block(Block::GoldOre), 3);
+    let mut furnace = [None, None, None];
+    hotbar.slots[2] = Some(ore);
+
+    assert!(shift_click_furnace_slot(
+        &mut inventory,
+        &mut hotbar,
+        &mut furnace,
+        SlotId::Hotbar(2)
+    ));
+
+    assert_eq!(furnace, [Some(ore), None, None]);
+    assert_eq!(hotbar.slots[2], None);
+}
+
+#[test]
 fn take_from_stack_removes_up_to_the_requested_count() {
     let mut slot = Some(ItemStack::new(Item::Coal, 5).unwrap());
     let one = take_from_stack(&mut slot, 1).unwrap();

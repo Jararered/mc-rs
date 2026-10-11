@@ -8,6 +8,8 @@ use game::player::plant_seeds;
 use game::world::block_ticks::behaviors::crops::Crops;
 use game::world::block_ticks::behaviors::crops::RIPE;
 
+use game::world::block_ticks::BlockEvent;
+
 use super::TestWorld;
 use super::at;
 
@@ -256,4 +258,54 @@ fn sugar_cane_grows_and_breaks_when_its_water_goes() {
         Block::Air,
         "the stack comes down with its base"
     );
+}
+
+#[test]
+fn bone_meal_ripens_wheat_and_grows_a_sapling() {
+    let mut world = field();
+    world.set(at(8, 63, 8), Block::Farmland);
+    world.set(at(8, 64, 8), Block::Crops);
+    world.event(BlockEvent::Fertilized {
+        position: at(8, 64, 8),
+    });
+    world.process_events();
+    assert_eq!(world.metadata(at(8, 64, 8)), RIPE);
+
+    // A birch always has room on open ground; an oak may try a big tree.
+    world.set_with_metadata(at(3, 64, 3), Block::Sapling, 2);
+    world.event(BlockEvent::Fertilized {
+        position: at(3, 64, 3),
+    });
+    world.process_events();
+    assert_eq!(world.block(at(3, 64, 3)), Block::Wood);
+}
+
+#[test]
+fn bone_meal_on_grass_sprouts_tall_grass_and_flowers_on_grass_only() {
+    let mut world = field();
+    world.fill(at(0, 63, 0), at(15, 63, 15), Block::Grass);
+    world.set(at(9, 63, 8), Block::Dirt);
+    world.relight();
+    world.event(BlockEvent::Fertilized {
+        position: at(8, 63, 8),
+    });
+    world.process_events();
+
+    assert_eq!(world.block(at(8, 64, 8)), Block::TallGrass);
+    assert_eq!(world.metadata(at(8, 64, 8)), 1);
+    assert_eq!(world.block(at(9, 64, 8)), Block::Air, "nothing on dirt");
+    let mut grown = 0;
+    for x in 0..16 {
+        for z in 0..16 {
+            let plant = world.block(at(x, 64, z));
+            if plant != Block::Air {
+                assert!(matches!(
+                    plant,
+                    Block::TallGrass | Block::Dandelion | Block::Rose
+                ));
+                grown += 1;
+            }
+        }
+    }
+    assert!(grown > 10, "only {grown} plants grew");
 }

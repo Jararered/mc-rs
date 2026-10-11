@@ -667,6 +667,22 @@ pub(crate) fn apply_player_actions(
                             hit.z,
                             false,
                         );
+                    } else if stack.item() == Item::Dye
+                        && stack.data() == 15
+                        && matches!(hit.block, Block::Sapling | Block::Crops | Block::Grass)
+                    {
+                        // `ItemDye.onItemUse`: bone meal is spent on any of the
+                        // three, and the growth runs in the tick pass.
+                        let selected = hotbar.selected;
+                        hotbar.slots[selected] =
+                            ItemStack::with_data(stack.item(), stack.count() - 1, stack.data())
+                                .ok();
+                        push_event(
+                            &mut block_ticks,
+                            BlockEvent::Fertilized {
+                                position: IVec3::new(hit.x, hit.y, hit.z),
+                            },
+                        );
                     } else if till_with_selected_hoe(&mut chunks, &mut hotbar, hit) {
                         push_event(
                             &mut block_ticks,

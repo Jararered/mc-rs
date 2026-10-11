@@ -127,6 +127,41 @@ impl BlockBehavior for Sapling {
     }
 }
 
+/// `ItemDye.onItemUse` for bone meal: a sapling becomes its tree at once, wheat
+/// ripens, and grass sprouts tall grass and flowers around the clicked block.
+/// The caller has already taken the bone meal, as Beta does for all three.
+pub fn fertilize(world: &mut TickWorld, position: IVec3) {
+    match world.block(position) {
+        Block::Sapling => Sapling::grow(world, position),
+        Block::Crops => world.set_metadata_notify(position, 7),
+        Block::Grass => {
+            'attempts: for attempt in 0..128 {
+                let mut cell = position + IVec3::Y;
+                for _ in 0..attempt / 16 {
+                    let mut draw = || world.random().next_int(3) as i32;
+                    cell.x += draw() - 1;
+                    cell.y += (draw() - 1) * draw() / 2;
+                    cell.z += draw() - 1;
+                    if world.block(cell - IVec3::Y) != Block::Grass || world.is_normal_cube(cell) {
+                        continue 'attempts;
+                    }
+                }
+                if world.block(cell) != Block::Air {
+                    continue;
+                }
+                if world.random().next_int(10) != 0 {
+                    world.set_block_and_metadata_notify(cell, Block::TallGrass, 1);
+                } else if world.random().next_int(3) != 0 {
+                    world.set_block_notify(cell, Block::Dandelion);
+                } else {
+                    world.set_block_notify(cell, Block::Rose);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
 /// Beta `BlockMushroom`. A random tick has a 1 in 100 chance to spread a
 /// mushroom into a nearby shaded cell on solid ground.
 pub struct Mushroom;

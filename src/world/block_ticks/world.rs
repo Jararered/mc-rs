@@ -768,6 +768,9 @@ impl<'a> TickWorld<'a> {
                 let block = self.block(position);
                 behavior(block).entity_walked(self, position);
             }
+            BlockEvent::Fertilized { position } => {
+                super::behaviors::plants::fertilize(self, position);
+            }
         }
     }
 

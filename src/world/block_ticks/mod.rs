@@ -99,6 +99,8 @@ pub enum BlockEvent {
     Activated { position: IVec3 },
     /// An entity took a step on the block at `position`.
     Walked { position: IVec3 },
+    /// Bone meal was used on the block at `position`.
+    Fertilized { position: IVec3 },
 }
 
 /// A lightweight 20 Hz entity snapshot used by plates and detector rails.

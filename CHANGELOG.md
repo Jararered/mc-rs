@@ -150,6 +150,9 @@ from `git log --date=format:'%Y-%m-%d %H:%M'`). A commit cannot name its own has
 - [ ] Each dye shows its own icon: a bone crafts into white bone meal, not what looked like yellow dye, and ink
       sacs, lapis and cocoa beans look like themselves.
       `pending`
+- [ ] Bone meal used on a sapling grows its tree at once (the bone meal is spent even when there is no room), on
+      wheat ripens it, and on a grass block sprouts tall grass with the odd dandelion and rose around it.
+      `pending`
 - [ ] A dye and white wool craft wool of that dye's color (bone meal leaves it white, an ink sac makes black).
       `pending`
 - [ ] Dyes mix: rose red and bone meal make pink, rose red and dandelion yellow make orange, and the rest of

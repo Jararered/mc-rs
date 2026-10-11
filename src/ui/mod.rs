@@ -4,8 +4,11 @@
 //! first-person arm. Screens live in [`screens`], stack overlays in [`icons`].
 //! Shared item appearances and icon assets belong to `crate::rendering`.
 
+use bevy::picking::events::PointerPress;
+use bevy::picking::hover::Hovered;
+use bevy::picking::pointer::PointerButton;
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
+use bevy::ui::Pressed;
 
 pub mod icons;
 pub mod screens;
@@ -19,17 +22,45 @@ pub use screens::pause::PauseMenuPlugin;
 pub use screens::portal::PortalUiPlugin;
 pub use screens::sleep::SleepUiPlugin;
 
-/// Bevy 0.20 deprecates `Interaction` in favor of `picking::hover::Hovered`
-/// and `ui::Pressed`, and still drives it. The screens name it through this
-/// alias until they move to those.
-#[expect(deprecated, reason = "the screens still use Bevy's focus system")]
-pub type Interaction = bevy::ui::Interaction;
-
-/// A clickable node. Bevy 0.20 no longer exports its own marker, which did
-/// only this.
+/// A clickable node. `Hovered` is kept by Bevy's picking, and [`ButtonPlugin`]
+/// adds `Pressed` while the left button that went down on it is held, so a
+/// screen acts on `Added<Pressed>`: on the press, as Beta's buttons do.
 #[derive(Component, Debug, Default, Clone, Copy, PartialEq, Eq)]
-#[require(Node, FocusPolicy::Block, Interaction)]
+#[require(Node, Hovered)]
 pub struct Button;
+
+/// Keeps `Pressed` on every [`Button`].
+pub struct ButtonPlugin;
+
+impl Plugin for ButtonPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_observer(press_button)
+            .add_systems(PostUpdate, release_buttons);
+    }
+}
+
+/// A press on a button's text reaches the button by bubbling.
+fn press_button(press: On<PointerPress>, buttons: Query<(), With<Button>>, mut commands: Commands) {
+    if press.button == PointerButton::Primary && buttons.contains(press.entity) {
+        commands.entity(press.entity).insert(Pressed);
+    }
+}
+
+/// The release may land anywhere, or on no node at all, so this follows the
+/// mouse button and not a pointer event. It runs after `Update` so a press
+/// and release within one frame is still seen there.
+fn release_buttons(
+    mouse: Option<Res<ButtonInput<MouseButton>>>,
+    pressed: Query<Entity, (With<Button>, With<Pressed>)>,
+    mut commands: Commands,
+) {
+    if mouse.is_some_and(|mouse| mouse.pressed(MouseButton::Left)) {
+        return;
+    }
+    for button in &pressed {
+        commands.entity(button).remove::<Pressed>();
+    }
+}
 
 /// Composites all HUD and menu nodes after the world and first-person arm.
 pub struct UiCameraPlugin;

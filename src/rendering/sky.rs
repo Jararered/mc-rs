@@ -489,6 +489,7 @@ fn ensure_sky(
             SkyCamera,
             Camera3d::default(),
             bevy::core_pipeline::tonemapping::Tonemapping::None,
+            bevy::core_pipeline::tonemapping::DebandDither::Disabled,
             Camera {
                 order: -2,
                 clear_color: ClearColorConfig::Custom(initial.color),
@@ -507,6 +508,7 @@ fn ensure_sky(
             CelestialCamera,
             Camera3d::default(),
             bevy::core_pipeline::tonemapping::Tonemapping::None,
+            bevy::core_pipeline::tonemapping::DebandDither::Disabled,
             Camera {
                 order: -1,
                 clear_color: ClearColorConfig::None,

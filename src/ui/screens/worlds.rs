@@ -5,10 +5,11 @@ use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
 use crate::ui::Button;
-use crate::ui::Interaction;
 use bevy::input::ButtonState;
 use bevy::input::keyboard::KeyboardInput;
+use bevy::picking::hover::Hovered;
 use bevy::prelude::*;
+use bevy::ui::Pressed;
 use bevy::ui::widget::NodeImageMode;
 
 use super::menu::MenuRoot;
@@ -482,15 +483,11 @@ fn format_text(format: SaveFormat) -> String {
 }
 
 fn handle_buttons(
-    mut buttons: Query<
-        (
-            &Interaction,
-            &WorldsAction,
-            &mut ImageNode,
-            &mut BackgroundColor,
-        ),
-        Changed<Interaction>,
+    mut skins: Query<
+        (&Hovered, &mut ImageNode, &mut BackgroundColor),
+        (With<WorldsAction>, Changed<Hovered>),
     >,
+    pressed: Query<&WorldsAction, Added<Pressed>>,
     mut list: ResMut<WorldList>,
     mut delete: ResMut<DeleteWorld>,
     config: Option<Res<PersistenceConfig>>,
@@ -498,16 +495,15 @@ fn handle_buttons(
     mut session: ResMut<WorldSession>,
     mut next_screen: ResMut<NextState<AppScreen>>,
 ) {
-    for (interaction, action, mut image, mut background) in &mut buttons {
-        image.rect = Some(button_rect(*interaction != Interaction::None));
-        background.0 = if *interaction == Interaction::None {
-            Color::srgb(0.44, 0.44, 0.44)
-        } else {
+    for (hovered, mut image, mut background) in &mut skins {
+        image.rect = Some(button_rect(hovered.get()));
+        background.0 = if hovered.get() {
             Color::srgb(0.57, 0.57, 0.72)
+        } else {
+            Color::srgb(0.44, 0.44, 0.44)
         };
-        if *interaction != Interaction::Pressed {
-            continue;
-        }
+    }
+    for action in &pressed {
         match *action {
             WorldsAction::Select(index) => {
                 if let Some(world) = list.0.get(index)
@@ -693,14 +689,14 @@ fn worlds_escape(
 /// Right-clicking a world offers to delete it.
 fn right_click_world(
     mouse: Res<ButtonInput<MouseButton>>,
-    rows: Query<(&Interaction, &WorldsAction)>,
+    rows: Query<(&Hovered, &WorldsAction)>,
     mut delete: ResMut<DeleteWorld>,
 ) {
     if !mouse.just_pressed(MouseButton::Right) {
         return;
     }
-    for (interaction, action) in &rows {
-        if *interaction != Interaction::None
+    for (hovered, action) in &rows {
+        if hovered.get()
             && let WorldsAction::Select(index) = action
         {
             *delete = DeleteWorld {

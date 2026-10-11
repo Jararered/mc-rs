@@ -180,6 +180,7 @@ pub(crate) fn spawn(parent: &mut ChildSpawnerCommands, assets: &ArmAssets, fov: 
             ArmCamera,
             Camera3d::default(),
             bevy::core_pipeline::tonemapping::Tonemapping::None,
+            bevy::core_pipeline::tonemapping::DebandDither::Disabled,
             Camera {
                 order: 1,
                 is_active: false,

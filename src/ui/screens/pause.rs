@@ -5,8 +5,9 @@
 //! save, so a pause doubles as a checkpoint.
 
 use crate::ui::Button;
-use crate::ui::Interaction;
+use bevy::picking::hover::Hovered;
 use bevy::prelude::*;
+use bevy::ui::Pressed;
 use bevy::ui::widget::NodeImageMode;
 use bevy::window::CursorGrabMode;
 use bevy::window::CursorOptions;
@@ -29,6 +30,9 @@ pub struct PauseMenuPlugin;
 
 impl Plugin for PauseMenuPlugin {
     fn build(&self, app: &mut App) {
+        if !app.is_plugin_added::<crate::ui::ButtonPlugin>() {
+            app.add_plugins(crate::ui::ButtonPlugin);
+        }
         app.init_resource::<PauseMenu>()
             .init_resource::<SettingsReturn>()
             .init_resource::<InventorySession>()
@@ -165,31 +169,26 @@ fn sync_root(
 }
 
 fn handle_buttons(
-    mut buttons: Query<
-        (
-            &Interaction,
-            &PauseAction,
-            &mut ImageNode,
-            &mut BackgroundColor,
-        ),
-        Changed<Interaction>,
+    mut skins: Query<
+        (&Hovered, &mut ImageNode, &mut BackgroundColor),
+        (With<PauseAction>, Changed<Hovered>),
     >,
+    pressed: Query<&PauseAction, Added<Pressed>>,
     mut pause: ResMut<PauseMenu>,
     mut settings_return: ResMut<SettingsReturn>,
     mut session: ResMut<WorldSession>,
     mut next_screen: ResMut<NextState<AppScreen>>,
     mut windows: Query<(&Window, &mut CursorOptions), With<PrimaryWindow>>,
 ) {
-    for (interaction, action, mut image, mut background) in &mut buttons {
-        image.rect = Some(button_rect(*interaction != Interaction::None));
-        background.0 = if *interaction == Interaction::None {
-            Color::srgb(0.44, 0.44, 0.44)
-        } else {
+    for (hovered, mut image, mut background) in &mut skins {
+        image.rect = Some(button_rect(hovered.get()));
+        background.0 = if hovered.get() {
             Color::srgb(0.57, 0.57, 0.72)
+        } else {
+            Color::srgb(0.44, 0.44, 0.44)
         };
-        if *interaction != Interaction::Pressed {
-            continue;
-        }
+    }
+    for action in &pressed {
         match action {
             PauseAction::Resume => {
                 pause.open = false;

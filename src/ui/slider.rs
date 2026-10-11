@@ -1,10 +1,10 @@
 //! Reusable mouse-driven, stepped UI sliders. Values are independent of settings.
 
 use crate::ui::Button;
-use crate::ui::Interaction;
 use bevy::ecs::hierarchy::ChildSpawnerCommands;
+use bevy::picking::hover::Hovered;
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
+use bevy::ui::Pressed;
 use bevy::ui::RelativeCursorPosition;
 use bevy::window::PrimaryWindow;
 
@@ -67,7 +67,8 @@ pub struct SliderSkin {
 #[derive(Component)]
 pub struct SliderThumb(pub Entity);
 
-/// Run after UI focus has supplied Interaction and RelativeCursorPosition.
+/// Run after picking has supplied `Hovered` and `Pressed`, and UI focus
+/// `RelativeCursorPosition`.
 pub fn update_sliders(
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window, With<PrimaryWindow>>,
@@ -75,7 +76,8 @@ pub fn update_sliders(
     mut sliders: Query<(
         Entity,
         &mut Slider,
-        &Interaction,
+        &Hovered,
+        Has<Pressed>,
         &RelativeCursorPosition,
         &ComputedNode,
         &mut BackgroundColor,
@@ -94,12 +96,8 @@ pub fn update_sliders(
     if drag.0.is_some_and(|entity| sliders.get(entity).is_err()) {
         drag.0 = None;
     }
-    for (entity, mut slider, interaction, cursor, computed, mut color) in &mut sliders {
-        if focused
-            && mouse.just_pressed(MouseButton::Left)
-            && *interaction == Interaction::Pressed
-            && cursor.cursor_over()
-        {
+    for (entity, mut slider, hovered, pressed, cursor, computed, mut color) in &mut sliders {
+        if focused && mouse.just_pressed(MouseButton::Left) && pressed && cursor.cursor_over() {
             drag.0 = Some(entity);
         }
         let width = computed.size().x * computed.inverse_scale_factor();
@@ -116,7 +114,7 @@ pub fn update_sliders(
             }
         }
         color.set_if_neq(BackgroundColor(
-            if *interaction == Interaction::None && drag.0 != Some(entity) {
+            if !hovered.get() && !pressed && drag.0 != Some(entity) {
                 Color::srgb(0.25, 0.25, 0.25)
             } else {
                 Color::srgb(0.36, 0.36, 0.46)
@@ -124,9 +122,9 @@ pub fn update_sliders(
         ));
     }
     for (thumb, mut node, skin, image) in &mut thumbs {
-        if let Ok((_, slider, interaction, _, computed, _)) = sliders.get(thumb.0) {
+        if let Ok((_, slider, hovered, pressed, _, computed, _)) = sliders.get(thumb.0) {
             if let (Some(skin), Some(mut image)) = (skin, image) {
-                let rect = if *interaction != Interaction::None || drag.0 == Some(thumb.0) {
+                let rect = if hovered.get() || pressed || drag.0 == Some(thumb.0) {
                     Some(skin.hovered_rect)
                 } else {
                     skin.image.rect
@@ -170,7 +168,6 @@ pub fn spawn_slider(
     control.with_children(|children| {
         let mut thumb = children.spawn((
             SliderThumb(entity),
-            FocusPolicy::Pass,
             Node {
                 position_type: PositionType::Absolute,
                 width: px(THUMB_WIDTH),

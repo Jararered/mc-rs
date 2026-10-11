@@ -51,6 +51,7 @@ fn spawn_camera(mut commands: Commands) {
         RenderLayers::layer(4),
         Camera3d::default(),
         bevy::core_pipeline::tonemapping::Tonemapping::None,
+        bevy::core_pipeline::tonemapping::DebandDither::Disabled,
         Camera {
             order: 1, // World at 0, panorama at 1, UI at 2.
             is_active: false,

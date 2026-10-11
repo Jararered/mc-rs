@@ -8,8 +8,10 @@ use bevy::camera::Exposure;
 use bevy::material::OpaqueRendererMethod;
 use bevy::mesh::MeshPlugin;
 use bevy::pbr::ScreenSpaceReflections;
+use bevy::picking::hover::Hovered;
 use bevy::prelude::*;
 use bevy::state::app::StatesPlugin;
+use bevy::ui::Pressed;
 use game::app::settings::DEFAULT_CLOUD_HEIGHT;
 use game::app::settings::DEFAULT_FOV;
 use game::app::settings::DEFAULT_GUI_SCALE;
@@ -32,7 +34,6 @@ use game::player::PlayerPlugin;
 use game::rendering::meshing::WATER_ALPHA;
 use game::rendering::textures::BlockMaterial;
 use game::ui::Button;
-use game::ui::Interaction;
 use game::ui::UiCameraPlugin;
 use game::world::chunk::WorldChunks;
 use game::world::difficulty::Difficulty;
@@ -849,11 +850,9 @@ fn button_named(app: &mut App, title: &str) -> Entity {
 
 fn click_menu_button(app: &mut App, title: &str) {
     let button = button_named(app, title);
-    app.world_mut()
-        .entity_mut(button)
-        .insert(Interaction::Pressed);
+    app.world_mut().entity_mut(button).insert(Pressed);
     app.update();
-    app.world_mut().entity_mut(button).insert(Interaction::None);
+    // `ButtonPlugin` lets go of it, as no mouse button is down.
     app.update();
 }
 
@@ -1223,10 +1222,7 @@ fn slider_thumb_tracks_value_and_leaving_settings_cancels_drag() {
         app.world().get::<ImageNode>(button).unwrap().image
     );
     assert_eq!(image.rect, Some(Rect::new(0.0, 66.0, 200.0, 86.0)));
-    app.world_mut()
-        .get_mut::<Interaction>(slider)
-        .unwrap()
-        .clone_from(&Interaction::Hovered);
+    app.world_mut().entity_mut(slider).insert(Hovered(true));
     app.update();
     assert_eq!(
         app.world().get::<ImageNode>(thumb).unwrap().rect,
@@ -1330,7 +1326,8 @@ fn slider_drag_respects_clipping_release_focus_and_cancellation() {
         .world_mut()
         .spawn((
             Slider::new(0.0, 100.0, 1.0, 0.0),
-            Interaction::Pressed,
+            Hovered(false),
+            Pressed,
             RelativeCursorPosition {
                 cursor_over: false,
                 normalized: Some(Vec2::ZERO),
@@ -1648,7 +1645,7 @@ fn an_empty_name_and_seed_fall_back_to_a_default_name_and_random_seed() {
 }
 
 fn right_click(app: &mut App, row: Entity) {
-    app.world_mut().entity_mut(row).insert(Interaction::Hovered);
+    app.world_mut().entity_mut(row).insert(Hovered(true));
     app.world_mut()
         .write_message(bevy::input::mouse::MouseButtonInput {
             button: MouseButton::Right,

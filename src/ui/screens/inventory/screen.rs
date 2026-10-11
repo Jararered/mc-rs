@@ -22,7 +22,6 @@ use crate::inventory::session::close_crafting_session;
 use crate::player::LocalPlayer;
 use crate::random::ItemRng;
 use crate::rendering::icons::BlockIcons;
-use crate::ui::Button;
 use crate::ui::icons::overlay::UiFont;
 use crate::ui::icons::overlay::count_frame;
 use crate::ui::icons::overlay::count_line_height;
@@ -489,7 +488,6 @@ pub(super) fn slot(
 ) {
     parent
         .spawn((
-            Button,
             id,
             RelativeCursorPosition::default(),
             Node {

@@ -1,12 +1,13 @@
 //! The main menu and the options screen behind it.
 
 use crate::ui::Button;
-use crate::ui::Interaction;
 use bevy::ecs::hierarchy::ChildSpawnerCommands;
 use bevy::input::mouse::MouseScrollUnit;
 use bevy::input::mouse::MouseWheel;
 use bevy::math::Rect;
+use bevy::picking::hover::Hovered;
 use bevy::prelude::*;
+use bevy::ui::Pressed;
 use bevy::ui::widget::NodeImageMode;
 use bevy::window::PrimaryWindow;
 
@@ -17,7 +18,6 @@ use crate::ui::slider::SliderSkin;
 use crate::ui::slider::spawn_slider;
 use crate::ui::slider::update_sliders;
 use crate::world::difficulty::Difficulty;
-use bevy::ui::FocusPolicy;
 
 use crate::app::state::AppScreen;
 use crate::app::state::PauseMenu;
@@ -31,6 +31,9 @@ pub struct MenuPlugin;
 impl Plugin for MenuPlugin {
     fn build(&self, app: &mut App) {
         panorama::plugin(app);
+        if !app.is_plugin_added::<crate::ui::ButtonPlugin>() {
+            app.add_plugins(crate::ui::ButtonPlugin);
+        }
         app.add_plugins(super::worlds::WorldsPlugin);
         app.init_resource::<SliderDrag>()
             .init_resource::<PauseMenu>()
@@ -703,7 +706,6 @@ fn spawn_setting_slider(
             TextColor(Color::WHITE),
             TextShadow::default(),
             TextLayout::justify(Justify::Center),
-            FocusPolicy::Pass,
         ));
 }
 
@@ -819,15 +821,11 @@ fn despawn_menu(
 }
 
 fn handle_buttons(
-    mut buttons: Query<
-        (
-            &Interaction,
-            &MenuAction,
-            Option<&mut ImageNode>,
-            &mut BackgroundColor,
-        ),
-        Changed<Interaction>,
+    mut skins: Query<
+        (&Hovered, Option<&mut ImageNode>, &mut BackgroundColor),
+        (With<MenuAction>, Changed<Hovered>),
     >,
+    pressed: Query<&MenuAction, Added<Pressed>>,
     mut panels: Query<(&SettingsTab, &mut Node)>,
     mut scroll: Query<&mut ScrollPosition, With<SettingsContent>>,
     mut settings: ResMut<GameSettings>,
@@ -837,18 +835,17 @@ fn handle_buttons(
     mut pause: ResMut<PauseMenu>,
     mut settings_return: ResMut<SettingsReturn>,
 ) {
-    for (interaction, action, image, mut background) in &mut buttons {
+    for (hovered, image, mut background) in &mut skins {
         if let Some(mut image) = image {
-            image.rect = Some(button_rect(*interaction != Interaction::None));
+            image.rect = Some(button_rect(hovered.get()));
         }
-        background.0 = if *interaction == Interaction::None {
-            Color::srgb(0.44, 0.44, 0.44)
-        } else {
+        background.0 = if hovered.get() {
             Color::srgb(0.57, 0.57, 0.72)
+        } else {
+            Color::srgb(0.44, 0.44, 0.44)
         };
-        if *interaction != Interaction::Pressed {
-            continue;
-        }
+    }
+    for action in &pressed {
         match action {
             MenuAction::Play => {
                 pause.open = false;

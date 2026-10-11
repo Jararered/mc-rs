@@ -19,8 +19,9 @@ fn completing_a_charge_leaves_full_strength_that_after_arrival_clears() {
     for _ in 0..portal.cooldown() {
         assert!(!portal.tick());
     }
+    // Eighty ticks of 0.0125 do not quite reach 1.0 in f32; allow a little more.
     let mut travelled = false;
-    for _ in 0..80 {
+    for _ in 0..100 {
         portal.set_in_portal();
         if portal.tick() {
             travelled = true;
@@ -28,10 +29,12 @@ fn completing_a_charge_leaves_full_strength_that_after_arrival_clears() {
         }
     }
     assert!(travelled);
-    assert_eq!(portal.strength(0.0), 1.0);
+    // `strength(1.0)` is the charge after the last tick (`time`); at 0.0 it is
+    // still the previous sample.
+    assert_eq!(portal.strength(1.0), 1.0);
     assert!(portal.cooldown() > 0);
 
     let arrived = PortalTravel::after_arrival();
-    assert_eq!(arrived.strength(0.0), 0.0);
+    assert_eq!(arrived.strength(1.0), 0.0);
     assert_eq!(arrived.cooldown(), 10);
 }

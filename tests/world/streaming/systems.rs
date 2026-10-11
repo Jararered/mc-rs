@@ -460,6 +460,8 @@ fn halted_empty_viewers_drain_population_and_cancel_generation() {
     let generator = test_generator();
     let mut app = test_app();
     app.insert_resource(WorldGeneration::new(generator.clone()));
+    // Startup installs `WorldStreaming` and builds the spawn area.
+    app.update();
     let player = app
         .world_mut()
         .spawn((Player, Transform::from_xyz(8.0, 80.0, 8.0)))

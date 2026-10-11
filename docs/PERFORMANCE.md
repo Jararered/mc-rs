@@ -196,6 +196,11 @@ October 2026.
   stutter in `cargo run --release` only.
 - Release uses fat LTO in one codegen unit; a cold `cargo build --release`
   takes about 6 minutes.
+- `--profile fast` is release with `lto = "off"`, 16 codegen units and
+  incremental compilation. On a 16-core Linux machine a cold
+  `cargo build --profile fast --bin game` took 1m 31s and a one-line edit
+  rebuilt in about 10 s, against 5m 50s for the same rebuild on `--release`.
+  Its runtime cost has not been measured.
 - `dev_dynamic_linking` (11.4 s against 10.8 s for the same edit at `opt-level = 1`) and
   `-Zthreads=8` did not help, so neither is configured.
 - Changing `RUSTFLAGS`, features, or profile settings rebuilds Bevy (1.5 to 2

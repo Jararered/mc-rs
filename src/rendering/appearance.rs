@@ -205,7 +205,7 @@ pub fn item_tile(id: u16, data: u16) -> Option<u8> {
         256..=359 => {
             let (x, y) = ITEM_TILES[(id - 256) as usize];
             if id == 351 {
-                Some(14 + (data % 8) as u8 * 16 + (data / 8) as u8)
+                Some(x + y * 16 + (data % 8) as u8 * 16 + (data / 8) as u8)
             } else {
                 Some(x + y * 16)
             }

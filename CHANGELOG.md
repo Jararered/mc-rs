@@ -41,20 +41,20 @@ from `git log --date=format:'%Y-%m-%d %H:%M'`). A commit cannot name its own has
 
 - [ ] Three stone, sandstone, planks or cobblestone in a row craft three slabs of that material. A full grid of
       nine no longer does.
-      `pending`
+      `48841f5 · 2026-10-11 08:39`
 - [ ] A fence is two rows of three sticks and sandstone is four sand in a square, not a full grid of nine.
-      `pending`
+      `48841f5 · 2026-10-11 08:39`
 - [ ] A slab resting on a slab of another material shows its underside from below.
-      `pending`
+      `48841f5 · 2026-10-11 08:39`
 - [ ] The side of a block next to a slab, stair or farmland is lit, not black, and a slab's top under a ceiling
       is lit from the open sides.
-      `pending`
+      `48841f5 · 2026-10-11 08:39`
 - [ ] Crops, grass and saplings read the light of a slab, stair or farmland cell as the brightest cell beside or
       above it.
-      `pending`
+      `48841f5 · 2026-10-11 08:39`
 - [ ] A slab, glass, a fence or any other block you would collide with cannot be placed where you are standing.
       A slab can still go under you when only its upper half would overlap.
-      `pending`
+      `48841f5 · 2026-10-11 08:39`
 
 ### Items
 
@@ -147,6 +147,14 @@ from `git log --date=format:'%Y-%m-%d %H:%M'`). A commit cannot name its own has
 
 #### Fixes
 
+- [ ] Each dye shows its own icon: a bone crafts into white bone meal, not what looked like yellow dye, and ink
+      sacs, lapis and cocoa beans look like themselves.
+      `pending`
+- [ ] A dye and white wool craft wool of that dye's color (bone meal leaves it white, an ink sac makes black).
+      `pending`
+- [ ] Dyes mix: rose red and bone meal make pink, rose red and dandelion yellow make orange, and the rest of
+      Beta's mixes (lime, gray, light gray, light blue, cyan, purple, magenta) work.
+      `pending`
 - [ ] Arrows (yours, skeletons' and dispensers') no longer flicker where their faces overlap.
       `f1418cc · 2026-10-09 08:18`
 - [ ] Dropped items fly smoothly to the player when picked up, including while walking or sprinting into them,

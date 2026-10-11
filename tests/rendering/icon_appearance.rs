@@ -46,8 +46,8 @@ fn wood_plank_species_share_the_beta_tile_but_use_species_tints() {
 fn standalone_items_use_beta_items_atlas_tiles() {
     assert_eq!(item_tile(256, 0), Some(2 + 5 * 16));
     assert_eq!(item_tile(264, 0), Some(7 + 3 * 16));
-    assert_eq!(item_tile(351, 0), Some(14));
-    assert_eq!(item_tile(351, 15), Some(14 + 7 * 16 + 1));
+    assert_eq!(item_tile(351, 0), Some(78));
+    assert_eq!(item_tile(351, 15), Some(78 + 7 * 16 + 1));
     assert_eq!(item_tile(2256, 0), Some(240));
     assert_eq!(item_tile(2257, 0), Some(241));
 }

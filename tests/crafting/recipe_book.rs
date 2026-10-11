@@ -177,3 +177,43 @@ fn fences_take_two_rows_of_sticks_and_sandstone_four_sand() {
     }
     assert_eq!(book.find(&player).unwrap().item(), block(Block::Sandstone));
 }
+
+#[test]
+fn a_dye_colors_white_wool_with_the_inverted_metadata() {
+    let book = beta_recipe_book();
+    for dye in 0..16 {
+        let mut grid = CraftingGrid::player();
+        grid.set(0, 0, Some(ItemStack::with_data(Item::Dye, 1, dye).unwrap()));
+        grid.set(
+            1,
+            0,
+            Some(ItemStack::from_block_state(Block::Wool, 0, 1).unwrap()),
+        );
+        let output = book.find(&grid).expect("dye and white wool craft wool");
+        assert_eq!(output.item(), block(Block::Wool));
+        assert_eq!(output.data(), 15 - dye, "RecipesDyes: getDyeFromBlock");
+    }
+}
+
+#[test]
+fn bones_grind_to_bone_meal_and_dyes_mix() {
+    let book = beta_recipe_book();
+    let dye = |data, count| ItemStack::with_data(Item::Dye, count, data).unwrap();
+    let mut grid = CraftingGrid::player();
+    grid.set(0, 0, Some(stack(Item::Bone, 1)));
+    assert_eq!(book.find(&grid), Some(dye(15, 3)));
+
+    for (inputs, output) in [
+        (vec![1, 11], dye(14, 2)),
+        (vec![0, 15], dye(8, 2)),
+        (vec![0, 15, 15], dye(7, 3)),
+        (vec![4, 2], dye(6, 2)),
+        (vec![4, 1, 1, 15], dye(13, 4)),
+    ] {
+        let mut grid = CraftingGrid::player();
+        for (slot, data) in inputs.into_iter().enumerate() {
+            grid.set(slot % 2, slot / 2, Some(dye(data, 1)));
+        }
+        assert_eq!(book.find(&grid), Some(output));
+    }
+}

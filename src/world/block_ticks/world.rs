@@ -147,6 +147,14 @@ impl<'a> TickWorld<'a> {
             stack: single,
         });
     }
+    /// Takes the disc out of the jukebox at `position`, if it holds one.
+    pub fn take_record(&mut self, position: IVec3) -> Option<crate::item::Item> {
+        let record = self
+            .chunks
+            .set_record_at(position.x, position.y, position.z, None)?;
+        self.mark_state_dirty(position);
+        Some(record)
+    }
     /// A tile entity changed without replacing its block or metadata.
     pub fn mark_state_dirty(&mut self, position: IVec3) {
         let block = self.block(position);

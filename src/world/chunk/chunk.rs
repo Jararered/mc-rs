@@ -5,6 +5,7 @@ use bevy::platform::collections::HashMap as FastHashMap;
 use bevy::prelude::Resource;
 
 use crate::block::blocks::Block;
+use crate::item::Item;
 use crate::item::ItemStack;
 use crate::world::biome::Climate;
 use crate::world::chest::Chest;
@@ -104,6 +105,9 @@ pub struct Chunk {
     chests: HashMap<usize, Chest>,
     dispensers: HashMap<usize, Dispenser>,
     notes: HashMap<usize, NoteState>,
+    /// Beta `TileEntityRecordPlayer.record`: the disc in each jukebox that
+    /// holds one.
+    records: HashMap<usize, Item>,
     signs: HashMap<usize, SignText>,
     /// Scheduled ticks saved with the chunk. Empty while the chunk is live.
     pending_ticks: Vec<PendingTick>,
@@ -125,6 +129,7 @@ impl Chunk {
             chests: HashMap::new(),
             dispensers: HashMap::new(),
             notes: HashMap::new(),
+            records: HashMap::new(),
             signs: HashMap::new(),
             pending_ticks: Vec::new(),
             mob_records: Vec::new(),
@@ -178,6 +183,7 @@ impl Chunk {
             chests,
             dispensers,
             notes,
+            records: HashMap::new(),
             signs: HashMap::new(),
             pending_ticks: Vec::new(),
             mob_records: Vec::new(),
@@ -223,6 +229,7 @@ impl Chunk {
             chests,
             dispensers,
             notes,
+            records: HashMap::new(),
             signs: HashMap::new(),
             pending_ticks: Vec::new(),
             mob_records: Vec::new(),
@@ -397,6 +404,11 @@ impl Chunk {
         } else if !Block::is_furnace(previous) && Block::is_furnace(block) {
             self.furnaces.entry(index).or_default();
         }
+        // A jukebox that goes keeps its disc until `onBlockRemoval` has
+        // thrown it out; a new one starts empty.
+        if previous != Block::Jukebox && block == Block::Jukebox {
+            self.records.remove(&index);
+        }
         if previous == Block::NoteBlock && block != Block::NoteBlock {
             self.notes.remove(&index);
         } else if previous != Block::NoteBlock && block == Block::NoteBlock {
@@ -465,6 +477,24 @@ impl Chunk {
     }
     pub fn insert_note(&mut self, index: usize, note: NoteState) {
         self.notes.insert(index, note);
+    }
+
+    /// The discs in this chunk's jukeboxes.
+    pub fn records(&self) -> impl Iterator<Item = (usize, Item)> + '_ {
+        self.records
+            .iter()
+            .filter(|(index, _)| Block::from(self.blocks[**index]) == Block::Jukebox)
+            .map(|(index, record)| (*index, *record))
+    }
+    pub fn record(&self, index: usize) -> Option<Item> {
+        self.records.get(&index).copied()
+    }
+    /// Puts a disc in the jukebox at `index`, or takes it out.
+    pub fn set_record(&mut self, index: usize, record: Option<Item>) -> Option<Item> {
+        match record {
+            Some(record) => self.records.insert(index, record),
+            None => self.records.remove(&index),
+        }
     }
 
     pub fn chests(&self) -> impl Iterator<Item = (usize, &Chest)> {
@@ -719,6 +749,23 @@ impl WorldChunks {
         self.get_mut(ChunkPosition::from_block(x, z))?
             .chunk
             .sign_mut(index)
+    }
+
+    /// The disc in the jukebox at a cell.
+    pub fn record_at(&self, x: i32, y: i32, z: i32) -> Option<Item> {
+        let index = local_index(x, y, z)?;
+        self.get(ChunkPosition::from_block(x, z))?
+            .chunk
+            .record(index)
+    }
+
+    /// Puts a disc in the jukebox at a cell, or takes it out. Returns the
+    /// one that was there.
+    pub fn set_record_at(&mut self, x: i32, y: i32, z: i32, record: Option<Item>) -> Option<Item> {
+        let index = local_index(x, y, z)?;
+        self.get_mut(ChunkPosition::from_block(x, z))?
+            .chunk
+            .set_record(index, record)
     }
 
     pub fn note_at_mut(&mut self, x: i32, y: i32, z: i32) -> Option<&mut NoteState> {

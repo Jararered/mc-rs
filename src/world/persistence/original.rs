@@ -667,6 +667,11 @@ impl ChunkSnapshot {
             }
             tiles.push(Tag::Compound(tile));
         }
+        for (index, record) in chunk.records() {
+            let mut tile = tile_entity("RecordPlayer", index);
+            tile.put_int("Record", i32::from(record.as_u16()));
+            tiles.push(Tag::Compound(tile));
+        }
         for (index, note) in chunk.notes() {
             let mut tile = tile_entity("Music", index);
             tile.put_byte("note", note.pitch as i8);
@@ -782,6 +787,12 @@ fn decode_chunk(
                         editable: false,
                     },
                 );
+            }
+            "RecordPlayer" if block == Some(Block::Jukebox) => {
+                let record = u16::try_from(tile.int("Record"))
+                    .ok()
+                    .and_then(crate::item::Item::from_u16);
+                chunk.set_record(index, record);
             }
             "Music" if block == Some(Block::NoteBlock) => {
                 chunk.insert_note(

@@ -223,6 +223,7 @@ impl TestWorld {
                 | TickEffect::DropStack { .. }
                 | TickEffect::LavaMix { .. }
                 | TickEffect::PistonPush { .. }
+                | TickEffect::EjectRecord { .. }
                 | TickEffect::Sound { .. } => None,
             })
             .collect()

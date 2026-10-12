@@ -60,6 +60,23 @@ Sounds need the original game's `resources/` folder beside `assets/`. Without it
       around and it changes ears.
       `pending`
 
+##### Jukebox
+
+- [ ] Right-click a jukebox with a music disc (13 or cat) to put it in: the disc leaves your hand, its track
+      plays from the jukebox, and "Now playing: C418 - cat" shows over the hotbar for three seconds, changing
+      color and fading out.
+      `pending`
+- [ ] Right-click a playing jukebox, with anything in hand, and the disc pops out of the top and the music
+      stops. Breaking the jukebox does the same.
+      `pending`
+- [ ] A record is heard up to 64 blocks away, quieter with distance and from the side the jukebox is on. Starting
+      one stops the background music, none starts while it plays, and a second jukebox takes over from the
+      first. Its volume is the Jukebox and note blocks slider.
+      `pending`
+- [ ] A jukebox keeps its disc through a save and reload in either world format (it does not start playing
+      again by itself), and a Beta client on the server hears discs that other players start.
+      `pending`
+
 #### Interactions
 
 - [ ] A powered dispenser launches eggs and snowballs as projectiles instead of dropping them as items.
@@ -171,7 +188,7 @@ Sounds need the original game's `resources/` folder beside `assets/`. Without it
 ##### Sound and music
 
 - [ ] Settings has an Audio tab with a slider from OFF to 100% for Master volume, Music, Blocks, Weather, Hostile
-      mobs, Passive mobs, Players, Ambient and Note blocks. Master scales everything, music included; each of
+      mobs, Passive mobs, Players, Ambient, and Jukebox and note blocks. Master scales everything, music included; each of
       the others scales its own kind under it. All are remembered.
       `pending`
 - [ ] A slider changes what is already playing, and a kind at OFF starts no new sound: with Hostile mobs at OFF

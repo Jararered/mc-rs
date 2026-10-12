@@ -224,3 +224,61 @@ fn breaking_and_placing_a_block_sound_like_the_block() {
     assert_eq!(sounds[0].name, "step.stone");
     assert_eq!(sounds[0].position, Some(Vec3::new(2.5, 5.5, 0.5)));
 }
+
+#[test]
+fn a_disc_goes_into_a_jukebox_and_a_click_gets_it_back() {
+    use game::item::Item;
+    use game::world::block_ticks::AuxEffect;
+    let (mut app, first, _) = two_players();
+    app.world_mut()
+        .resource_mut::<WorldChunks>()
+        .set_block(2, 5, 0, Block::Jukebox);
+    let mut hotbar = Hotbar::default();
+    hotbar.slots[0] = ItemStack::new(Item::RecordCat, 1).ok();
+    app.world_mut().entity_mut(first).insert(hotbar);
+    let click = |app: &mut App| {
+        let hit = top_of(app, 2, 5, 0);
+        act(
+            app,
+            first,
+            Action::Use {
+                hit: Some(hit),
+                origin: Vec3::new(0.5, 6.62, 0.5),
+                look: Vec3::X,
+                click: true,
+            },
+        );
+    };
+    let effects = |app: &mut App| -> Vec<(i32, i32)> {
+        app.world_mut()
+            .resource_mut::<Messages<AuxEffect>>()
+            .drain()
+            .map(|effect| (effect.effect, effect.data))
+            .collect()
+    };
+    effects(&mut app);
+
+    click(&mut app);
+    let chunks = app.world().resource::<WorldChunks>();
+    assert_eq!(chunks.record_at(2, 5, 0), Some(Item::RecordCat));
+    assert_eq!(chunks.metadata_at(2, 5, 0), 1);
+    assert_eq!(held(&app, first), 0, "the disc left the hand");
+    // Aux effect 1005 names the disc that started.
+    assert_eq!(effects(&mut app), [(1005, 2257)]);
+    assert_eq!(dropped(&mut app), 0, "and it stays in");
+
+    // The next click throws it out, whatever is held.
+    click(&mut app);
+    run_ticks(&mut app, 1);
+    let chunks = app.world().resource::<WorldChunks>();
+    assert_eq!(chunks.record_at(2, 5, 0), None);
+    assert_eq!(chunks.metadata_at(2, 5, 0), 0);
+    assert_eq!(effects(&mut app), [(1005, 0)]);
+    let discs: Vec<Item> = app
+        .world_mut()
+        .query::<&DroppedItem>()
+        .iter(app.world())
+        .map(|dropped| dropped.0.item())
+        .collect();
+    assert_eq!(discs, [Item::RecordCat]);
+}

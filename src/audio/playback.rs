@@ -90,6 +90,17 @@ fn pan(side: f32) -> [f32; 2] {
 /// The left and right gain of a sound of Beta `volume`. With no `position`
 /// it is `playSoundFX`'s: in the middle, wherever the listener is.
 pub fn channel_gains(listener: Option<Listener>, position: Option<Vec3>, volume: f32) -> [f32; 2] {
+    channel_gains_within(listener, position, volume, hearing_range(volume))
+}
+
+/// [`channel_gains`] for a sound that fades to nothing at `range` blocks,
+/// which a record sets for itself.
+pub fn channel_gains_within(
+    listener: Option<Listener>,
+    position: Option<Vec3>,
+    volume: f32,
+    range: f32,
+) -> [f32; 2] {
     let Some(position) = position else {
         return pan(0.0).map(|channel| channel * volume.min(1.0) * UI_VOLUME);
     };
@@ -104,7 +115,7 @@ pub fn channel_gains(listener: Option<Listener>, position: Option<Vec3>, volume:
     } else {
         0.0
     };
-    let gain = attenuation(distance, volume);
+    let gain = volume.min(1.0) * (1.0 - distance / range).clamp(0.0, 1.0);
     pan(side).map(|channel| channel * gain)
 }
 
@@ -220,8 +231,51 @@ pub struct Emitter {
     position: Option<Vec3>,
     /// Beta's volume, before distance and the Audio options.
     volume: f32,
+    /// Where it has faded to nothing.
+    range: f32,
     category: SoundCategory,
     gains: Arc<ChannelGains>,
+}
+
+/// What it takes to start one sound.
+pub(super) struct Start {
+    pub source: AudioSource,
+    pub position: Option<Vec3>,
+    pub volume: f32,
+    pub range: f32,
+    pub pitch: f32,
+    pub category: SoundCategory,
+}
+
+/// Starts a sound at the gains it has from where the listener is now.
+pub(super) fn start<'a>(
+    commands: &'a mut Commands,
+    playings: &mut Assets<Positioned>,
+    listener: Option<Listener>,
+    master: f32,
+    start: Start,
+) -> EntityCommands<'a> {
+    let gains = channel_gains_within(listener, start.position, start.volume, start.range);
+    let gains = Arc::new(ChannelGains::new(gains.map(|gain| gain * master)));
+    let mut sound = commands.spawn((
+        AudioPlayer(playings.add(Positioned {
+            source: start.source,
+            gains: Arc::clone(&gains),
+        })),
+        PlaybackSettings::DESPAWN.with_speed(start.pitch.clamp(MIN_PITCH, MAX_PITCH)),
+        Emitter {
+            position: start.position,
+            volume: start.volume,
+            range: start.range,
+            category: start.category,
+            gains,
+        },
+        Unstarted::default(),
+    ));
+    if start.position.is_some() {
+        sound.insert(WorldSound);
+    }
+    sound
 }
 
 /// A sound with a place in the world, which stops when the world is left.
@@ -233,7 +287,7 @@ pub struct WorldSound;
 #[derive(Component, Default)]
 pub struct Unstarted(pub f32);
 
-fn listener(camera: &Query<&GlobalTransform, With<PlayerCamera>>) -> Option<Listener> {
+pub(super) fn listener(camera: &Query<&GlobalTransform, With<PlayerCamera>>) -> Option<Listener> {
     camera.single().ok().map(Listener::of)
 }
 
@@ -274,25 +328,20 @@ pub(super) fn play_sounds(
         let Some(source) = library.pick(request.name) else {
             continue;
         };
-        let gains = channel_gains(listener, request.position, request.volume);
-        let gains = Arc::new(ChannelGains::new(gains.map(|gain| gain * master)));
-        let mut sound = commands.spawn((
-            AudioPlayer(playings.add(Positioned {
+        start(
+            &mut commands,
+            &mut playings,
+            listener,
+            master,
+            Start {
                 source,
-                gains: Arc::clone(&gains),
-            })),
-            PlaybackSettings::DESPAWN.with_speed(request.pitch.clamp(MIN_PITCH, MAX_PITCH)),
-            Emitter {
                 position: request.position,
                 volume: request.volume,
+                range: hearing_range(request.volume),
+                pitch: request.pitch,
                 category,
-                gains,
             },
-            Unstarted::default(),
-        ));
-        if request.position.is_some() {
-            sound.insert(WorldSound);
-        }
+        );
         playing += 1;
     }
 }
@@ -308,7 +357,7 @@ pub(super) fn update_emitters(
         let master = settings
             .as_ref()
             .map_or(1.0, |settings| settings.gain(emitter.category));
-        let gains = channel_gains(listener, emitter.position, emitter.volume);
+        let gains = channel_gains_within(listener, emitter.position, emitter.volume, emitter.range);
         emitter.gains.set(gains.map(|gain| gain * master));
     }
 }

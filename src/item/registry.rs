@@ -44,6 +44,9 @@ pub struct ItemProperties {
     pub tool: Option<ToolType>,
     /// Beta crafting remainder, for example an empty bucket left by milk.
     pub container: Option<Item>,
+    /// `ItemRecord.recordName`: the track a disc plays in a jukebox, which is
+    /// the name of its file under `resources/streaming`.
+    pub record: Option<&'static str>,
 }
 
 impl ItemProperties {
@@ -84,6 +87,7 @@ struct Row {
     armor: Option<Armor>,
     tool: Option<ToolType>,
     leaves: Option<Item>,
+    record: Option<String>,
 }
 
 fn full_stack() -> u8 {
@@ -107,6 +111,8 @@ impl Row {
             armor: self.armor,
             tool: self.tool,
             container: self.leaves,
+            // The table lives as long as the program, so its names may too.
+            record: self.record.map(|name| &*name.leak()),
         }
     }
 }
@@ -295,6 +301,11 @@ impl Item {
     }
 
     /// `ItemFood.healAmount`: half-hearts restored when eaten.
+    /// `ItemRecord.recordName` for a music disc.
+    pub fn record_name(self) -> Option<&'static str> {
+        self.properties().and_then(|properties| properties.record)
+    }
+
     pub fn heal_amount(self) -> Option<u8> {
         self.properties()?.heal
     }
@@ -319,6 +330,7 @@ impl Item {
                 armor: None,
                 tool: None,
                 container: None,
+                record: None,
             });
         }
         let raw = self.as_u16();

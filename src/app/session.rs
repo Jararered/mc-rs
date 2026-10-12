@@ -38,6 +38,7 @@ use crate::app::state::AppScreen;
 use crate::app::state::PauseMenu;
 use crate::app::state::SettingsReturn;
 use crate::audio::playback::WorldSound;
+use crate::audio::records::RecordPlayer;
 use crate::chat::ChatHistory;
 use crate::entity::CollisionState;
 use crate::entity::DroppedItem;
@@ -343,6 +344,7 @@ struct WorldState<'w, 's> {
         )>,
     >,
     sounds: Option<ResMut<'w, Sounds>>,
+    records: Option<ResMut<'w, RecordPlayer>>,
 }
 
 fn drive_session(
@@ -473,6 +475,9 @@ fn drive_session(
             if let Some(sounds) = state.sounds.as_deref_mut() {
                 sounds.clear();
             }
+            if let Some(records) = state.records.as_deref_mut() {
+                *records = RecordPlayer::default();
+            }
             state.chunks.clear();
             state.light.clear();
             let world_time = state.ticks.time();
@@ -564,6 +569,9 @@ fn drive_session(
         }
         if let Some(sounds) = state.sounds.as_deref_mut() {
             sounds.clear();
+        }
+        if let Some(records) = state.records.as_deref_mut() {
+            *records = RecordPlayer::default();
         }
         state.chunks.clear();
         state.light.clear();

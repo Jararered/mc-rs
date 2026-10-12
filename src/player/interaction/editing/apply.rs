@@ -65,8 +65,10 @@ use crate::random::ItemRng;
 use crate::rendering::particles::block::BlockParticles;
 use crate::rendering::particles::effects::EffectParticles;
 use crate::rendering::particles::effects::FxKind;
+use crate::world::block_ticks::AuxEffect;
 use crate::world::block_ticks::BlockEvent;
 use crate::world::block_ticks::BlockTicks;
+use crate::world::block_ticks::behaviors::jukebox::RECORD_EFFECT;
 use crate::world::block_ticks::behaviors::leaves::PLAYER_PLACED;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::OpenCart;
@@ -107,11 +109,12 @@ pub(crate) fn apply_player_actions(
         Query<(Entity, &Transform, &mut Minecart, Option<&Cargo>), Without<Player>>,
         Query<(Entity, &Transform, &mut Boat, &Seat), Without<Player>>,
     ),
-    (mut bed_uses, mut item_uses, mut windows, mut strikes): (
+    (mut bed_uses, mut item_uses, mut windows, mut strikes, mut aux): (
         MessageWriter<BedUse>,
         MessageWriter<ItemUse>,
         MessageWriter<WindowOpen>,
         MessageWriter<crate::player::interaction::attack::PlayerStrike>,
+        MessageWriter<AuxEffect>,
     ),
     mut workbench: ResMut<ActiveWorkbench>,
     mut item_rng: Local<ItemRng>,
@@ -415,12 +418,16 @@ pub(crate) fn apply_player_actions(
                 }
                 if let Some(hit) = hit {
                     // `Block.blockActivated` runs before the held item is used.
-                    push_event(
-                        &mut block_ticks,
-                        BlockEvent::Activated {
-                            position: IVec3::new(hit.x, hit.y, hit.z),
-                        },
-                    );
+                    // An empty jukebox's does nothing, and the event is
+                    // handled after this click may have put a disc in.
+                    if hit.block != Block::Jukebox || chunks.metadata_at(hit.x, hit.y, hit.z) != 0 {
+                        push_event(
+                            &mut block_ticks,
+                            BlockEvent::Activated {
+                                position: IVec3::new(hit.x, hit.y, hit.z),
+                            },
+                        );
+                    }
                     // `BlockBed.blockActivated` needs the player, so it is not a
                     // block behavior.
                     if hit.block == Block::Bed {
@@ -443,6 +450,10 @@ pub(crate) fn apply_player_actions(
                                 | Block::PoweredRepeater
                                 | Block::NoteBlock
                         )
+                        // `BlockJukeBox.blockActivated`: one holding a disc
+                        // throws it out and takes nothing in.
+                        || (hit.block == Block::Jukebox
+                            && chunks.metadata_at(hit.x, hit.y, hit.z) != 0)
                 });
                 if activated {
                 } else if right_click
@@ -663,6 +674,22 @@ pub(crate) fn apply_player_actions(
                                 false,
                             );
                         }
+                    } else if stack.item().record_name().is_some()
+                        && hit.block == Block::Jukebox
+                        && chunks.metadata_at(hit.x, hit.y, hit.z) == 0
+                    {
+                        // `ItemRecord.onItemUse`: the disc goes in and plays.
+                        chunks.set_record_at(hit.x, hit.y, hit.z, Some(stack.item()));
+                        chunks.set_metadata(hit.x, hit.y, hit.z, 1);
+                        hotbar.take_selected(1);
+                        if let Some(persistence) = persistence.as_deref_mut() {
+                            persistence.mark_dirty(ChunkPosition::from_block(hit.x, hit.z));
+                        }
+                        aux.write(AuxEffect {
+                            position: IVec3::new(hit.x, hit.y, hit.z),
+                            effect: RECORD_EFFECT,
+                            data: i32::from(stack.item().as_u16()),
+                        });
                     } else if stack.item() == Item::Seeds && plant_seeds(&mut chunks, hit) {
                         let selected = hotbar.selected;
                         hotbar.slots[selected] =

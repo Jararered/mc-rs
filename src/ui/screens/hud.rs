@@ -9,6 +9,7 @@ use bevy::text::LineHeight;
 use super::inventory::durability_bar;
 use crate::app::settings::GameSettings;
 use crate::app::state::AppScreen;
+use crate::audio::records::NowPlaying;
 use crate::entity::CollisionState;
 use crate::entity::EntitySize;
 use crate::entity::Flying;
@@ -67,6 +68,7 @@ impl Plugin for HudPlugin {
                     update_hotbar_icons,
                     update_hotbar_bars,
                     update_debug_overlay,
+                    update_record_line,
                 )
                     .run_if(in_state(AppScreen::Playing)),
             );
@@ -153,6 +155,26 @@ fn spawn_hud(
                 *mode,
                 hotbar,
             );
+            // `GuiIngame`'s record line, 52 GUI pixels above the bottom edge.
+            root.spawn((
+                RecordLine,
+                Pickable::IGNORE,
+                Text::new(""),
+                TextFont {
+                    font: FontSource::Handle(font.minecraft.clone()),
+                    font_size: FontSize::Px(8.0 * scale),
+                    ..default()
+                },
+                TextColor(Color::NONE),
+                TextLayout::justify(Justify::Center),
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: px(0),
+                    width: percent(100),
+                    bottom: px(52.0 * scale),
+                    ..default()
+                },
+            ));
             root.spawn((
                 DebugOverlay,
                 Pickable::IGNORE,
@@ -254,6 +276,49 @@ fn update_debug_overlay(
     );
     if text.0 != next {
         text.0 = next;
+    }
+}
+
+/// The name of the record that has just started, over the hotbar.
+#[derive(Component)]
+struct RecordLine;
+
+/// `GuiIngame.renderGameOverlay`'s record line: the hue turns as the three
+/// seconds run out, and the last second fades.
+pub fn record_line_color(ticks_left: f32) -> Option<Color> {
+    let alpha = (ticks_left * 256.0 / 20.0).min(255.0) as i32;
+    (alpha > 0).then(|| {
+        Color::hsva(
+            (ticks_left / 50.0).rem_euclid(1.0) * 360.0,
+            0.7,
+            0.6,
+            alpha as f32 / 255.0,
+        )
+    })
+}
+
+fn update_record_line(
+    now_playing: Option<Res<NowPlaying>>,
+    tick: Res<WorldTick>,
+    mut lines: Query<(&mut Text, &mut TextColor), With<RecordLine>>,
+) {
+    let Some(now_playing) = now_playing else {
+        return;
+    };
+    let color = (now_playing.ticks > 0)
+        .then(|| record_line_color(now_playing.ticks as f32 - tick.partial()))
+        .flatten();
+    for (mut text, mut text_color) in &mut lines {
+        match color {
+            Some(color) => {
+                if **text != now_playing.text {
+                    **text = now_playing.text.clone();
+                }
+                text_color.0 = color;
+            }
+            None if text_color.0 != Color::NONE => text_color.0 = Color::NONE,
+            None => {}
+        }
     }
 }
 

@@ -42,6 +42,7 @@ use bevy::prelude::Message;
 use bevy::prelude::Resource;
 
 use crate::block::blocks::Block;
+use crate::item::Item;
 use crate::item::ItemStack;
 use crate::random::JavaRandom;
 use crate::world::chunk::CHUNK_SIZE;
@@ -173,6 +174,8 @@ pub enum TickEffect {
     },
     /// Move an entity out of the cell newly occupied by a piston extension.
     PistonPush { position: IVec3, direction: IVec3 },
+    /// `BlockJukeBox` throws its disc out of the top.
+    EjectRecord { position: IVec3, record: Item },
     /// `World.playSoundEffect` from a block: a switch's click, a piston's
     /// thump. Its pitch is drawn when the sound is queued, not here, so the
     /// world's `Random` is left alone.

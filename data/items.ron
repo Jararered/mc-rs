@@ -14,6 +14,8 @@
 //   tool        the kind and `EnumToolMaterial`: Pick, Axe, Shovel, Sword or
 //               Hoe of Wood, Stone, Iron, Diamond or Gold, or Shears
 //   leaves      `containerItem`: what crafting with it hands back
+//   record      `ItemRecord.recordName`: the track a disc plays in a jukebox,
+//               named as its file under `resources/streaming` is
 {
     IronShovel: (stack: 1, durability: 250, tool: Shovel(Iron)),
     IronPickaxe: (stack: 1, durability: 250, tool: Pick(Iron)),
@@ -119,6 +121,6 @@
     Cookie: (stack: 8, heal: 1),
     Map: (stack: 1, map: true),
     Shears: (stack: 1, durability: 238, tool: Shears),
-    Record13: (stack: 1),
-    RecordCat: (stack: 1),
+    Record13: (stack: 1, record: "13"),
+    RecordCat: (stack: 1, record: "cat"),
 }

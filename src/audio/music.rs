@@ -18,6 +18,9 @@ use bevy::tasks::futures::check_ready;
 use super::library::SoundLibrary;
 use super::library::read_source;
 use super::playback::Unstarted;
+use super::records::Record;
+use super::records::RecordPlayer;
+use super::records::record_playing;
 use super::time_seed;
 use crate::app::settings::GameSettings;
 use crate::random::JavaRandom;
@@ -98,6 +101,7 @@ pub(super) fn play_music(
     mut library: ResMut<SoundLibrary>,
     mut sources: ResMut<Assets<AudioSource>>,
     playing: Query<(), With<MusicTrack>>,
+    (record_player, records): (Res<RecordPlayer>, Query<(), With<Record>>),
 ) {
     let volume = settings.map_or(1.0, |settings| settings.gain(SoundCategory::Music));
     if volume <= 0.0 {
@@ -115,7 +119,8 @@ pub(super) fn play_music(
             return;
         }
     }
-    if music.loading.is_some() || !playing.is_empty() {
+    // `!sndSystem.playing("BgMusic") && !sndSystem.playing("streaming")`.
+    if music.loading.is_some() || !playing.is_empty() || record_playing(&record_player, &records) {
         return;
     }
     for _ in 0..tick.ticks_this_frame() {

@@ -1430,3 +1430,26 @@ fn a_cart_saved_before_chest_and_furnace_carts_loads_as_an_empty_one() {
         }
     );
 }
+
+#[test]
+fn a_jukebox_keeps_its_disc_through_a_chunk_file() {
+    use game::item::Item;
+    let saves = temp_saves("jukebox");
+    let storage = WorldStorage::create(&saves, 0, "Jukebox").unwrap();
+    let position = ChunkPosition { x: 1, z: 1 };
+    let mut generated = OverworldGenerator::new(0).generate(position);
+    generated
+        .chunk
+        .set_with_metadata(4, 90, 5, Block::Jukebox, 1);
+    generated.chunk.set(6, 90, 5, Block::Jukebox);
+    let playing = Chunk::index(4, 90, 5);
+    generated.chunk.set_record(playing, Some(Item::RecordCat));
+    storage.save_chunk(position, &generated).unwrap();
+
+    let loaded = storage.load_chunk(position).expect("chunk should load");
+    assert_eq!(loaded.chunk.record(playing), Some(Item::RecordCat));
+    assert_eq!(loaded.chunk.metadata(4, 90, 5), 1);
+    assert_eq!(loaded.chunk.record(Chunk::index(6, 90, 5)), None);
+    assert_eq!(loaded.chunk.records().count(), 1);
+    fs::remove_dir_all(saves).unwrap();
+}

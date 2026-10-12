@@ -986,3 +986,27 @@ fn dispensers_and_note_blocks_use_beta_tile_entities() {
     assert_eq!(note.pitch, 12);
     fs::remove_dir_all(saves).unwrap();
 }
+
+#[test]
+fn a_jukebox_keeps_its_disc_as_a_record_player_tile() {
+    let (saves, storage) = original_world("jukebox");
+    let position = ChunkPosition { x: 0, z: 0 };
+    let mut generated = busy_chunk(position);
+    generated
+        .chunk
+        .set_with_metadata(2, 100, 3, Block::Jukebox, 1);
+    generated.chunk.set(4, 100, 3, Block::Jukebox);
+    let playing = Chunk::index(2, 100, 3);
+    generated.chunk.set_record(playing, Some(Item::Record13));
+    storage.save_chunks([(position, &generated)]).unwrap();
+
+    let loaded = storage.load_chunk(position).expect("chunk should load");
+    assert_eq!(loaded.chunk.record(playing), Some(Item::Record13));
+    assert_eq!(loaded.chunk.metadata(2, 100, 3), 1);
+    assert_eq!(
+        loaded.chunk.records().count(),
+        1,
+        "an empty one has no tile"
+    );
+    let _ = fs::remove_dir_all(saves);
+}

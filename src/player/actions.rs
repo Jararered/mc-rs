@@ -101,6 +101,7 @@ impl Plugin for PlayerActionsPlugin {
             .add_message::<WindowOpen>()
             .add_message::<super::interaction::attack::PlayerStrike>()
             .add_message::<super::sleep::BedUse>()
+            .add_message::<crate::world::block_ticks::AuxEffect>()
             .init_resource::<crate::inventory::session::ActiveWorkbench>()
             .add_systems(
                 Update,

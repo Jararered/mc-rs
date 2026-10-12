@@ -14,6 +14,7 @@ use crate::entity::drops::items::dispenser_direction;
 use crate::entity::drops::items::spawn_block_drop;
 use crate::entity::drops::items::spawn_chest_drops;
 use crate::entity::drops::items::spawn_dispensed_item;
+use crate::entity::drops::items::spawn_ejected_record;
 use crate::entity::explosion::PrimedTnt;
 use crate::entity::falling_block;
 use crate::entity::minecart;
@@ -25,6 +26,7 @@ use crate::entity::projectiles::spawn_arrow_with;
 use crate::entity::thrown::ThrownKind;
 use crate::entity::thrown::spawn_thrown;
 use crate::item::Item;
+use crate::item::ItemStack;
 use crate::physics::Aabb;
 use crate::physics::PhysicsSet;
 use crate::player::Player;
@@ -284,6 +286,11 @@ fn apply_tick_effects(
                     );
                 } else {
                     spawn_dispensed_item(&mut commands, &mut rng, position, facing, stack);
+                }
+            }
+            TickEffect::EjectRecord { position, record } => {
+                if let Ok(stack) = ItemStack::new(record, 1) {
+                    spawn_ejected_record(&mut commands, &mut rng, position, stack);
                 }
             }
             TickEffect::DropStack { position, stack } => {

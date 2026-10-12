@@ -137,6 +137,9 @@ pub(super) struct StoredChunk {
     dispensers: Vec<StoredDispenser>,
     #[serde(default)]
     notes: Vec<StoredNote>,
+    /// The disc in each jukebox that holds one, by raw item id.
+    #[serde(default)]
+    records: Vec<StoredRecord>,
     #[serde(default)]
     signs: Vec<StoredSign>,
     /// Absent on chunks saved before population ran across chunks. Those were
@@ -192,6 +195,12 @@ struct StoredDispenser {
 struct StoredSign {
     index: u16,
     lines: [String; 4],
+}
+
+#[derive(Serialize, Deserialize)]
+struct StoredRecord {
+    index: u16,
+    record: u16,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -319,6 +328,14 @@ impl StoredChunk {
                     index: index as u16,
                     pitch: note.pitch,
                     previous_powered: note.previous_powered,
+                })
+                .collect(),
+            records: generated
+                .chunk
+                .records()
+                .map(|(index, record)| StoredRecord {
+                    index: index as u16,
+                    record: record.as_u16(),
                 })
                 .collect(),
             signs: generated
@@ -472,6 +489,15 @@ impl StoredChunk {
                         editable: false,
                     },
                 );
+            }
+        }
+        for stored in self.records {
+            let index = usize::from(stored.index);
+            if index < BLOCKS_PER_CHUNK
+                && Block::from(chunk.raw_blocks()[index]) == Block::Jukebox
+                && let Some(record) = crate::item::Item::from_u16(stored.record)
+            {
+                chunk.set_record(index, Some(record));
             }
         }
         for note in self.notes {

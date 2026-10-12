@@ -9,6 +9,7 @@
 pub mod library;
 pub mod music;
 pub mod playback;
+pub mod records;
 pub mod world;
 
 use std::time::SystemTime;
@@ -41,6 +42,8 @@ impl Plugin for SoundPlugin {
             .init_resource::<library::SoundLibrary>()
             .init_resource::<music::Music>()
             .init_resource::<world::CaveAmbience>()
+            .init_resource::<records::RecordPlayer>()
+            .init_resource::<records::NowPlaying>()
             .add_audio_source::<playback::Positioned>()
             .add_systems(Startup, library::start_loading)
             .add_systems(
@@ -59,6 +62,7 @@ impl Plugin for SoundPlugin {
                         world::blast_sounds,
                         world::voices,
                         world::cave_ambience,
+                        records::play_records,
                         playback::play_sounds,
                     )
                         .chain()

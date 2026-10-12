@@ -96,13 +96,13 @@ fn scan_sorts_the_folder_into_beta_pools() {
         "newsound/random/wood click.ogg",
         "music/calm1.ogg",
         "newmusic/hal2.ogg",
+        "streaming/13.mus",
         // Not Ogg files.
         "newsound/.DS_Store",
         "newsound/note/harp.txt",
-        "streaming/13.mus",
-        // Folders Beta does not read, or that wait for a jukebox.
-        "sound3/dig/stone1.ogg",
         "streaming/13.ogg",
+        // Folders Beta does not read.
+        "sound3/dig/stone1.ogg",
         "icons/icon.ogg",
     ] {
         touch(&root, file);
@@ -127,6 +127,14 @@ fn scan_sorts_the_folder_into_beta_pools() {
     assert_eq!(
         found.music,
         [root.join("music/calm1.ogg"), root.join("newmusic/hal2.ogg")]
+    );
+    // The streaming pool keeps a name's digits, and reads `.mus` too.
+    assert_eq!(
+        found.records,
+        [
+            ("13".to_string(), root.join("streaming/13.mus")),
+            ("13".to_string(), root.join("streaming/13.ogg")),
+        ]
     );
     let _ = fs::remove_dir_all(root);
 }
@@ -521,7 +529,7 @@ fn a_click_plays_in_each_ear() {
     // The listener, looking down -Z from the origin.
     app.world_mut().spawn((PlayerCamera, Transform::default()));
     let frame = Duration::from_millis(10);
-    let mut wait = |app: &mut App, what: &str, done: &dyn Fn(&mut World) -> bool| {
+    let wait = |app: &mut App, what: &str, done: &dyn Fn(&mut World) -> bool| {
         for _ in 0..300 {
             app.update();
             if done(app.world_mut()) {
@@ -559,4 +567,181 @@ fn a_click_plays_in_each_ear() {
         });
         std::thread::sleep(Duration::from_millis(300));
     }
+}
+
+/// `MusInputStream` run backwards: what the launcher did to make a `.mus`.
+fn scramble_mus(file_name: &str, bytes: &mut [u8]) {
+    let mut hash = file_name.encode_utf16().fold(0i32, |hash, unit| {
+        hash.wrapping_mul(31).wrapping_add(i32::from(unit))
+    });
+    for byte in bytes {
+        let plain = *byte;
+        *byte ^= (hash >> 8) as u8;
+        hash = hash
+            .wrapping_mul(498_729_871)
+            .wrapping_add(85731_i32.wrapping_mul(i32::from(plain as i8)));
+    }
+}
+
+#[test]
+fn a_mus_file_unscrambles_by_its_own_name() {
+    use game::audio::library::unscramble_mus;
+    let plain: Vec<u8> = (0..=255u8).cycle().take(2000).collect();
+    let mut bytes = plain.clone();
+    scramble_mus("cat.mus", &mut bytes);
+    assert_ne!(bytes, plain);
+    let mut wrong = bytes.clone();
+    unscramble_mus("cat.mus", &mut bytes);
+    assert_eq!(bytes, plain);
+    // The key is the file's name: under another it stays noise.
+    unscramble_mus("13.mus", &mut wrong);
+    assert_ne!(wrong, plain);
+}
+
+#[test]
+fn a_record_carries_four_times_as_far_at_half_the_volume() {
+    use game::audio::playback::channel_gains_within;
+    use game::audio::records::RECORD_RANGE;
+    use game::audio::records::RECORD_VOLUME;
+    assert_eq!(RECORD_RANGE, 64.0);
+    let at = |distance: f32| {
+        let [left, right] = channel_gains_within(
+            Some(AHEAD),
+            Some(Vec3::NEG_Z * distance),
+            RECORD_VOLUME,
+            RECORD_RANGE,
+        );
+        assert!((left - right).abs() < 1e-6);
+        left / std::f32::consts::FRAC_1_SQRT_2
+    };
+    assert!((at(0.0) - 0.5).abs() < 1e-6);
+    assert!((at(32.0) - 0.25).abs() < 1e-6);
+    assert_eq!(at(64.0), 0.0);
+    // An ordinary sound of that volume would be gone at 16.
+    assert_eq!(
+        channel_gains(Some(AHEAD), Some(Vec3::NEG_Z * 16.0), 0.5),
+        [0.0; 2]
+    );
+}
+
+#[test]
+fn a_started_record_is_named_over_the_hotbar_for_three_seconds() {
+    use game::audio::records::NowPlaying;
+    use game::ui::screens::hud::record_line_color;
+    let mut now_playing = NowPlaying::default();
+    now_playing.announce("cat");
+    assert_eq!(now_playing.text, "Now playing: C418 - cat");
+    assert_eq!(now_playing.ticks, 60);
+    // Solid until the last second, then fading out to nothing.
+    assert_eq!(record_line_color(60.0).unwrap().alpha(), 1.0);
+    assert_eq!(record_line_color(20.0).unwrap().alpha(), 1.0);
+    let fading = record_line_color(10.0).unwrap().alpha();
+    assert!((fading - 0.5).abs() < 0.01, "{fading}");
+    assert!(record_line_color(0.0).is_none());
+}
+
+/// With the player's `resources/` in place: both of Beta's discs are there,
+/// by the names the item table gives them, and every file of each decodes,
+/// the scrambled ones included.
+#[test]
+fn both_discs_have_a_track_that_decodes() {
+    use game::item::Item;
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join(RESOURCES_DIR);
+    let found = scan(&root);
+    if found.records.is_empty() {
+        eprintln!("no records under {}; nothing to check", root.display());
+        return;
+    }
+    for disc in [Item::Record13, Item::RecordCat] {
+        let name = disc.record_name().expect("a disc names its track");
+        let files: Vec<&PathBuf> = found
+            .records
+            .iter()
+            .filter(|(record, _)| record == name)
+            .map(|(_, path)| path)
+            .collect();
+        assert!(!files.is_empty(), "no file for the record {name}");
+        for file in files {
+            assert!(read_source(file).is_some(), "{} decodes", file.display());
+        }
+    }
+    assert_eq!(Item::Record13.record_name(), Some("13"));
+    assert_eq!(Item::RecordCat.record_name(), Some("cat"));
+    assert_eq!(Item::Diamond.record_name(), None);
+}
+
+/// A check through the real device that a disc starts and stops: with
+/// `resources/` in place, aux effect 1005 for the cat disc gets a record
+/// playing from a jukebox far enough off to be faint, and 1005 with no disc
+/// ends it.
+///
+/// ```sh
+/// cargo test -- --ignored a_jukebox_starts_and_stops_a_record
+/// ```
+#[test]
+#[ignore = "plays sound through the default output device"]
+fn a_jukebox_starts_and_stops_a_record() {
+    use bevy::asset::AssetPlugin;
+    use bevy::audio::AudioPlugin;
+    use bevy::audio::AudioSink;
+    use game::app::settings::GameSettings;
+    use game::audio::SoundPlugin;
+    use game::audio::records::NowPlaying;
+    use game::audio::records::Record;
+    use game::item::Item;
+    use game::player::PlayerCamera;
+    use game::world::block_ticks::AuxEffect;
+    use game::world::plugin::WorldPlugin;
+
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        AssetPlugin::default(),
+        TransformPlugin,
+        AudioPlugin::default(),
+        WorldPlugin,
+        SoundPlugin,
+    ))
+    .init_resource::<GameSettings>();
+    app.world_mut().spawn((PlayerCamera, Transform::default()));
+    let playing = |world: &mut World| {
+        world
+            .query_filtered::<(), (With<Record>, With<AudioSink>)>()
+            .iter(world)
+            .count()
+    };
+    let records = |world: &mut World| {
+        world
+            .query_filtered::<(), With<Record>>()
+            .iter(world)
+            .count()
+    };
+    let send = |app: &mut App, data: i32, done: &dyn Fn(&mut World) -> bool| {
+        for attempt in 0..400 {
+            // The library may still be loading: ask again until it answers.
+            if attempt % 20 == 0 {
+                app.world_mut()
+                    .resource_mut::<Messages<AuxEffect>>()
+                    .write(AuxEffect {
+                        position: IVec3::new(60, 0, 0),
+                        effect: 1005,
+                        data,
+                    });
+            }
+            app.update();
+            if done(app.world_mut()) {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        panic!("the jukebox did not answer within four seconds");
+    };
+    send(&mut app, i32::from(Item::RecordCat.as_u16()), &|world| {
+        playing(world) == 1
+    });
+    assert_eq!(
+        app.world().resource::<NowPlaying>().text,
+        "Now playing: C418 - cat"
+    );
+    send(&mut app, 0, &|world| records(world) == 0);
 }

@@ -28,10 +28,8 @@ These are registered and craftable, but right-click does nothing, or only part o
   grass. Dye on a sheep recolors its fleece: `ItemStack.useItemOnEntity` calls `ItemDye.saddleEntity` when the sheep's
   `interact` declines, and an unsheared sheep whose fleece differs takes the dye and loses one. The repo's sheep take
   shears only (`player/interaction/attack.rs`).
-- **Records and jukebox** (`ItemRecord`, `BlockJukeBox`, `TileEntityRecordPlayer`): the discs and the jukebox block
-  exist, but there is no insert, eject or playback. Beta saves the disc as `Record`. Playback also needs the
-  `streaming/` pool read (`audio/library.rs`) and `MusInputStream`'s unscrambling for the `.mus` discs, and the disc
-  sets the now-playing line over the hotbar (`GuiIngame.setRecordPlayingMessage`).
+- **Jukebox leftovers** (`BlockJukeBox`): a creeper shot by a skeleton drops no disc (mobs do not hurt each other),
+  so discs come from dungeon chests and `/give`.
 - **Compass, clock and map** (`ItemMap`, `ItemMapBase`, `MapItemRenderer`, `TextureCompassFX`, `TextureWatchFX`): the
   compass and clock have no animated icon, and there is no map item or per-world map data.
 - **Carved pumpkin as a helmet** (`SlotArmor.isItemValid`): the helmet slot takes a pumpkin, and a pumpkin worn there
@@ -73,7 +71,6 @@ These are registered and craftable, but right-click does nothing, or only part o
 Every sound Beta 1.7.3 plays for something the game simulates is played, with background music and the two volume
 options (`src/audio/`, AGENTS' Sound section). Left:
 
-- **Jukebox discs**: see Records and jukebox above.
 - **Punching a fire out** (`World.onBlockHit`): the fire stays, so aux effect 1004's hiss is never sent.
 - **Other players**: one `Sounds` queue is heard from this client's camera. A server has to tell our own client
   what to play; a Beta client makes its own sounds.

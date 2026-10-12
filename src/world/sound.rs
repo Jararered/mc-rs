@@ -37,6 +37,7 @@ pub enum SoundCategory {
     Players,
     /// Cave noises, fire, running water and portals.
     Ambient,
+    /// Note blocks, and the record in a jukebox.
     NoteBlocks,
 }
 
@@ -63,7 +64,7 @@ impl SoundCategory {
             Self::PassiveMobs => "Passive mobs",
             Self::Players => "Players",
             Self::Ambient => "Ambient",
-            Self::NoteBlocks => "Note blocks",
+            Self::NoteBlocks => "Jukebox and note blocks",
         }
     }
 

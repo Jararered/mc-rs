@@ -811,3 +811,58 @@ fn a_powered_door_creaks_and_an_empty_dispenser_clicks() {
         data: 0,
     }));
 }
+
+#[test]
+fn a_jukebox_throws_its_disc_out_when_clicked_or_broken() {
+    use game::item::Item;
+    use game::world::block_ticks::BlockEvent;
+    use game::world::block_ticks::TickEffect;
+    let mut world = TestWorld::new(1);
+    let jukebox = at(8, 64, 8);
+    let stopped = TickEffect::Aux {
+        position: jukebox,
+        effect: 1005,
+        data: 0,
+    };
+    let ejected = TickEffect::EjectRecord {
+        position: jukebox,
+        record: Item::RecordCat,
+    };
+    let load = |world: &mut TestWorld| {
+        world.set_with_metadata(jukebox, Block::Jukebox, 1);
+        world
+            .chunks
+            .set_record_at(jukebox.x, jukebox.y, jukebox.z, Some(Item::RecordCat));
+        world.effects();
+    };
+
+    // An empty one does nothing.
+    world.set(jukebox, Block::Jukebox);
+    world.event(BlockEvent::Activated { position: jukebox });
+    assert!(world.effects().is_empty());
+
+    load(&mut world);
+    world.event(BlockEvent::Activated { position: jukebox });
+    assert_eq!(world.effects(), [stopped, ejected]);
+    assert_eq!(world.metadata(jukebox), 0);
+    assert_eq!(
+        world.chunks.record_at(jukebox.x, jukebox.y, jukebox.z),
+        None
+    );
+    // There is nothing left for a second click.
+    world.event(BlockEvent::Activated { position: jukebox });
+    assert!(world.effects().is_empty());
+
+    // Breaking it stops the music and leaves the disc behind.
+    load(&mut world);
+    world.set(jukebox, Block::Air);
+    world.ticks.block_changed(jukebox, Block::Jukebox, 1);
+    world.process_events();
+    assert_eq!(world.silent_effects(), [stopped, ejected]);
+    // A jukebox built where one stood starts empty.
+    world.set(jukebox, Block::Jukebox);
+    assert_eq!(
+        world.chunks.record_at(jukebox.x, jukebox.y, jukebox.z),
+        None
+    );
+}

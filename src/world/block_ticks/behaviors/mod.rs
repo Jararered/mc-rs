@@ -20,6 +20,7 @@ pub mod falling;
 pub mod fire;
 pub mod fixtures;
 pub mod fluid;
+pub mod jukebox;
 pub mod leaves;
 pub mod note;
 pub mod ore;
@@ -134,6 +135,7 @@ pub(super) fn table() -> [&'static dyn BlockBehavior; 256] {
     register(&mut table, &[Block::Rail, Block::PoweredRail], &rail::RAIL);
     register(&mut table, &[Block::DetectorRail], &rail::DETECTOR);
     register(&mut table, &[Block::NoteBlock], &note::NOTE);
+    register(&mut table, &[Block::Jukebox], &jukebox::JUKEBOX);
     register(&mut table, &[Block::Tnt], &tnt::TNT);
     register(&mut table, &[Block::Dispenser], &dispenser::DISPENSER);
     table

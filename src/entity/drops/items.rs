@@ -204,6 +204,31 @@ pub fn spawn_block_drop(
     );
 }
 
+/// `BlockJukeBox.func_28038_b_`: the disc leaves through the top of the
+/// jukebox. Pickup waits 10 ticks.
+pub fn spawn_ejected_record(
+    commands: &mut Commands,
+    rng: &mut ItemRng,
+    block: IVec3,
+    stack: ItemStack,
+) {
+    let spread = 0.7;
+    let offset = Vec3::new(
+        rng.unit() * spread + (1.0 - spread) * 0.5,
+        rng.unit() * spread + (1.0 - spread) * 0.2 + 0.6,
+        rng.unit() * spread + (1.0 - spread) * 0.5,
+    );
+    spawn_item(
+        commands,
+        block.as_vec3() + offset,
+        stack,
+        item_constructor_motion(rng.unit(), rng.unit()),
+        PICKUP_DELAY_TICKS,
+        rng.unit() * std::f32::consts::TAU,
+        rng.next_u64(),
+    );
+}
+
 /// `EntityLiving.entityDropItem`: an item dropped at a creature's feet, with
 /// the `EntityItem` constructor's hop. Pickup waits 10 ticks.
 pub fn spawn_entity_drop(commands: &mut Commands, rng: &mut ItemRng, feet: Vec3, stack: ItemStack) {

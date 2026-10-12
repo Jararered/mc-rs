@@ -229,8 +229,8 @@ impl<'a> Mesher<'a> {
                     if block.is_torch()
                         || matches!(
                             block,
-                            Block::RedstoneTorchActive | Block::RedstoneTorchInact
-                        ive)
+                            Block::RedstoneTorchActive | Block::RedstoneTorchInactive
+                        )
                     {
                         meshes.grass_overlay.push_torch(origin, block, metadata);
                         continue;

@@ -40,7 +40,7 @@ fn numeric_enum_conversions_preserve_valid_and_unknown_values() {
             Item::from_u16(raw).is_some(),
             matches!(raw, 1..=96 | 256..=359 | 2256..=2257)
         );
-        if let Item::BlockOrUnknown(value) = item {
+        if let Item::Unknown(value) = item {
             assert_eq!(value, raw);
             assert_eq!(item.block().is_some(), (1..=96).contains(&raw));
         }
@@ -102,7 +102,7 @@ fn known_beta_identities_are_the_only_block_ids() {
 fn item_ids_format_as_their_rust_variants() {
     assert_eq!(Item::from_block(Block::Stone).unwrap().to_string(), "Stone");
     assert_eq!(Item::IronPickaxe.to_string(), "IronPickaxe");
-    assert_eq!(Item::BlockOrUnknown(999).to_string(), "BlockOrUnknown(999)");
+    assert_eq!(Item::Unknown(999).to_string(), "BlockOrUnknown(999)");
 }
 
 #[test]
@@ -170,8 +170,8 @@ fn native_save_values_and_supported_states_round_trip() {
 fn stacks_reject_unknown_ids_zero_overflow_and_invalid_data() {
     assert!(Item::from_u16(0).is_none());
     assert_eq!(
-        ItemStack::new(Item::BlockOrUnknown(0), 1),
-        Err(StackError::UnknownItem(Item::BlockOrUnknown(0)))
+        ItemStack::new(Item::Unknown(0), 1),
+        Err(StackError::UnknownItem(Item::Unknown(0)))
     );
     assert!(ItemStack::new(Item::Coal, 0).is_err());
     assert!(ItemStack::new(Item::Coal, 65).is_err());

@@ -249,7 +249,7 @@ pub enum Item {
     RecordCat = 2257,
     #[num_enum(catch_all)]
     #[serde(skip)]
-    BlockOrUnknown(u16),
+    Unknown(u16),
 }
 impl Item {
     pub fn from_block(block: Block) -> Option<Self> {
@@ -286,14 +286,14 @@ impl Item {
 
     pub fn from_u16(value: u16) -> Option<Self> {
         match Self::from(value) {
-            item @ Self::BlockOrUnknown(_) if item.block().is_some() => Some(item),
-            Self::BlockOrUnknown(_) => None,
+            item @ Self::Unknown(_) if item.block().is_some() => Some(item),
+            Self::Unknown(_) => None,
             item => Some(item),
         }
     }
 
     pub fn block(self) -> Option<Block> {
-        let Self::BlockOrUnknown(raw) = self else {
+        let Self::Unknown(raw) = self else {
             return None;
         };
         let block = Block::from_u8(u8::try_from(raw).ok()?)?;

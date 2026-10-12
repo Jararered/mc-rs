@@ -71,7 +71,7 @@ impl ItemStack {
     pub fn from_block_state(block: Block, metadata: u8, count: u8) -> Result<Self, StackError> {
         let (item_block, data) = block.item_form(metadata);
         let Some(item) = Item::from_block(item_block) else {
-            return Err(StackError::UnknownItem(Item::BlockOrUnknown(u16::from(
+            return Err(StackError::UnknownItem(Item::Unknown(u16::from(
                 item_block.as_u8(),
             ))));
         };

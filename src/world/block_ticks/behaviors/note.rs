@@ -23,7 +23,7 @@ fn instrument(block: Block) -> u8 {
         | Block::LapisBlock
         | Block::DiamondOre
         | Block::RedstoneOre
-        | Block::LitRedstoneOre
+        | Block::RedstoneOreLit
         | Block::Dispenser
         | Block::Sandstone
         | Block::DoubleStoneSlab

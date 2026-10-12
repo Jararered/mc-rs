@@ -114,10 +114,10 @@ fn nether_lava_flows_as_far_as_water() {
         // A trough one block wide, so the lava can only run along x.
         world.fill(at(-20, 20, -1), at(20, 21, -1), Block::Stone);
         world.fill(at(-20, 20, 1), at(20, 21, 1), Block::Stone);
-        world.place(at(0, 20, 0), Block::FlowingLava);
+        world.place(at(0, 20, 0), Block::LavaFlowing);
         world.run(2000);
         (1..20)
-            .take_while(|x| matches!(world.block(at(*x, 20, 0)), Block::Lava | Block::FlowingLava))
+            .take_while(|x| matches!(world.block(at(*x, 20, 0)), Block::Lava | Block::LavaFlowing))
             .count()
     };
     assert_eq!(reach(Dimension::Overworld), 3);

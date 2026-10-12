@@ -81,7 +81,7 @@ fn registries_cover_beta_ranges_without_registering_holes_or_air_items() {
 fn known_beta_identities_are_the_only_block_ids() {
     assert_eq!(Block::Cake.as_u8(), 92);
     assert_eq!(Block::Repeater.as_u8(), 93);
-    assert_eq!(Block::PoweredRepeater.as_u8(), 94);
+    assert_eq!(Block::RepeaterPowered.as_u8(), 94);
     assert_eq!(Block::LockedChest.as_u8(), 95);
     assert_eq!(Block::Trapdoor.as_u8(), 96);
     assert_eq!(Item::IronShovel.as_u16(), 256);
@@ -127,8 +127,8 @@ fn native_save_values_and_supported_states_round_trip() {
         Block::WoodenDoor,
         Block::PistonHead,
         Block::MovingPiston,
-        Block::PoweredRepeater,
-        Block::UnlitRedstoneTorch,
+        Block::RepeaterPowered,
+        Block::RedstoneTorchUnlit,
     ] {
         assert_eq!(id.placed(0), None);
     }
@@ -139,7 +139,7 @@ fn native_save_values_and_supported_states_round_trip() {
         Block::DetectorRail,
         Block::Lever,
         Block::StoneButton,
-        Block::RedstoneTorch,
+        Block::RedstoneTorchLit,
         Block::Piston,
         Block::StickyPiston,
         Block::Redstone,
@@ -308,7 +308,7 @@ fn tool_break_times_match_beta_173() {
     assert_eq!(t(Some(Item::WoodenPickaxe), Block::CoalOre), Some(45));
     assert_eq!(t(Some(Item::DiamondPickaxe), Block::CoalOre), Some(12));
     assert_eq!(t(Some(Item::IronPickaxe), Block::RedstoneOre), Some(90));
-    assert_eq!(t(Some(Item::IronPickaxe), Block::LitRedstoneOre), Some(90));
+    assert_eq!(t(Some(Item::IronPickaxe), Block::RedstoneOreLit), Some(90));
     assert_eq!(t(Some(Item::WoodenPickaxe), Block::Furnace), Some(105));
     assert_eq!(t(Some(Item::GoldPickaxe), Block::Dispenser), Some(105));
     assert_eq!(t(Some(Item::StonePickaxe), Block::LitFurnace), Some(105));
@@ -397,7 +397,7 @@ fn pickaxe_harvest_levels_match_beta() {
         assert!(!can_harvest(pick, Block::DiamondOre));
         assert!(!can_harvest(pick, Block::DiamondBlock));
         assert!(!can_harvest(pick, Block::RedstoneOre));
-        assert!(!can_harvest(pick, Block::LitRedstoneOre));
+        assert!(!can_harvest(pick, Block::RedstoneOreLit));
         assert!(!can_harvest(pick, Block::Obsidian));
     }
     assert!(can_harvest(stone, Block::IronOre));
@@ -416,7 +416,7 @@ fn pickaxe_harvest_levels_match_beta() {
     assert!(can_harvest(iron, Block::DiamondOre));
     assert!(can_harvest(iron, Block::DiamondBlock));
     assert!(can_harvest(iron, Block::RedstoneOre));
-    assert!(can_harvest(iron, Block::LitRedstoneOre));
+    assert!(can_harvest(iron, Block::RedstoneOreLit));
     assert!(!can_harvest(iron, Block::Obsidian));
     assert!(can_harvest(diamond, Block::Obsidian));
 

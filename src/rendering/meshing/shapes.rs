@@ -93,8 +93,8 @@ impl BlockGeometry {
     pub(super) fn push_torch(&mut self, origin: [f32; 3], block: Block, metadata: u8) {
         let facing = Block::Torch.facing(metadata & 7);
         let tile = match block {
-            Block::RedstoneTorch => (3, 6),
-            Block::UnlitRedstoneTorch => (3, 7),
+            Block::RedstoneTorchLit => (3, 6),
+            Block::RedstoneTorchUnlit => (3, 7),
             _ => (0, 5),
         };
         let unit_cube = BlockFaceGeometry::unit_cube();

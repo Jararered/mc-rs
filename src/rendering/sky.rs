@@ -408,8 +408,8 @@ fn medium_at(chunks: &WorldChunks, eye: Vec3) -> Medium {
         eye.y.floor() as i32,
         eye.z.floor() as i32,
     ) {
-        Some(Block::Water | Block::FlowingWater) => Medium::Water,
-        Some(Block::Lava | Block::FlowingLava) => Medium::Lava,
+        Some(Block::Water | Block::WaterFlowing) => Medium::Water,
+        Some(Block::Lava | Block::LavaFlowing) => Medium::Lava,
         _ => Medium::Air,
     }
 }

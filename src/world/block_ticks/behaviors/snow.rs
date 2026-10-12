@@ -41,7 +41,7 @@ impl BlockBehavior for Ice {
     fn harvested(&self, world: &mut TickWorld, position: IVec3, _block: Block, _metadata: u8) {
         let below = world.block(position - IVec3::Y);
         if below.is_solid_material() || is_liquid(below) {
-            world.set_block_notify(position, Block::FlowingWater);
+            world.set_block_notify(position, Block::WaterFlowing);
         }
     }
 }

@@ -647,7 +647,7 @@ fn help_and_time_work_without_player_and_preserve_scheduled_delays() {
     let pos = IVec3::new(1, 70, 2);
     app.world_mut()
         .resource_mut::<BlockTicks>()
-        .schedule(pos, Block::FlowingWater, 7);
+        .schedule(pos, Block::WaterFlowing, 7);
     app.world_mut().resource_mut::<WorldTick>().advance(0.1);
     for (command, expected) in [
         ("/time night", 13000),

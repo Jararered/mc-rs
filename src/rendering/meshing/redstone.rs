@@ -36,7 +36,7 @@ impl Mesher<'_> {
         }
         // A source on the step above or below (`side` -1) still connects;
         // only a repeater has to face the dust.
-        if matches!(block, Block::Repeater | Block::PoweredRepeater) {
+        if matches!(block, Block::Repeater | Block::RepeaterPowered) {
             return i16::from(side) == [2, 3, 0, 1][usize::from(metadata & 3)];
         }
         behavior(block).can_provide_power()
@@ -113,7 +113,7 @@ impl Mesher<'_> {
             2 => ([0.0, 5.0 / 16.0], [0.0, -movable]),
             _ => ([-5.0 / 16.0, 0.0], [movable, 0.0]),
         };
-        let tile = if block == Block::PoweredRepeater {
+        let tile = if block == Block::RepeaterPowered {
             (3, 6)
         } else {
             (3, 7)

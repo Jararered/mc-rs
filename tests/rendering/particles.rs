@@ -561,10 +561,10 @@ fn torches_furnaces_and_portals_make_display_particles() {
         (Block::LitFurnace, 4),
         (Block::Fire, 0),
         (Block::NetherPortal, 0),
-        (Block::RedstoneTorch, 0),
-        (Block::LitRedstoneOre, 0),
+        (Block::RedstoneTorchLit, 0),
+        (Block::RedstoneOreLit, 0),
         (Block::Redstone, 15),
-        (Block::PoweredRepeater, 0),
+        (Block::RepeaterPowered, 0),
     ] {
         let chunks = world_with(block, metadata, (8, 64, 8));
         assert!(
@@ -577,7 +577,7 @@ fn torches_furnaces_and_portals_make_display_particles() {
         (Block::Furnace, 4),
         (Block::Redstone, 0),
         (Block::Cobblestone, 0),
-        (Block::UnlitRedstoneTorch, 0),
+        (Block::RedstoneTorchUnlit, 0),
     ] {
         let chunks = world_with(block, metadata, (8, 64, 8));
         assert_eq!(display_count(&chunks, 200), 0, "{block:?} should be quiet");

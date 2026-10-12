@@ -70,7 +70,7 @@ pub fn place_selected_block_facing(
             chunks.block_at(x, y - 1, z - 1),
             chunks.block_at(x, y - 1, z + 1),
         ]
-        .map(|block| matches!(block, Some(Block::Water | Block::FlowingWater)));
+        .map(|block| matches!(block, Some(Block::Water | Block::WaterFlowing)));
         if !sugar_cane_can_stay(below, adjacent_water) {
             return false;
         }
@@ -120,7 +120,7 @@ pub fn place_selected_block_facing(
     // Levers, buttons, and redstone torches hang on the side or top of a cube.
     if matches!(
         selected,
-        Block::Lever | Block::StoneButton | Block::RedstoneTorch
+        Block::Lever | Block::StoneButton | Block::RedstoneTorchLit
     ) && (!hit.block.is_normal_cube()
         || hit.face == BlockFace::Down
         || (selected == Block::StoneButton && hit.face == BlockFace::Up))
@@ -185,7 +185,7 @@ pub fn place_selected_block_facing(
             (selected, selected.facing_metadata(support))
         }
         // Beta's `onBlockPlaced` names the clicked side: 5 is the floor.
-        Block::Lever | Block::StoneButton | Block::RedstoneTorch => (
+        Block::Lever | Block::StoneButton | Block::RedstoneTorchLit => (
             selected,
             match hit.face {
                 BlockFace::West => 2,

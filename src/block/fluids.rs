@@ -16,16 +16,16 @@ impl Fluid {
     /// The material of `block`, if it is a fluid.
     pub const fn of(block: Block) -> Option<Self> {
         match block {
-            Block::Water | Block::FlowingWater => Some(Self::Water),
-            Block::Lava | Block::FlowingLava => Some(Self::Lava),
+            Block::Water | Block::WaterFlowing => Some(Self::Water),
+            Block::Lava | Block::LavaFlowing => Some(Self::Lava),
             _ => None,
         }
     }
 
     pub const fn flowing(self) -> Block {
         match self {
-            Self::Water => Block::FlowingWater,
-            Self::Lava => Block::FlowingLava,
+            Self::Water => Block::WaterFlowing,
+            Self::Lava => Block::LavaFlowing,
         }
     }
 

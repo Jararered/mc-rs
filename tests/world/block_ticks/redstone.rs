@@ -31,14 +31,14 @@ fn switch_wire_repeater_and_button_timing() {
     w.run(1);
     assert_eq!(w.block(repeater), Block::Repeater);
     w.run(1);
-    assert_eq!(w.block(repeater), Block::PoweredRepeater);
+    assert_eq!(w.block(repeater), Block::RepeaterPowered);
     w.event(BlockEvent::Activated { position: repeater });
     assert_eq!(w.metadata(repeater) >> 2, 1);
     w.event(BlockEvent::Activated { position: lever });
     assert_eq!(w.metadata(wire), 0);
     assert_eq!(w.metadata(second), 0);
     w.run(3);
-    assert_eq!(w.block(repeater), Block::PoweredRepeater);
+    assert_eq!(w.block(repeater), Block::RepeaterPowered);
     w.run(1);
     assert_eq!(w.block(repeater), Block::Repeater);
 
@@ -135,8 +135,8 @@ fn torch_below_stone_powers_and_releases_a_downward_piston_beside_it() {
     place_meta(&mut w, piston, Block::Piston, 0);
     assert_eq!(w.metadata(piston), 0);
 
-    place_meta(&mut w, torch, Block::RedstoneTorch, 5);
-    assert_eq!(w.block(torch), Block::RedstoneTorch);
+    place_meta(&mut w, torch, Block::RedstoneTorchLit, 5);
+    assert_eq!(w.block(torch), Block::RedstoneTorchLit);
     assert_eq!(w.metadata(piston), 8, "piston should extend downward");
     assert_eq!(w.block(piston + IVec3::NEG_Y), Block::PistonHead);
     assert_eq!(w.block(piston + IVec3::NEG_Y * 2), Block::Stone);
@@ -147,11 +147,11 @@ fn torch_below_stone_powers_and_releases_a_downward_piston_beside_it() {
     place_meta(&mut w, lever, Block::Lever, 2);
     w.event(BlockEvent::Activated { position: lever });
     w.run(2);
-    assert_eq!(w.block(torch), Block::UnlitRedstoneTorch);
+    assert_eq!(w.block(torch), Block::RedstoneTorchUnlit);
     assert_eq!(w.metadata(piston), 0);
     w.event(BlockEvent::Activated { position: lever });
     w.run(2);
-    assert_eq!(w.block(torch), Block::RedstoneTorch);
+    assert_eq!(w.block(torch), Block::RedstoneTorchLit);
     assert_eq!(w.metadata(piston), 8);
 
     w.place(torch, Block::Air);
@@ -196,15 +196,15 @@ fn torch_inverts_power_with_two_tick_delay() {
     let lever = support + IVec3::X;
     w.set(support, Block::Stone);
     place_meta(&mut w, lever, Block::Lever, 1);
-    place_meta(&mut w, torch, Block::RedstoneTorch, 5);
+    place_meta(&mut w, torch, Block::RedstoneTorchLit, 5);
     w.event(BlockEvent::Activated { position: lever });
     w.run(1);
-    assert_eq!(w.block(torch), Block::RedstoneTorch);
+    assert_eq!(w.block(torch), Block::RedstoneTorchLit);
     w.run(1);
-    assert_eq!(w.block(torch), Block::UnlitRedstoneTorch);
+    assert_eq!(w.block(torch), Block::RedstoneTorchUnlit);
     w.event(BlockEvent::Activated { position: lever });
     w.run(2);
-    assert_eq!(w.block(torch), Block::RedstoneTorch);
+    assert_eq!(w.block(torch), Block::RedstoneTorchLit);
 }
 
 #[test]
@@ -277,25 +277,25 @@ fn rapid_redstone_torch_cycles_burn_out_until_history_expires() {
     let torch = base + IVec3::Y;
     w.set(base, Block::Stone);
     place_meta(&mut w, lever, Block::Lever, 1);
-    place_meta(&mut w, torch, Block::RedstoneTorch, 5);
+    place_meta(&mut w, torch, Block::RedstoneTorchLit, 5);
     for cycle in 0..8 {
         w.event(BlockEvent::Activated { position: lever });
         w.run(2);
-        assert_eq!(w.block(torch), Block::UnlitRedstoneTorch);
+        assert_eq!(w.block(torch), Block::RedstoneTorchUnlit);
         w.event(BlockEvent::Activated { position: lever });
         w.run(2);
         assert_eq!(
             w.block(torch),
             if cycle == 7 {
-                Block::UnlitRedstoneTorch
+                Block::RedstoneTorchUnlit
             } else {
-                Block::RedstoneTorch
+                Block::RedstoneTorchLit
             }
         );
     }
     w.run(100);
     w.random_ticks(torch, 1);
-    assert_eq!(w.block(torch), Block::RedstoneTorch);
+    assert_eq!(w.block(torch), Block::RedstoneTorchLit);
 }
 
 #[test]
@@ -427,11 +427,11 @@ fn inverter(w: &mut TestWorld) -> (IVec3, IVec3) {
     place_meta(w, lever, Block::Lever, 5);
     w.place(wire, Block::Redstone);
     w.place(at(6, 64, 4), Block::Stone);
-    place_meta(w, torch, Block::RedstoneTorch, 1);
+    place_meta(w, torch, Block::RedstoneTorchLit, 1);
     w.event(BlockEvent::Activated { position: lever });
     w.run(4);
     assert_eq!(w.metadata(wire), 15);
-    assert_eq!(w.block(torch), Block::UnlitRedstoneTorch);
+    assert_eq!(w.block(torch), Block::RedstoneTorchUnlit);
     (wire, torch)
 }
 
@@ -441,7 +441,7 @@ fn breaking_dust_relights_a_torch_behind_the_block_it_powered() {
     let (wire, torch) = inverter(&mut w);
     w.place(wire, Block::Air);
     w.run(4);
-    assert_eq!(w.block(torch), Block::RedstoneTorch);
+    assert_eq!(w.block(torch), Block::RedstoneTorchLit);
 }
 
 #[test]
@@ -451,7 +451,7 @@ fn bending_dust_away_from_a_block_updates_the_torch_behind_it() {
     // A second dust to the south turns the first away from the stone.
     w.place(wire + IVec3::Z, Block::Redstone);
     w.run(4);
-    assert_eq!(w.block(torch), Block::RedstoneTorch);
+    assert_eq!(w.block(torch), Block::RedstoneTorchLit);
 }
 
 #[test]
@@ -465,7 +465,7 @@ fn dust_broken_by_a_piston_during_a_wire_update_darkens_its_neighbors() {
     place_meta(&mut w, lever, Block::Lever, 5);
     w.place(at(5, 64, 8), Block::Redstone);
     place_meta(&mut w, piston, Block::Piston, 2);
-    place_meta(&mut w, doomed + IVec3::NEG_Z, Block::RedstoneTorch, 5);
+    place_meta(&mut w, doomed + IVec3::NEG_Z, Block::RedstoneTorchLit, 5);
     w.place(tail, Block::Redstone);
     w.place(doomed, Block::Redstone);
     assert_eq!(w.metadata(tail), 14);
@@ -484,7 +484,7 @@ fn dust_connects_to_a_source_on_the_step_below() {
     let wire = at(5, 64, 6);
     let piston = wire + IVec3::Z;
     place_meta(&mut w, at(4, 63, 6), Block::Lever, 5);
-    place_meta(&mut w, wire + IVec3::NEG_Z, Block::RedstoneTorch, 5);
+    place_meta(&mut w, wire + IVec3::NEG_Z, Block::RedstoneTorchLit, 5);
     w.place(wire, Block::Redstone);
     assert_eq!(w.metadata(wire), 15);
     place_meta(&mut w, piston, Block::Piston, 1);
@@ -497,7 +497,7 @@ fn piston_ignores_dust_pointing_into_its_face() {
     w.fill(at(2, 63, 2), at(14, 63, 14), Block::Stone);
     let piston = at(6, 64, 8);
     place_meta(&mut w, piston, Block::Piston, 2);
-    place_meta(&mut w, at(6, 64, 6), Block::RedstoneTorch, 5);
+    place_meta(&mut w, at(6, 64, 6), Block::RedstoneTorchLit, 5);
     w.place(at(6, 64, 7), Block::Redstone);
     assert_eq!(w.block(at(6, 64, 7)), Block::Redstone);
     assert_eq!(w.metadata(piston) & 8, 0);
@@ -513,7 +513,7 @@ fn a_piston_is_not_a_cube_to_hang_a_torch_on() {
     place_meta(&mut w, lever, Block::Lever, 5);
     w.place(at(5, 64, 4), Block::Redstone);
     w.set_with_metadata(body, Block::Piston, 1);
-    w.set_with_metadata(body + IVec3::X, Block::RedstoneTorch, 1);
+    w.set_with_metadata(body + IVec3::X, Block::RedstoneTorchLit, 1);
     w.event(BlockEvent::Activated { position: lever });
     assert_eq!(w.metadata(body) & 8, 8, "the dust still powers the piston");
     assert_eq!(w.block(body + IVec3::X), Block::Air);

@@ -150,7 +150,7 @@ fn block_sort_path(block: Block) -> (u8, u8) {
         | Block::LapisOre
         | Block::DiamondOre
         | Block::RedstoneOre
-        | Block::LitRedstoneOre => (0, 4),
+        | Block::RedstoneOreLit => (0, 4),
         Block::Wood => (0, 5),
         Block::Leaves
         | Block::Sapling
@@ -169,9 +169,9 @@ fn block_sort_path(block: Block) -> (u8, u8) {
         | Block::Cactus
         | Block::Sponge
         | Block::Water
-        | Block::FlowingWater
+        | Block::WaterFlowing
         | Block::Lava
-        | Block::FlowingLava
+        | Block::LavaFlowing
         | Block::Pumpkin
         | Block::JackOLantern => (0, 8),
         // buildingBlock: planks, cobblestone, bricks, glass, wool, slabs/stairs
@@ -206,8 +206,8 @@ fn block_sort_path(block: Block) -> (u8, u8) {
         | Block::Cake => (2, 4),
         // redstone: wire, torch, repeater, piston, lever/button/pressurePlate
         Block::Redstone => (3, 0),
-        Block::Torch | Block::UnlitRedstoneTorch | Block::RedstoneTorch => (3, 1),
-        Block::Repeater | Block::PoweredRepeater => (3, 2),
+        Block::Torch | Block::RedstoneTorchUnlit | Block::RedstoneTorchLit => (3, 1),
+        Block::Repeater | Block::RepeaterPowered => (3, 2),
         Block::StickyPiston | Block::Piston | Block::PistonHead | Block::MovingPiston => (3, 3),
         Block::Lever
         | Block::StoneButton

@@ -129,7 +129,7 @@ fn population_hangs_glowstone_and_lights_fires_on_netherrack() {
                     );
                 }
                 block => assert!(
-                    !matches!(block, Block::Water | Block::FlowingWater | Block::Stone),
+                    !matches!(block, Block::Water | Block::WaterFlowing | Block::Stone),
                     "{block:?} in the Nether"
                 ),
             }

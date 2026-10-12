@@ -925,7 +925,7 @@ fn the_nether_generator_matches_the_beta_server_nether() {
                 let (ours, beta) = (Block::from(ours), Block::from(beta));
                 // `WorldGenHellLava` turns a netherrack cell into a lava
                 // source, which then flows; that is population, not terrain.
-                if ours == Block::Netherrack && matches!(beta, Block::Lava | Block::FlowingLava) {
+                if ours == Block::Netherrack && matches!(beta, Block::Lava | Block::LavaFlowing) {
                     continue;
                 }
                 if nether_terrain(ours) != nether_terrain(beta) {

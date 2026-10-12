@@ -22,7 +22,7 @@ fn chunk_metadata_is_a_nibble_that_resets_when_the_block_changes() {
         chunk.raw_metadata().is_none(),
         "no storage until a value is set"
     );
-    chunk.set_with_metadata(3, 70, 5, Block::FlowingWater, 0x1b);
+    chunk.set_with_metadata(3, 70, 5, Block::WaterFlowing, 0x1b);
     assert_eq!(chunk.metadata(3, 70, 5), 0x0b, "only four bits are kept");
     assert_eq!(
         chunk.metadata(2, 70, 5),
@@ -35,7 +35,7 @@ fn chunk_metadata_is_a_nibble_that_resets_when_the_block_changes() {
 
     // `setBlockID` zeroes the metadata of a different block, but setting
     // the same block keeps it.
-    chunk.set(3, 70, 5, Block::FlowingWater);
+    chunk.set(3, 70, 5, Block::WaterFlowing);
     assert_eq!(chunk.metadata(3, 70, 5), 0x0b);
     chunk.set(3, 70, 5, Block::Stone);
     assert_eq!(chunk.metadata(3, 70, 5), 0);
@@ -168,7 +168,7 @@ fn random_ticks_reach_eighty_cells_per_chunk_and_only_ticking_blocks() {
     let mut world = TestWorld::new(1);
     // Fill the whole chunk with lit redstone ore, which every random tick
     // puts out.
-    world.fill(at(0, 0, 0), at(15, 127, 15), Block::LitRedstoneOre);
+    world.fill(at(0, 0, 0), at(15, 127, 15), Block::RedstoneOreLit);
     world.run_with_random(1, &[ChunkPosition::ZERO]);
     let dimmed = world
         .changes()
@@ -180,7 +180,7 @@ fn random_ticks_reach_eighty_cells_per_chunk_and_only_ticking_blocks() {
         "80 samples, with a few repeats: {dimmed}"
     );
 
-    assert!(ticks_randomly(Block::LitRedstoneOre.as_u8()));
+    assert!(ticks_randomly(Block::RedstoneOreLit.as_u8()));
     assert!(!ticks_randomly(Block::RedstoneOre.as_u8()));
     assert!(!ticks_randomly(Block::Stone.as_u8()));
     assert!(ticks_randomly(Block::Grass.as_u8()));
@@ -238,13 +238,13 @@ fn changing_a_block_notifies_all_six_neighbors() {
     for offset in game::world::block_ticks::NEIGHBORS {
         assert_eq!(
             world.block(center + offset),
-            Block::FlowingWater,
+            Block::WaterFlowing,
             "{offset}"
         );
         assert!(
             world
                 .ticks
-                .is_scheduled(center + offset, Block::FlowingWater)
+                .is_scheduled(center + offset, Block::WaterFlowing)
         );
     }
 }
@@ -259,21 +259,21 @@ fn block_changes_know_when_they_change_light_or_meshes() {
         metadata,
     };
     assert!(change(Block::Stone, 0, Block::Air, 0).changes_light());
-    assert!(change(Block::RedstoneOre, 0, Block::LitRedstoneOre, 0).changes_light());
-    assert!(!change(Block::Water, 0, Block::FlowingWater, 0).changes_light());
+    assert!(change(Block::RedstoneOre, 0, Block::RedstoneOreLit, 0).changes_light());
+    assert!(!change(Block::Water, 0, Block::WaterFlowing, 0).changes_light());
     assert!(!change(Block::Crops, 1, Block::Crops, 2).changes_light());
     assert!(!change(Block::Grass, 0, Block::Dirt, 0).changes_light());
 
     // Only changes the mesher can see are remeshed.
-    assert!(!change(Block::FlowingLava, 0, Block::Lava, 0).needs_remesh());
-    assert!(change(Block::FlowingWater, 1, Block::FlowingWater, 2).needs_remesh());
+    assert!(!change(Block::LavaFlowing, 0, Block::Lava, 0).needs_remesh());
+    assert!(change(Block::WaterFlowing, 1, Block::WaterFlowing, 2).needs_remesh());
     assert!(change(Block::Crops, 1, Block::Crops, 2).needs_remesh());
     assert!(!change(Block::Leaves, 0, Block::Leaves, 8).needs_remesh());
     assert!(!change(Block::Cactus, 3, Block::Cactus, 4).needs_remesh());
     assert!(!change(Block::Farmland, 7, Block::Farmland, 6).needs_remesh());
     assert!(change(Block::Farmland, 1, Block::Farmland, 0).needs_remesh());
     assert!(change(Block::Grass, 0, Block::Dirt, 0).needs_remesh());
-    assert!(change(Block::RedstoneOre, 0, Block::LitRedstoneOre, 0).needs_remesh());
+    assert!(change(Block::RedstoneOre, 0, Block::RedstoneOreLit, 0).needs_remesh());
 }
 
 #[test]

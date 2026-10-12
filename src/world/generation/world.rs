@@ -23,8 +23,8 @@ const CELLS: usize = CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE;
 pub(super) fn beta_opacity(block: Block) -> u8 {
     match block {
         Block::Leaves => 1,
-        Block::Water | Block::FlowingWater | Block::Ice => 3,
-        Block::Lava | Block::FlowingLava | Block::Farmland => 15,
+        Block::Water | Block::WaterFlowing | Block::Ice => 3,
+        Block::Lava | Block::LavaFlowing | Block::Farmland => 15,
         _ if block.is_opaque_cube() => 15,
         _ => 0,
     }
@@ -34,12 +34,12 @@ pub(super) fn beta_opacity(block: Block) -> u8 {
 pub(super) fn is_liquid(block: Block) -> bool {
     matches!(
         block,
-        Block::Water | Block::FlowingWater | Block::Lava | Block::FlowingLava
+        Block::Water | Block::WaterFlowing | Block::Lava | Block::LavaFlowing
     )
 }
 
 pub(super) fn is_water(block: Block) -> bool {
-    matches!(block, Block::Water | Block::FlowingWater)
+    matches!(block, Block::Water | Block::WaterFlowing)
 }
 
 /// Beta `Material.isSolid` and `getIsSolid`, which agree for every material.

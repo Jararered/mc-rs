@@ -266,14 +266,14 @@ fn block_metadata_and_pending_ticks_round_trip_through_a_chunk_file() {
     let mut generated = OverworldGenerator::new(0).generate(position);
     generated
         .chunk
-        .set_with_metadata(4, 90, 5, Block::FlowingWater, 3);
+        .set_with_metadata(4, 90, 5, Block::WaterFlowing, 3);
     generated.chunk.set_with_metadata(5, 90, 5, Block::Crops, 7);
     generated
         .chunk
         .set_with_metadata(6, 90, 5, Block::Farmland, 6);
     let tick = PendingTick {
         index: Chunk::index(4, 90, 5) as u16,
-        block: Block::FlowingWater,
+        block: Block::WaterFlowing,
         delay: 4,
     };
     generated.chunk.set_pending_ticks(vec![tick]);
@@ -1342,9 +1342,7 @@ fn what_is_written_on_a_sign_is_saved_in_both_formats() {
         let storage = WorldStorage::create_in_format(&saves, 0, "Signs", None, format).unwrap();
         let position = ChunkPosition::ZERO;
         let mut generated = OverworldGenerator::new(0).generate(position);
-        generated
-            .chunk
-            .set_with_metadata(4, 90, 5, Block::Sign, 6);
+        generated.chunk.set_with_metadata(4, 90, 5, Block::Sign, 6);
         let index = Chunk::index(4, 90, 5);
         let lines = ["Welcome", "", "to the", "mine"].map(str::to_owned);
         generated.chunk.sign_mut(index).unwrap().lines = lines.clone();

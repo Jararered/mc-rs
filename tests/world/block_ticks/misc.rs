@@ -17,7 +17,7 @@ fn touching_redstone_ore_lights_it_until_a_random_tick() {
     ] {
         world.set(ore, Block::RedstoneOre);
         world.event(event);
-        assert_eq!(world.block(ore), Block::LitRedstoneOre, "{event:?}");
+        assert_eq!(world.block(ore), Block::RedstoneOreLit, "{event:?}");
         world.random_ticks(ore, 1);
         assert_eq!(world.block(ore), Block::RedstoneOre);
     }
@@ -56,7 +56,7 @@ fn harvested_ice_leaves_water_over_solid_ground() {
         block: Block::Ice,
         metadata: 0,
     });
-    assert_eq!(world.block(at(8, 64, 8)), Block::FlowingWater);
+    assert_eq!(world.block(at(8, 64, 8)), Block::WaterFlowing);
 
     world.event(BlockEvent::Harvested {
         position: at(8, 90, 8),
@@ -165,7 +165,7 @@ fn removing_a_sponge_wakes_the_water_around_it() {
     world.place(at(8, 64, 8), Block::Stone);
     assert_eq!(
         world.block(at(10, 64, 8)),
-        Block::FlowingWater,
+        Block::WaterFlowing,
         "two blocks away is inside the sponge's reach"
     );
 }

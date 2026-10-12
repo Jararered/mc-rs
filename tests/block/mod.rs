@@ -271,8 +271,8 @@ fn block_properties_match_beta_registry_values() {
         (Block::WoodenPressurePlate, 0.5, 0, 0),
         (Block::Torch, 0.0, 0, 14),
         (Block::BrownMushroom, 0.0, 0, 1),
-        (Block::RedstoneTorch, 0.0, 0, 7),
-        (Block::PoweredRepeater, 0.0, 0, 9),
+        (Block::RedstoneTorchLit, 0.0, 0, 7),
+        (Block::RepeaterPowered, 0.0, 0, 9),
         (Block::NetherPortal, -1.0, 0, 11),
         (Block::Cake, 0.5, 0, 0),
         (Block::Fence, 2.0, 0, 0),
@@ -282,7 +282,7 @@ fn block_properties_match_beta_registry_values() {
         (Block::Sapling, 0.0, 0, 0),
         (Block::Lava, 0.0, 15, 15),
         (Block::LitFurnace, 3.5, 15, 13),
-        (Block::LitRedstoneOre, 3.0, 15, 9),
+        (Block::RedstoneOreLit, 3.0, 15, 9),
     ];
     for (block, hardness, opacity, emission) in table {
         assert_eq!(block.hardness(), hardness, "{block:?} hardness");

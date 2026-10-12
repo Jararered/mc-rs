@@ -144,7 +144,7 @@ fn sand_drops_straight_down_when_its_surroundings_are_not_loaded() {
 fn falling_blocks_are_carried_by_water_each_tick() {
     let mut world = TestWorld::new(1);
     world.set(at(8, 70, 8), Block::Water);
-    world.set_with_metadata(at(9, 70, 8), Block::FlowingWater, 1);
+    world.set_with_metadata(at(9, 70, 8), Block::WaterFlowing, 1);
     let mut block = FallingBlock {
         block: Block::Sand,
         fall_ticks: 0,

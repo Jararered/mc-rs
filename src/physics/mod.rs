@@ -1132,7 +1132,7 @@ pub fn burning_in(area: Aabb, chunks: &WorldChunks) -> bool {
             (min.z..max.z).any(|z| {
                 matches!(
                     chunks.block_at(x, y, z),
-                    Some(Block::Fire | Block::Lava | Block::FlowingLava)
+                    Some(Block::Fire | Block::Lava | Block::LavaFlowing)
                 )
             })
         })

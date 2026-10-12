@@ -227,7 +227,7 @@ impl<'a> Mesher<'a> {
                     let origin = [x as f32, (y - y_origin) as f32, z as f32];
                     let metadata = chunk.metadata(x, y, z);
                     if block.is_torch()
-                        || matches!(block, Block::RedstoneTorch | Block::UnlitRedstoneTorch)
+                        || matches!(block, Block::RedstoneTorchLit | Block::RedstoneTorchUnlit)
                     {
                         meshes.grass_overlay.push_torch(origin, block, metadata);
                         continue;
@@ -236,7 +236,7 @@ impl<'a> Mesher<'a> {
                         self.push_redstone_wire(&mut meshes.masked, origin, x, y, z);
                         continue;
                     }
-                    if matches!(block, Block::Repeater | Block::PoweredRepeater) {
+                    if matches!(block, Block::Repeater | Block::RepeaterPowered) {
                         self.push_repeater(&mut meshes.masked, origin, x, y, z, block);
                         continue;
                     }

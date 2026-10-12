@@ -146,7 +146,7 @@ fn is_power_provider_or_wire(world: &TickWorld, position: IVec3, side: i8) -> bo
     // a repeater has to face the dust.
     match block {
         Block::Redstone => true,
-        Block::Repeater | Block::PoweredRepeater => {
+        Block::Repeater | Block::RepeaterPowered => {
             i16::from(side) == [2, 3, 0, 1][usize::from(world.metadata(position) & 3)]
         }
         _ => super::super::behavior::behavior(block).can_provide_power(),
@@ -255,7 +255,7 @@ fn repeater_input(world: &mut TickWorld, position: IVec3) -> bool {
 
 impl BlockBehavior for Repeater {
     fn weak_power(&self, world: &mut TickWorld, position: IVec3, side: u8) -> bool {
-        if world.block(position) != Block::PoweredRepeater {
+        if world.block(position) != Block::RepeaterPowered {
             return false;
         }
         let front = [3, 4, 2, 5][(world.metadata(position) & 3) as usize];
@@ -276,7 +276,7 @@ impl BlockBehavior for Repeater {
             world.set_block_notify(position, Block::Air);
             return;
         }
-        if (block == Block::PoweredRepeater) != repeater_input(world, position) {
+        if (block == Block::RepeaterPowered) != repeater_input(world, position) {
             let delay = 2 * (u32::from(world.metadata(position) >> 2) + 1);
             world.schedule(position, block, delay);
         }
@@ -285,14 +285,14 @@ impl BlockBehavior for Repeater {
         let block = world.block(position);
         let powered = repeater_input(world, position);
         let metadata = world.metadata(position);
-        if block == Block::PoweredRepeater && !powered {
+        if block == Block::RepeaterPowered && !powered {
             world.set_block_and_metadata_notify(position, Block::Repeater, metadata);
         } else if block == Block::Repeater {
-            world.set_block_and_metadata_notify(position, Block::PoweredRepeater, metadata);
+            world.set_block_and_metadata_notify(position, Block::RepeaterPowered, metadata);
             if !powered {
                 world.schedule(
                     position,
-                    Block::PoweredRepeater,
+                    Block::RepeaterPowered,
                     2 * (u32::from(metadata >> 2) + 1),
                 );
             }
@@ -347,7 +347,7 @@ fn notify_torch_neighbors(world: &mut TickWorld, position: IVec3) {
         IVec3::NEG_Z,
         IVec3::Z,
     ] {
-        world.notify_neighbors(position + offset, Block::RedstoneTorch);
+        world.notify_neighbors(position + offset, Block::RedstoneTorchLit);
     }
 }
 
@@ -362,7 +362,7 @@ impl BlockBehavior for RedstoneTorch {
         2
     }
     fn weak_power(&self, world: &mut TickWorld, position: IVec3, side: u8) -> bool {
-        world.block(position) == Block::RedstoneTorch
+        world.block(position) == Block::RedstoneTorchLit
             && side
                 != match world.metadata(position) {
                     1 => 5,
@@ -376,18 +376,18 @@ impl BlockBehavior for RedstoneTorch {
         side == 0 && self.weak_power(world, position, side)
     }
     fn on_added(&self, world: &mut TickWorld, position: IVec3) {
-        if world.block(position) == Block::RedstoneTorch {
+        if world.block(position) == Block::RedstoneTorchLit {
             notify_torch_neighbors(world, position);
         }
     }
     fn on_removed(&self, world: &mut TickWorld, position: IVec3, previous: Block, _: u8) {
-        if previous == Block::RedstoneTorch {
+        if previous == Block::RedstoneTorchLit {
             notify_torch_neighbors(world, position);
         }
     }
     fn neighbor_changed(&self, world: &mut TickWorld, position: IVec3, _: Block) {
         if !torch_supported(world, position) {
-            world.drop_block_as_item(position, Block::RedstoneTorch, 0);
+            world.drop_block_as_item(position, Block::RedstoneTorchLit, 0);
             world.set_block_notify(position, Block::Air);
         } else {
             world.schedule(position, world.block(position), 2);
@@ -397,8 +397,8 @@ impl BlockBehavior for RedstoneTorch {
         let powered = torch_powered(world, position);
         let block = world.block(position);
         let meta = world.metadata(position);
-        if powered && block == Block::RedstoneTorch {
-            world.set_block_and_metadata_notify(position, Block::UnlitRedstoneTorch, meta);
+        if powered && block == Block::RedstoneTorchLit {
+            world.set_block_and_metadata_notify(position, Block::RedstoneTorchUnlit, meta);
             if world.torch_burned_out(position, true) {
                 world.play_sound(
                     "random.fizz",
@@ -408,10 +408,10 @@ impl BlockBehavior for RedstoneTorch {
                 );
             }
         } else if !powered
-            && block == Block::UnlitRedstoneTorch
+            && block == Block::RedstoneTorchUnlit
             && !world.torch_burned_out(position, false)
         {
-            world.set_block_and_metadata_notify(position, Block::RedstoneTorch, meta);
+            world.set_block_and_metadata_notify(position, Block::RedstoneTorchLit, meta);
         }
     }
 }

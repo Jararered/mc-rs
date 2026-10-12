@@ -197,7 +197,7 @@ fn raycast_only_hits_the_torch_near_its_visible_shaft() {
 
 #[test]
 fn wall_redstone_torches_are_targetable_at_their_actual_mounting_side() {
-    for block in [Block::RedstoneTorch, Block::UnlitRedstoneTorch] {
+    for block in [Block::RedstoneTorchLit, Block::RedstoneTorchUnlit] {
         for (metadata, near, direction) in [
             (1, Vec3::new(7.0, 64.5, 8.5), Vec3::X),
             (2, Vec3::new(10.0, 64.5, 8.5), Vec3::NEG_X),
@@ -729,7 +729,7 @@ fn current_world() -> WorldChunks {
     chunk.set(8, 64, 8, Block::Stone);
     chunk.set(9, 64, 8, Block::Stone);
     chunk.set(8, 65, 8, Block::Water);
-    chunk.set_with_metadata(9, 65, 8, Block::FlowingWater, 1);
+    chunk.set_with_metadata(9, 65, 8, Block::WaterFlowing, 1);
     let mut chunks = WorldChunks::default();
     chunks.insert(ChunkPosition::ZERO, generated(chunk));
     chunks

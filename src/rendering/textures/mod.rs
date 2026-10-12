@@ -496,7 +496,7 @@ pub fn block_tile(
         Block::Sandstone => (0, 12),
         Block::LapisOre => (0, 10),
         Block::LapisBlock => (0, 9),
-        Block::RedstoneOre | Block::LitRedstoneOre => (3, 3),
+        Block::RedstoneOre | Block::RedstoneOreLit => (3, 3),
         Block::GoldOre => (0, 2),
         Block::IronOre => (1, 2),
         Block::CoalOre => (2, 2),
@@ -523,7 +523,7 @@ pub fn block_tile(
                 (10, 1)
             }
         }
-        Block::Lava | Block::FlowingLava => (13, 14),
+        Block::Lava | Block::LavaFlowing => (13, 14),
         Block::Netherrack => (7, 6),
         Block::NetherPortal => water::PORTAL_TILE,
         Block::Glowstone => (9, 6),
@@ -535,7 +535,7 @@ pub fn block_tile(
         Block::BrownMushroom => (13, 1),
         Block::TallGrass if metadata & 3 == species::FERN => (8, 3),
         Block::TallGrass => (7, 2),
-        Block::Water | Block::FlowingWater => water::WATER_STILL_TILE,
+        Block::Water | Block::WaterFlowing => water::WATER_STILL_TILE,
         Block::Crops => crop_tile(7),
         Block::Ice => (3, 4),
         // `BlockSapling.getBlockTextureFromSideAndMetadata`.
@@ -584,10 +584,10 @@ pub fn block_tile(
         Block::Redstone => (4, 10),
         // `BlockRedstoneRepeater`: the top and torch shade with power.
         Block::Repeater if face == 0 => tile(131),
-        Block::PoweredRepeater if face == 0 => tile(147),
-        Block::Repeater | Block::PoweredRepeater => tile(5),
-        Block::RedstoneTorch => tile(99),
-        Block::UnlitRedstoneTorch => tile(115),
+        Block::RepeaterPowered if face == 0 => tile(147),
+        Block::Repeater | Block::RepeaterPowered => tile(5),
+        Block::RedstoneTorchLit => tile(99),
+        Block::RedstoneTorchUnlit => tile(115),
         Block::StoneButton | Block::StonePressurePlate => (1, 0),
         Block::WoodenPressurePlate => (4, 0),
         Block::Lever => (0, 6),

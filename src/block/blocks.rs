@@ -20,9 +20,9 @@ pub enum Block {
     WoodenPlanks = 5,
     Sapling = 6,
     Bedrock = 7,
-    FlowingWater = 8,
+    WaterFlowing = 8,
     Water = 9,
-    FlowingLava = 10,
+    LavaFlowing = 10,
     Lava = 11,
     Sand = 12,
     Gravel = 13,
@@ -86,9 +86,9 @@ pub enum Block {
     IronDoor = 71,
     WoodenPressurePlate = 72,
     RedstoneOre = 73,
-    LitRedstoneOre = 74,
-    UnlitRedstoneTorch = 75,
-    RedstoneTorch = 76,
+    RedstoneOreLit = 74,
+    RedstoneTorchUnlit = 75,
+    RedstoneTorchLit = 76,
     StoneButton = 77,
     SnowLayer = 78,
     Ice = 79,
@@ -106,7 +106,7 @@ pub enum Block {
     JackOLantern = 91,
     Cake = 92,
     Repeater = 93,
-    PoweredRepeater = 94,
+    RepeaterPowered = 94,
     LockedChest = 95,
     Trapdoor = 96,
     #[num_enum(catch_all)]
@@ -278,9 +278,9 @@ impl Block {
             | Self::Dispenser
             | Self::Redstone
             | Self::Repeater
-            | Self::PoweredRepeater
-            | Self::RedstoneTorch
-            | Self::UnlitRedstoneTorch
+            | Self::RepeaterPowered
+            | Self::RedstoneTorchLit
+            | Self::RedstoneTorchUnlit
             | Self::Lever
             | Self::StoneButton
             | Self::StonePressurePlate
@@ -397,10 +397,10 @@ impl Block {
                 | Self::WallSign
                 | Self::WoodenDoor
                 | Self::IronDoor
-                | Self::UnlitRedstoneTorch
+                | Self::RedstoneTorchUnlit
                 | Self::NetherPortal
                 | Self::Cake
-                | Self::PoweredRepeater,
+                | Self::RepeaterPowered,
                 _,
             ) => None,
             (Self::Wood | Self::WoodenPlanks | Self::Leaves | Self::Sapling, 0..=2) => {

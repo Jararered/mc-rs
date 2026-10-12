@@ -322,11 +322,11 @@ fn empty_bucket_picks_up_a_lava_source() {
 #[test]
 fn empty_bucket_leaves_flowing_water_in_place() {
     let mut chunk = Chunk::new();
-    chunk.set_with_metadata(8, 64, 8, Block::FlowingWater, 3);
+    chunk.set_with_metadata(8, 64, 8, Block::WaterFlowing, 3);
     let mut chunks = world_with(chunk);
 
     assert!(pick_up_fluid(&mut chunks, Vec3::new(8.5, 66.0, 8.5), Vec3::NEG_Y).is_none());
-    assert_eq!(chunks.block_at(8, 64, 8), Some(Block::FlowingWater));
+    assert_eq!(chunks.block_at(8, 64, 8), Some(Block::WaterFlowing));
     assert_eq!(chunks.metadata_at(8, 64, 8), 3);
 }
 
@@ -355,7 +355,7 @@ fn water_bucket_fills_the_non_solid_cell_beside_the_hit_face() {
     assert_eq!((x, y, z), (8, 65, 8));
     assert_eq!(previous, Block::Air);
     assert_eq!(metadata, 0);
-    assert_eq!(chunks.block_at(8, 65, 8), Some(Block::FlowingWater));
+    assert_eq!(chunks.block_at(8, 65, 8), Some(Block::WaterFlowing));
     assert_eq!(chunks.metadata_at(8, 65, 8), 0);
 }
 
@@ -371,7 +371,7 @@ fn lava_bucket_places_flowing_lava() {
         Fluid::Lava,
     )
     .expect("air above a solid block accepts the fluid");
-    assert_eq!(chunks.block_at(8, 65, 8), Some(Block::FlowingLava));
+    assert_eq!(chunks.block_at(8, 65, 8), Some(Block::LavaFlowing));
     assert_eq!(chunks.metadata_at(8, 65, 8), 0);
 }
 
@@ -390,7 +390,7 @@ fn water_bucket_overwrites_non_solid_blocks_without_dropping_them() {
     .expect("tall grass is not a solid material");
     assert_eq!((x, y, z), (8, 65, 8));
     assert_eq!(previous, Block::TallGrass);
-    assert_eq!(chunks.block_at(8, 65, 8), Some(Block::FlowingWater));
+    assert_eq!(chunks.block_at(8, 65, 8), Some(Block::WaterFlowing));
 }
 
 #[test]

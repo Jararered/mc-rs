@@ -42,7 +42,7 @@ pub fn generate_lava_fall(world: &mut TickWorld, position: IVec3) -> bool {
         .filter(|&offset| world.is_air(position + offset))
         .count();
     if netherrack == 4 && air == 1 {
-        world.set_block_notify(position, Block::FlowingLava);
+        world.set_block_notify(position, Block::LavaFlowing);
         world.set_immediate(true);
         world.update_tick(position);
         world.flush_deferred();

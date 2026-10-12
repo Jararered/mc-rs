@@ -54,7 +54,10 @@ pub(super) fn apply_break(
         .map(|dispenser| dispenser.slots.into_iter().flatten().collect::<Vec<_>>())
         .unwrap_or_default();
     let light_edit = hit.block.is_torch()
-        || matches!(hit.block, Block::RedstoneTorch | Block::UnlitRedstoneTorch)
+        || matches!(
+            hit.block,
+            Block::RedstoneTorchLit | Block::RedstoneTorchUnlit
+        )
         || hit.block == Block::LitFurnace
         || attached
             .iter()

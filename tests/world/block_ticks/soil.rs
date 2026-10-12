@@ -66,7 +66,7 @@ fn grass_covered_by_an_opaque_block_dies_back_to_dirt() {
 fn grass_under_dark_still_or_flowing_water_dies_back_to_dirt() {
     let grass = at(8, 63, 8);
     let above = at(8, 64, 8);
-    for water in [Block::Water, Block::FlowingWater] {
+    for water in [Block::Water, Block::WaterFlowing] {
         let mut world = dirt_field();
         world.set(grass, Block::Grass);
         world.fill(at(0, 64, 0), at(15, 64, 15), water);
@@ -86,7 +86,7 @@ fn grass_under_dark_still_or_flowing_water_dies_back_to_dirt() {
 fn sunlit_water_does_not_turn_grass_into_dirt() {
     let grass = at(8, 63, 8);
     let above = at(8, 64, 8);
-    for water in [Block::Water, Block::FlowingWater] {
+    for water in [Block::Water, Block::WaterFlowing] {
         let mut world = dirt_field();
         world.set(grass, Block::Grass);
         world.set(above, water);

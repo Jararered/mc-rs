@@ -189,7 +189,7 @@ fn carve_ellipsoid(
 
     // Beta scans only the shell of the box: interior columns check their top
     // cell and then skip straight to the bottom one.
-    let lava = [Block::Lava.as_u8(), Block::FlowingLava.as_u8()];
+    let lava = [Block::Lava.as_u8(), Block::LavaFlowing.as_u8()];
     for x in x0..x1 {
         for z in z0..z1 {
             let mut y = y1 + 1;

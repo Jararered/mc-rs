@@ -34,9 +34,9 @@ fn beta_value(block: Block, metadata: u8) -> u16 {
     let (id, species) = match block {
         Block::Air
         | Block::Water
-        | Block::FlowingWater
+        | Block::WaterFlowing
         | Block::Lava
-        | Block::FlowingLava
+        | Block::LavaFlowing
         | Block::Gravel
         | Block::Obsidian => (0, 0),
         Block::Wood | Block::Leaves => (u16::from(block.as_u8()), metadata & 3),

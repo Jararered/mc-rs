@@ -435,8 +435,8 @@ fn flowing_water_slopes_toward_its_lower_levels_and_uses_the_flow_tile() {
         chunk.set(x, 0, 1, Block::Stone);
     }
     chunk.set_with_metadata(0, 1, 1, Block::Water, 0);
-    chunk.set_with_metadata(1, 1, 1, Block::FlowingWater, 1);
-    chunk.set_with_metadata(2, 1, 1, Block::FlowingWater, 2);
+    chunk.set_with_metadata(1, 1, 1, Block::WaterFlowing, 1);
+    chunk.set_with_metadata(2, 1, 1, Block::WaterFlowing, 2);
     let meshes = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), true);
     let positions = meshes.water.positions();
     let uvs = meshes.water.uvs();
@@ -466,13 +466,13 @@ fn diagonal_water_uses_the_full_flow_angle_inside_repeated_atlas_tiles() {
     let mut corners = Vec::new();
     for directions in [[(1i32, 0i32), (0, 1)], [(-1, 0), (0, -1)]] {
         let mut chunk = Chunk::new();
-        chunk.set_with_metadata(8, 1, 8, Block::FlowingWater, 0);
+        chunk.set_with_metadata(8, 1, 8, Block::WaterFlowing, 0);
         for (dx, dz) in directions {
             chunk.set_with_metadata(
                 (8 + dx) as usize,
                 1,
                 (8 + dz) as usize,
-                Block::FlowingWater,
+                Block::WaterFlowing,
                 1,
             );
         }
@@ -1292,10 +1292,10 @@ fn quad_records_decode_to_the_vertices_they_replace() {
     chunk.set(4, 1, 6, Block::Cactus);
     chunk.set(6, 1, 6, Block::Leaves);
     chunk.set_with_metadata(10, 1, 10, Block::Water, 0);
-    chunk.set_with_metadata(11, 1, 10, Block::FlowingWater, 1);
-    chunk.set_with_metadata(12, 1, 10, Block::FlowingWater, 2);
-    chunk.set_with_metadata(11, 1, 11, Block::FlowingWater, 3);
-    chunk.set_with_metadata(12, 3, 3, Block::FlowingLava, 2);
+    chunk.set_with_metadata(11, 1, 10, Block::WaterFlowing, 1);
+    chunk.set_with_metadata(12, 1, 10, Block::WaterFlowing, 2);
+    chunk.set_with_metadata(11, 1, 11, Block::WaterFlowing, 3);
+    chunk.set_with_metadata(12, 3, 3, Block::LavaFlowing, 2);
     let (mut quads, mut triangles) = (0, 0);
     for fancy in [false, true] {
         let meshes = mesh_chunk_with_settings(&chunk, &Skylight::from_chunk(&chunk), fancy);

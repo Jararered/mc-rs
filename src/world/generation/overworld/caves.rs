@@ -189,7 +189,7 @@ fn carve_ellipsoid(
 
     // Beta scans only the shell of the box: interior columns check their top
     // cell and then skip straight to the bottom one.
-    let water = [Block::Water.as_u8(), Block::FlowingWater.as_u8()];
+    let water = [Block::Water.as_u8(), Block::WaterFlowing.as_u8()];
     for x in x0..x1 {
         for z in z0..z1 {
             let mut y = y1 + 1;
@@ -233,7 +233,7 @@ fn carve_ellipsoid(
                 }
                 if block == stone || block == dirt || block == grass {
                     if y < 10 {
-                        blocks[index] = Block::FlowingLava.as_u8();
+                        blocks[index] = Block::LavaFlowing.as_u8();
                     } else {
                         blocks[index] = Block::Air.as_u8();
                         let below = raw_index(x as usize, y as usize, z as usize);

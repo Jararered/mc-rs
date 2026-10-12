@@ -50,7 +50,7 @@ pub(super) fn table() -> [&'static dyn BlockBehavior; 256] {
     let mut table = inert_table();
     register(
         &mut table,
-        &[Block::FlowingWater, Block::FlowingLava],
+        &[Block::WaterFlowing, Block::LavaFlowing],
         &fluid::FLOWING,
     );
     register(&mut table, &[Block::Water, Block::Lava], &fluid::STATIONARY);
@@ -80,7 +80,7 @@ pub(super) fn table() -> [&'static dyn BlockBehavior; 256] {
     register(&mut table, &[Block::Wood], &leaves::LOG);
     register(
         &mut table,
-        &[Block::RedstoneOre, Block::LitRedstoneOre],
+        &[Block::RedstoneOre, Block::RedstoneOreLit],
         &ore::REDSTONE_ORE,
     );
     register(&mut table, &[Block::Ice], &snow::ICE);
@@ -107,12 +107,12 @@ pub(super) fn table() -> [&'static dyn BlockBehavior; 256] {
     register(&mut table, &[Block::Redstone], &redstone::WIRE);
     register(
         &mut table,
-        &[Block::Repeater, Block::PoweredRepeater],
+        &[Block::Repeater, Block::RepeaterPowered],
         &redstone::REPEATER,
     );
     register(
         &mut table,
-        &[Block::RedstoneTorch, Block::UnlitRedstoneTorch],
+        &[Block::RedstoneTorchLit, Block::RedstoneTorchUnlit],
         &redstone::REDSTONE_TORCH,
     );
     register(&mut table, &[Block::Lever], &controls::LEVER);

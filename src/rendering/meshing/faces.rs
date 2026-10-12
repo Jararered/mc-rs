@@ -258,9 +258,9 @@ pub(super) fn neighbor_hides_face(
         || neighbor == Block::Farmland
         || neighbor == Block::Crops
         || neighbor == Block::Water
-        || neighbor == Block::FlowingWater
+        || neighbor == Block::WaterFlowing
         || neighbor == Block::Lava
-        || neighbor == Block::FlowingLava
+        || neighbor == Block::LavaFlowing
         || neighbor == Block::MobSpawner
         || neighbor == Block::NetherPortal
         || neighbor == Block::Bed
@@ -301,9 +301,9 @@ pub(super) fn partial_redstone_block(block: Block) -> bool {
         block,
         Block::Redstone
             | Block::Repeater
-            | Block::PoweredRepeater
-            | Block::RedstoneTorch
-            | Block::UnlitRedstoneTorch
+            | Block::RepeaterPowered
+            | Block::RedstoneTorchLit
+            | Block::RedstoneTorchUnlit
             | Block::Lever
             | Block::StoneButton
             | Block::StonePressurePlate
@@ -435,7 +435,7 @@ pub(super) fn block_tint(block: Block, metadata: u8, foliage: Option<[f32; 3]>) 
         return [BRIGHT_TINT; 3];
     }
     match block {
-        Block::Water | Block::FlowingWater => WATER_TINT,
+        Block::Water | Block::WaterFlowing => WATER_TINT,
         Block::Leaves => match metadata & 3 {
             species::BIRCH => linear_rgb(128, 167, 85),
             species::SPRUCE => linear_rgb(97, 153, 97),

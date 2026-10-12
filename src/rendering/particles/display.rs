@@ -60,7 +60,7 @@ fn display_sound(sounds: &mut Sounds, chunks: &WorldChunks, cell: IVec3, block: 
             sounds.play("fire.fire", center, volume, pitch);
         }
         // Only water that is flowing.
-        Block::Water | Block::FlowingWater
+        Block::Water | Block::WaterFlowing
             if random.next_int(64) == 0
                 && (1..8).contains(&chunks.metadata_at(cell.x, cell.y, cell.z)) =>
         {
@@ -86,14 +86,14 @@ fn display_tick(
     let base = cell.as_vec3();
     match block {
         Block::Torch => torch(particles, base, metadata),
-        Block::RedstoneTorch => redstone_torch(particles, random, base, metadata),
+        Block::RedstoneTorchLit => redstone_torch(particles, random, base, metadata),
         Block::LitFurnace => furnace(particles, random, base, metadata),
         Block::Fire => fire(particles, random, chunks, cell),
-        Block::LitRedstoneOre => sparkle(particles, random, chunks, cell),
+        Block::RedstoneOreLit => sparkle(particles, random, chunks, cell),
         Block::Redstone => redstone_wire(particles, random, base, metadata),
-        Block::PoweredRepeater => repeater(particles, random, base, metadata),
+        Block::RepeaterPowered => repeater(particles, random, base, metadata),
         Block::NetherPortal => portal(particles, random, chunks, cell),
-        Block::Lava | Block::FlowingLava => lava(particles, random, chunks, cell),
+        Block::Lava | Block::LavaFlowing => lava(particles, random, chunks, cell),
         _ => {}
     }
 }

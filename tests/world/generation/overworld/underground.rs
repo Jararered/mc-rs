@@ -66,8 +66,8 @@ fn common_ores_generate_and_cave_lava_stays_below_y10() {
                     match generated.chunk.get(x, y, z).unwrap() {
                         Block::CoalOre => coal += 1,
                         Block::IronOre => iron += 1,
-                        Block::FlowingLava if y < 10 => {}
-                        Block::FlowingLava => panic!("cave lava above Beta's Y=10 cutoff"),
+                        Block::LavaFlowing if y < 10 => {}
+                        Block::LavaFlowing => panic!("cave lava above Beta's Y=10 cutoff"),
                         _ => {}
                     }
                 }
@@ -98,7 +98,7 @@ fn population_places_clay_and_dungeon_blocks() {
                     Block::MobSpawner => spawners += 1,
                     Block::Chest => chests += 1,
                     Block::Lava => lake_lava += 1,
-                    Block::FlowingLava => cave_lava += 1,
+                    Block::LavaFlowing => cave_lava += 1,
                     Block::GoldOre => rare_ores[0] += 1,
                     Block::RedstoneOre => rare_ores[1] += 1,
                     Block::DiamondOre => rare_ores[2] += 1,

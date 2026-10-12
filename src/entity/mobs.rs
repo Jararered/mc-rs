@@ -646,13 +646,13 @@ pub fn can_spawn_at(
                     return false;
                 };
                 if kind == MobType::Squid {
-                    if by == y && !matches!(block, Block::Water | Block::FlowingWater) {
+                    if by == y && !matches!(block, Block::Water | Block::WaterFlowing) {
                         return false;
                     }
                 } else if block.collision_bounds().is_some()
                     || matches!(
                         block,
-                        Block::Water | Block::FlowingWater | Block::Lava | Block::FlowingLava
+                        Block::Water | Block::WaterFlowing | Block::Lava | Block::LavaFlowing
                     )
                 {
                     return false;

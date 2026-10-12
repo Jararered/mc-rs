@@ -18,7 +18,7 @@ use crate::world::chunk::GeneratedChunk;
 /// The boolean reports whether the pocket passed the Java preconditions,
 /// *not* whether a block was placed.
 pub fn generate_spring(world: &mut TickWorld, position: IVec3, liquid: Block) -> bool {
-    assert!(matches!(liquid, Block::FlowingWater | Block::FlowingLava));
+    assert!(matches!(liquid, Block::WaterFlowing | Block::LavaFlowing));
     if world.block(position + IVec3::Y) != Block::Stone
         || world.block(position - IVec3::Y) != Block::Stone
         || !matches!(world.block(position), Block::Air | Block::Stone)
@@ -102,7 +102,7 @@ pub fn generate_attempts(world: &mut TickWorld, rand: &mut JavaRandom, source: C
         let bound = rand.next_int(120) + 8;
         let y = rand.next_int(bound) as i32;
         let z = oz + rand.next_int(16) as i32 + 8;
-        generate_spring(world, IVec3::new(x, y, z), Block::FlowingWater);
+        generate_spring(world, IVec3::new(x, y, z), Block::WaterFlowing);
     }
     for _ in 0..20 {
         let x = ox + rand.next_int(16) as i32 + 8;
@@ -110,6 +110,6 @@ pub fn generate_attempts(world: &mut TickWorld, rand: &mut JavaRandom, source: C
         let bound = rand.next_int(bound) + 8;
         let y = rand.next_int(bound) as i32;
         let z = oz + rand.next_int(16) as i32 + 8;
-        generate_spring(world, IVec3::new(x, y, z), Block::FlowingLava);
+        generate_spring(world, IVec3::new(x, y, z), Block::LavaFlowing);
     }
 }

@@ -66,11 +66,11 @@ fn mobility(block: Block) -> u8 {
         | Block::PistonHead
         | Block::MovingPiston => 2,
         Block::Torch
-        | Block::RedstoneTorch
-        | Block::UnlitRedstoneTorch
+        | Block::RedstoneTorchLit
+        | Block::RedstoneTorchUnlit
         | Block::Redstone
         | Block::Repeater
-        | Block::PoweredRepeater
+        | Block::RepeaterPowered
         | Block::Lever
         | Block::StoneButton
         | Block::Ladder
@@ -89,9 +89,9 @@ fn mobility(block: Block) -> u8 {
         | Block::Crops
         | Block::SugarCane
         | Block::Water
-        | Block::FlowingWater
+        | Block::WaterFlowing
         | Block::Lava
-        | Block::FlowingLava
+        | Block::LavaFlowing
         | Block::Leaves
         | Block::Fire
         | Block::SnowLayer

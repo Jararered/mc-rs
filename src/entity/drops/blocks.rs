@@ -91,7 +91,7 @@ fn push_natural(drops: &mut Vec<ItemStack>, block: Block, metadata: u8, rolls: &
             let count = 4 + rolls.next_int(5);
             push_item(drops, Item::Dye, 4, count);
         }
-        Block::RedstoneOre | Block::LitRedstoneOre => {
+        Block::RedstoneOre | Block::RedstoneOreLit => {
             let count = 4 + rolls.next_int(2);
             push_item(drops, Item::Redstone, 0, count);
         }
@@ -113,9 +113,9 @@ fn push_natural(drops: &mut Vec<ItemStack>, block: Block, metadata: u8, rolls: &
         | Block::Ice
         | Block::Bookshelf
         | Block::Fire
-        | Block::FlowingWater
+        | Block::WaterFlowing
         | Block::Water
-        | Block::FlowingLava
+        | Block::LavaFlowing
         | Block::Lava
         | Block::NetherPortal
         | Block::MobSpawner
@@ -130,7 +130,7 @@ fn push_natural(drops: &mut Vec<ItemStack>, block: Block, metadata: u8, rolls: &
         Block::WoodenStairs => push_block(drops, Block::WoodenPlanks, 1),
         Block::CobblestoneStairs => push_block(drops, Block::Cobblestone, 1),
         Block::LitFurnace => push_block(drops, Block::Furnace, 1),
-        Block::UnlitRedstoneTorch => push_block(drops, Block::RedstoneTorch, 1),
+        Block::RedstoneTorchUnlit => push_block(drops, Block::RedstoneTorchLit, 1),
         Block::Redstone => push_item(drops, Item::Redstone, 0, 1),
         Block::Sign | Block::WallSign => push_item(drops, Item::Sign, 0, 1),
         // `BlockDoor.idDropped`: the upper half drops nothing.
@@ -141,7 +141,7 @@ fn push_natural(drops: &mut Vec<ItemStack>, block: Block, metadata: u8, rolls: &
         // `BlockBed.idDropped`: only one half leaves the item.
         Block::Bed if crate::block::bed::is_foot(metadata) => {}
         Block::Bed => push_item(drops, Item::Bed, 0, 1),
-        Block::Repeater | Block::PoweredRepeater => push_item(drops, Item::Repeater, 0, 1),
+        Block::Repeater | Block::RepeaterPowered => push_item(drops, Item::Repeater, 0, 1),
         Block::TallGrass => {
             if rolls.next_int(8) == 0 {
                 push_item(drops, Item::Seeds, 0, 1);

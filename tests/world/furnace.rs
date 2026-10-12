@@ -123,7 +123,7 @@ fn furnace_world_system_uses_world_ticks_and_switches_the_block_light_state() {
         .add_systems(Update, tick_furnaces);
     let position = ChunkPosition::ZERO;
     let mut generated = OverworldGenerator::new(1).generate(position);
-    generated.chunk.set(2, 40, 3, Block::Furnace);
+    generated.chunk.set(2, 40, 3, Block::FurnaceInactive);
     app.world_mut()
         .resource_mut::<WorldChunks>()
         .insert(position, generated);
@@ -138,7 +138,7 @@ fn furnace_world_system_uses_world_ticks_and_switches_the_block_light_state() {
     app.update();
     assert_eq!(
         app.world().resource::<WorldChunks>().block_at(2, 40, 3),
-        Some(Block::LitFurnace)
+        Some(Block::FurnaceActive)
     );
 
     for _ in 1..101 {
@@ -147,14 +147,14 @@ fn furnace_world_system_uses_world_ticks_and_switches_the_block_light_state() {
     }
     assert_eq!(
         app.world().resource::<WorldChunks>().block_at(2, 40, 3),
-        Some(Block::Furnace)
+        Some(Block::FurnaceInactive)
     );
 }
 
 #[test]
 fn removing_a_furnace_block_removes_its_block_local_inventory() {
     let mut generated = OverworldGenerator::new(2).generate(ChunkPosition::ZERO);
-    generated.chunk.set(2, 40, 3, Block::Furnace);
+    generated.chunk.set(2, 40, 3, Block::FurnaceInactive);
     let mut chunks = WorldChunks::default();
     chunks.insert(ChunkPosition::ZERO, generated);
     chunks.furnace_at_mut(2, 40, 3).unwrap().slots[0] = Some(block(Block::IronOre));
@@ -197,7 +197,7 @@ fn furnace_inventory_and_progress_round_trip_and_old_chunks_still_load() {
     let storage = WorldStorage::create(&saves, 99, "Furnace persistence").unwrap();
     let position = ChunkPosition { x: -1, z: 2 };
     let mut generated = OverworldGenerator::new(99).generate(position);
-    generated.chunk.set(3, 32, 7, Block::Furnace);
+    generated.chunk.set(3, 32, 7, Block::FurnaceInactive);
     let index = (32 * 16 + 7) * 16 + 3;
     let furnace = generated.chunk.furnace_mut(index).unwrap();
     furnace.slots[0] = Some(block(Block::IronOre));

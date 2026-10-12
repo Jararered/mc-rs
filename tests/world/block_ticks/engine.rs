@@ -168,20 +168,20 @@ fn random_ticks_reach_eighty_cells_per_chunk_and_only_ticking_blocks() {
     let mut world = TestWorld::new(1);
     // Fill the whole chunk with lit redstone ore, which every random tick
     // puts out.
-    world.fill(at(0, 0, 0), at(15, 127, 15), Block::RedstoneOreLit);
+    world.fill(at(0, 0, 0), at(15, 127, 15), Block::RedstoneOreActive);
     world.run_with_random(1, &[ChunkPosition::ZERO]);
     let dimmed = world
         .changes()
         .iter()
-        .filter(|change| change.block == Block::RedstoneOre)
+        .filter(|change| change.block == Block::RedstoneOreInactive)
         .count();
     assert!(
         (60..=RANDOM_TICKS_PER_CHUNK).contains(&dimmed),
         "80 samples, with a few repeats: {dimmed}"
     );
 
-    assert!(ticks_randomly(Block::RedstoneOreLit.as_u8()));
-    assert!(!ticks_randomly(Block::RedstoneOre.as_u8()));
+    assert!(ticks_randomly(Block::RedstoneOreActive.as_u8()));
+    assert!(!ticks_randomly(Block::RedstoneOreInactive.as_u8()));
     assert!(!ticks_randomly(Block::Stone.as_u8()));
     assert!(ticks_randomly(Block::Grass.as_u8()));
     assert!(behavior(Block::Grass).ticks_randomly(Block::Grass));
@@ -259,7 +259,7 @@ fn block_changes_know_when_they_change_light_or_meshes() {
         metadata,
     };
     assert!(change(Block::Stone, 0, Block::Air, 0).changes_light());
-    assert!(change(Block::RedstoneOre, 0, Block::RedstoneOreLit, 0).changes_light());
+    assert!(change(Block::RedstoneOreInactive, 0, Block::RedstoneOreActive, 0).changes_light());
     assert!(!change(Block::Water, 0, Block::WaterFlowing, 0).changes_light());
     assert!(!change(Block::Crops, 1, Block::Crops, 2).changes_light());
     assert!(!change(Block::Grass, 0, Block::Dirt, 0).changes_light());
@@ -273,7 +273,7 @@ fn block_changes_know_when_they_change_light_or_meshes() {
     assert!(!change(Block::Farmland, 7, Block::Farmland, 6).needs_remesh());
     assert!(change(Block::Farmland, 1, Block::Farmland, 0).needs_remesh());
     assert!(change(Block::Grass, 0, Block::Dirt, 0).needs_remesh());
-    assert!(change(Block::RedstoneOre, 0, Block::RedstoneOreLit, 0).needs_remesh());
+    assert!(change(Block::RedstoneOreInactive, 0, Block::RedstoneOreActive, 0).needs_remesh());
 }
 
 #[test]

@@ -71,9 +71,9 @@ fn snow_layer_and_snow_block_use_beta_snow_tile() {
 
 #[test]
 fn furnace_faces_follow_orientation_and_lit_state() {
-    let furnace = Block::Furnace;
-    let lit = Block::LitFurnace;
-    let east = Block::Furnace.facing_metadata(Direction::East);
+    let furnace = Block::FurnaceInactive;
+    let lit = Block::FurnaceActive;
+    let east = Block::FurnaceInactive.facing_metadata(Direction::East);
 
     assert_eq!(block_tile(furnace, east, 0, false), (14, 3));
     assert_eq!(block_tile(furnace, east, 2, false), (12, 2));
@@ -82,7 +82,7 @@ fn furnace_faces_follow_orientation_and_lit_state() {
     assert_eq!(block_tile(lit, east, 2, false), (13, 3));
     assert_eq!(block_tile(lit, east, 3, false), (13, 2));
     assert_eq!(lit.facing(east), Some(Direction::East));
-    assert_eq!(lit.item_form(east), (Block::Furnace, 0));
+    assert_eq!(lit.item_form(east), (Block::FurnaceInactive, 0));
     assert_eq!(lit.as_u8(), Block::from_u8(lit.as_u8()).unwrap().as_u8());
 }
 

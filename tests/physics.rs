@@ -197,7 +197,7 @@ fn raycast_only_hits_the_torch_near_its_visible_shaft() {
 
 #[test]
 fn wall_redstone_torches_are_targetable_at_their_actual_mounting_side() {
-    for block in [Block::RedstoneTorchLit, Block::RedstoneTorchUnlit] {
+    for block in [Block::RedstoneTorchActive, Block::RedstoneTorchInactive] {
         for (metadata, near, direction) in [
             (1, Vec3::new(7.0, 64.5, 8.5), Vec3::X),
             (2, Vec3::new(10.0, 64.5, 8.5), Vec3::NEG_X),

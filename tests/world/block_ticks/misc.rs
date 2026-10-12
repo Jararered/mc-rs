@@ -15,11 +15,11 @@ fn touching_redstone_ore_lights_it_until_a_random_tick() {
         BlockEvent::Activated { position: ore },
         BlockEvent::Walked { position: ore },
     ] {
-        world.set(ore, Block::RedstoneOre);
+        world.set(ore, Block::RedstoneOreInactive);
         world.event(event);
-        assert_eq!(world.block(ore), Block::RedstoneOreLit, "{event:?}");
+        assert_eq!(world.block(ore), Block::RedstoneOreActive, "{event:?}");
         world.random_ticks(ore, 1);
-        assert_eq!(world.block(ore), Block::RedstoneOre);
+        assert_eq!(world.block(ore), Block::RedstoneOreInactive);
     }
 }
 

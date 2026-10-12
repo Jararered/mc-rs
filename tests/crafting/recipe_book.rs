@@ -108,7 +108,7 @@ fn minecart_and_piston_upgrades_stack_the_part_above_the_base() {
     let book = beta_recipe_book();
     for (top, base, result) in [
         (block(Block::Chest), Item::Minecart, Item::ChestMinecart),
-        (block(Block::Furnace), Item::Minecart, Item::FurnaceMinecart),
+        (block(Block::FurnaceInactive), Item::Minecart, Item::FurnaceMinecart),
         (
             Item::Slimeball,
             block(Block::Piston),

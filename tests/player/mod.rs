@@ -163,18 +163,18 @@ fn placed_furnace_front_faces_the_player_and_survives_lit_transitions() {
         &mut chunks,
         hit(8, 64, 8, BlockFace::Up, Block::Dirt),
         player,
-        Block::Furnace,
+        Block::FurnaceInactive,
         0,
         Direction::East,
     ));
     let furnace = chunks.block_at(8, 65, 8).unwrap();
     let metadata = chunks.metadata_at(8, 65, 8);
-    assert_eq!(furnace, Block::Furnace);
+    assert_eq!(furnace, Block::FurnaceInactive);
     assert_eq!(furnace.facing(metadata), Some(Direction::East));
     // Lighting the furnace swaps the block and keeps the facing.
-    chunks.set_block_with_metadata(8, 65, 8, Block::LitFurnace, metadata);
+    chunks.set_block_with_metadata(8, 65, 8, Block::FurnaceActive, metadata);
     assert_eq!(
-        Block::LitFurnace.facing(chunks.metadata_at(8, 65, 8)),
+        Block::FurnaceActive.facing(chunks.metadata_at(8, 65, 8)),
         Some(Direction::East)
     );
 }
@@ -660,11 +660,11 @@ fn placed_repeater_points_away_from_the_player() {
             &mut chunks,
             hit(8, 64, 8, BlockFace::Up, Block::Stone),
             player,
-            Block::Repeater,
+            Block::RepeaterInactive,
             0,
             front,
         ));
-        assert_eq!(chunks.block_at(8, 65, 8), Some(Block::Repeater));
+        assert_eq!(chunks.block_at(8, 65, 8), Some(Block::RepeaterInactive));
         assert_eq!(chunks.metadata_at(8, 65, 8), metadata, "{front:?}");
     }
 }

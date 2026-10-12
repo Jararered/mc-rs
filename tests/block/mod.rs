@@ -157,8 +157,8 @@ fn facing_metadata_round_trips_for_every_oriented_block() {
     for block in [
         Block::Torch,
         Block::Ladder,
-        Block::Furnace,
-        Block::LitFurnace,
+        Block::FurnaceInactive,
+        Block::FurnaceActive,
         Block::Chest,
         Block::Pumpkin,
     ] {
@@ -176,7 +176,7 @@ fn facing_metadata_round_trips_for_every_oriented_block() {
     assert_eq!(Block::Stone.facing(3), None);
     assert_eq!(Block::Torch.facing_metadata(Direction::West), 1);
     assert_eq!(Block::Ladder.facing_metadata(Direction::South), 2);
-    assert_eq!(Block::Furnace.facing_metadata(Direction::North), 2);
+    assert_eq!(Block::FurnaceInactive.facing_metadata(Direction::North), 2);
     // A torch or ladder hangs toward the side its metadata names.
     assert_eq!(Block::Torch.support_offset(1), Some([-1, 0, 0]));
     assert_eq!(Block::Ladder.support_offset(3), Some([0, 0, -1]));
@@ -235,7 +235,10 @@ fn species_stay_in_metadata_and_stack_by_subtype() {
         (Block::TallGrass, 2)
     );
     assert_eq!(Block::TallGrass.placed(1), Some((Block::TallGrass, 0)));
-    assert_eq!(Block::LitFurnace.item_form(4), (Block::Furnace, 0));
+    assert_eq!(
+        Block::FurnaceActive.item_form(4),
+        (Block::FurnaceInactive, 0)
+    );
     assert_eq!(Block::Torch.placed(5), Some((Block::Torch, 0)));
     assert_eq!(Block::Torch.placed(3), Some((Block::Torch, 3)));
     assert_eq!(Block::Wood.placed(3), None);
@@ -271,8 +274,8 @@ fn block_properties_match_beta_registry_values() {
         (Block::WoodenPressurePlate, 0.5, 0, 0),
         (Block::Torch, 0.0, 0, 14),
         (Block::BrownMushroom, 0.0, 0, 1),
-        (Block::RedstoneTorchLit, 0.0, 0, 7),
-        (Block::RepeaterPowered, 0.0, 0, 9),
+        (Block::RedstoneTorchActive, 0.0, 0, 7),
+        (Block::RepeaterActive, 0.0, 0, 9),
         (Block::NetherPortal, -1.0, 0, 11),
         (Block::Cake, 0.5, 0, 0),
         (Block::Fence, 2.0, 0, 0),
@@ -281,8 +284,8 @@ fn block_properties_match_beta_registry_values() {
         (Block::Tnt, 0.0, 15, 0),
         (Block::Sapling, 0.0, 0, 0),
         (Block::Lava, 0.0, 15, 15),
-        (Block::LitFurnace, 3.5, 15, 13),
-        (Block::RedstoneOreLit, 3.0, 15, 9),
+        (Block::FurnaceActive, 3.5, 15, 13),
+        (Block::RedstoneOreActive, 3.0, 15, 9),
     ];
     for (block, hardness, opacity, emission) in table {
         assert_eq!(block.hardness(), hardness, "{block:?} hardness");

@@ -217,12 +217,12 @@ pub fn tick_furnaces(
         let block = chunks.block_at(x, y, z);
         if let Some(block) = block
             && block.is_furnace()
-            && (block == Block::LitFurnace) != burning
+            && (block == Block::FurnaceActive) != burning
         {
             let next = if burning {
-                Block::LitFurnace
+                Block::FurnaceActive
             } else {
-                Block::Furnace
+                Block::FurnaceInactive
             };
             // The swap keeps the furnace's facing.
             let facing = chunks.metadata_at(x, y, z);

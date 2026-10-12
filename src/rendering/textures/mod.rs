@@ -418,13 +418,13 @@ pub fn block_tile(
 
     match block {
         Block::Ladder => (3, 5),
-        Block::Furnace | Block::LitFurnace if face == 0 || face == 1 => (14, 3),
-        Block::Furnace | Block::LitFurnace => {
+        Block::FurnaceInactive | Block::FurnaceActive if face == 0 || face == 1 => (14, 3),
+        Block::FurnaceInactive | Block::FurnaceActive => {
             if block
                 .facing(metadata)
                 .is_some_and(|facing| facing.face_index() == face)
             {
-                if block == Block::LitFurnace {
+                if block == Block::FurnaceActive {
                     (13, 3)
                 } else {
                     (12, 2)
@@ -496,7 +496,7 @@ pub fn block_tile(
         Block::Sandstone => (0, 12),
         Block::LapisOre => (0, 10),
         Block::LapisBlock => (0, 9),
-        Block::RedstoneOre | Block::RedstoneOreLit => (3, 3),
+        Block::RedstoneOreInactive | Block::RedstoneOreActive => (3, 3),
         Block::GoldOre => (0, 2),
         Block::IronOre => (1, 2),
         Block::CoalOre => (2, 2),
@@ -583,11 +583,11 @@ pub fn block_tile(
         Block::WoodenDoor | Block::IronDoor => door_tile(block, metadata, face).0,
         Block::Redstone => (4, 10),
         // `BlockRedstoneRepeater`: the top and torch shade with power.
-        Block::Repeater if face == 0 => tile(131),
-        Block::RepeaterPowered if face == 0 => tile(147),
-        Block::Repeater | Block::RepeaterPowered => tile(5),
-        Block::RedstoneTorchLit => tile(99),
-        Block::RedstoneTorchUnlit => tile(115),
+        Block::RepeaterInactive if face == 0 => tile(131),
+        Block::RepeaterActive if face == 0 => tile(147),
+        Block::RepeaterInactive | Block::RepeaterActive => tile(5),
+        Block::RedstoneTorchActive => tile(99),
+        Block::RedstoneTorchInactive => tile(115),
         Block::StoneButton | Block::StonePressurePlate => (1, 0),
         Block::WoodenPressurePlate => (4, 0),
         Block::Lever => (0, 6),

@@ -66,11 +66,11 @@ fn mobility(block: Block) -> u8 {
         | Block::PistonHead
         | Block::MovingPiston => 2,
         Block::Torch
-        | Block::RedstoneTorchLit
-        | Block::RedstoneTorchUnlit
+        | Block::RedstoneTorchActive
+        | Block::RedstoneTorchInactive
         | Block::Redstone
-        | Block::Repeater
-        | Block::RepeaterPowered
+        | Block::RepeaterInactive
+        | Block::RepeaterActive
         | Block::Lever
         | Block::StoneButton
         | Block::Ladder
@@ -114,8 +114,8 @@ fn can_push(world: &TickWorld, pos: IVec3, block: Block) -> bool {
             block,
             Block::Chest
                 | Block::Dispenser
-                | Block::Furnace
-                | Block::LitFurnace
+                | Block::FurnaceInactive
+                | Block::FurnaceActive
                 | Block::NoteBlock
                 | Block::MobSpawner
                 | Block::Jukebox

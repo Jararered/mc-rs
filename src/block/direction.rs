@@ -46,10 +46,18 @@ impl Block {
         use Direction::*;
         match (self, metadata & 15) {
             // Beta's front-face values: 2 north, 3 south, 4 west, 5 east.
-            (Self::Furnace | Self::LitFurnace | Self::Chest | Self::Dispenser, 3) => Some(South),
-            (Self::Furnace | Self::LitFurnace | Self::Chest | Self::Dispenser, 4) => Some(West),
-            (Self::Furnace | Self::LitFurnace | Self::Chest | Self::Dispenser, 5) => Some(East),
-            (Self::Furnace | Self::LitFurnace | Self::Chest | Self::Dispenser, _) => Some(North),
+            (Self::FurnaceInactive | Self::FurnaceActive | Self::Chest | Self::Dispenser, 3) => {
+                Some(South)
+            }
+            (Self::FurnaceInactive | Self::FurnaceActive | Self::Chest | Self::Dispenser, 4) => {
+                Some(West)
+            }
+            (Self::FurnaceInactive | Self::FurnaceActive | Self::Chest | Self::Dispenser, 5) => {
+                Some(East)
+            }
+            (Self::FurnaceInactive | Self::FurnaceActive | Self::Chest | Self::Dispenser, _) => {
+                Some(North)
+            }
             // Beta's wall values name the side holding the torch up.
             (Self::Torch, 1) => Some(West),
             (Self::Torch, 2) => Some(East),
@@ -74,10 +82,20 @@ impl Block {
     pub const fn facing_metadata(self, facing: Direction) -> u8 {
         use Direction::*;
         match (self, facing) {
-            (Self::Furnace | Self::LitFurnace | Self::Chest | Self::Dispenser, North) => 2,
-            (Self::Furnace | Self::LitFurnace | Self::Chest | Self::Dispenser, South) => 3,
-            (Self::Furnace | Self::LitFurnace | Self::Chest | Self::Dispenser, West) => 4,
-            (Self::Furnace | Self::LitFurnace | Self::Chest | Self::Dispenser, East) => 5,
+            (
+                Self::FurnaceInactive | Self::FurnaceActive | Self::Chest | Self::Dispenser,
+                North,
+            ) => 2,
+            (
+                Self::FurnaceInactive | Self::FurnaceActive | Self::Chest | Self::Dispenser,
+                South,
+            ) => 3,
+            (Self::FurnaceInactive | Self::FurnaceActive | Self::Chest | Self::Dispenser, West) => {
+                4
+            }
+            (Self::FurnaceInactive | Self::FurnaceActive | Self::Chest | Self::Dispenser, East) => {
+                5
+            }
             (Self::Torch, West) => 1,
             (Self::Torch, East) => 2,
             (Self::Torch, North) => 3,

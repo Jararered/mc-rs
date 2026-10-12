@@ -22,8 +22,8 @@ fn instrument(block: Block) -> u8 {
         | Block::LapisOre
         | Block::LapisBlock
         | Block::DiamondOre
-        | Block::RedstoneOre
-        | Block::RedstoneOreLit
+        | Block::RedstoneOreInactive
+        | Block::RedstoneOreActive
         | Block::Dispenser
         | Block::Sandstone
         | Block::DoubleStoneSlab
@@ -32,8 +32,8 @@ fn instrument(block: Block) -> u8 {
         | Block::Obsidian
         | Block::MobSpawner
         | Block::CobblestoneStairs
-        | Block::Furnace
-        | Block::LitFurnace
+        | Block::FurnaceInactive
+        | Block::FurnaceActive
         | Block::StonePressurePlate
         | Block::Glowstone
         | Block::Netherrack => 1,

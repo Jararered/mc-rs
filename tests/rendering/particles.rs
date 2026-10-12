@@ -558,13 +558,13 @@ fn torches_furnaces_and_portals_make_display_particles() {
     for (block, metadata) in [
         (Block::Torch, 0),
         (Block::Torch, 1),
-        (Block::LitFurnace, 4),
+        (Block::FurnaceActive, 4),
         (Block::Fire, 0),
         (Block::NetherPortal, 0),
-        (Block::RedstoneTorchLit, 0),
-        (Block::RedstoneOreLit, 0),
+        (Block::RedstoneTorchActive, 0),
+        (Block::RedstoneOreActive, 0),
         (Block::Redstone, 15),
-        (Block::RepeaterPowered, 0),
+        (Block::RepeaterActive, 0),
     ] {
         let chunks = world_with(block, metadata, (8, 64, 8));
         assert!(
@@ -574,10 +574,10 @@ fn torches_furnaces_and_portals_make_display_particles() {
     }
     // An unlit furnace, an unpowered wire and a plain stone block stay quiet.
     for (block, metadata) in [
-        (Block::Furnace, 4),
+        (Block::FurnaceInactive, 4),
         (Block::Redstone, 0),
         (Block::Cobblestone, 0),
-        (Block::RedstoneTorchUnlit, 0),
+        (Block::RedstoneTorchInactive, 0),
     ] {
         let chunks = world_with(block, metadata, (8, 64, 8));
         assert_eq!(display_count(&chunks, 200), 0, "{block:?} should be quiet");

@@ -100,7 +100,7 @@ fn population_places_clay_and_dungeon_blocks() {
                     Block::Lava => lake_lava += 1,
                     Block::LavaFlowing => cave_lava += 1,
                     Block::GoldOre => rare_ores[0] += 1,
-                    Block::RedstoneOre => rare_ores[1] += 1,
+                    Block::RedstoneOreInactive => rare_ores[1] += 1,
                     Block::DiamondOre => rare_ores[2] += 1,
                     Block::LapisOre => rare_ores[3] += 1,
                     Block::IronOre => rare_ores[4] += 1,

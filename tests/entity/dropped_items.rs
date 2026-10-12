@@ -125,11 +125,11 @@ fn break_drops_follow_beta_tool_and_item_rules() {
         vec![one(Item::Dye, 4); 8]
     );
     assert_eq!(
-        break_drops(Block::RedstoneOre, held(Item::IronPickaxe), &[0]),
+        break_drops(Block::RedstoneOreInactive, held(Item::IronPickaxe), &[0]),
         vec![one(Item::Redstone, 0); 4]
     );
     assert_eq!(
-        break_drops(Block::RedstoneOreLit, held(Item::IronPickaxe), &[1]),
+        break_drops(Block::RedstoneOreActive, held(Item::IronPickaxe), &[1]),
         vec![one(Item::Redstone, 0); 5]
     );
     assert_eq!(
@@ -418,7 +418,11 @@ fn dropped_ladder_uses_the_flat_item_sprite() {
 fn redstone_parts_drop_as_flat_sprites() {
     // `renderItemIn3d` only models a few render types; torches, repeaters, and
     // levers are item sprites, while solid blocks stay cubes.
-    for block in [Block::RedstoneTorchLit, Block::Repeater, Block::Lever] {
+    for block in [
+        Block::RedstoneTorchActive,
+        Block::RepeaterInactive,
+        Block::Lever,
+    ] {
         let stack = ItemStack::from_block_state(block, 0, 1).unwrap();
         assert_eq!(dropped_block_model(stack), None, "{block:?}");
     }

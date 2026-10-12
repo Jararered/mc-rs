@@ -88,7 +88,7 @@ pub(super) fn populate(
         (20, 128, 16, Block::CoalOre),
         (20, 64, 8, Block::IronOre),
         (2, 32, 8, Block::GoldOre),
-        (8, 16, 7, Block::RedstoneOre),
+        (8, 16, 7, Block::RedstoneOreInactive),
         (1, 16, 7, Block::DiamondOre),
     ];
     for (count, max_y, size, block) in ORES {

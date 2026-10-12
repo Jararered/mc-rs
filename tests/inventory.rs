@@ -201,7 +201,7 @@ fn block_sorting_follows_natural_building_functional_and_redstone_groups() {
         Some(ItemStack::from_block(Block::Stone, 1).unwrap()),
         Some(ItemStack::from_block(Block::CraftingTable, 1).unwrap()),
         Some(ItemStack::from_block(Block::WoodenPlanks, 1).unwrap()),
-        Some(ItemStack::from_block(Block::Repeater, 1).unwrap()),
+        Some(ItemStack::from_block(Block::RepeaterInactive, 1).unwrap()),
         Some(ItemStack::from_block(Block::Torch, 1).unwrap()),
     ];
 
@@ -222,7 +222,7 @@ fn block_sorting_follows_natural_building_functional_and_redstone_groups() {
             Item::from_block(Block::CraftingTable).unwrap(),
             Item::from_block(Block::Redstone).unwrap(),
             Item::from_block(Block::Torch).unwrap(),
-            Item::from_block(Block::Repeater).unwrap(),
+            Item::from_block(Block::RepeaterInactive).unwrap(),
         ]
     );
 }

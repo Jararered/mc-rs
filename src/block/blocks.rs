@@ -73,8 +73,8 @@ pub enum Block {
     CraftingTable = 58,
     Crops = 59,
     Farmland = 60,
-    Furnace = 61,
-    LitFurnace = 62,
+    FurnaceInactive = 61,
+    FurnaceActive = 62,
     Sign = 63,
     WoodenDoor = 64,
     Ladder = 65,
@@ -85,10 +85,10 @@ pub enum Block {
     StonePressurePlate = 70,
     IronDoor = 71,
     WoodenPressurePlate = 72,
-    RedstoneOre = 73,
-    RedstoneOreLit = 74,
-    RedstoneTorchUnlit = 75,
-    RedstoneTorchLit = 76,
+    RedstoneOreInactive = 73,
+    RedstoneOreActive = 74,
+    RedstoneTorchInactive = 75,
+    RedstoneTorchActive = 76,
     StoneButton = 77,
     SnowLayer = 78,
     Ice = 79,
@@ -105,8 +105,8 @@ pub enum Block {
     NetherPortal = 90,
     JackOLantern = 91,
     Cake = 92,
-    Repeater = 93,
-    RepeaterPowered = 94,
+    RepeaterInactive = 93,
+    RepeaterActive = 94,
     LockedChest = 95,
     Trapdoor = 96,
     #[num_enum(catch_all)]
@@ -160,7 +160,7 @@ impl Block {
     }
 
     pub const fn is_furnace(self) -> bool {
-        matches!(self, Self::Furnace | Self::LitFurnace)
+        matches!(self, Self::FurnaceInactive | Self::FurnaceActive)
     }
 
     /// Local bounds used for picking and the hover outline.
@@ -271,16 +271,16 @@ impl Block {
             }
             Self::Torch
             | Self::Ladder
-            | Self::Furnace
-            | Self::LitFurnace
+            | Self::FurnaceInactive
+            | Self::FurnaceActive
             | Self::Chest
             | Self::Pumpkin
             | Self::Dispenser
             | Self::Redstone
-            | Self::Repeater
-            | Self::RepeaterPowered
-            | Self::RedstoneTorchLit
-            | Self::RedstoneTorchUnlit
+            | Self::RepeaterInactive
+            | Self::RepeaterActive
+            | Self::RedstoneTorchActive
+            | Self::RedstoneTorchInactive
             | Self::Lever
             | Self::StoneButton
             | Self::StonePressurePlate
@@ -378,7 +378,7 @@ impl Block {
             }
             Self::Wool => (self, metadata),
             Self::TallGrass if metadata & 3 == 2 => (self, 2),
-            Self::LitFurnace => (Self::Furnace, 0),
+            Self::FurnaceActive => (Self::FurnaceInactive, 0),
             block => (block, 0),
         }
     }
@@ -397,10 +397,10 @@ impl Block {
                 | Self::WallSign
                 | Self::WoodenDoor
                 | Self::IronDoor
-                | Self::RedstoneTorchUnlit
+                | Self::RedstoneTorchInactive
                 | Self::NetherPortal
                 | Self::Cake
-                | Self::RepeaterPowered,
+                | Self::RepeaterActive,
                 _,
             ) => None,
             (Self::Wood | Self::WoodenPlanks | Self::Leaves | Self::Sapling, 0..=2) => {

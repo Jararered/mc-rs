@@ -105,7 +105,7 @@ pub fn place_selected_block_facing(
     if matches!(
         selected,
         Block::Redstone
-            | Block::Repeater
+            | Block::RepeaterInactive
             | Block::StonePressurePlate
             | Block::WoodenPressurePlate
             | Block::Rail
@@ -120,7 +120,7 @@ pub fn place_selected_block_facing(
     // Levers, buttons, and redstone torches hang on the side or top of a cube.
     if matches!(
         selected,
-        Block::Lever | Block::StoneButton | Block::RedstoneTorchLit
+        Block::Lever | Block::StoneButton | Block::RedstoneTorchActive
     ) && (!hit.block.is_normal_cube()
         || hit.face == BlockFace::Down
         || (selected == Block::StoneButton && hit.face == BlockFace::Up))
@@ -150,7 +150,7 @@ pub fn place_selected_block_facing(
                 support.map_or(0, |facing| selected.facing_metadata(facing)),
             )
         }
-        Block::Furnace | Block::Pumpkin | Block::Chest | Block::Dispenser => {
+        Block::FurnaceInactive | Block::Pumpkin | Block::Chest | Block::Dispenser => {
             (selected, selected.facing_metadata(front))
         }
         // `BlockStairs.onBlockPlacedBy`: the steps climb away from the player.
@@ -185,7 +185,7 @@ pub fn place_selected_block_facing(
             (selected, selected.facing_metadata(support))
         }
         // Beta's `onBlockPlaced` names the clicked side: 5 is the floor.
-        Block::Lever | Block::StoneButton | Block::RedstoneTorchLit => (
+        Block::Lever | Block::StoneButton | Block::RedstoneTorchActive => (
             selected,
             match hit.face {
                 BlockFace::West => 2,
@@ -197,7 +197,7 @@ pub fn place_selected_block_facing(
         ),
         // `BlockRedstoneRepeater.onBlockPlacedBy`: the repeater points away
         // from the player and takes its input from behind.
-        Block::Repeater => (
+        Block::RepeaterInactive => (
             selected,
             match front {
                 Direction::South => 0,

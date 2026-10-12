@@ -297,13 +297,13 @@ fn extended_piston_recess_does_not_cull_stone_across_chunk_boundary() {
 fn repeaters_rotate_the_plate_and_move_two_torches_with_delay_and_power() {
     use game::rendering::textures::block_tile;
 
-    for block in [Block::Repeater, Block::RepeaterPowered] {
-        let top_tile = if block == Block::Repeater {
+    for block in [Block::RepeaterInactive, Block::RepeaterActive] {
+        let top_tile = if block == Block::RepeaterInactive {
             [3, 8]
         } else {
             [3, 9]
         };
-        let torch_tile = if block == Block::Repeater {
+        let torch_tile = if block == Block::RepeaterInactive {
             [3, 7]
         } else {
             [3, 6]

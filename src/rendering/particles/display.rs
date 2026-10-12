@@ -86,12 +86,12 @@ fn display_tick(
     let base = cell.as_vec3();
     match block {
         Block::Torch => torch(particles, base, metadata),
-        Block::RedstoneTorchLit => redstone_torch(particles, random, base, metadata),
-        Block::LitFurnace => furnace(particles, random, base, metadata),
+        Block::RedstoneTorchActive => redstone_torch(particles, random, base, metadata),
+        Block::FurnaceActive => furnace(particles, random, base, metadata),
         Block::Fire => fire(particles, random, chunks, cell),
-        Block::RedstoneOreLit => sparkle(particles, random, chunks, cell),
+        Block::RedstoneOreActive => sparkle(particles, random, chunks, cell),
         Block::Redstone => redstone_wire(particles, random, base, metadata),
-        Block::RepeaterPowered => repeater(particles, random, base, metadata),
+        Block::RepeaterActive => repeater(particles, random, base, metadata),
         Block::NetherPortal => portal(particles, random, chunks, cell),
         Block::Lava | Block::LavaFlowing => lava(particles, random, chunks, cell),
         _ => {}

@@ -446,8 +446,8 @@ pub(crate) fn apply_player_actions(
                                 | Block::Trapdoor
                                 | Block::Lever
                                 | Block::StoneButton
-                                | Block::Repeater
-                                | Block::RepeaterPowered
+                                | Block::RepeaterInactive
+                                | Block::RepeaterActive
                                 | Block::NoteBlock
                         )
                         // `BlockJukeBox.blockActivated`: one holding a disc

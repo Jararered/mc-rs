@@ -128,7 +128,7 @@ fn busy_chunk(position: ChunkPosition) -> GeneratedChunk {
     chest.slots[CHEST_SLOTS - 1] = Some(ItemStack::with_data(Item::IronShovel, 1, 10).unwrap());
     chunk.insert_chest(Chunk::index(5, 71, 5), chest);
 
-    chunk.set(6, 71, 5, Block::Furnace);
+    chunk.set(6, 71, 5, Block::FurnaceInactive);
     chunk.insert_furnace(
         Chunk::index(6, 71, 5),
         Furnace {

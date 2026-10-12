@@ -300,10 +300,10 @@ pub(super) fn partial_redstone_block(block: Block) -> bool {
     matches!(
         block,
         Block::Redstone
-            | Block::Repeater
-            | Block::RepeaterPowered
-            | Block::RedstoneTorchLit
-            | Block::RedstoneTorchUnlit
+            | Block::RepeaterInactive
+            | Block::RepeaterActive
+            | Block::RedstoneTorchActive
+            | Block::RedstoneTorchInactive
             | Block::Lever
             | Block::StoneButton
             | Block::StonePressurePlate
@@ -429,7 +429,7 @@ pub(super) fn tile_texels(tile_x: u8, tile_y: u8, corners: [[u8; 2]; 4]) -> [Atl
 }
 
 pub(super) fn block_tint(block: Block, metadata: u8, foliage: Option<[f32; 3]>) -> [f32; 3] {
-    if block == Block::LitFurnace {
+    if block == Block::FurnaceActive {
         // The active face is a small flame, but Beta's lit furnace body also
         // appears subtly brighter than the idle block.
         return [BRIGHT_TINT; 3];

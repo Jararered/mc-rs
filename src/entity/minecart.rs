@@ -90,7 +90,7 @@ impl CartKind {
         match self {
             Self::Empty => None,
             Self::Chest => Some(Block::Chest),
-            Self::Furnace => Some(Block::Furnace),
+            Self::Furnace => Some(Block::FurnaceInactive),
         }
     }
 }

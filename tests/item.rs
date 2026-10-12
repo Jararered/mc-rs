@@ -80,8 +80,8 @@ fn registries_cover_beta_ranges_without_registering_holes_or_air_items() {
 #[test]
 fn known_beta_identities_are_the_only_block_ids() {
     assert_eq!(Block::Cake.as_u8(), 92);
-    assert_eq!(Block::Repeater.as_u8(), 93);
-    assert_eq!(Block::RepeaterPowered.as_u8(), 94);
+    assert_eq!(Block::RepeaterInactive.as_u8(), 93);
+    assert_eq!(Block::RepeaterActive.as_u8(), 94);
     assert_eq!(Block::LockedChest.as_u8(), 95);
     assert_eq!(Block::Trapdoor.as_u8(), 96);
     assert_eq!(Item::IronShovel.as_u16(), 256);
@@ -112,8 +112,8 @@ fn native_save_values_and_supported_states_round_trip() {
             assert_eq!(block.as_u8(), raw);
             let (item_block, data) = block.item_form(0);
             let placed = item_block.placed(data);
-            if block == Block::LitFurnace {
-                assert_eq!(placed, Some((Block::Furnace, 0)));
+            if block == Block::FurnaceActive {
+                assert_eq!(placed, Some((Block::FurnaceInactive, 0)));
             } else if placed.is_some() {
                 assert_eq!(placed, Some((block, 0)));
             }
@@ -127,8 +127,8 @@ fn native_save_values_and_supported_states_round_trip() {
         Block::WoodenDoor,
         Block::PistonHead,
         Block::MovingPiston,
-        Block::RepeaterPowered,
-        Block::RedstoneTorchUnlit,
+        Block::RepeaterActive,
+        Block::RedstoneTorchInactive,
     ] {
         assert_eq!(id.placed(0), None);
     }
@@ -139,11 +139,11 @@ fn native_save_values_and_supported_states_round_trip() {
         Block::DetectorRail,
         Block::Lever,
         Block::StoneButton,
-        Block::RedstoneTorchLit,
+        Block::RedstoneTorchActive,
         Block::Piston,
         Block::StickyPiston,
         Block::Redstone,
-        Block::Repeater,
+        Block::RepeaterInactive,
     ] {
         assert_eq!(id.placed(0), Some((id, 0)));
     }
@@ -153,7 +153,7 @@ fn native_save_values_and_supported_states_round_trip() {
     );
     assert_eq!(
         ItemStack::new(Item::Repeater, 1).unwrap().runtime_block(),
-        Some((Block::Repeater, 0))
+        Some((Block::RepeaterInactive, 0))
     );
     for id in [Block::Fence, Block::Trapdoor, Block::Glass] {
         assert_eq!(
@@ -307,11 +307,17 @@ fn tool_break_times_match_beta_173() {
     assert_eq!(t(Some(Item::GoldPickaxe), Block::GoldOre), Some(300));
     assert_eq!(t(Some(Item::WoodenPickaxe), Block::CoalOre), Some(45));
     assert_eq!(t(Some(Item::DiamondPickaxe), Block::CoalOre), Some(12));
-    assert_eq!(t(Some(Item::IronPickaxe), Block::RedstoneOre), Some(90));
-    assert_eq!(t(Some(Item::IronPickaxe), Block::RedstoneOreLit), Some(90));
-    assert_eq!(t(Some(Item::WoodenPickaxe), Block::Furnace), Some(105));
+    assert_eq!(t(Some(Item::IronPickaxe), Block::RedstoneOreInactive), Some(90));
+    assert_eq!(
+        t(Some(Item::IronPickaxe), Block::RedstoneOreActive),
+        Some(90)
+    );
+    assert_eq!(
+        t(Some(Item::WoodenPickaxe), Block::FurnaceInactive),
+        Some(105)
+    );
     assert_eq!(t(Some(Item::GoldPickaxe), Block::Dispenser), Some(105));
-    assert_eq!(t(Some(Item::StonePickaxe), Block::LitFurnace), Some(105));
+    assert_eq!(t(Some(Item::StonePickaxe), Block::FurnaceActive), Some(105));
     assert_eq!(t(Some(Item::IronPickaxe), Block::Glowstone), Some(9));
 
     assert_eq!(t(Some(Item::DiamondShovel), Block::Dirt), Some(2));
@@ -383,7 +389,7 @@ fn pickaxe_harvest_levels_match_beta() {
         assert!(can_harvest(pick, Block::Cobblestone));
         assert!(can_harvest(pick, Block::Netherrack));
         assert!(can_harvest(pick, Block::Glowstone));
-        assert!(can_harvest(pick, Block::Furnace));
+        assert!(can_harvest(pick, Block::FurnaceInactive));
         assert!(can_harvest(pick, Block::Dispenser));
         assert!(can_harvest(pick, Block::Bricks));
     }
@@ -396,8 +402,8 @@ fn pickaxe_harvest_levels_match_beta() {
         assert!(!can_harvest(pick, Block::GoldBlock));
         assert!(!can_harvest(pick, Block::DiamondOre));
         assert!(!can_harvest(pick, Block::DiamondBlock));
-        assert!(!can_harvest(pick, Block::RedstoneOre));
-        assert!(!can_harvest(pick, Block::RedstoneOreLit));
+        assert!(!can_harvest(pick, Block::RedstoneOreInactive));
+        assert!(!can_harvest(pick, Block::RedstoneOreActive));
         assert!(!can_harvest(pick, Block::Obsidian));
     }
     assert!(can_harvest(stone, Block::IronOre));
@@ -408,15 +414,15 @@ fn pickaxe_harvest_levels_match_beta() {
     assert!(!can_harvest(stone, Block::GoldBlock));
     assert!(!can_harvest(stone, Block::DiamondOre));
     assert!(!can_harvest(stone, Block::DiamondBlock));
-    assert!(!can_harvest(stone, Block::RedstoneOre));
+    assert!(!can_harvest(stone, Block::RedstoneOreInactive));
     assert!(!can_harvest(stone, Block::Obsidian));
 
     assert!(can_harvest(iron, Block::GoldOre));
     assert!(can_harvest(iron, Block::GoldBlock));
     assert!(can_harvest(iron, Block::DiamondOre));
     assert!(can_harvest(iron, Block::DiamondBlock));
-    assert!(can_harvest(iron, Block::RedstoneOre));
-    assert!(can_harvest(iron, Block::RedstoneOreLit));
+    assert!(can_harvest(iron, Block::RedstoneOreInactive));
+    assert!(can_harvest(iron, Block::RedstoneOreActive));
     assert!(!can_harvest(iron, Block::Obsidian));
     assert!(can_harvest(diamond, Block::Obsidian));
 

@@ -56,9 +56,9 @@ pub(super) fn apply_break(
     let light_edit = hit.block.is_torch()
         || matches!(
             hit.block,
-            Block::RedstoneTorchLit | Block::RedstoneTorchUnlit
+            Block::RedstoneTorchActive | Block::RedstoneTorchInactive
         )
-        || hit.block == Block::LitFurnace
+        || hit.block == Block::FurnaceActive
         || attached
             .iter()
             .any(|&(_, _, _, attached_block, _)| attached_block.is_torch());

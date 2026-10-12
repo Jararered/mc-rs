@@ -149,8 +149,8 @@ fn block_sort_path(block: Block) -> (u8, u8) {
         | Block::CoalOre
         | Block::LapisOre
         | Block::DiamondOre
-        | Block::RedstoneOre
-        | Block::RedstoneOreLit => (0, 4),
+        | Block::RedstoneOreInactive
+        | Block::RedstoneOreActive => (0, 4),
         Block::Wood => (0, 5),
         Block::Leaves
         | Block::Sapling
@@ -187,7 +187,7 @@ fn block_sort_path(block: Block) -> (u8, u8) {
         Block::Bookshelf => (1, 6),
         // functionalBlock: chest, furnace, craftingTable, bed
         Block::Chest | Block::LockedChest => (2, 0),
-        Block::Furnace | Block::LitFurnace => (2, 1),
+        Block::FurnaceInactive | Block::FurnaceActive => (2, 1),
         Block::CraftingTable => (2, 2),
         Block::Bed => (2, 3),
         Block::Dispenser
@@ -206,8 +206,8 @@ fn block_sort_path(block: Block) -> (u8, u8) {
         | Block::Cake => (2, 4),
         // redstone: wire, torch, repeater, piston, lever/button/pressurePlate
         Block::Redstone => (3, 0),
-        Block::Torch | Block::RedstoneTorchUnlit | Block::RedstoneTorchLit => (3, 1),
-        Block::Repeater | Block::RepeaterPowered => (3, 2),
+        Block::Torch | Block::RedstoneTorchInactive | Block::RedstoneTorchActive => (3, 1),
+        Block::RepeaterInactive | Block::RepeaterActive => (3, 2),
         Block::StickyPiston | Block::Piston | Block::PistonHead | Block::MovingPiston => (3, 3),
         Block::Lever
         | Block::StoneButton

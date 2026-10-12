@@ -1,13 +1,13 @@
 //! Item identities, definitions, and validated inventory stacks.
-pub mod registry;
+pub mod items;
 pub mod tools;
 use crate::block::blocks::Block;
-pub use registry::Armor;
-pub use registry::ArmorSlot;
-pub use registry::Item;
-pub use registry::ItemData;
-pub use registry::ItemProperties;
-pub use registry::ItemRegistry;
+pub use items::Armor;
+pub use items::ArmorSlot;
+pub use items::Item;
+pub use items::ItemData;
+pub use items::ItemProperties;
+pub use items::ItemRegistry;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StackError {

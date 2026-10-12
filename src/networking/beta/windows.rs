@@ -22,7 +22,7 @@ use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
 use crate::inventory::armor_slot_accepts;
 use crate::item::ItemStack;
-use crate::item::registry::ItemData;
+use crate::item::items::ItemData;
 use crate::player::actions::Window;
 use crate::world::chunk::ChestGroup;
 use crate::world::chunk::ChunkPosition;

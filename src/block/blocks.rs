@@ -3,7 +3,7 @@
 //! pumpkins) live in the chunk's block metadata, as in Beta.
 
 use crate::block::definition;
-use crate::item::registry::ItemData;
+use crate::item::items::ItemData;
 
 use num_enum::FromPrimitive;
 use num_enum::IntoPrimitive;

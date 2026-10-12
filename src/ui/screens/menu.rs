@@ -22,6 +22,7 @@ use crate::world::difficulty::Difficulty;
 use crate::app::state::AppScreen;
 use crate::app::state::PauseMenu;
 use crate::app::state::SettingsReturn;
+use crate::world::sound::SoundCategory;
 
 use super::panorama;
 use super::panorama::MenuPanoramaRoot;
@@ -112,8 +113,7 @@ pub(super) enum SettingLabel {
     MaxFps,
     MouseSensitivity,
     ViewBobbing,
-    MusicVolume,
-    SoundVolume,
+    Volume(SoundCategory),
     FloatingItems,
     BowCharging,
     PigSteering,
@@ -127,6 +127,8 @@ enum SettingsTab {
     Gameplay,
     Controls,
     Video,
+    /// A volume for each kind of sound.
+    Audio,
     /// Deliberate departures from Beta 1.7.3.
     Features,
 }
@@ -401,6 +403,14 @@ fn spawn_settings_menu(commands: &mut Commands, textures: &MenuTextures, setting
                     spawn_button(
                         tabs,
                         textures,
+                        "Audio",
+                        MenuAction::Tab(SettingsTab::Audio),
+                        160.0,
+                        None,
+                    );
+                    spawn_button(
+                        tabs,
+                        textures,
                         "Features",
                         MenuAction::Tab(SettingsTab::Features),
                         160.0,
@@ -574,20 +584,6 @@ fn spawn_settings_menu(commands: &mut Commands, textures: &MenuTextures, setting
                             },
                         ))
                         .with_children(|parent| {
-                            spawn_setting_slider(
-                                parent,
-                                textures,
-                                SettingLabel::MusicVolume,
-                                music_volume_text(settings),
-                                settings,
-                            );
-                            spawn_setting_slider(
-                                parent,
-                                textures,
-                                SettingLabel::SoundVolume,
-                                sound_volume_text(settings),
-                                settings,
-                            );
                             spawn_setting_button(
                                 parent,
                                 textures,
@@ -595,6 +591,31 @@ fn spawn_settings_menu(commands: &mut Commands, textures: &MenuTextures, setting
                                 MenuAction::Difficulty,
                                 SettingLabel::Difficulty,
                             );
+                        });
+                    content
+                        .spawn((
+                            SettingsTab::Audio,
+                            Node {
+                                width: percent(100),
+                                flex_shrink: 0.0,
+                                align_self: AlignSelf::Start,
+                                display: Display::None,
+                                grid_template_columns: vec![RepeatedGridTrack::flex(1, 1.0)],
+                                row_gap: px(8),
+                                column_gap: px(16),
+                                ..default()
+                            },
+                        ))
+                        .with_children(|parent| {
+                            for category in SoundCategory::ALL {
+                                spawn_setting_slider(
+                                    parent,
+                                    textures,
+                                    SettingLabel::Volume(category),
+                                    volume_text(settings, category),
+                                    settings,
+                                );
+                            }
                         });
                     content
                         .spawn((
@@ -641,8 +662,7 @@ pub enum SettingsSlider {
     GuiScale,
     MouseSensitivity,
     MaxFps,
-    MusicVolume,
-    SoundVolume,
+    Volume(SoundCategory),
 }
 
 impl SettingsSlider {
@@ -678,8 +698,9 @@ impl SettingsSlider {
                     settings.max_fps as f32
                 },
             ),
-            Self::MusicVolume => Slider::new(0.0, 100.0, 1.0, settings.music_volume * 100.0),
-            Self::SoundVolume => Slider::new(0.0, 100.0, 1.0, settings.sound_volume * 100.0),
+            Self::Volume(category) => {
+                Slider::new(0.0, 100.0, 1.0, settings.volume(category) * 100.0)
+            }
         }
     }
 }
@@ -698,8 +719,7 @@ fn spawn_setting_slider(
         SettingLabel::GuiScale => SettingsSlider::GuiScale,
         SettingLabel::MouseSensitivity => SettingsSlider::MouseSensitivity,
         SettingLabel::MaxFps => SettingsSlider::MaxFps,
-        SettingLabel::MusicVolume => SettingsSlider::MusicVolume,
-        SettingLabel::SoundVolume => SettingsSlider::SoundVolume,
+        SettingLabel::Volume(category) => SettingsSlider::Volume(category),
         _ => unreachable!("not a numeric setting"),
     };
     let image = ImageNode::new(textures.buttons.clone())
@@ -752,8 +772,7 @@ impl SettingsSlider {
                     value as u32
                 }
             }
-            Self::MusicVolume => next.music_volume = value / 100.0,
-            Self::SoundVolume => next.sound_volume = value / 100.0,
+            Self::Volume(category) => *next.volume_mut(category) = value / 100.0,
         }
         if next == *settings {
             return false;
@@ -937,8 +956,7 @@ fn refresh_settings_labels(
             SettingLabel::MaxFps => max_fps_text(&settings),
             SettingLabel::MouseSensitivity => sensitivity_text(&settings),
             SettingLabel::ViewBobbing => view_bobbing_text(&settings),
-            SettingLabel::MusicVolume => music_volume_text(&settings),
-            SettingLabel::SoundVolume => sound_volume_text(&settings),
+            SettingLabel::Volume(category) => volume_text(&settings, *category),
             SettingLabel::Fullscreen => fullscreen_text(&settings),
             SettingLabel::FloatingItems => floating_items_text(&settings),
             SettingLabel::BowCharging => bow_charging_text(&settings),
@@ -1082,18 +1100,14 @@ fn sensitivity_text(settings: &GameSettings) -> String {
     )
 }
 /// Beta's `GameSettings.getKeyBinding` for a volume: `OFF` at nothing.
-fn volume_text(name: &str, volume: f32) -> String {
+fn volume_text(settings: &GameSettings, category: SoundCategory) -> String {
+    let name = category.label();
+    let volume = settings.volume(category);
     if volume <= 0.0 {
         format!("{name}: OFF")
     } else {
         format!("{name}: {:.0}%", volume * 100.0)
     }
-}
-fn music_volume_text(settings: &GameSettings) -> String {
-    volume_text("Music", settings.music_volume)
-}
-fn sound_volume_text(settings: &GameSettings) -> String {
-    volume_text("Sound", settings.sound_volume)
 }
 fn view_bobbing_text(settings: &GameSettings) -> String {
     format!(

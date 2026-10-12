@@ -17,6 +17,77 @@ use crate::random::JavaRandom;
 /// in turn, so no more than this many can be started before one is replaced.
 pub const MAX_QUEUED: usize = 256;
 
+/// What kind of sound one is, for the Audio options: each has a volume of its
+/// own under the master volume. Beta has only Music and Sound; the rest are
+/// the categories later versions sort the same files into.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum SoundCategory {
+    /// Everything, music included. A menu's click answers to this alone.
+    Master,
+    Music,
+    /// Blocks dug, broken, placed and walked on, switches, pistons, doors,
+    /// fuses and explosions.
+    Blocks,
+    /// Rain and thunder.
+    Weather,
+    HostileMobs,
+    PassiveMobs,
+    /// A player's own noises: being hurt, the bow, a throw, a pickup, a
+    /// splash.
+    Players,
+    /// Cave noises, fire, running water and portals.
+    Ambient,
+    NoteBlocks,
+}
+
+impl SoundCategory {
+    pub const ALL: [Self; 9] = [
+        Self::Master,
+        Self::Music,
+        Self::Blocks,
+        Self::Weather,
+        Self::HostileMobs,
+        Self::PassiveMobs,
+        Self::Players,
+        Self::Ambient,
+        Self::NoteBlocks,
+    ];
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Master => "Master volume",
+            Self::Music => "Music",
+            Self::Blocks => "Blocks",
+            Self::Weather => "Weather",
+            Self::HostileMobs => "Hostile mobs",
+            Self::PassiveMobs => "Passive mobs",
+            Self::Players => "Players",
+            Self::Ambient => "Ambient",
+            Self::NoteBlocks => "Note blocks",
+        }
+    }
+
+    /// The category of the sound Beta calls `name`. `placed` is whether it
+    /// has a position: `random.click` is a lever in the world and a button
+    /// in a menu.
+    pub fn of(name: &str, placed: bool) -> Self {
+        const HOSTILE: [&str; 6] = ["zombie", "skeleton", "spider", "creeper", "slime", "ghast"];
+        const PLAYERS: [&str; 5] = ["hurt", "bow", "drr", "pop", "splash"];
+        let (pool, rest) = name.split_once('.').unwrap_or((name, ""));
+        match pool {
+            "note" => Self::NoteBlocks,
+            "mob" if HOSTILE.iter().any(|mob| rest.starts_with(mob)) => Self::HostileMobs,
+            "mob" => Self::PassiveMobs,
+            "ambient" if rest.starts_with("weather") => Self::Weather,
+            "ambient" | "portal" | "liquid" => Self::Ambient,
+            "fire" if rest == "fire" => Self::Ambient,
+            "random" if PLAYERS.contains(&rest) => Self::Players,
+            "random" if rest == "click" && !placed => Self::Master,
+            _ => Self::Blocks,
+        }
+    }
+}
+
 /// A sound's pitch, where the producer has no `Random` to draw it with.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Pitch {

@@ -9,6 +9,7 @@ use serde::Serialize;
 
 use crate::world::difficulty::ClientDifficulty;
 use crate::world::difficulty::Difficulty;
+use crate::world::sound::SoundCategory;
 
 pub const MIN_RENDER_DISTANCE: i32 = 4;
 pub const MAX_RENDER_DISTANCE: i32 = 128;
@@ -88,11 +89,19 @@ pub struct GameSettings {
     pub mouse_sensitivity: f32,
     pub view_bobbing: bool,
     pub fullscreen: bool,
-    /// Beta's Sound option, `0..=1`: every effect is scaled by it, and at
-    /// zero none is started.
-    pub sound_volume: f32,
+    /// Audio tab: every sound and the music are scaled by it, `0..=1`.
+    pub master_volume: f32,
     /// Beta's Music option, `0..=1`. Zero stops the track and starts no other.
     pub music_volume: f32,
+    /// Audio tab: one volume for each [`SoundCategory`] of effect, `0..=1`.
+    /// Beta has a single Sound option for them all.
+    pub blocks_volume: f32,
+    pub weather_volume: f32,
+    pub hostile_mobs_volume: f32,
+    pub passive_mobs_volume: f32,
+    pub players_volume: f32,
+    pub ambient_volume: f32,
+    pub note_blocks_volume: f32,
     /// Features tab: dropped items rise and bob in water instead of sinking
     /// as Beta's do.
     pub floating_items: bool,
@@ -126,8 +135,15 @@ impl Default for GameSettings {
             mouse_sensitivity: 1.0,
             view_bobbing: true,
             fullscreen: false,
-            sound_volume: 1.0,
+            master_volume: 1.0,
             music_volume: 1.0,
+            blocks_volume: 1.0,
+            weather_volume: 1.0,
+            hostile_mobs_volume: 1.0,
+            passive_mobs_volume: 1.0,
+            players_volume: 1.0,
+            ambient_volume: 1.0,
+            note_blocks_volume: 1.0,
             floating_items: true,
             bow_charging: false,
             pig_steering: true,
@@ -186,9 +202,48 @@ impl GameSettings {
         self.graphics = self.graphics.cycle();
     }
 
+    /// The Audio tab's slider for `category`.
+    pub fn volume(&self, category: SoundCategory) -> f32 {
+        match category {
+            SoundCategory::Master => self.master_volume,
+            SoundCategory::Music => self.music_volume,
+            SoundCategory::Blocks => self.blocks_volume,
+            SoundCategory::Weather => self.weather_volume,
+            SoundCategory::HostileMobs => self.hostile_mobs_volume,
+            SoundCategory::PassiveMobs => self.passive_mobs_volume,
+            SoundCategory::Players => self.players_volume,
+            SoundCategory::Ambient => self.ambient_volume,
+            SoundCategory::NoteBlocks => self.note_blocks_volume,
+        }
+    }
+
+    pub fn volume_mut(&mut self, category: SoundCategory) -> &mut f32 {
+        match category {
+            SoundCategory::Master => &mut self.master_volume,
+            SoundCategory::Music => &mut self.music_volume,
+            SoundCategory::Blocks => &mut self.blocks_volume,
+            SoundCategory::Weather => &mut self.weather_volume,
+            SoundCategory::HostileMobs => &mut self.hostile_mobs_volume,
+            SoundCategory::PassiveMobs => &mut self.passive_mobs_volume,
+            SoundCategory::Players => &mut self.players_volume,
+            SoundCategory::Ambient => &mut self.ambient_volume,
+            SoundCategory::NoteBlocks => &mut self.note_blocks_volume,
+        }
+    }
+
+    /// How loud a sound of `category` plays: its own volume under the
+    /// master's.
+    pub fn gain(&self, category: SoundCategory) -> f32 {
+        match category {
+            SoundCategory::Master => self.master_volume,
+            _ => self.master_volume * self.volume(category),
+        }
+    }
+
     /// Keep loaded or edited values inside the same ranges the menu uses.
     pub fn clamp(&mut self) {
-        for volume in [&mut self.sound_volume, &mut self.music_volume] {
+        for category in SoundCategory::ALL {
+            let volume = self.volume_mut(category);
             *volume = if volume.is_finite() {
                 volume.clamp(0.0, 1.0)
             } else {
@@ -286,8 +341,15 @@ struct StoredSettings {
     mouse_sensitivity: f32,
     view_bobbing: bool,
     fullscreen: bool,
-    sound_volume: f32,
+    master_volume: f32,
     music_volume: f32,
+    blocks_volume: f32,
+    weather_volume: f32,
+    hostile_mobs_volume: f32,
+    passive_mobs_volume: f32,
+    players_volume: f32,
+    ambient_volume: f32,
+    note_blocks_volume: f32,
     floating_items: bool,
     bow_charging: bool,
     pig_steering: bool,
@@ -318,8 +380,15 @@ impl From<&GameSettings> for StoredSettings {
             mouse_sensitivity: settings.mouse_sensitivity,
             view_bobbing: settings.view_bobbing,
             fullscreen: settings.fullscreen,
-            sound_volume: settings.sound_volume,
+            master_volume: settings.master_volume,
             music_volume: settings.music_volume,
+            blocks_volume: settings.blocks_volume,
+            weather_volume: settings.weather_volume,
+            hostile_mobs_volume: settings.hostile_mobs_volume,
+            passive_mobs_volume: settings.passive_mobs_volume,
+            players_volume: settings.players_volume,
+            ambient_volume: settings.ambient_volume,
+            note_blocks_volume: settings.note_blocks_volume,
             floating_items: settings.floating_items,
             bow_charging: settings.bow_charging,
             pig_steering: settings.pig_steering,
@@ -345,8 +414,15 @@ impl From<StoredSettings> for GameSettings {
             mouse_sensitivity: stored.mouse_sensitivity,
             view_bobbing: stored.view_bobbing,
             fullscreen: stored.fullscreen,
-            sound_volume: stored.sound_volume,
+            master_volume: stored.master_volume,
             music_volume: stored.music_volume,
+            blocks_volume: stored.blocks_volume,
+            weather_volume: stored.weather_volume,
+            hostile_mobs_volume: stored.hostile_mobs_volume,
+            passive_mobs_volume: stored.passive_mobs_volume,
+            players_volume: stored.players_volume,
+            ambient_volume: stored.ambient_volume,
+            note_blocks_volume: stored.note_blocks_volume,
             floating_items: stored.floating_items,
             bow_charging: stored.bow_charging,
             pig_steering: stored.pig_steering,

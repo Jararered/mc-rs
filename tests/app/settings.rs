@@ -40,6 +40,7 @@ use game::world::difficulty::Difficulty;
 use game::world::environment::celestial_angle;
 use game::world::environment::skylight_subtracted;
 use game::world::plugin::WorldPlugin;
+use game::world::sound::SoundCategory;
 use game::world::streaming::WorldStreaming;
 use game::world::tick::WorldTick;
 
@@ -397,8 +398,15 @@ fn settings_round_trip_through_json() {
         mouse_sensitivity: 1.5,
         view_bobbing: false,
         fullscreen: true,
-        sound_volume: 0.25,
+        master_volume: 0.25,
         music_volume: 0.0,
+        blocks_volume: 0.5,
+        weather_volume: 0.1,
+        hostile_mobs_volume: 0.2,
+        passive_mobs_volume: 0.3,
+        players_volume: 0.4,
+        ambient_volume: 0.6,
+        note_blocks_volume: 0.7,
         difficulty: Difficulty::Hard,
         floating_items: false,
         bow_charging: true,
@@ -1139,7 +1147,7 @@ fn settings_resize_scroll_and_tab_reset() {
             .iter(app.world())
             .filter(|node| node.grid_template_columns == vec![RepeatedGridTrack::flex(2, 1.0)])
             .count(),
-        4
+        5
     );
     app.world_mut()
         .get_mut::<Window>(window)
@@ -1152,7 +1160,7 @@ fn settings_resize_scroll_and_tab_reset() {
             .iter(app.world())
             .filter(|node| node.grid_template_columns == vec![RepeatedGridTrack::flex(1, 1.0)])
             .count(),
-        4
+        5
     );
     let content = app
         .world_mut()
@@ -1289,8 +1297,8 @@ fn setting_sliders_cover_ranges_and_fps_vsync_endpoint() {
         SettingsSlider::CloudHeight,
         SettingsSlider::MouseSensitivity,
         SettingsSlider::MaxFps,
-        SettingsSlider::MusicVolume,
-        SettingsSlider::SoundVolume,
+        SettingsSlider::Volume(SoundCategory::Master),
+        SettingsSlider::Volume(SoundCategory::HostileMobs),
     ] {
         let mut slider = binding.slider(&settings);
         assert!(!binding.apply(&slider, &mut settings));
@@ -1795,14 +1803,37 @@ fn renderer_disables_gpu_light_clustering_without_changing_capabilities() {
 #[test]
 fn volumes_start_full_and_stay_between_silence_and_full() {
     let mut settings = GameSettings::default();
-    assert_eq!((settings.sound_volume, settings.music_volume), (1.0, 1.0));
-    settings.sound_volume = 7.5;
+    for category in SoundCategory::ALL {
+        assert_eq!(settings.volume(category), 1.0, "{category:?}");
+    }
+    settings.master_volume = 7.5;
     settings.music_volume = -1.0;
+    settings.weather_volume = f32::NAN;
     settings.clamp();
-    assert_eq!((settings.sound_volume, settings.music_volume), (1.0, 0.0));
-    settings.sound_volume = f32::NAN;
-    settings.clamp();
-    assert_eq!(settings.sound_volume, 1.0);
+    assert_eq!(settings.master_volume, 1.0);
+    assert_eq!(settings.music_volume, 0.0);
+    assert_eq!(settings.weather_volume, 1.0);
+}
+
+#[test]
+fn a_category_plays_at_its_own_volume_under_the_masters() {
+    let mut settings = GameSettings::default();
+    settings.master_volume = 0.5;
+    settings.hostile_mobs_volume = 0.5;
+    settings.passive_mobs_volume = 0.0;
+    assert_eq!(settings.gain(SoundCategory::Master), 0.5);
+    assert_eq!(settings.gain(SoundCategory::HostileMobs), 0.25);
+    assert_eq!(settings.gain(SoundCategory::PassiveMobs), 0.0);
+    assert_eq!(settings.gain(SoundCategory::Music), 0.5);
+    // Each category writes its own field and no other.
+    for category in SoundCategory::ALL {
+        let mut settings = GameSettings::default();
+        *settings.volume_mut(category) = 0.3;
+        for other in SoundCategory::ALL {
+            let expected = if other == category { 0.3 } else { 1.0 };
+            assert_eq!(settings.volume(other), expected, "{category:?} {other:?}");
+        }
+    }
 }
 
 #[test]
@@ -1811,7 +1842,9 @@ fn a_settings_file_from_before_sound_plays_at_full_volume() {
     fs::write(&path, r#"{ "render_distance": 9, "view_bobbing": false }"#).unwrap();
     let settings = load_settings(&path);
     assert_eq!(settings.render_distance, 9);
-    assert_eq!((settings.sound_volume, settings.music_volume), (1.0, 1.0));
+    for category in SoundCategory::ALL {
+        assert_eq!(settings.volume(category), 1.0, "{category:?}");
+    }
     let _ = fs::remove_file(path);
 }
 
@@ -1819,13 +1852,17 @@ fn a_settings_file_from_before_sound_plays_at_full_volume() {
 fn the_volume_sliders_move_in_whole_percents() {
     use game::ui::screens::menu::SettingsSlider;
     let mut settings = GameSettings::default();
-    let mut slider = SettingsSlider::SoundVolume.slider(&settings);
+    let binding = SettingsSlider::Volume(SoundCategory::PassiveMobs);
+    let mut slider = binding.slider(&settings);
     assert_eq!(slider.value(), 100.0);
     slider.set_fraction(0.25);
-    assert!(SettingsSlider::SoundVolume.apply(&slider, &mut settings));
-    assert_eq!(settings.sound_volume, 0.25);
-    assert_eq!(settings.music_volume, 1.0, "the other slider is its own");
+    assert!(binding.apply(&slider, &mut settings));
+    assert_eq!(settings.passive_mobs_volume, 0.25);
+    assert_eq!(
+        settings.hostile_mobs_volume, 1.0,
+        "the other slider is its own"
+    );
     slider.set_fraction(0.0);
-    SettingsSlider::SoundVolume.apply(&slider, &mut settings);
-    assert_eq!(settings.sound_volume, 0.0);
+    binding.apply(&slider, &mut settings);
+    assert_eq!(settings.passive_mobs_volume, 0.0);
 }

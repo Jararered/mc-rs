@@ -4,6 +4,7 @@ use bevy::prelude::*;
 use game::block::blocks::Block;
 use game::world::sound::MAX_QUEUED;
 use game::world::sound::Pitch;
+use game::world::sound::SoundCategory;
 use game::world::sound::Sounds;
 
 #[test]
@@ -87,4 +88,43 @@ fn a_splash_is_as_loud_as_the_entry_was_fast() {
     sounds.clear();
     sounds.splash(Vec3::ZERO, Vec3::ZERO);
     assert!(sounds.queued().is_empty());
+}
+
+#[test]
+fn every_sound_falls_in_a_category() {
+    use SoundCategory::*;
+    for (name, category) in [
+        ("step.grass", Blocks),
+        ("random.glass", Blocks),
+        ("tile.piston.out", Blocks),
+        ("random.explode", Blocks),
+        ("random.fuse", Blocks),
+        ("fire.ignite", Blocks),
+        ("note.harp", NoteBlocks),
+        ("ambient.weather.rain", Weather),
+        ("ambient.weather.thunder", Weather),
+        ("ambient.cave.cave", Ambient),
+        ("fire.fire", Ambient),
+        ("liquid.water", Ambient),
+        ("portal.travel", Ambient),
+        ("mob.zombie", HostileMobs),
+        ("mob.zombiepig.zpigangry", HostileMobs),
+        ("mob.skeletonhurt", HostileMobs),
+        ("mob.creeperdeath", HostileMobs),
+        ("mob.slimeattack", HostileMobs),
+        ("mob.ghast.moan", HostileMobs),
+        ("mob.spider", HostileMobs),
+        ("mob.pig", PassiveMobs),
+        ("mob.chickenplop", PassiveMobs),
+        ("mob.wolf.growl", PassiveMobs),
+        ("random.hurt", Players),
+        ("random.bow", Players),
+        ("random.pop", Players),
+        ("random.splash", Players),
+    ] {
+        assert_eq!(SoundCategory::of(name, true), category, "{name}");
+    }
+    // A lever's click is a block; a menu button's answers to the master alone.
+    assert_eq!(SoundCategory::of("random.click", true), Blocks);
+    assert_eq!(SoundCategory::of("random.click", false), Master);
 }

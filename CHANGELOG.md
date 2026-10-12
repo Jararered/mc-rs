@@ -170,8 +170,16 @@ Sounds need the original game's `resources/` folder beside `assets/`. Without it
 
 ##### Sound and music
 
-- [ ] Settings, Gameplay: Music and Sound sliders run from OFF to 100%. Sound changes what is already playing;
-      Music at OFF stops the track and starts no other. Both are remembered.
+- [ ] Settings has an Audio tab with a slider from OFF to 100% for Master volume, Music, Blocks, Weather, Hostile
+      mobs, Passive mobs, Players, Ambient and Note blocks. Master scales everything, music included; each of
+      the others scales its own kind under it. All are remembered.
+      `pending`
+- [ ] A slider changes what is already playing, and a kind at OFF starts no new sound: with Hostile mobs at OFF
+      a zombie is silent while a pig beside it is not. Music or Master at OFF stops the track.
+      `pending`
+- [ ] Blocks covers footsteps, digging, placing, switches, pistons, doors, fuses and explosions; Players covers
+      your hurt grunt, the bow, throws, pickups and splashes; Ambient covers cave noises, fire, running water
+      and portals. A menu button's click follows Master alone.
       `pending`
 - [ ] Music plays in a world: the first track within ten minutes, then ten to twenty minutes of quiet after each,
       from the twelve in `resources/music` and `resources/newmusic`.

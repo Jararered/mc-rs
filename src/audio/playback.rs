@@ -27,6 +27,7 @@ use super::library::SoundLibrary;
 use crate::app::settings::GameSettings;
 use crate::player::PlayerCamera;
 use crate::world::sound::MAX_QUEUED;
+use crate::world::sound::SoundCategory;
 use crate::world::sound::Sounds;
 
 /// How far a sound of volume 1 carries: `RenderGlobal.playSound` plays
@@ -217,8 +218,9 @@ impl<I: Source> Source for Stereo<I> {
 #[derive(Component)]
 pub struct Emitter {
     position: Option<Vec3>,
-    /// Beta's volume, before distance and the Sound option.
+    /// Beta's volume, before distance and the Audio options.
     volume: f32,
+    category: SoundCategory,
     gains: Arc<ChannelGains>,
 }
 
@@ -246,14 +248,18 @@ pub(super) fn play_sounds(
     camera: Query<&GlobalTransform, With<PlayerCamera>>,
     emitters: Query<(), With<Emitter>>,
 ) {
-    let master = settings.map_or(1.0, |settings| settings.sound_volume);
-    if master <= 0.0 {
-        sounds.clear();
-        return;
-    }
     let listener = listener(&camera);
     let mut playing = emitters.iter().len();
     for request in sounds.drain() {
+        // A category that is turned off starts nothing, as Beta's Sound
+        // option at zero does.
+        let category = SoundCategory::of(request.name, request.position.is_some());
+        let master = settings
+            .as_ref()
+            .map_or(1.0, |settings| settings.gain(category));
+        if master <= 0.0 {
+            continue;
+        }
         if let Some(position) = request.position {
             let range = hearing_range(request.volume);
             if listener.is_none_or(|listener| {
@@ -279,6 +285,7 @@ pub(super) fn play_sounds(
             Emitter {
                 position: request.position,
                 volume: request.volume,
+                category,
                 gains,
             },
             Unstarted::default(),
@@ -296,9 +303,11 @@ pub(super) fn update_emitters(
     camera: Query<&GlobalTransform, With<PlayerCamera>>,
     emitters: Query<&Emitter>,
 ) {
-    let master = settings.map_or(1.0, |settings| settings.sound_volume);
     let listener = listener(&camera);
     for emitter in &emitters {
+        let master = settings
+            .as_ref()
+            .map_or(1.0, |settings| settings.gain(emitter.category));
         let gains = channel_gains(listener, emitter.position, emitter.volume);
         emitter.gains.set(gains.map(|gain| gain * master));
     }

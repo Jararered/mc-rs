@@ -21,6 +21,7 @@ use super::playback::Unstarted;
 use super::time_seed;
 use crate::app::settings::GameSettings;
 use crate::random::JavaRandom;
+use crate::world::sound::SoundCategory;
 use crate::world::tick::WorldTick;
 
 /// The longest wait before the first track, and the shortest between tracks.
@@ -98,7 +99,7 @@ pub(super) fn play_music(
     mut sources: ResMut<Assets<AudioSource>>,
     playing: Query<(), With<MusicTrack>>,
 ) {
-    let volume = settings.map_or(1.0, |settings| settings.music_volume);
+    let volume = settings.map_or(1.0, |settings| settings.gain(SoundCategory::Music));
     if volume <= 0.0 {
         return;
     }
@@ -128,8 +129,8 @@ pub(super) fn play_music(
     }
 }
 
-/// `SoundManager.onSoundOptionsChanged`: the Music option reaches the track
-/// that is playing, and turning it off stops the track.
+/// `SoundManager.onSoundOptionsChanged`: the Music and Master options reach
+/// the track that is playing, and turning either off stops the track.
 pub(super) fn apply_music_volume(
     mut commands: Commands,
     settings: Res<GameSettings>,
@@ -138,11 +139,12 @@ pub(super) fn apply_music_volume(
     if !settings.is_changed() {
         return;
     }
+    let volume = settings.gain(SoundCategory::Music);
     for (entity, sink) in &mut tracks {
-        if settings.music_volume <= 0.0 {
+        if volume <= 0.0 {
             commands.entity(entity).despawn();
         } else if let Some(mut sink) = sink {
-            sink.set_volume(Volume::Linear(settings.music_volume));
+            sink.set_volume(Volume::Linear(volume));
         }
     }
 }

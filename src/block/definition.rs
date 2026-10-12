@@ -278,7 +278,7 @@ pub(crate) fn door_bounds(metadata: u8) -> BlockBounds {
 /// wall sign's board against the block behind it (`metadata` 2 to 5, the
 /// face it hangs on).
 pub(crate) fn sign_bounds(block: Block, metadata: u8) -> BlockBounds {
-    if block == Block::StandingSign {
+    if block == Block::Sign {
         return ([0.25, 0.0, 0.25], [0.75, 1.0, 0.75]);
     }
     let (low, high, thick) = (0.281_25, 0.781_25, 0.125);

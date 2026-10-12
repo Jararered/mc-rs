@@ -52,7 +52,7 @@ fn instrument(block: Block) -> u8 {
         | Block::WoodenDoor
         | Block::Trapdoor
         | Block::WoodenPressurePlate
-        | Block::StandingSign
+        | Block::Sign
         | Block::WallSign => 4,
         _ => 0,
     }

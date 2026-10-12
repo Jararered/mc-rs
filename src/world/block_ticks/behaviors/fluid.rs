@@ -56,7 +56,7 @@ fn blocks_flow(world: &TickWorld, position: IVec3) -> bool {
     let block = world.block(position);
     if matches!(
         block,
-        Block::WoodenDoor | Block::IronDoor | Block::StandingSign | Block::SugarCane
+        Block::WoodenDoor | Block::IronDoor | Block::Sign | Block::SugarCane
     ) || block.is_ladder()
     {
         return true;

@@ -1337,7 +1337,7 @@ fn a_sign_is_placed_written_on_once_and_read_by_everyone() {
         *heard
             == Heard::BlockChange {
                 at: post,
-                block: Block::StandingSign.as_u8(),
+                block: Block::Sign.as_u8(),
             }
     });
 

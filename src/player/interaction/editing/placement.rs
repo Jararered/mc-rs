@@ -310,7 +310,7 @@ pub fn place_sign(
             // Beta's yaw: 0 looks along +Z and 90 along -X.
             let yaw = (-look.x).atan2(look.z).to_degrees();
             let turn = ((yaw + 180.0) * 16.0 / 360.0 + 0.5).floor() as i32 & 15;
-            (Block::StandingSign, turn as u8)
+            (Block::Sign, turn as u8)
         }
         BlockFace::North => (Block::WallSign, 2),
         BlockFace::South => (Block::WallSign, 3),

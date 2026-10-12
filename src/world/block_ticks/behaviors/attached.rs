@@ -81,7 +81,7 @@ pub static SIGN: Sign = Sign;
 
 impl BlockBehavior for Sign {
     fn neighbor_changed(&self, world: &mut TickWorld, position: IVec3, _neighbor: Block) {
-        let behind = if world.block(position) == Block::StandingSign {
+        let behind = if world.block(position) == Block::Sign {
             IVec3::NEG_Y
         } else {
             match world.metadata(position) {

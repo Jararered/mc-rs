@@ -195,7 +195,7 @@ fn block_sort_path(block: Block) -> (u8, u8) {
         | Block::PoweredRail
         | Block::DetectorRail
         | Block::Rail
-        | Block::StandingSign
+        | Block::Sign
         | Block::WallSign
         | Block::WoodenDoor
         | Block::IronDoor

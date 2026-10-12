@@ -119,7 +119,7 @@ fn can_push(world: &TickWorld, pos: IVec3, block: Block) -> bool {
                 | Block::NoteBlock
                 | Block::MobSpawner
                 | Block::Jukebox
-                | Block::StandingSign
+                | Block::Sign
                 | Block::WallSign
         )
     {

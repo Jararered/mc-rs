@@ -75,7 +75,7 @@ pub enum Block {
     Farmland = 60,
     Furnace = 61,
     LitFurnace = 62,
-    StandingSign = 63,
+    Sign = 63,
     WoodenDoor = 64,
     Ladder = 65,
     Rail = 66,
@@ -299,7 +299,7 @@ impl Block {
             | Self::WoodenDoor
             | Self::IronDoor
             | Self::Trapdoor
-            | Self::StandingSign
+            | Self::Sign
             | Self::WallSign => metadata,
             // The occupied bit is not drawn.
             Self::Bed => metadata & 0b1011,
@@ -312,7 +312,7 @@ impl Block {
     }
 
     pub const fn is_sign(self) -> bool {
-        matches!(self, Self::StandingSign | Self::WallSign)
+        matches!(self, Self::Sign | Self::WallSign)
     }
 
     pub const fn is_stairs(self) -> bool {
@@ -336,7 +336,7 @@ impl Block {
             Self::Torch | Self::Ladder => definition::oriented_bounds(self, metadata),
             Self::WoodenDoor | Self::IronDoor => definition::door_bounds(metadata),
             Self::Trapdoor => definition::trapdoor_bounds(metadata),
-            Self::StandingSign | Self::WallSign => definition::sign_bounds(self, metadata),
+            Self::Sign | Self::WallSign => definition::sign_bounds(self, metadata),
             _ => definition::redstone_bounds(self, metadata)
                 .unwrap_or_else(|| self.selection_bounds()),
         }
@@ -393,7 +393,7 @@ impl Block {
                 Self::Bed
                 | Self::PistonHead
                 | Self::MovingPiston
-                | Self::StandingSign
+                | Self::Sign
                 | Self::WallSign
                 | Self::WoodenDoor
                 | Self::IronDoor

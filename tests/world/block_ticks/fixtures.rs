@@ -739,7 +739,7 @@ fn a_sign_stands_or_hangs_on_something_solid_and_goes_with_it() {
         Vec3::Z,
     );
     assert_eq!(post.map(|(cell, ..)| cell), Some(at(8, 64, 8)));
-    assert_eq!(world.block(at(8, 64, 8)), Block::StandingSign);
+    assert_eq!(world.block(at(8, 64, 8)), Block::Sign);
     assert_eq!(world.metadata(at(8, 64, 8)), 8);
     assert!(
         world
@@ -777,7 +777,7 @@ fn a_sign_stands_or_hangs_on_something_solid_and_goes_with_it() {
     assert_eq!(world.block(at(4, 64, 3)), Block::Air);
     assert!(world.chunks.sign_at(8, 64, 8).is_none());
     let drops = world.drops();
-    assert!(drops.contains(&(at(8, 64, 8), Block::StandingSign, 8)));
+    assert!(drops.contains(&(at(8, 64, 8), Block::Sign, 8)));
     assert!(drops.contains(&(at(4, 64, 3), Block::WallSign, 2)));
 }
 

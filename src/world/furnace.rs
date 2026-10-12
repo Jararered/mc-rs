@@ -178,7 +178,7 @@ pub(crate) fn is_wood_material(block: Block) -> bool {
             | Block::NoteBlock
             | Block::Jukebox
             | Block::LockedChest
-            | Block::StandingSign
+            | Block::Sign
             | Block::WallSign
     )
 }

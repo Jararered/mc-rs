@@ -1344,7 +1344,7 @@ fn what_is_written_on_a_sign_is_saved_in_both_formats() {
         let mut generated = OverworldGenerator::new(0).generate(position);
         generated
             .chunk
-            .set_with_metadata(4, 90, 5, Block::StandingSign, 6);
+            .set_with_metadata(4, 90, 5, Block::Sign, 6);
         let index = Chunk::index(4, 90, 5);
         let lines = ["Welcome", "", "to the", "mine"].map(str::to_owned);
         generated.chunk.sign_mut(index).unwrap().lines = lines.clone();

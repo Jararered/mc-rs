@@ -67,7 +67,7 @@ pub enum Block {
     MobSpawner = 52,
     WoodenStairs = 53,
     Chest = 54,
-    RedstoneWire = 55,
+    Redstone = 55,
     DiamondOre = 56,
     DiamondBlock = 57,
     CraftingTable = 58,
@@ -276,7 +276,7 @@ impl Block {
             | Self::Chest
             | Self::Pumpkin
             | Self::Dispenser
-            | Self::RedstoneWire
+            | Self::Redstone
             | Self::Repeater
             | Self::PoweredRepeater
             | Self::RedstoneTorch

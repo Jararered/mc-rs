@@ -581,7 +581,7 @@ pub fn block_tile(
         Block::LockedChest if face == 4 => tile(27),
         Block::LockedChest => tile(26),
         Block::WoodenDoor | Block::IronDoor => door_tile(block, metadata, face).0,
-        Block::RedstoneWire => (4, 10),
+        Block::Redstone => (4, 10),
         // `BlockRedstoneRepeater`: the top and torch shade with power.
         Block::Repeater if face == 0 => tile(131),
         Block::PoweredRepeater if face == 0 => tile(147),

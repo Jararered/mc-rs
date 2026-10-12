@@ -798,7 +798,7 @@ fn placed_redstone_controls_keep_their_support_side() {
         &mut chunks,
         hit(10, 64, 8, BlockFace::Up, Block::Stone),
         player,
-        Block::RedstoneWire,
+        Block::Redstone,
         0,
         Direction::East,
     ));
@@ -806,7 +806,7 @@ fn placed_redstone_controls_keep_their_support_side() {
         &mut chunks,
         hit(10, 70, 8, BlockFace::Up, Block::Air),
         player,
-        Block::RedstoneWire,
+        Block::Redstone,
         0,
         Direction::East,
     ));

@@ -232,7 +232,7 @@ impl<'a> Mesher<'a> {
                         meshes.grass_overlay.push_torch(origin, block, metadata);
                         continue;
                     }
-                    if block == Block::RedstoneWire {
+                    if block == Block::Redstone {
                         self.push_redstone_wire(&mut meshes.masked, origin, x, y, z);
                         continue;
                     }

@@ -194,7 +194,7 @@ fn sorting_follows_the_top_level_tree_and_places_equipment_last() {
 #[test]
 fn block_sorting_follows_natural_building_functional_and_redstone_groups() {
     let mut slots = [
-        Some(ItemStack::from_block(Block::RedstoneWire, 1).unwrap()),
+        Some(ItemStack::from_block(Block::Redstone, 1).unwrap()),
         Some(ItemStack::from_block(Block::Chest, 1).unwrap()),
         Some(ItemStack::from_block(Block::Wool, 1).unwrap()),
         Some(ItemStack::from_block(Block::Dirt, 1).unwrap()),
@@ -220,7 +220,7 @@ fn block_sorting_follows_natural_building_functional_and_redstone_groups() {
             Item::from_block(Block::Wool).unwrap(),
             Item::from_block(Block::Chest).unwrap(),
             Item::from_block(Block::CraftingTable).unwrap(),
-            Item::from_block(Block::RedstoneWire).unwrap(),
+            Item::from_block(Block::Redstone).unwrap(),
             Item::from_block(Block::Torch).unwrap(),
             Item::from_block(Block::Repeater).unwrap(),
         ]

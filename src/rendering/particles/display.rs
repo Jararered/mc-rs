@@ -90,7 +90,7 @@ fn display_tick(
         Block::LitFurnace => furnace(particles, random, base, metadata),
         Block::Fire => fire(particles, random, chunks, cell),
         Block::LitRedstoneOre => sparkle(particles, random, chunks, cell),
-        Block::RedstoneWire => redstone_wire(particles, random, base, metadata),
+        Block::Redstone => redstone_wire(particles, random, base, metadata),
         Block::PoweredRepeater => repeater(particles, random, base, metadata),
         Block::NetherPortal => portal(particles, random, chunks, cell),
         Block::Lava | Block::FlowingLava => lava(particles, random, chunks, cell),

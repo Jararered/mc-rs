@@ -131,7 +131,7 @@ fn push_natural(drops: &mut Vec<ItemStack>, block: Block, metadata: u8, rolls: &
         Block::CobblestoneStairs => push_block(drops, Block::Cobblestone, 1),
         Block::LitFurnace => push_block(drops, Block::Furnace, 1),
         Block::UnlitRedstoneTorch => push_block(drops, Block::RedstoneTorch, 1),
-        Block::RedstoneWire => push_item(drops, Item::Redstone, 0, 1),
+        Block::Redstone => push_item(drops, Item::Redstone, 0, 1),
         Block::StandingSign | Block::WallSign => push_item(drops, Item::Sign, 0, 1),
         // `BlockDoor.idDropped`: the upper half drops nothing.
         Block::WoodenDoor | Block::IronDoor if metadata & 8 != 0 => {}

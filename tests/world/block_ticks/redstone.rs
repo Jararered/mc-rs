@@ -21,8 +21,8 @@ fn switch_wire_repeater_and_button_timing() {
     let second = at(6, 64, 4);
     let repeater = at(7, 64, 4);
     place_meta(&mut w, lever, Block::Lever, 5);
-    w.place(wire, Block::RedstoneWire);
-    w.place(second, Block::RedstoneWire);
+    w.place(wire, Block::Redstone);
+    w.place(second, Block::Redstone);
     place_meta(&mut w, repeater, Block::Repeater, 1);
     w.event(BlockEvent::Activated { position: lever });
     assert_eq!(w.metadata(wire), 15);
@@ -238,7 +238,7 @@ fn long_wire_runs_stop_after_fifteen_cells_and_cross_chunk_boundaries() {
     w.fill(at(0, 63, 4), at(31, 63, 4), Block::Stone);
     place_meta(&mut w, at(1, 64, 4), Block::Lever, 5);
     for x in 2..=26 {
-        w.place(at(x, 64, 4), Block::RedstoneWire);
+        w.place(at(x, 64, 4), Block::Redstone);
     }
     w.event(BlockEvent::Activated {
         position: at(1, 64, 4),
@@ -425,7 +425,7 @@ fn inverter(w: &mut TestWorld) -> (IVec3, IVec3) {
     let wire = at(5, 64, 4);
     let torch = at(7, 64, 4);
     place_meta(w, lever, Block::Lever, 5);
-    w.place(wire, Block::RedstoneWire);
+    w.place(wire, Block::Redstone);
     w.place(at(6, 64, 4), Block::Stone);
     place_meta(w, torch, Block::RedstoneTorch, 1);
     w.event(BlockEvent::Activated { position: lever });
@@ -449,7 +449,7 @@ fn bending_dust_away_from_a_block_updates_the_torch_behind_it() {
     let mut w = TestWorld::new(1);
     let (wire, torch) = inverter(&mut w);
     // A second dust to the south turns the first away from the stone.
-    w.place(wire + IVec3::Z, Block::RedstoneWire);
+    w.place(wire + IVec3::Z, Block::Redstone);
     w.run(4);
     assert_eq!(w.block(torch), Block::RedstoneTorch);
 }
@@ -463,11 +463,11 @@ fn dust_broken_by_a_piston_during_a_wire_update_darkens_its_neighbors() {
     let doomed = piston + IVec3::NEG_Z;
     let tail = doomed + IVec3::X;
     place_meta(&mut w, lever, Block::Lever, 5);
-    w.place(at(5, 64, 8), Block::RedstoneWire);
+    w.place(at(5, 64, 8), Block::Redstone);
     place_meta(&mut w, piston, Block::Piston, 2);
     place_meta(&mut w, doomed + IVec3::NEG_Z, Block::RedstoneTorch, 5);
-    w.place(tail, Block::RedstoneWire);
-    w.place(doomed, Block::RedstoneWire);
+    w.place(tail, Block::Redstone);
+    w.place(doomed, Block::Redstone);
     assert_eq!(w.metadata(tail), 14);
     w.event(BlockEvent::Activated { position: lever });
     assert_eq!(w.block(doomed), Block::PistonHead);
@@ -485,7 +485,7 @@ fn dust_connects_to_a_source_on_the_step_below() {
     let piston = wire + IVec3::Z;
     place_meta(&mut w, at(4, 63, 6), Block::Lever, 5);
     place_meta(&mut w, wire + IVec3::NEG_Z, Block::RedstoneTorch, 5);
-    w.place(wire, Block::RedstoneWire);
+    w.place(wire, Block::Redstone);
     assert_eq!(w.metadata(wire), 15);
     place_meta(&mut w, piston, Block::Piston, 1);
     assert_eq!(w.metadata(piston) & 8, 0);
@@ -498,8 +498,8 @@ fn piston_ignores_dust_pointing_into_its_face() {
     let piston = at(6, 64, 8);
     place_meta(&mut w, piston, Block::Piston, 2);
     place_meta(&mut w, at(6, 64, 6), Block::RedstoneTorch, 5);
-    w.place(at(6, 64, 7), Block::RedstoneWire);
-    assert_eq!(w.block(at(6, 64, 7)), Block::RedstoneWire);
+    w.place(at(6, 64, 7), Block::Redstone);
+    assert_eq!(w.block(at(6, 64, 7)), Block::Redstone);
     assert_eq!(w.metadata(piston) & 8, 0);
 }
 
@@ -511,7 +511,7 @@ fn a_piston_is_not_a_cube_to_hang_a_torch_on() {
     let lever = at(4, 64, 4);
     let body = at(6, 64, 4);
     place_meta(&mut w, lever, Block::Lever, 5);
-    w.place(at(5, 64, 4), Block::RedstoneWire);
+    w.place(at(5, 64, 4), Block::Redstone);
     w.set_with_metadata(body, Block::Piston, 1);
     w.set_with_metadata(body + IVec3::X, Block::RedstoneTorch, 1);
     w.event(BlockEvent::Activated { position: lever });

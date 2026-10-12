@@ -68,7 +68,7 @@ fn mobility(block: Block) -> u8 {
         Block::Torch
         | Block::RedstoneTorch
         | Block::UnlitRedstoneTorch
-        | Block::RedstoneWire
+        | Block::Redstone
         | Block::Repeater
         | Block::PoweredRepeater
         | Block::Lever

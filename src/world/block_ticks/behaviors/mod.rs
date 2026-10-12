@@ -108,7 +108,7 @@ pub(super) fn table() -> [&'static dyn BlockBehavior; 256] {
     );
     register(&mut table, &[Block::Bed], &bed::BED);
     register(&mut table, &[Block::NetherPortal], &portal::PORTAL);
-    register(&mut table, &[Block::RedstoneWire], &redstone::WIRE);
+    register(&mut table, &[Block::Redstone], &redstone::WIRE);
     register(
         &mut table,
         &[Block::Repeater, Block::PoweredRepeater],

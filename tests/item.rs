@@ -142,14 +142,14 @@ fn native_save_values_and_supported_states_round_trip() {
         Block::RedstoneTorch,
         Block::Piston,
         Block::StickyPiston,
-        Block::RedstoneWire,
+        Block::Redstone,
         Block::Repeater,
     ] {
         assert_eq!(id.placed(0), Some((id, 0)));
     }
     assert_eq!(
         ItemStack::new(Item::Redstone, 1).unwrap().runtime_block(),
-        Some((Block::RedstoneWire, 0))
+        Some((Block::Redstone, 0))
     );
     assert_eq!(
         ItemStack::new(Item::Repeater, 1).unwrap().runtime_block(),

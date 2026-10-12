@@ -13,7 +13,7 @@ pub static WIRE: Wire = Wire;
 const HORIZONTAL: [IVec3; 4] = [IVec3::NEG_X, IVec3::X, IVec3::NEG_Z, IVec3::Z];
 
 fn wire_at(world: &TickWorld, position: IVec3) -> u8 {
-    if world.block(position) == Block::RedstoneWire {
+    if world.block(position) == Block::Redstone {
         world.metadata(position)
     } else {
         0
@@ -58,12 +58,12 @@ fn propagate(world: &mut TickWorld, position: IVec3) {
     let mut queued = std::collections::HashSet::new();
     let mut work = 0usize;
     while let Some(position) = pending.pop() {
-        if world.block(position) != Block::RedstoneWire {
+        if world.block(position) != Block::Redstone {
             continue;
         }
         work += 1;
         if work > 262_144 {
-            world.schedule(position, Block::RedstoneWire, 1);
+            world.schedule(position, Block::Redstone, 1);
             break;
         }
         let old = world.metadata(position);
@@ -99,7 +99,7 @@ fn propagate(world: &mut TickWorld, position: IVec3) {
         }
     }
     for cell in notifications {
-        world.notify_neighbors(cell, Block::RedstoneWire);
+        world.notify_neighbors(cell, Block::Redstone);
     }
 }
 
@@ -107,10 +107,10 @@ fn propagate(world: &mut TickWorld, position: IVec3) {
 /// may now point somewhere else, so everything around it and around its six
 /// neighbors looks again.
 fn notify_wire_neighbors(world: &mut TickWorld, position: IVec3) {
-    if world.block(position) != Block::RedstoneWire {
+    if world.block(position) != Block::Redstone {
         return;
     }
-    world.notify_neighbors(position, Block::RedstoneWire);
+    world.notify_neighbors(position, Block::Redstone);
     for offset in [
         IVec3::NEG_X,
         IVec3::X,
@@ -119,7 +119,7 @@ fn notify_wire_neighbors(world: &mut TickWorld, position: IVec3) {
         IVec3::NEG_Y,
         IVec3::Y,
     ] {
-        world.notify_neighbors(position + offset, Block::RedstoneWire);
+        world.notify_neighbors(position + offset, Block::Redstone);
     }
 }
 
@@ -145,7 +145,7 @@ fn is_power_provider_or_wire(world: &TickWorld, position: IVec3, side: i8) -> bo
     // A source on the step above or below (`side` -1) still connects; only
     // a repeater has to face the dust.
     match block {
-        Block::RedstoneWire => true,
+        Block::Redstone => true,
         Block::Repeater | Block::PoweredRepeater => {
             i16::from(side) == [2, 3, 0, 1][usize::from(world.metadata(position) & 3)]
         }
@@ -200,32 +200,32 @@ impl BlockBehavior for Wire {
     }
     fn on_added(&self, world: &mut TickWorld, position: IVec3) {
         propagate(world, position);
-        world.notify_neighbors(position + IVec3::Y, Block::RedstoneWire);
-        world.notify_neighbors(position - IVec3::Y, Block::RedstoneWire);
+        world.notify_neighbors(position + IVec3::Y, Block::Redstone);
+        world.notify_neighbors(position - IVec3::Y, Block::Redstone);
         notify_connected_wires(world, position);
     }
     fn on_removed(&self, world: &mut TickWorld, position: IVec3, _: Block, metadata: u8) {
-        world.notify_neighbors(position + IVec3::Y, Block::RedstoneWire);
-        world.notify_neighbors(position - IVec3::Y, Block::RedstoneWire);
+        world.notify_neighbors(position + IVec3::Y, Block::Redstone);
+        world.notify_neighbors(position - IVec3::Y, Block::Redstone);
         // Beta recomputes the emptied cell itself, which reaches the wires
         // it fed and, because the cell read as unpowered, notifies around it
         // and its six neighbors.
         for neighbor in wire_neighbors(world, position) {
-            if world.block(neighbor) == Block::RedstoneWire {
+            if world.block(neighbor) == Block::Redstone {
                 propagate(world, neighbor);
             }
         }
         if metadata > 0 {
-            world.notify_neighbors(position, Block::RedstoneWire);
+            world.notify_neighbors(position, Block::Redstone);
             for offset in crate::world::block_ticks::NEIGHBORS {
-                world.notify_neighbors(position + offset, Block::RedstoneWire);
+                world.notify_neighbors(position + offset, Block::Redstone);
             }
         }
         notify_connected_wires(world, position);
     }
     fn neighbor_changed(&self, world: &mut TickWorld, position: IVec3, _: Block) {
         if !world.is_normal_cube(position - IVec3::Y) {
-            world.drop_block_as_item(position, Block::RedstoneWire, world.metadata(position));
+            world.drop_block_as_item(position, Block::Redstone, world.metadata(position));
             world.set_block_notify(position, Block::Air);
         } else {
             propagate(world, position);

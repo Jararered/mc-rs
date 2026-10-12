@@ -563,7 +563,7 @@ fn torches_furnaces_and_portals_make_display_particles() {
         (Block::NetherPortal, 0),
         (Block::RedstoneTorch, 0),
         (Block::LitRedstoneOre, 0),
-        (Block::RedstoneWire, 15),
+        (Block::Redstone, 15),
         (Block::PoweredRepeater, 0),
     ] {
         let chunks = world_with(block, metadata, (8, 64, 8));
@@ -575,7 +575,7 @@ fn torches_furnaces_and_portals_make_display_particles() {
     // An unlit furnace, an unpowered wire and a plain stone block stay quiet.
     for (block, metadata) in [
         (Block::Furnace, 4),
-        (Block::RedstoneWire, 0),
+        (Block::Redstone, 0),
         (Block::Cobblestone, 0),
         (Block::UnlitRedstoneTorch, 0),
     ] {

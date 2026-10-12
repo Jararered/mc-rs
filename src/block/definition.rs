@@ -357,7 +357,7 @@ pub(crate) fn redstone_bounds(block: Block, metadata: u8) -> Option<BlockBounds>
             4 => ([0.25, 0.2, 0.5], [0.75, 0.8, 1.0]),
             _ => ([0.25, 0.0, 0.25], [0.75, 0.6, 0.75]),
         },
-        Block::RedstoneWire => slab(1, false, 1.0 / 16.0),
+        Block::Redstone => slab(1, false, 1.0 / 16.0),
         Block::RedstoneTorch | Block::UnlitRedstoneTorch => {
             torch_selection_bounds(Block::Torch.facing(metadata & 7))
         }

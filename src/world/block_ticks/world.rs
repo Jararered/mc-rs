@@ -223,7 +223,7 @@ impl<'a> TickWorld<'a> {
     /// World.isBlockProvidingPowerTo: strong output from the queried block.
     pub fn block_providing_power_to(&mut self, position: IVec3, side: u8) -> bool {
         let block = self.block(position);
-        (block != Block::RedstoneWire || self.wire_power_enabled)
+        (block != Block::Redstone || self.wire_power_enabled)
             && behavior(block).strong_power(self, position, side)
     }
 
@@ -242,7 +242,7 @@ impl<'a> TickWorld<'a> {
             self.block_getting_powered(position)
         } else {
             let block = self.block(position);
-            (block != Block::RedstoneWire || self.wire_power_enabled)
+            (block != Block::Redstone || self.wire_power_enabled)
                 && behavior(block).weak_power(self, position, side)
         }
     }

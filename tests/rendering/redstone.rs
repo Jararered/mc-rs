@@ -20,7 +20,7 @@ fn mesh(chunk: &Chunk) -> game::rendering::meshing::ChunkMeshes {
 #[test]
 fn isolated_wire_uses_tinted_trace_and_separate_highlight_without_slab_sides() {
     let mut chunk = Chunk::new();
-    chunk.set(X, Y, Z, Block::RedstoneWire);
+    chunk.set(X, Y, Z, Block::Redstone);
     let unpowered = mesh(&chunk);
     assert_eq!(unpowered.masked.vertex_count(), 8);
     assert!(
@@ -64,8 +64,8 @@ fn isolated_wire_uses_tinted_trace_and_separate_highlight_without_slab_sides() {
 #[test]
 fn wire_chooses_straight_and_cropped_junction_tiles() {
     let mut chunk = Chunk::new();
-    chunk.set(X, Y, Z, Block::RedstoneWire);
-    chunk.set(X + 1, Y, Z, Block::RedstoneWire);
+    chunk.set(X, Y, Z, Block::Redstone);
+    chunk.set(X + 1, Y, Z, Block::Redstone);
     let straight = mesh(&chunk);
     assert!(
         straight.masked.vertices()[..4]
@@ -74,14 +74,14 @@ fn wire_chooses_straight_and_cropped_junction_tiles() {
     );
 
     chunk.set(X + 1, Y, Z, Block::Air);
-    chunk.set(X, Y, Z + 1, Block::RedstoneWire);
+    chunk.set(X, Y, Z + 1, Block::Redstone);
     let north_south = mesh(&chunk);
     let texels = &north_south.masked.vertices()[..4];
     assert!(texels.iter().all(|v| v.texel.tile == [5, 10]));
     assert_eq!(texels[0].texel.texel, [0, 0]);
     assert_eq!(texels[1].texel.texel, [16, 0]);
 
-    chunk.set(X + 1, Y, Z, Block::RedstoneWire);
+    chunk.set(X + 1, Y, Z, Block::Redstone);
     let junction = mesh(&chunk);
     let corners = &junction.masked.vertices()[..4];
     assert!(corners.iter().all(|v| v.texel.tile == [4, 10]));
@@ -102,9 +102,9 @@ fn wire_chooses_straight_and_cropped_junction_tiles() {
 #[test]
 fn wire_climbs_a_solid_neighbor_to_the_next_wire() {
     let mut chunk = Chunk::new();
-    chunk.set(X, Y, Z, Block::RedstoneWire);
+    chunk.set(X, Y, Z, Block::Redstone);
     chunk.set(X + 1, Y, Z, Block::Stone);
-    chunk.set(X + 1, Y + 1, Z, Block::RedstoneWire);
+    chunk.set(X + 1, Y + 1, Z, Block::Redstone);
     let meshes = mesh(&chunk);
     let wall = meshes.masked.vertices().chunks_exact(4).find(|quad| {
         quad.iter().all(|v| v.normal == [-1.0, 0.0, 0.0])
@@ -410,7 +410,7 @@ fn extended_piston_exposes_neighbors_along_all_sides_but_not_the_back() {
 fn wire_wall_strips_wind_towards_the_wire_on_every_side() {
     for (dx, dz) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
         let mut chunk = Chunk::new();
-        chunk.set(X, Y, Z, Block::RedstoneWire);
+        chunk.set(X, Y, Z, Block::Redstone);
         chunk.set(
             X.wrapping_add_signed(dx),
             Y,
@@ -421,7 +421,7 @@ fn wire_wall_strips_wind_towards_the_wire_on_every_side() {
             X.wrapping_add_signed(dx),
             Y + 1,
             Z.wrapping_add_signed(dz),
-            Block::RedstoneWire,
+            Block::Redstone,
         );
         let meshes = mesh(&chunk);
         let walls: Vec<_> = meshes

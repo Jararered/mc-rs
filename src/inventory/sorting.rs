@@ -205,7 +205,7 @@ fn block_sort_path(block: Block) -> (u8, u8) {
         | Block::Tnt
         | Block::Cake => (2, 4),
         // redstone: wire, torch, repeater, piston, lever/button/pressurePlate
-        Block::RedstoneWire => (3, 0),
+        Block::Redstone => (3, 0),
         Block::Torch | Block::UnlitRedstoneTorch | Block::RedstoneTorch => (3, 1),
         Block::Repeater | Block::PoweredRepeater => (3, 2),
         Block::StickyPiston | Block::Piston | Block::PistonHead | Block::MovingPiston => (3, 3),

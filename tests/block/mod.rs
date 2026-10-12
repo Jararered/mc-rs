@@ -335,7 +335,7 @@ fn blocks_sound_as_beta_set_them() {
         (Block::CobblestoneStairs, StepSound::Stone),
         // Never given one, so they keep the default every block starts with.
         (Block::NoteBlock, StepSound::Stone),
-        (Block::RedstoneWire, StepSound::Stone),
+        (Block::Redstone, StepSound::Stone),
         (Block::Bed, StepSound::Stone),
     ];
     for (block, sound) in table {

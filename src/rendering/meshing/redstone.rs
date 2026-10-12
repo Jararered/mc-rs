@@ -31,7 +31,7 @@ const HIGHLIGHT_OFFSET: f32 = 1.0 / 128.0;
 impl Mesher<'_> {
     fn wire_connects(&self, x: i32, y: i32, z: i32, side: i8) -> bool {
         let (block, metadata) = self.neighbors.cell(self.chunk, x, y, z);
-        if block == Block::RedstoneWire {
+        if block == Block::Redstone {
             return true;
         }
         // A source on the step above or below (`side` -1) still connects;
@@ -215,7 +215,7 @@ impl Mesher<'_> {
             return;
         }
         for (dx, dz, face) in [(-1, 0, 0), (1, 0, 1), (0, -1, 2), (0, 1, 3)] {
-            if !normal_cube(dx, 0, dz) || cell(dx, 1, dz) != Block::RedstoneWire {
+            if !normal_cube(dx, 0, dz) || cell(dx, 1, dz) != Block::Redstone {
                 continue;
             }
             let normal = match face {

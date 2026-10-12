@@ -104,7 +104,7 @@ pub fn place_selected_block_facing(
     // `canPlaceBlockAt`: dust, repeaters, plates, and rails sit on a full cube.
     if matches!(
         selected,
-        Block::RedstoneWire
+        Block::Redstone
             | Block::Repeater
             | Block::StonePressurePlate
             | Block::WoodenPressurePlate

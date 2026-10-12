@@ -299,7 +299,7 @@ pub(super) fn neighbor_hides_face(
 pub(super) fn partial_redstone_block(block: Block) -> bool {
     matches!(
         block,
-        Block::RedstoneWire
+        Block::Redstone
             | Block::Repeater
             | Block::PoweredRepeater
             | Block::RedstoneTorch

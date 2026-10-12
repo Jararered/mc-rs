@@ -5,6 +5,7 @@
 pub mod block;
 
 pub mod app;
+pub mod audio;
 pub mod crafting;
 pub mod entity;
 pub mod inventory;

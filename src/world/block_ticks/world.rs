@@ -2,6 +2,7 @@
 //! methods over the loaded chunks.
 
 use bevy::math::IVec3;
+use bevy::math::Vec3;
 
 use crate::block::blocks::Block;
 use crate::random::JavaRandom;
@@ -14,6 +15,7 @@ use crate::world::chunk::WorldChunks;
 use crate::world::lighting::LightCache;
 use crate::world::lighting::column_channels;
 use crate::world::lighting::combined_light;
+use crate::world::sound::Pitch;
 
 use super::BlockChange;
 use super::BlockEvent;
@@ -823,5 +825,21 @@ impl<'a> TickWorld<'a> {
     /// Queue an ECS effect after the block tick pass.
     pub fn emit(&mut self, effect: TickEffect) {
         self.ticks.effects.push(effect);
+    }
+
+    /// `World.playSoundEffect`.
+    pub fn play_sound(
+        &mut self,
+        name: &'static str,
+        position: Vec3,
+        volume: f32,
+        pitch: impl Into<Pitch>,
+    ) {
+        self.emit(TickEffect::Sound {
+            name,
+            position,
+            volume,
+            pitch: pitch.into(),
+        });
     }
 }

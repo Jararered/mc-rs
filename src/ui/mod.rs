@@ -10,6 +10,8 @@ use bevy::picking::pointer::PointerButton;
 use bevy::prelude::*;
 use bevy::ui::Pressed;
 
+use crate::world::sound::Sounds;
+
 pub mod icons;
 pub mod screens;
 pub mod slider;
@@ -39,10 +41,19 @@ impl Plugin for ButtonPlugin {
     }
 }
 
-/// A press on a button's text reaches the button by bubbling.
-fn press_button(press: On<PointerPress>, buttons: Query<(), With<Button>>, mut commands: Commands) {
+/// A press on a button's text reaches the button by bubbling. It clicks, as
+/// `GuiScreen.mouseClicked` does for every button.
+fn press_button(
+    press: On<PointerPress>,
+    buttons: Query<(), With<Button>>,
+    mut commands: Commands,
+    sounds: Option<ResMut<Sounds>>,
+) {
     if press.button == PointerButton::Primary && buttons.contains(press.entity) {
         commands.entity(press.entity).insert(Pressed);
+        if let Some(mut sounds) = sounds {
+            sounds.play_ui("random.click", 1.0, 1.0);
+        }
     }
 }
 

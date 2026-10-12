@@ -41,7 +41,9 @@ use crate::physics::Aabb;
 use crate::physics::PhysicsSet;
 use crate::physics::burning_in;
 use crate::physics::eye_in_water;
+use crate::physics::feet_of;
 use crate::physics::inside_opaque_block;
+use crate::physics::landing_sound;
 use crate::physics::lava_contains;
 use crate::physics::touches_cactus;
 use crate::physics::water_movement;
@@ -53,6 +55,7 @@ use crate::world::chunk::WorldChunks;
 use crate::world::difficulty::Difficulty;
 use crate::world::dimension::Environment;
 use crate::world::persistence::WorldPersistence;
+use crate::world::sound::Sounds;
 use crate::world::tick::TICK_SECONDS;
 use crate::world::tick::WorldTick;
 
@@ -257,7 +260,7 @@ fn tick_player_survival(
     mut spare_armor: Local<[Option<ItemStack>; 4]>,
     mut persistence: Option<ResMut<WorldPersistence>>,
     mut session: Option<ResMut<WorldSession>>,
-    mut effects: Option<ResMut<EffectParticles>>,
+    (mut effects, mut sounds): (Option<ResMut<EffectParticles>>, Option<ResMut<Sounds>>),
 ) {
     for (
         player_entity,
@@ -385,16 +388,19 @@ fn tick_player_survival(
                     aabb.max - Vec3::new(0.001, 0.401, 0.001),
                 );
                 let in_water = water_movement(band, &chunks).0;
-                if in_water
-                    && !survival.in_water
-                    && let Some(effects) = effects.as_deref_mut()
-                {
-                    effects.water_entry(
-                        transform.translation,
-                        aabb.min.y.floor(),
-                        EntitySize::PLAYER.width,
-                        velocity.0 * TICK_SECONDS,
-                    );
+                if in_water && !survival.in_water {
+                    let motion = velocity.0 * TICK_SECONDS;
+                    if let Some(sounds) = sounds.as_deref_mut() {
+                        sounds.splash(feet_of(aabb), motion);
+                    }
+                    if let Some(effects) = effects.as_deref_mut() {
+                        effects.water_entry(
+                            transform.translation,
+                            aabb.min.y.floor(),
+                            EntitySize::PLAYER.width,
+                            motion,
+                        );
+                    }
                 }
                 *survival = PlayerSurvival::default();
                 survival.in_water = in_water;
@@ -435,15 +441,18 @@ fn tick_player_survival(
             );
             let (in_water, _) = water_movement(band, &chunks);
             if in_water {
-                if !state.in_water
-                    && let Some(effects) = effects.as_deref_mut()
-                {
-                    effects.water_entry(
-                        position,
-                        aabb.min.y.floor(),
-                        EntitySize::PLAYER.width,
-                        motion,
-                    );
+                if !state.in_water {
+                    if let Some(sounds) = sounds.as_deref_mut() {
+                        sounds.splash(feet_of(aabb), motion);
+                    }
+                    if let Some(effects) = effects.as_deref_mut() {
+                        effects.water_entry(
+                            position,
+                            aabb.min.y.floor(),
+                            EntitySize::PLAYER.width,
+                            motion,
+                        );
+                    }
                 }
                 state.fire = 0;
             }
@@ -487,6 +496,7 @@ fn tick_player_survival(
             let damage = (fallen - 3.0).ceil() as i16;
             if damage > 0 {
                 hurt(damage);
+                landing_sound(sounds.as_deref_mut(), &chunks, aabb);
             }
             if touches_cactus(aabb, &chunks) {
                 hurt(1);
@@ -505,6 +515,9 @@ fn tick_player_survival(
                 state.fire = -FIRE_RESISTANCE;
             }
             if wet && state.fire > 0 {
+                if let Some(sounds) = sounds.as_deref_mut() {
+                    sounds.quench(feet_of(aabb));
+                }
                 state.fire = -FIRE_RESISTANCE;
             }
         }

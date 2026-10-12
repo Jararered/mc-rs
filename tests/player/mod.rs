@@ -898,3 +898,31 @@ fn sneaking_dips_the_view_and_stops_the_bob_phase() {
     assert!((bob.y_size - 0.0128).abs() < 1.0e-6);
     assert!(bob.distance_walked > 0.0);
 }
+
+#[test]
+fn every_fourth_swing_of_a_dig_taps_the_block() {
+    let stone = hit(8, 64, 8, BlockFace::Up, Block::Stone);
+    let mut mining = MiningState::default();
+    // The first tick only takes aim.
+    assert!(mining.tick(Some(stone), None, true, false).is_none());
+    assert!(!mining.tapped());
+    let taps: Vec<bool> = (0..9)
+        .map(|_| {
+            mining.tick(Some(stone), None, true, false);
+            mining.tapped()
+        })
+        .collect();
+    assert_eq!(
+        taps,
+        [true, false, false, false, true, false, false, false, true]
+    );
+    // Looking at another block starts the count again.
+    let dirt = hit(8, 64, 9, BlockFace::Up, Block::Dirt);
+    mining.tick(Some(dirt), None, true, false);
+    assert!(!mining.tapped());
+    mining.tick(Some(dirt), None, true, false);
+    assert!(mining.tapped());
+    // Letting go is silent.
+    mining.tick(None, None, true, false);
+    assert!(!mining.tapped());
+}

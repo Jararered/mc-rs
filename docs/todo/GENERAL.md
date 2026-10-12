@@ -29,8 +29,9 @@ These are registered and craftable, but right-click does nothing, or only part o
   `interact` declines, and an unsheared sheep whose fleece differs takes the dye and loses one. The repo's sheep take
   shears only (`player/interaction/attack.rs`).
 - **Records and jukebox** (`ItemRecord`, `BlockJukeBox`, `TileEntityRecordPlayer`): the discs and the jukebox block
-  exist, but there is no insert, eject or playback. Beta saves the disc as `Record`. Playback needs audio, and the disc
-  also sets the now-playing line over the hotbar (`GuiIngame.setRecordPlayingMessage`).
+  exist, but there is no insert, eject or playback. Beta saves the disc as `Record`. Playback also needs the
+  `streaming/` pool read (`audio/library.rs`) and `MusInputStream`'s unscrambling for the `.mus` discs, and the disc
+  sets the now-playing line over the hotbar (`GuiIngame.setRecordPlayingMessage`).
 - **Compass, clock and map** (`ItemMap`, `ItemMapBase`, `MapItemRenderer`, `TextureCompassFX`, `TextureWatchFX`): the
   compass and clock have no animated icon, and there is no map item or per-world map data.
 - **Carved pumpkin as a helmet** (`SlotArmor.isItemValid`): the helmet slot takes a pumpkin, and a pumpkin worn there
@@ -47,7 +48,7 @@ These are registered and craftable, but right-click does nothing, or only part o
 - **Pig leftovers**: the `flyPig` achievement (needs achievements). Steering is the Pig Steering feature, not Beta.
 - **Portals while riding**: a mounted player never touches blocks, so a rider cannot charge a portal. Beta dismounts
   the player inside one (`EntityPlayerSP.onLivingUpdate`).
-- **Minecart leftovers** (the last two apply to boats and pigs too): no cart sounds (needs audio), no rider yaw drift
+- **Minecart leftovers** (both apply to boats and pigs too): no rider yaw drift
   (`Entity.updateRidden`), and no lying or sitting third-person rider pose (needs the F5 camera).
 
 ## Mobs and combat
@@ -69,12 +70,15 @@ These are registered and craftable, but right-click does nothing, or only part o
 
 ## Audio
 
-Nothing makes sound. Bevy's `audio` feature is off in `Cargo.toml`, and there is no `src/audio/`. Needed: a sound
-message that the simulation can write without a renderer; block step, break and place sounds (`StepSound`); mob
-sounds; `fire.ignite`; `random.fuse`; explosions; fluid flow; ambient cave sounds (`updateBlocksAndPlayCaveSounds`);
-rain and thunder; background music; note block pitch (the state already persists, `behaviors/note.rs`); jukebox discs;
-portal sounds; and the sound and music volume options. Sound assets must come from the player's own resources, as
-textures will.
+Every sound Beta 1.7.3 plays for something the game simulates is played, with background music and the two volume
+options (`src/audio/`, AGENTS' Sound section). Left:
+
+- **Jukebox discs**: see Records and jukebox above.
+- **Punching a fire out** (`World.onBlockHit`): the fire stays, so aux effect 1004's hiss is never sent.
+- **Other players**: one `Sounds` queue is heard from this client's camera. A server has to tell our own client
+  what to play; a Beta client makes its own sounds.
+- **A resource pack**: the files are read from `resources/` beside `assets/`, in the old launcher's layout. Later
+  packs name and arrange them differently (`sound3/`).
 
 ## Particles and presentation hooks
 
@@ -135,7 +139,6 @@ already (`ui/screens/portal.rs`).
   picking stone. Nothing changes when no hotbar slot holds the item.
 - **Controls** (`GuiControls`): the Controls tab has a mouse sensitivity slider only. There is no key rebinding and no
   invert-mouse option (Beta's `GameSettings.invertMouse`).
-- **Sound and music volume** options (`GuiOptions`) need audio first.
 - **3D anaglyph** (`EnumOptions.ANAGLYPH`): red and cyan stereo. `EntityRenderer` draws each eye from an offset
   (`anaglyphField`), and `FontRenderer`, `RenderEngine`, `RenderBlocks`, `RenderGlobal`, `MapItemRenderer` and the
   texture animations filter their colors while it is on.

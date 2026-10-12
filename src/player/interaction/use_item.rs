@@ -10,6 +10,7 @@
 use bevy::prelude::*;
 
 use crate::app::settings::GameSettings;
+use crate::entity::EntitySize;
 use crate::entity::Velocity;
 use crate::entity::fishing::Bobber;
 use crate::entity::fishing::Fishing;
@@ -29,6 +30,7 @@ use crate::player::Player;
 use crate::player::sleep::PlayerSleep;
 use crate::random::ItemRng;
 use crate::random::JavaRandom;
+use crate::world::sound::Sounds;
 use crate::world::tick::WorldTick;
 use std::collections::HashMap;
 
@@ -100,6 +102,7 @@ pub(crate) fn use_items(
     mut mobs: Query<&mut Velocity, With<Mob>>,
     mut rng: Local<LaunchRandom>,
     mut item_rng: Local<ItemRng>,
+    mut sounds: Option<ResMut<Sounds>>,
     // Each player's line and draw as this frame's uses leave them: the
     // components only change once the commands are applied.
     mut hands: Local<HashMap<Entity, (Option<Entity>, bool)>>,
@@ -126,6 +129,15 @@ pub(crate) fn use_items(
         let Some(item) = hotbar.selected_stack().map(|stack| stack.item()) else {
             continue;
         };
+        let feet = used.eye - Vec3::Y * EntitySize::PLAYER.y_offset;
+        // `random.bow` for whatever leaves the hand: the bow at full volume,
+        // a throw or a cast at half and lower.
+        let mut twang = |volume: f32, pitch: f32| {
+            if let Some(sounds) = sounds.as_deref_mut() {
+                let pitch = pitch / (sounds.random().next_float() * 0.4 + 0.8);
+                sounds.play("random.bow", feet, volume, pitch);
+            }
+        };
         match item {
             Item::Bow if charging => {
                 // Beta 1.8 `ItemBow.onItemRightClick`: only with an arrow.
@@ -136,6 +148,7 @@ pub(crate) fn use_items(
             }
             Item::Bow => {
                 if inventory.consume(&mut hotbar, Item::Arrow) {
+                    twang(1.0, 1.0);
                     spawn_player_arrow(
                         &mut commands,
                         entity,
@@ -151,6 +164,7 @@ pub(crate) fn use_items(
                 if let Some(kind) = ThrownKind::from_item(item)
                     && hotbar.take_selected(1).is_some()
                 {
+                    twang(0.5, 0.4);
                     throw_from_player(&mut commands, kind, entity, used.eye, used.look, &mut rng.0);
                 }
             }
@@ -171,6 +185,7 @@ pub(crate) fn use_items(
                         hotbar.damage_selected(damage);
                     }
                 } else {
+                    twang(0.5, 0.4);
                     *fishing = Some(cast_bobber(
                         &mut commands,
                         entity,
@@ -207,6 +222,7 @@ pub(crate) fn draw_bow(
     >,
     camera: Query<&Transform, (With<crate::player::PlayerCamera>, Without<LocalPlayer>)>,
     mut rng: Local<LaunchRandom>,
+    mut sounds: Option<ResMut<Sounds>>,
 ) {
     let Ok((entity, transform, mut hotbar, mut inventory, mut draw, sleep)) = player.single_mut()
     else {
@@ -237,6 +253,12 @@ pub(crate) fn draw_bow(
         * camera
             .single()
             .map_or(Quat::IDENTITY, |camera| camera.rotation);
+    // Beta 1.8's release: higher the further the bow was drawn.
+    if let Some(sounds) = sounds.as_deref_mut() {
+        let pitch = 1.0 / (sounds.random().next_float() * 0.4 + 1.2) + power * 0.5;
+        let feet = transform.translation - Vec3::Y * EntitySize::PLAYER.y_offset;
+        sounds.play("random.bow", feet, 1.0, pitch);
+    }
     spawn_player_arrow(
         &mut commands,
         entity,

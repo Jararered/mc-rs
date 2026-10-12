@@ -547,7 +547,7 @@ fn entity_bursts_match_beta_counts() {
 fn display_count(chunks: &WorldChunks, ticks: usize) -> usize {
     let mut particles = EffectParticles::default();
     for _ in 0..ticks {
-        random_display_updates(&mut particles, chunks, IVec3::new(8, 65, 8));
+        random_display_updates(&mut particles, None, chunks, IVec3::new(8, 65, 8));
     }
     particles.active_count()
 }

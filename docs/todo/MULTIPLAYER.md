@@ -95,6 +95,8 @@ when it lands and add what you find missing.
 ## Our own client
 
 - [ ] Draw other players: a model, name tags, held item, arm swing, hurt flash
+- [ ] Sound from a remote world: `Sounds` is one queue filled by the local simulation, so the server has to tell
+      the client what to play, as Beta's does only for aux effects, notes and explosions
 - [ ] Our own protocol and transport, Beta-shaped; the server sends raw blocks and the client lights and
       meshes them
 - [ ] A remote-world mode for the client: no local generation, block ticks, mobs or saving

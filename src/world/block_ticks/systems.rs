@@ -36,6 +36,8 @@ use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
 use crate::world::lighting::LightCache;
 use crate::world::persistence::WorldPersistence;
+use crate::world::sound::Pitch;
+use crate::world::sound::Sounds;
 use crate::world::streaming::WorldStreaming;
 use crate::world::streaming::positions_in_radius;
 use crate::world::tick::WorldTick;
@@ -220,6 +222,7 @@ fn apply_tick_effects(
     mut rng: Local<ItemRng>,
     mut bodies: Query<(&mut Transform, &EntitySize)>,
     mut particles: Option<ResMut<EffectParticles>>,
+    mut sounds: Option<ResMut<Sounds>>,
     mut notes: MessageWriter<super::NotePlayed>,
     mut aux: MessageWriter<super::AuxEffect>,
 ) {
@@ -238,11 +241,12 @@ fn apply_tick_effects(
                 falling_block::spawn_falling_block(&mut commands, position, block);
             }
             TickEffect::PrimedTnt { position, fuse } => {
-                crate::entity::explosion::prime_tnt(
-                    &mut commands,
-                    position.as_vec3() + bevy::math::Vec3::new(0.5, 0.0, 0.5),
-                    fuse,
-                );
+                let feet = position.as_vec3() + bevy::math::Vec3::new(0.5, 0.0, 0.5);
+                crate::entity::explosion::prime_tnt(&mut commands, feet, fuse);
+                // `BlockTNT.onBlockDestroyedByPlayer`.
+                if let Some(sounds) = sounds.as_deref_mut() {
+                    sounds.play("random.fuse", feet, 1.0, 1.0);
+                }
             }
             TickEffect::Dispense {
                 position,
@@ -322,7 +326,6 @@ fn apply_tick_effects(
                     data,
                 });
             }
-            // Note blocks have no sound to play until audio is implemented.
             TickEffect::Note {
                 position,
                 instrument,
@@ -341,7 +344,26 @@ fn apply_tick_effects(
                     );
                 }
             }
+            TickEffect::Sound {
+                name,
+                position,
+                volume,
+                pitch,
+            } => {
+                if let Some(sounds) = sounds.as_deref_mut() {
+                    sounds.play(name, position, volume, pitch);
+                }
+            }
+            // `BlockFluid.triggerLavaMixEffects`.
             TickEffect::LavaMix { position } => {
+                if let Some(sounds) = sounds.as_deref_mut() {
+                    sounds.play(
+                        "random.fizz",
+                        position.as_vec3() + Vec3::splat(0.5),
+                        0.5,
+                        Pitch::Around(2.6, 0.8),
+                    );
+                }
                 if let Some(particles) = particles.as_deref_mut() {
                     for _ in 0..8 {
                         let at =

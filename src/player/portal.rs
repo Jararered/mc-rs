@@ -13,6 +13,8 @@ use crate::app::session::WorldSession;
 use crate::inventory::session::InventorySession;
 use crate::rendering::sky::CelestialCamera;
 use crate::rendering::sky::SkyCamera;
+use crate::world::sound::Pitch;
+use crate::world::sound::Sounds;
 use crate::world::tick::WorldTick;
 
 /// `EntityPlayer.timeUntilPortal` on spawning and after any arrival.
@@ -147,6 +149,7 @@ fn tick_portal_travel(
     mut players: Query<(&mut PortalTravel, Has<LocalPlayer>), With<Player>>,
     mut session: Option<ResMut<WorldSession>>,
     mut inventory: Option<ResMut<InventorySession>>,
+    mut sounds: Option<ResMut<Sounds>>,
 ) {
     let ticks = tick.ticks_this_frame();
     if ticks == 0 {
@@ -166,12 +169,22 @@ fn tick_portal_travel(
                 // `mc.displayGuiScreen(null)`.
                 inventory.close_requested = true;
             }
+            // `EntityPlayerSP`: the portal is heard as it starts to charge and
+            // again as it takes the player, by that player alone.
+            let mut rush = |name: &'static str| {
+                if local && let Some(sounds) = sounds.as_deref_mut() {
+                    sounds.play_ui(name, 1.0, Pitch::Up(0.8, 0.4));
+                }
+            };
+            if touching && portal.time == 0.0 {
+                rush("portal.trigger");
+            }
             // Only this client's player takes the session with it.
-            if portal.tick()
-                && local
-                && let Some(session) = session.as_deref_mut()
-            {
-                session.request_travel(Travel::Portal);
+            if portal.tick() {
+                rush("portal.travel");
+                if local && let Some(session) = session.as_deref_mut() {
+                    session.request_travel(Travel::Portal);
+                }
             }
         }
     }

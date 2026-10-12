@@ -37,6 +37,7 @@ use crate::app::settings::GameSettings;
 use crate::app::state::AppScreen;
 use crate::app::state::PauseMenu;
 use crate::app::state::SettingsReturn;
+use crate::audio::playback::WorldSound;
 use crate::chat::ChatHistory;
 use crate::entity::CollisionState;
 use crate::entity::DroppedItem;
@@ -89,6 +90,7 @@ use crate::world::persistence::activate_pending_world;
 use crate::world::portal;
 use crate::world::portal::PortalArea;
 use crate::world::portal::PortalChange;
+use crate::world::sound::Sounds;
 use crate::world::streaming::SpawnAreaTask;
 use crate::world::streaming::StreamingDiagnostics;
 use crate::world::streaming::WorldStreaming;
@@ -337,8 +339,10 @@ struct WorldState<'w, 's> {
             With<ShadowOwner>,
             With<Player>,
             With<SkyAnchor>,
+            With<WorldSound>,
         )>,
     >,
+    sounds: Option<ResMut<'w, Sounds>>,
 }
 
 fn drive_session(
@@ -466,6 +470,9 @@ fn drive_session(
                     commands.entity(entity).despawn();
                 }
             }
+            if let Some(sounds) = state.sounds.as_deref_mut() {
+                sounds.clear();
+            }
             state.chunks.clear();
             state.light.clear();
             let world_time = state.ticks.time();
@@ -554,6 +561,9 @@ fn drive_session(
         commands.remove_resource::<WorldGeneration>();
         for entity in &state.entities {
             commands.entity(entity).despawn();
+        }
+        if let Some(sounds) = state.sounds.as_deref_mut() {
+            sounds.clear();
         }
         state.chunks.clear();
         state.light.clear();

@@ -17,8 +17,10 @@ use crate::entity::mobs::MobType;
 use crate::entity::projectiles::Shooter;
 use crate::entity::projectiles::spawn_arrow;
 use crate::entity::projectiles::spawn_fireball;
+use crate::entity::voice::voice;
 use crate::physics::collides;
 use crate::random::JavaRandom;
+use crate::world::sound::Pitch;
 
 /// `EntityCreeper`'s fuse. `Mob::fuse` holds `timeSinceIgnited`.
 #[derive(Component, Clone, Debug, Default)]
@@ -201,6 +203,10 @@ impl Body<'_> {
             );
             let dy = player.eye.y + super::PLAYER_EYE_HEIGHT - 0.2 - start.y;
             let lift = (dx * dx + dz * dz).sqrt() * 0.2;
+            if let Some(sounds) = fx.sounds.as_deref_mut() {
+                let pitch = 1.0 / (sounds.random().next_float() * 0.4 + 0.8);
+                sounds.play("random.bow", self.feet, 1.0, pitch);
+            }
             spawn_arrow(
                 fx.commands,
                 start,
@@ -224,6 +230,11 @@ impl Body<'_> {
     /// out to seven, and explode after 30 ticks.
     fn hiss(&mut self, fuse: &mut Fuse, distance: f32, fx: &mut Effects) {
         if fuse.state <= 0 && distance < 3.0 || fuse.state > 0 && distance < 7.0 {
+            if self.mob.fuse == 0
+                && let Some(sounds) = fx.sounds.as_deref_mut()
+            {
+                sounds.play("random.fuse", self.feet, 1.0, 0.5);
+            }
             fuse.state = 1;
             self.mob.fuse += 1;
             if self.mob.fuse >= 30 {
@@ -248,7 +259,12 @@ impl Body<'_> {
 
     /// `EntitySlime.updatePlayerActionState`: hop now and then, three times as
     /// often toward a player within 16.
-    pub(super) fn slime_action(&mut self, world: &Surroundings, bounce: Option<&mut Bounce>) {
+    pub(super) fn slime_action(
+        &mut self,
+        world: &Surroundings,
+        bounce: Option<&mut Bounce>,
+        fx: &mut Effects,
+    ) {
         self.despawn(world);
         let near = self
             .closest_prey(world)
@@ -270,6 +286,9 @@ impl Body<'_> {
                 bounce.jump_delay /= 3;
             }
             self.living.jumping = true;
+            if self.mob.variant > 1 {
+                self.squelch(fx, 0.8);
+            }
             bounce.squish = 1.0;
             self.living.move_strafing = 1.0 - self.mob.rng.next_float() * 2.0;
             self.living.move_forward = f32::from(self.mob.variant.max(1));
@@ -279,6 +298,17 @@ impl Body<'_> {
                 self.living.move_strafing = 0.0;
                 self.living.move_forward = 0.0;
             }
+        }
+    }
+
+    /// A slime's `mob.slime` as it leaves the ground or lands: its voice,
+    /// pitched down for the hop and up for the landing.
+    fn squelch(&self, fx: &mut Effects, scale: f32) {
+        if let Some(sounds) = fx.sounds.as_deref_mut() {
+            let random = sounds.random();
+            let pitch = ((random.next_float() - random.next_float()) * 0.2 + 1.0) * scale;
+            let volume = voice(MobType::Slime).volume;
+            sounds.play("mob.slime", self.feet, volume, pitch);
         }
     }
 
@@ -302,7 +332,11 @@ impl Body<'_> {
                 from: Some(self.feet),
                 source: Source::Creature,
             };
-            self.strike(world, player.entity, hit, fx);
+            if self.strike(world, player.entity, hit, fx)
+                && let Some(sounds) = fx.sounds.as_deref_mut()
+            {
+                sounds.play("mob.slimeattack", self.feet, 1.0, Pitch::VOICE);
+            }
         }
     }
 
@@ -371,8 +405,17 @@ impl Body<'_> {
                 self.living.yaw = -aim.x.atan2(aim.z).to_degrees();
                 self.living.body_yaw = self.living.yaw;
                 if self.can_see(world, &player) {
+                    let volume = voice(MobType::Ghast).volume;
+                    if hover.attack_counter == 10
+                        && let Some(sounds) = fx.sounds.as_deref_mut()
+                    {
+                        sounds.play("mob.ghast.charge", self.feet, volume, Pitch::VOICE);
+                    }
                     hover.attack_counter += 1;
                     if hover.attack_counter == 20 {
+                        if let Some(sounds) = fx.sounds.as_deref_mut() {
+                            sounds.play("mob.ghast.fireball", self.feet, volume, Pitch::VOICE);
+                        }
                         let (sin, cos) = self.living.yaw.to_radians().sin_cos();
                         let pitch = self.living.pitch.to_radians().cos();
                         let start = Vec3::new(
@@ -457,6 +500,9 @@ impl Body<'_> {
         }
         if let Some(bounce) = traits.bounce.as_deref_mut() {
             if self.collision.on_ground && !was_on_ground {
+                if self.mob.variant > 2 {
+                    self.squelch(fx, 1.0 / 0.8);
+                }
                 bounce.squish = -0.5;
                 if let Some(particles) = fx.particles.as_deref_mut() {
                     particles.slime_splat(self.feet, self.mob.variant);

@@ -37,6 +37,7 @@ use std::collections::HashMap;
 use std::collections::VecDeque;
 
 use bevy::math::IVec3;
+use bevy::math::Vec3;
 use bevy::prelude::Message;
 use bevy::prelude::Resource;
 
@@ -50,6 +51,7 @@ use crate::world::chunk::PendingTick;
 use crate::world::chunk::WorldChunks;
 use crate::world::dimension::Dimension;
 use crate::world::lighting::LightCache;
+use crate::world::sound::Pitch;
 
 mod behavior;
 pub mod behaviors;
@@ -132,7 +134,7 @@ impl BlockChange {
 }
 
 /// Work a tick pass hands back to the ECS.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum TickEffect {
     /// `Block.dropBlockAsItem`: spawn `block`'s natural drops in the cell.
     Drop {
@@ -171,10 +173,19 @@ pub enum TickEffect {
     },
     /// Move an entity out of the cell newly occupied by a piston extension.
     PistonPush { position: IVec3, direction: IVec3 },
+    /// `World.playSoundEffect` from a block: a switch's click, a piston's
+    /// thump. Its pitch is drawn when the sound is queued, not here, so the
+    /// world's `Random` is left alone.
+    Sound {
+        name: &'static str,
+        position: Vec3,
+        volume: f32,
+        pitch: Pitch,
+    },
 }
 
-/// `World.playNoteAt`: a note block sounded. Nothing in the game plays it
-/// yet; a server tells its clients.
+/// `World.playNoteAt`: a note block sounded. The client plays it
+/// (`audio::world`) and a server tells its clients.
 #[derive(Message, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct NotePlayed {
     pub position: IVec3,
@@ -184,8 +195,8 @@ pub struct NotePlayed {
     pub pitch: u8,
 }
 
-/// `World.playAuxSFX` from a block: see [`TickEffect::Aux`]. Nothing in the
-/// game plays these yet; a server tells its clients.
+/// `World.playAuxSFX` from a block: see [`TickEffect::Aux`]. The client
+/// plays its sound (`audio::world`) and a server tells its clients.
 #[derive(Message, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct AuxEffect {
     pub position: IVec3,

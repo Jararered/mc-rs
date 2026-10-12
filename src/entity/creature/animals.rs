@@ -15,12 +15,15 @@ use crate::entity::combat::Hit;
 use crate::entity::combat::Source;
 use crate::entity::combat::hurt_player;
 use crate::entity::drops::items::spawn_entity_drop;
+use crate::entity::mobs::MobType;
 use crate::entity::pathfinding::Pathfinder;
+use crate::entity::voice::voice;
 use crate::item::Item;
 use crate::item::ItemStack;
 use crate::physics::WATER_CURRENT_PER_TICK;
 use crate::physics::water_movement;
 use crate::random::JavaRandom;
+use crate::world::sound::Pitch;
 
 /// `EntityChicken`'s wing flap. Its render angle is
 /// `(sin(rotation) + 1) * flap_speed`.
@@ -120,6 +123,9 @@ impl Body<'_> {
         wings.rotation += wings.rotation_delta * 2.0;
         self.mob.egg_timer = self.mob.egg_timer.saturating_sub(1);
         if self.mob.egg_timer == 0 {
+            if let Some(sounds) = fx.sounds.as_deref_mut() {
+                sounds.play("mob.chickenplop", self.feet, 1.0, Pitch::VOICE);
+            }
             if let Ok(egg) = ItemStack::new(Item::Egg, 1) {
                 spawn_entity_drop(fx.commands, fx.loot, self.feet, egg);
             }
@@ -244,6 +250,16 @@ impl Body<'_> {
             living.wolf_shake_time = 0.0;
         } else if living.wolf_drying {
             let before = living.wolf_shake_time;
+            if before == 0.0
+                && let Some(sounds) = fx.sounds.as_deref_mut()
+            {
+                sounds.play(
+                    "mob.wolf.shake",
+                    self.feet,
+                    voice(MobType::Wolf).volume,
+                    Pitch::VOICE,
+                );
+            }
             living.wolf_shake_time += 0.05;
             if before >= 2.0 {
                 living.wolf_shaking = false;

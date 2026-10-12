@@ -41,6 +41,7 @@ use crate::world::block_ticks::BlockTicks;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
+use crate::world::sound::Sounds;
 use crate::world::tick::TICK_SECONDS;
 use crate::world::tick::WorldTick;
 
@@ -485,6 +486,7 @@ fn integrate_player(
     time: Res<Time>,
     chunks: Res<WorldChunks>,
     mut block_ticks: Option<ResMut<BlockTicks>>,
+    mut sounds: Option<ResMut<Sounds>>,
     mut commands: Commands,
     mut players: Query<
         (
@@ -664,6 +666,7 @@ fn integrate_player(
                 step_on_block(
                     steps.as_deref_mut(),
                     block_ticks.as_deref_mut(),
+                    sounds.as_deref_mut(),
                     &chunks,
                     movement,
                     sneaking_on_ground,
@@ -750,6 +753,7 @@ fn integrate_player(
             step_on_block(
                 steps.as_deref_mut(),
                 block_ticks.as_deref_mut(),
+                sounds.as_deref_mut(),
                 &chunks,
                 movement,
                 sneaking_on_ground,
@@ -817,37 +821,108 @@ pub fn touch_portals(
     touch_blocks(aabb, chunks, &mut motion, Some(portal));
 }
 
-/// `Entity.moveEntity`'s step tracking: a finished step calls
-/// `onEntityWalking` on the block 0.2 below the feet.
+/// The cell `Entity.moveEntity` and `EntityLiving.fall` take a body to be
+/// standing on: the one 0.2 below its feet.
+fn cell_underfoot(aabb: Aabb) -> IVec3 {
+    IVec3::new(
+        ((aabb.min.x + aabb.max.x) * 0.5).floor() as i32,
+        (aabb.min.y - 0.2).floor() as i32,
+        ((aabb.min.z + aabb.max.z) * 0.5).floor() as i32,
+    )
+}
+
+/// Where `World.playSoundAtEntity` puts a body's sound: at its feet.
+pub(crate) fn feet_of(aabb: Aabb) -> Vec3 {
+    Vec3::new(
+        (aabb.min.x + aabb.max.x) * 0.5,
+        aabb.min.y,
+        (aabb.min.z + aabb.max.z) * 0.5,
+    )
+}
+
+/// `Entity.moveEntity`'s step tracking: a finished step sounds the block 0.2
+/// below the feet and calls its `onEntityWalking`.
 pub(crate) fn step_on_block(
     steps: Option<&mut StepDistance>,
     block_ticks: Option<&mut BlockTicks>,
+    sounds: Option<&mut Sounds>,
     chunks: &WorldChunks,
     movement: Movement,
     sneaking_on_ground: bool,
 ) {
+    use crate::block::blocks::Block;
+
     let Some(steps) = steps else {
         return;
     };
     let aabb = movement.aabb;
-    let underfoot = IVec3::new(
-        ((aabb.min.x + aabb.max.x) * 0.5).floor() as i32,
-        (aabb.min.y - 0.2).floor() as i32,
-        ((aabb.min.z + aabb.max.z) * 0.5).floor() as i32,
-    );
-    let block = chunks
-        .block_at(underfoot.x, underfoot.y, underfoot.z)
-        .unwrap_or(crate::block::blocks::Block::Air);
+    let underfoot = cell_underfoot(aabb);
+    let block_at = |cell: IVec3| {
+        chunks
+            .block_at(cell.x, cell.y, cell.z)
+            .unwrap_or(Block::Air)
+    };
+    // A fence is taller than its cell, so feet on one are in the cell above.
+    let below = block_at(underfoot - IVec3::Y);
+    let trodden = if below == Block::Fence {
+        below
+    } else {
+        block_at(underfoot)
+    };
     let stepped = steps.advance(
         movement.displacement,
         sneaking_on_ground,
-        block == crate::block::blocks::Block::Air,
+        trodden == Block::Air,
     );
-    if stepped && let Some(block_ticks) = block_ticks {
+    if !stepped {
+        return;
+    }
+    if let Some(sounds) = sounds {
+        // A snow layer muffles whatever it lies on, and nothing is heard of
+        // a step in a liquid.
+        let sound = if block_at(underfoot + IVec3::Y) == Block::SnowLayer {
+            Some(Block::SnowLayer.step_sound())
+        } else if crate::block::fluids::is_liquid(trodden) {
+            None
+        } else {
+            Some(trodden.step_sound())
+        };
+        if let Some(sound) = sound {
+            sounds.play(
+                sound.step(),
+                feet_of(aabb),
+                sound.volume() * 0.15,
+                sound.pitch(),
+            );
+        }
+    }
+    if let Some(block_ticks) = block_ticks {
         block_ticks.push_event(BlockEvent::Walked {
             position: underfoot,
         });
     }
+}
+
+/// `EntityLiving.fall`'s thud after a fall that hurt: the block landed on,
+/// at half its volume and three quarters of its pitch.
+pub(crate) fn landing_sound(sounds: Option<&mut Sounds>, chunks: &WorldChunks, aabb: Aabb) {
+    let Some(sounds) = sounds else {
+        return;
+    };
+    let cell = cell_underfoot(aabb);
+    let Some(block) = chunks
+        .block_at(cell.x, cell.y, cell.z)
+        .filter(|block| *block != crate::block::blocks::Block::Air)
+    else {
+        return;
+    };
+    let sound = block.step_sound();
+    sounds.play(
+        sound.step(),
+        feet_of(aabb),
+        sound.volume() * 0.5,
+        sound.pitch() * 0.75,
+    );
 }
 
 fn player_is_on_ladder(aabb: Aabb, chunks: &WorldChunks) -> bool {

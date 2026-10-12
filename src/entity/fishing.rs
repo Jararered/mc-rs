@@ -8,8 +8,7 @@
 //! it strikes. Putting the rod away or walking 32 blocks off drops the line.
 //!
 //! Beta never records which block a bobber struck, so one that has landed in
-//! a block stays there for its full minute even if the block is dug out. The
-//! bite's splash sound is not played.
+//! a block stays there for its full minute even if the block is dug out.
 
 use bevy::prelude::*;
 
@@ -45,6 +44,8 @@ use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
 use crate::world::dimension::Environment;
+use crate::world::sound::Pitch;
+use crate::world::sound::Sounds;
 use crate::world::tick::TICK_SECONDS;
 use crate::world::tick::WorldTick;
 
@@ -245,7 +246,7 @@ pub(crate) fn tick_bobbers(
         ),
         Without<Player>,
     >,
-    mut particles: Option<ResMut<EffectParticles>>,
+    (mut particles, mut sounds): (Option<ResMut<EffectParticles>>, Option<ResMut<Sounds>>),
 ) {
     let ticks = tick.ticks_this_frame();
     let raining = environment.is_raining();
@@ -370,6 +371,14 @@ pub(crate) fn tick_bobbers(
                             // splash particles: six of each.
                             for _ in 0..30 {
                                 bobber.rng.next_float();
+                            }
+                            if let Some(sounds) = sounds.as_deref_mut() {
+                                sounds.play(
+                                    "random.splash",
+                                    position,
+                                    0.25,
+                                    Pitch::Around(1.0, 0.4),
+                                );
                             }
                             if let Some(particles) = particles.as_deref_mut() {
                                 particles.water_entry(

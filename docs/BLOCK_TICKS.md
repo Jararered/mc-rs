@@ -224,8 +224,15 @@ inside the tick pass get them automatically.
 Behaviors never touch the ECS. `drop_block_as_item` and
 `spawn_falling_block` queue a `TickEffect`, which `apply_tick_effects`
 turns into entities after the pass. A new kind of spawned entity or
-presentation effect (particles, sounds) adds a `TickEffect` variant, a
+presentation effect (particles) adds a `TickEffect` variant, a
 `TickWorld` method that queues it, and a match arm there.
+
+A block's sound is `TickWorld::play_sound` (`TickEffect::Sound`), with
+Beta's sound name, position, volume and pitch. Where Beta draws the pitch
+from `world.rand`, pass the range as a `world::sound::Pitch` instead: it is
+drawn when the sound is queued, so the world's `Random` is left alone and a
+world with nobody listening ticks the same. The numbered effects of
+`World.playAuxSFX` stay `TickEffect::Aux`, which a server forwards.
 
 ## Persistence
 
@@ -272,12 +279,12 @@ instead of Java's runtime-seeded `World.rand`.
   Dispensers persist nine slots and fire arrows (as `entity::projectiles`
   arrows, which can be picked up), launch eggs and snowballs
   (`entity::thrown`), or eject items. Note
-  blocks keep their pitch but make no sound until audio is implemented.
+  blocks report each note as `NotePlayed`, which the client plays.
   Plates and detector rails read a per-tick snapshot of nearby bodies
   (`BlockTicks::set_occupants`); arrows, thrown items and bobbers are in it
   through `entity::projectiles::Projectile`, so they press wooden plates.
   Minecarts (`entity::minecart`) are a transcription of `EntityMinecart.onUpdate`
   (empty, chest, and furnace carts), are saved with their chunk, and can be
   ridden by the player or a creature (`entity::mount`).
-- Presentation-only hooks: `randomDisplayTick`, redstone ore sparkles, lava
-  fizz and smoke, and fluid sounds.
+- A redstone torch that burns out hisses but gives off none of Beta's five
+  puffs of smoke.

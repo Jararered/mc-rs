@@ -227,9 +227,9 @@ fn note_block_advances_pitch_and_plays_only_on_rising_edge() {
         pitch: 1
     }));
     w.event(BlockEvent::Activated { position: lever });
-    assert_eq!(w.effects().len(), 1);
+    assert_eq!(w.silent_effects().len(), 1);
     w.event(BlockEvent::Activated { position: lever });
-    assert!(w.effects().is_empty());
+    assert!(w.silent_effects().is_empty());
 }
 
 #[test]
@@ -332,7 +332,7 @@ fn powered_dispenser_takes_one_item_after_four_ticks() {
     w.chunks.dispenser_at_mut(8, 64, 8).unwrap().slots[3] = Some(stack);
     w.event(BlockEvent::Activated { position: lever });
     w.run(3);
-    assert!(w.effects().is_empty());
+    assert!(w.silent_effects().is_empty());
     w.run(1);
     assert_eq!(
         w.chunks.dispenser_at(8, 64, 8).unwrap().slots[3]
@@ -691,4 +691,87 @@ fn standing_on_the_edge_of_a_plate_presses_it() {
     }]);
     w.run(1);
     assert_eq!(w.metadata(plate), 1);
+}
+
+#[test]
+fn switches_click_higher_going_on_than_coming_off() {
+    use game::world::sound::Pitch;
+    let mut w = TestWorld::new(1);
+    w.fill(at(2, 63, 2), at(9, 63, 9), Block::Stone);
+    let lever = at(4, 64, 4);
+    place_meta(&mut w, lever, Block::Lever, 5);
+    w.effects();
+    let middle = lever.as_vec3() + 0.5;
+    w.event(BlockEvent::Activated { position: lever });
+    assert_eq!(
+        w.sounds(),
+        [("random.click", middle, 0.3, Pitch::Fixed(0.6))]
+    );
+    w.event(BlockEvent::Activated { position: lever });
+    assert_eq!(
+        w.sounds(),
+        [("random.click", middle, 0.3, Pitch::Fixed(0.5))]
+    );
+
+    // A button clicks as it is pressed and again, lower, as it springs back.
+    let button = at(4, 64, 6);
+    w.set(at(3, 64, 6), Block::Stone);
+    place_meta(&mut w, button, Block::StoneButton, 1);
+    w.effects();
+    let middle = button.as_vec3() + 0.5;
+    w.event(BlockEvent::Activated { position: button });
+    assert_eq!(
+        w.sounds(),
+        [("random.click", middle, 0.3, Pitch::Fixed(0.6))]
+    );
+    // Pressing it again while it is in does nothing.
+    w.event(BlockEvent::Activated { position: button });
+    w.run(19);
+    assert!(w.sounds().is_empty());
+    w.run(1);
+    assert_eq!(
+        w.sounds(),
+        [("random.click", middle, 0.3, Pitch::Fixed(0.5))]
+    );
+}
+
+#[test]
+fn a_piston_thumps_out_and_back() {
+    use game::world::sound::Pitch;
+    let mut w = TestWorld::new(1);
+    let piston = at(8, 64, 8);
+    let lever = piston + IVec3::NEG_Z;
+    place_meta(&mut w, piston, Block::Piston, 5);
+    w.set(lever - IVec3::Y, Block::Stone);
+    place_meta(&mut w, lever, Block::Lever, 5);
+    w.effects();
+    let middle = piston.as_vec3() + 0.5;
+    w.event(BlockEvent::Activated { position: lever });
+    assert_eq!(w.block(piston + IVec3::X), Block::PistonHead);
+    assert!(
+        w.sounds()
+            .contains(&("tile.piston.out", middle, 0.5, Pitch::Up(0.6, 0.25)))
+    );
+    w.event(BlockEvent::Activated { position: lever });
+    assert_eq!(w.block(piston + IVec3::X), Block::Air);
+    assert!(
+        w.sounds()
+            .contains(&("tile.piston.in", middle, 0.5, Pitch::Up(0.6, 0.15)))
+    );
+
+    // A piston with nowhere to push its load stays in, and stays quiet.
+    let stuck = at(8, 64, 12);
+    let lever = stuck + IVec3::NEG_Z;
+    place_meta(&mut w, stuck, Block::Piston, 5);
+    w.set(stuck + IVec3::X, Block::Obsidian);
+    w.set(lever - IVec3::Y, Block::Stone);
+    place_meta(&mut w, lever, Block::Lever, 5);
+    w.effects();
+    w.event(BlockEvent::Activated { position: lever });
+    assert_eq!(w.block(stuck + IVec3::X), Block::Obsidian);
+    assert!(
+        w.sounds()
+            .iter()
+            .all(|(name, ..)| !name.starts_with("tile.piston"))
+    );
 }

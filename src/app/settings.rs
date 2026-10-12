@@ -88,6 +88,11 @@ pub struct GameSettings {
     pub mouse_sensitivity: f32,
     pub view_bobbing: bool,
     pub fullscreen: bool,
+    /// Beta's Sound option, `0..=1`: every effect is scaled by it, and at
+    /// zero none is started.
+    pub sound_volume: f32,
+    /// Beta's Music option, `0..=1`. Zero stops the track and starts no other.
+    pub music_volume: f32,
     /// Features tab: dropped items rise and bob in water instead of sinking
     /// as Beta's do.
     pub floating_items: bool,
@@ -121,6 +126,8 @@ impl Default for GameSettings {
             mouse_sensitivity: 1.0,
             view_bobbing: true,
             fullscreen: false,
+            sound_volume: 1.0,
+            music_volume: 1.0,
             floating_items: true,
             bow_charging: false,
             pig_steering: true,
@@ -181,6 +188,13 @@ impl GameSettings {
 
     /// Keep loaded or edited values inside the same ranges the menu uses.
     pub fn clamp(&mut self) {
+        for volume in [&mut self.sound_volume, &mut self.music_volume] {
+            *volume = if volume.is_finite() {
+                volume.clamp(0.0, 1.0)
+            } else {
+                1.0
+            };
+        }
         self.mouse_sensitivity = if self.mouse_sensitivity.is_finite() {
             self.mouse_sensitivity
                 .clamp(MIN_MOUSE_SENSITIVITY, MAX_MOUSE_SENSITIVITY)
@@ -272,6 +286,8 @@ struct StoredSettings {
     mouse_sensitivity: f32,
     view_bobbing: bool,
     fullscreen: bool,
+    sound_volume: f32,
+    music_volume: f32,
     floating_items: bool,
     bow_charging: bool,
     pig_steering: bool,
@@ -302,6 +318,8 @@ impl From<&GameSettings> for StoredSettings {
             mouse_sensitivity: settings.mouse_sensitivity,
             view_bobbing: settings.view_bobbing,
             fullscreen: settings.fullscreen,
+            sound_volume: settings.sound_volume,
+            music_volume: settings.music_volume,
             floating_items: settings.floating_items,
             bow_charging: settings.bow_charging,
             pig_steering: settings.pig_steering,
@@ -327,6 +345,8 @@ impl From<StoredSettings> for GameSettings {
             mouse_sensitivity: stored.mouse_sensitivity,
             view_bobbing: stored.view_bobbing,
             fullscreen: stored.fullscreen,
+            sound_volume: stored.sound_volume,
+            music_volume: stored.music_volume,
             floating_items: stored.floating_items,
             bow_charging: stored.bow_charging,
             pig_steering: stored.pig_steering,

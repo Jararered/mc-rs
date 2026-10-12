@@ -215,6 +215,11 @@ impl Block {
         definition::properties(self).slipperiness
     }
 
+    /// Beta `Block.stepSound`.
+    pub fn step_sound(self) -> definition::StepSound {
+        definition::properties(self).sound
+    }
+
     pub fn collision_bounds(self) -> Option<definition::BlockBounds> {
         definition::properties(self).collision_bounds
     }

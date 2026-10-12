@@ -72,6 +72,8 @@ use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::OpenCart;
 use crate::world::chunk::WorldChunks;
 use crate::world::persistence::WorldPersistence;
+use crate::world::sound::Pitch;
+use crate::world::sound::Sounds;
 use crate::world::streaming::WorldStreaming;
 
 #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
@@ -96,9 +98,10 @@ pub(crate) fn apply_player_actions(
         Option<ResMut<WorldPersistence>>,
         Option<ResMut<BlockTicks>>,
     ),
-    (mut particles, mut effects, mut mobs, mut fireballs, mut carts, mut boats): (
+    (mut particles, mut effects, mut sounds, mut mobs, mut fireballs, mut carts, mut boats): (
         Option<ResMut<BlockParticles>>,
         Option<ResMut<EffectParticles>>,
+        Option<ResMut<Sounds>>,
         Query<MobTarget, Without<Player>>,
         Query<(Entity, &mut Fireball, &Transform), Without<Player>>,
         Query<(Entity, &Transform, &mut Minecart, Option<&Cargo>), Without<Player>>,
@@ -336,6 +339,11 @@ pub(crate) fn apply_player_actions(
                 if hit.block.is_breakable()
                     && chunks.block_at(hit.x, hit.y, hit.z) == Some(hit.block)
                 {
+                    // `PlayerController.sendBlockRemoved`'s aux effect 2001.
+                    if let Some(sounds) = sounds.as_deref_mut() {
+                        let sound = hit.block.step_sound();
+                        sounds.play_block(sound.broken(), sound, IVec3::new(hit.x, hit.y, hit.z));
+                    }
                     apply_break(
                         &mut commands,
                         &mut item_rng,
@@ -546,6 +554,15 @@ pub(crate) fn apply_player_actions(
                             ItemStack::with_data(stack.item(), stack.count() - 1, stack.data())
                                 .ok();
                         let (x, y, z) = target;
+                        // `ItemBlock.onItemUse` and `ItemReed`. `ItemRedstone`
+                        // lays its dust without a sound.
+                        if stack.item() != Item::Redstone
+                            && let Some(sounds) = sounds.as_deref_mut()
+                            && let Some(block) = chunks.block_at(x, y, z)
+                        {
+                            let sound = block.step_sound();
+                            sounds.play_block(sound.step(), sound, IVec3::new(x, y, z));
+                        }
                         // Placed leaves are persistent: they never decay.
                         if chunks.block_at(x, y, z).is_some_and(Block::is_leaves) {
                             let species = chunks.metadata_at(x, y, z);
@@ -684,6 +701,11 @@ pub(crate) fn apply_player_actions(
                             },
                         );
                     } else if till_with_selected_hoe(&mut chunks, &mut hotbar, hit) {
+                        // `ItemHoe.onItemUse` sounds like the farmland it leaves.
+                        if let Some(sounds) = sounds.as_deref_mut() {
+                            let sound = Block::Farmland.step_sound();
+                            sounds.play_block(sound.step(), sound, IVec3::new(hit.x, hit.y, hit.z));
+                        }
                         push_event(
                             &mut block_ticks,
                             BlockEvent::Changed {
@@ -701,6 +723,14 @@ pub(crate) fn apply_player_actions(
                         if chunks.block_at(x, y, z) == Some(Block::Air)
                             && chunks.set_block(x, y, z, Block::Fire).is_some()
                         {
+                            if let Some(sounds) = sounds.as_deref_mut() {
+                                sounds.play(
+                                    "fire.ignite",
+                                    IVec3::new(x, y, z).as_vec3() + Vec3::splat(0.5),
+                                    1.0,
+                                    Pitch::Up(0.8, 0.4),
+                                );
+                            }
                             push_event(
                                 &mut block_ticks,
                                 BlockEvent::Changed {
@@ -724,6 +754,14 @@ pub(crate) fn apply_player_actions(
                             .block_at(x, y, z)
                             .is_some_and(|block| !block.is_solid_material())
                         {
+                            if let Some(sounds) = sounds.as_deref_mut() {
+                                sounds.play(
+                                    "random.fizz",
+                                    IVec3::new(x, y, z).as_vec3() + Vec3::splat(0.5),
+                                    0.5,
+                                    Pitch::Around(2.6, 0.8),
+                                );
+                            }
                             if let Some(effects) = effects.as_deref_mut() {
                                 for _ in 0..8 {
                                     let jitter = Vec3::new(

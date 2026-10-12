@@ -1,0 +1,28 @@
+#![enable(implicit_some)]
+// Beta 1.7.3's mob voices, one row per mob: `getLivingSound`, `getHurtSound`
+// and `getDeathSound`, with `getSoundVolume` (1 unless given) and
+// `getTalkInterval` (80 ticks unless given; an `EntityAnimal` or
+// `EntityWaterMob` waits 120). A sound left out is one the mob never makes:
+// creepers and slimes have no idle voice and a squid has none at all.
+//
+// Names are `SoundPool`'s: a file's path under `resources/newsound` without
+// its extension or trailing digits, with dots for slashes, so `mob.zombiehurt`
+// is one of `mob/zombiehurt1.ogg` and `mob/zombiehurt2.ogg`.
+//
+// A wolf's idle sound here is its bark. `EntityWolf.getLivingSound` growls,
+// whines or pants instead by its mood, which `entity::creature` decides.
+{
+    Spider: (living: "mob.spider", hurt: "mob.spider", death: "mob.spiderdeath"),
+    Zombie: (living: "mob.zombie", hurt: "mob.zombiehurt", death: "mob.zombiedeath"),
+    Skeleton: (living: "mob.skeleton", hurt: "mob.skeletonhurt", death: "mob.skeletonhurt"),
+    Creeper: (hurt: "mob.creeper", death: "mob.creeperdeath"),
+    Slime: (hurt: "mob.slime", death: "mob.slime", volume: 0.6),
+    Sheep: (living: "mob.sheep", hurt: "mob.sheep", death: "mob.sheep", talk_interval: 120),
+    Pig: (living: "mob.pig", hurt: "mob.pig", death: "mob.pigdeath", talk_interval: 120),
+    Chicken: (living: "mob.chicken", hurt: "mob.chickenhurt", death: "mob.chickenhurt", talk_interval: 120),
+    Cow: (living: "mob.cow", hurt: "mob.cowhurt", death: "mob.cowhurt", volume: 0.4, talk_interval: 120),
+    Wolf: (living: "mob.wolf.bark", hurt: "mob.wolf.hurt", death: "mob.wolf.death", volume: 0.4, talk_interval: 120),
+    Squid: (volume: 0.4, talk_interval: 120),
+    Ghast: (living: "mob.ghast.moan", hurt: "mob.ghast.scream", death: "mob.ghast.death", volume: 10),
+    PigZombie: (living: "mob.zombiepig.zpig", hurt: "mob.zombiepig.zpighurt", death: "mob.zombiepig.zpigdeath"),
+}

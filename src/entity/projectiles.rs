@@ -47,6 +47,7 @@ use crate::rendering::particles::effects::FxKind;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
 use crate::world::difficulty::Difficulty;
+use crate::world::sound::Sounds;
 use crate::world::tick::WorldTick;
 
 /// `EntityArrow.setSize(0.5, 0.5)`.
@@ -451,7 +452,7 @@ pub(crate) fn tick_projectiles(
         With<Player>,
     >,
     mut explosions: MessageWriter<Explosion>,
-    mut particles: Option<ResMut<EffectParticles>>,
+    (mut particles, mut sounds): (Option<ResMut<EffectParticles>>, Option<ResMut<Sounds>>),
     mut loot: Local<ItemRng>,
     mut rng: Local<ProjectileRandom>,
     mut spare_armor: Local<[Option<ItemStack>; 4]>,
@@ -579,6 +580,7 @@ pub(crate) fn tick_projectiles(
                     ),
                 };
                 if landed {
+                    thud(sounds.as_deref_mut(), position);
                     gone = true;
                     break;
                 }
@@ -593,6 +595,7 @@ pub(crate) fn tick_projectiles(
                 arrow.stuck = Some((cell, block, chunks.metadata_at(cell.x, cell.y, cell.z)));
                 arrow.motion = point - position;
                 position -= arrow.motion.normalize_or_zero() * 0.05;
+                thud(sounds.as_deref_mut(), position);
                 arrow.shake = 7;
             }
             position += arrow.motion;
@@ -705,6 +708,14 @@ pub(crate) fn tick_projectiles(
     }
 }
 
+/// `random.drr` as an arrow lands in a body or a block.
+fn thud(sounds: Option<&mut Sounds>, position: Vec3) {
+    if let Some(sounds) = sounds {
+        let pitch = 1.2 / (sounds.random().next_float() * 0.2 + 0.9);
+        sounds.play("random.drr", position, 1.0, pitch);
+    }
+}
+
 /// `EntityArrow.onCollideWithPlayer`: an arrow that has stuck and stopped
 /// quivering, shot by the player or a dispenser, goes back into the inventory
 /// of a player who touches it, flying to them as a picked-up item does
@@ -713,6 +724,7 @@ pub(crate) fn pickup_arrows(
     mut commands: Commands,
     mut players: Query<(&Transform, &EntitySize, &mut Hotbar, &mut Inventory), With<Player>>,
     mut arrows: Query<(Entity, &mut Arrow, &Transform), Without<Player>>,
+    mut sounds: Option<ResMut<Sounds>>,
 ) {
     for (entity, mut arrow, transform) in &mut arrows {
         if !arrow.pickup || arrow.taken.is_some() || !arrow.is_stuck() || arrow.shake > 0 {
@@ -738,6 +750,9 @@ pub(crate) fn pickup_arrows(
             {
                 inventory.set_changed();
                 hotbar.set_changed();
+                if let Some(sounds) = sounds.as_deref_mut() {
+                    sounds.pop(transform.translation);
+                }
                 // The flight's last tick removes the arrow.
                 arrow.pickup = false;
                 arrow.taken = Some(0);

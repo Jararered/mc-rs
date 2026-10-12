@@ -10,4 +10,5 @@ mod furnace;
 mod host;
 mod portal;
 mod runtime;
+mod sound;
 mod weather;

@@ -112,6 +112,8 @@ pub(super) enum SettingLabel {
     MaxFps,
     MouseSensitivity,
     ViewBobbing,
+    MusicVolume,
+    SoundVolume,
     FloatingItems,
     BowCharging,
     PigSteering,
@@ -565,10 +567,27 @@ fn spawn_settings_menu(commands: &mut Commands, textures: &MenuTextures, setting
                                 flex_shrink: 0.0,
                                 align_self: AlignSelf::Start,
                                 display: Display::None,
+                                grid_template_columns: vec![RepeatedGridTrack::flex(1, 1.0)],
+                                row_gap: px(8),
+                                column_gap: px(16),
                                 ..default()
                             },
                         ))
                         .with_children(|parent| {
+                            spawn_setting_slider(
+                                parent,
+                                textures,
+                                SettingLabel::MusicVolume,
+                                music_volume_text(settings),
+                                settings,
+                            );
+                            spawn_setting_slider(
+                                parent,
+                                textures,
+                                SettingLabel::SoundVolume,
+                                sound_volume_text(settings),
+                                settings,
+                            );
                             spawn_setting_button(
                                 parent,
                                 textures,
@@ -622,6 +641,8 @@ pub enum SettingsSlider {
     GuiScale,
     MouseSensitivity,
     MaxFps,
+    MusicVolume,
+    SoundVolume,
 }
 
 impl SettingsSlider {
@@ -657,6 +678,8 @@ impl SettingsSlider {
                     settings.max_fps as f32
                 },
             ),
+            Self::MusicVolume => Slider::new(0.0, 100.0, 1.0, settings.music_volume * 100.0),
+            Self::SoundVolume => Slider::new(0.0, 100.0, 1.0, settings.sound_volume * 100.0),
         }
     }
 }
@@ -675,6 +698,8 @@ fn spawn_setting_slider(
         SettingLabel::GuiScale => SettingsSlider::GuiScale,
         SettingLabel::MouseSensitivity => SettingsSlider::MouseSensitivity,
         SettingLabel::MaxFps => SettingsSlider::MaxFps,
+        SettingLabel::MusicVolume => SettingsSlider::MusicVolume,
+        SettingLabel::SoundVolume => SettingsSlider::SoundVolume,
         _ => unreachable!("not a numeric setting"),
     };
     let image = ImageNode::new(textures.buttons.clone())
@@ -727,6 +752,8 @@ impl SettingsSlider {
                     value as u32
                 }
             }
+            Self::MusicVolume => next.music_volume = value / 100.0,
+            Self::SoundVolume => next.sound_volume = value / 100.0,
         }
         if next == *settings {
             return false;
@@ -910,6 +937,8 @@ fn refresh_settings_labels(
             SettingLabel::MaxFps => max_fps_text(&settings),
             SettingLabel::MouseSensitivity => sensitivity_text(&settings),
             SettingLabel::ViewBobbing => view_bobbing_text(&settings),
+            SettingLabel::MusicVolume => music_volume_text(&settings),
+            SettingLabel::SoundVolume => sound_volume_text(&settings),
             SettingLabel::Fullscreen => fullscreen_text(&settings),
             SettingLabel::FloatingItems => floating_items_text(&settings),
             SettingLabel::BowCharging => bow_charging_text(&settings),
@@ -1051,6 +1080,20 @@ fn sensitivity_text(settings: &GameSettings) -> String {
         "Mouse sensitivity: {:.0}%",
         settings.mouse_sensitivity * 100.0
     )
+}
+/// Beta's `GameSettings.getKeyBinding` for a volume: `OFF` at nothing.
+fn volume_text(name: &str, volume: f32) -> String {
+    if volume <= 0.0 {
+        format!("{name}: OFF")
+    } else {
+        format!("{name}: {:.0}%", volume * 100.0)
+    }
+}
+fn music_volume_text(settings: &GameSettings) -> String {
+    volume_text("Music", settings.music_volume)
+}
+fn sound_volume_text(settings: &GameSettings) -> String {
+    volume_text("Sound", settings.sound_volume)
 }
 fn view_bobbing_text(settings: &GameSettings) -> String {
     format!(

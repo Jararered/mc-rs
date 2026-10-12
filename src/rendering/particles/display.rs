@@ -1,8 +1,8 @@
 //! `World.randomDisplayUpdates`: each client tick Beta samples 1000 cells
 //! within 16 blocks of the player and asks each block for its
 //! `randomDisplayTick`, which is where torches, furnaces, fire, lava,
-//! redstone and portals make their smoke, flames and sparks. The sounds Beta
-//! plays alongside are left for audio.
+//! redstone and portals make their smoke, flames and sparks, and where
+//! fire, running water and portals are heard.
 
 use bevy::prelude::*;
 
@@ -12,6 +12,8 @@ use crate::block::blocks::Block;
 use crate::block::properties::can_catch_fire;
 use crate::random::JavaRandom;
 use crate::world::chunk::WorldChunks;
+use crate::world::sound::Pitch;
+use crate::world::sound::Sounds;
 
 const RADIUS: u32 = 16;
 const SAMPLES: usize = 1000;
@@ -22,6 +24,7 @@ const REPEATER_TORCH_OFFSET: [f32; 4] = [-0.0625, 0.0625, 0.1875, 0.3125];
 /// One tick of `randomDisplayUpdates` around the block cell `center`.
 pub fn random_display_updates(
     particles: &mut EffectParticles,
+    mut sounds: Option<&mut Sounds>,
     chunks: &WorldChunks,
     center: IVec3,
 ) {
@@ -36,9 +39,40 @@ pub fn random_display_updates(
         if block == Block::Air {
             continue;
         }
-        display_tick(particles, &mut random, chunks, IVec3::new(x, y, z), block);
+        let cell = IVec3::new(x, y, z);
+        if let Some(sounds) = sounds.as_deref_mut() {
+            display_sound(sounds, chunks, cell, block);
+        }
+        display_tick(particles, &mut random, chunks, cell, block);
     }
     particles.display_random = random;
+}
+
+/// The sounds `randomDisplayTick` makes: fire crackling, water running, and
+/// a portal's hum. Beta rolls for them on the display `Random`.
+fn display_sound(sounds: &mut Sounds, chunks: &WorldChunks, cell: IVec3, block: Block) {
+    let center = cell.as_vec3() + Vec3::splat(0.5);
+    let random = sounds.random();
+    match block {
+        Block::Fire if random.next_int(24) == 0 => {
+            let volume = 1.0 + random.next_float();
+            let pitch = random.next_float() * 0.7 + 0.3;
+            sounds.play("fire.fire", center, volume, pitch);
+        }
+        // Only water that is flowing.
+        Block::Water | Block::FlowingWater
+            if random.next_int(64) == 0
+                && (1..8).contains(&chunks.metadata_at(cell.x, cell.y, cell.z)) =>
+        {
+            let volume = random.next_float() * 0.25 + 0.75;
+            let pitch = random.next_float() + 0.5;
+            sounds.play("liquid.water", center, volume, pitch);
+        }
+        Block::NetherPortal if random.next_int(100) == 0 => {
+            sounds.play("portal.portal", center, 1.0, Pitch::Up(0.8, 0.4));
+        }
+        _ => {}
+    }
 }
 
 fn display_tick(

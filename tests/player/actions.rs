@@ -185,3 +185,42 @@ fn a_chest_opens_for_the_player_who_clicked_it() {
     // The stone in hand was not placed against it.
     assert_eq!(held(&app, second), 2);
 }
+
+#[test]
+fn breaking_and_placing_a_block_sound_like_the_block() {
+    use game::world::sound::Sounds;
+    let (mut app, first, _) = two_players();
+    app.init_resource::<Sounds>();
+    let hit = top_of(&app, 1, 4, 0);
+    act(&mut app, first, Action::Break { hit });
+    assert_eq!(block(&app, 1, 4, 0), Block::Air);
+    let sounds: Vec<_> = app.world_mut().resource_mut::<Sounds>().drain().collect();
+    assert_eq!(sounds.len(), 1);
+    // Aux effect 2001: the broken block's sound from the middle of its
+    // cell, at `(volume + 1) / 2` and four fifths of its pitch.
+    assert_eq!(sounds[0].name, "step.grass");
+    assert_eq!(sounds[0].position, Some(Vec3::new(1.5, 4.5, 0.5)));
+    assert_eq!(sounds[0].volume, 1.0);
+    assert!((sounds[0].pitch - 0.8).abs() < 1e-6);
+
+    // A claim on a block that has gone makes no sound.
+    act(&mut app, first, Action::Break { hit });
+    assert!(app.world().resource::<Sounds>().queued().is_empty());
+
+    let hit = top_of(&app, 2, 4, 0);
+    act(
+        &mut app,
+        first,
+        Action::Use {
+            hit: Some(hit),
+            origin: Vec3::new(0.5, 6.62, 0.5),
+            look: Vec3::NEG_Y,
+            click: true,
+        },
+    );
+    assert_eq!(block(&app, 2, 5, 0), Block::Stone);
+    let sounds: Vec<_> = app.world_mut().resource_mut::<Sounds>().drain().collect();
+    assert_eq!(sounds.len(), 1);
+    assert_eq!(sounds[0].name, "step.stone");
+    assert_eq!(sounds[0].position, Some(Vec3::new(2.5, 5.5, 0.5)));
+}

@@ -33,6 +33,8 @@ use crate::world::chunk::ChunkDroppedItem;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
 use crate::world::persistence::WorldPersistence;
+use crate::world::sound::Pitch;
+use crate::world::sound::Sounds;
 use crate::world::tick::WorldTick;
 
 const ITEM_LIFETIME_TICKS: u32 = 6000;
@@ -550,6 +552,7 @@ fn tick_dropped_items(
     chunks: Res<WorldChunks>,
     settings: Option<Res<GameSettings>>,
     mut persistence: Option<ResMut<WorldPersistence>>,
+    mut sounds: Option<ResMut<Sounds>>,
     mut commands: Commands,
     mut hotbars: Query<&mut Hotbar>,
     mut pickups: Query<(Entity, &mut PickupAnimation)>,
@@ -634,6 +637,14 @@ fn tick_dropped_items(
                     0.2,
                     (rng.next_float() - rng.next_float()) * 0.2,
                 );
+                if let Some(sounds) = sounds.as_deref_mut() {
+                    sounds.play(
+                        "random.fizz",
+                        transform.translation,
+                        0.4,
+                        Pitch::Up(2.0, 0.4),
+                    );
+                }
             }
             push_out_of_blocks(&chunks, &mut transform.translation, &mut motion.0);
             let movement = move_entity(
@@ -778,6 +789,7 @@ fn push_out_of_blocks(chunks: &WorldChunks, position: &mut Vec3, motion: &mut Ve
 pub(crate) fn pickup_dropped_items(
     mut commands: Commands,
     mut persistence: Option<ResMut<WorldPersistence>>,
+    mut sounds: Option<ResMut<Sounds>>,
     mut player: Query<(&Transform, &EntitySize, &mut Hotbar, &mut Inventory), With<Player>>,
     mut items: Query<(
         Entity,
@@ -829,6 +841,9 @@ pub(crate) fn pickup_dropped_items(
                         start: transform.translation,
                         age_ticks: 0,
                     });
+            }
+            if let Some(sounds) = sounds.as_deref_mut() {
+                sounds.pop(transform.translation);
             }
             mark_chunk(&mut persistence, transform.translation);
             continue 'items;

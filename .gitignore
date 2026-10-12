@@ -2,6 +2,8 @@
 /screenshots/
 /saves/
 /settings.json
+# The original game's sounds and music, supplied locally (`src/audio/`).
+/resources/
 
 # IDE / editor
 .idea/

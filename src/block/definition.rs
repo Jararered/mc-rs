@@ -39,6 +39,62 @@ pub struct BlockProperties {
     /// The lowest pickaxe harvest level `ItemPickaxe.canHarvestBlock`
     /// accepts, for a block only a pickaxe harvests.
     pub pick_level: Option<u8>,
+    /// `Block.stepSound`.
+    pub sound: StepSound,
+}
+
+/// Beta's `StepSound`: what a block sounds like underfoot, while it is dug,
+/// and when it is broken or placed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+pub enum StepSound {
+    /// `soundStoneFootstep`, and `soundPowderFootstep`, which every block
+    /// starts with and which sounds the same.
+    #[default]
+    Stone,
+    Wood,
+    Gravel,
+    Grass,
+    /// Stone at one and a half times the pitch.
+    Metal,
+    /// `StepSoundStone`: stone underfoot, glass when it breaks.
+    Glass,
+    Cloth,
+    /// `StepSoundSand`: sand underfoot, gravel when it breaks.
+    Sand,
+}
+
+impl StepSound {
+    /// `stepSoundDir2`: walking on the block, digging at it, placing it.
+    pub const fn step(self) -> &'static str {
+        match self {
+            Self::Stone | Self::Metal | Self::Glass => "step.stone",
+            Self::Wood => "step.wood",
+            Self::Gravel => "step.gravel",
+            Self::Grass => "step.grass",
+            Self::Cloth => "step.cloth",
+            Self::Sand => "step.sand",
+        }
+    }
+
+    /// `stepSoundDir`: the block breaking.
+    pub const fn broken(self) -> &'static str {
+        match self {
+            Self::Glass => "random.glass",
+            Self::Sand => "step.gravel",
+            _ => self.step(),
+        }
+    }
+
+    pub const fn volume(self) -> f32 {
+        1.0
+    }
+
+    pub const fn pitch(self) -> f32 {
+        match self {
+            Self::Metal => 1.5,
+            _ => 1.0,
+        }
+    }
 }
 
 /// A tool with a list of blocks it digs quickly.
@@ -73,6 +129,7 @@ impl BlockProperties {
             solid_material: true,
             tool: None,
             pick_level: None,
+            sound: StepSound::Stone,
         }
     }
 
@@ -140,6 +197,8 @@ struct Row {
     solid_material: Option<bool>,
     tool: Option<Digger>,
     pick_level: Option<u8>,
+    #[serde(default)]
+    sound: StepSound,
 }
 
 impl Row {
@@ -174,6 +233,7 @@ impl Row {
                 .unwrap_or(!matches!(self.base, Base::Fluid | Base::CrossedPlant)),
             tool: self.tool,
             pick_level: self.pick_level,
+            sound: self.sound,
             ..base
         }
     }

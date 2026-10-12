@@ -5,6 +5,7 @@ pub(crate) mod mobs;
 
 pub(crate) mod pathfinding;
 mod projectiles;
+mod voice;
 
 use bevy::prelude::*;
 use game::entity::CollisionState;

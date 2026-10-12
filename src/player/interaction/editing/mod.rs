@@ -36,6 +36,7 @@ use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
 use crate::world::chunk::remesh_chunks_touching;
 use crate::world::persistence::WorldPersistence;
+use crate::world::sound::Sounds;
 use crate::world::streaming::WorldStreaming;
 use crate::world::tick::WorldTick;
 
@@ -108,7 +109,7 @@ pub(crate) fn interact_blocks(
     >,
     camera: Query<&Transform, With<PlayerCamera>>,
     chunks: Res<WorldChunks>,
-    mut particles: Option<ResMut<BlockParticles>>,
+    (mut particles, mut sounds): (Option<ResMut<BlockParticles>>, Option<ResMut<Sounds>>),
     (mobs, fireballs, carts, boats): (
         Query<(Entity, &Transform, &EntitySize), (With<Mob>, Without<LocalPlayer>)>,
         Query<(Entity, &Transform), (With<Fireball>, Without<LocalPlayer>)>,
@@ -271,7 +272,20 @@ pub(crate) fn interact_blocks(
         }
         for _ in 0..ticks {
             let old_damage = state.mining.damage();
-            if let Some(broken) = state.mining.tick(hit, tool, on_ground, in_water) {
+            let broken = state.mining.tick(hit, tool, on_ground, in_water);
+            if state.mining.tapped()
+                && let Some(hit) = hit
+                && let Some(sounds) = sounds.as_deref_mut()
+            {
+                let sound = hit.block.step_sound();
+                sounds.play(
+                    sound.step(),
+                    IVec3::new(hit.x, hit.y, hit.z).as_vec3() + Vec3::splat(0.5),
+                    (sound.volume() + 1.0) / 8.0,
+                    sound.pitch() * 0.5,
+                );
+            }
+            if let Some(broken) = broken {
                 send(Action::Break { hit: broken });
             } else if state.mining.damage() > old_damage
                 && let Some(hit) = hit

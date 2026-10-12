@@ -397,6 +397,8 @@ fn settings_round_trip_through_json() {
         mouse_sensitivity: 1.5,
         view_bobbing: false,
         fullscreen: true,
+        sound_volume: 0.25,
+        music_volume: 0.0,
         difficulty: Difficulty::Hard,
         floating_items: false,
         bow_charging: true,
@@ -1287,6 +1289,8 @@ fn setting_sliders_cover_ranges_and_fps_vsync_endpoint() {
         SettingsSlider::CloudHeight,
         SettingsSlider::MouseSensitivity,
         SettingsSlider::MaxFps,
+        SettingsSlider::MusicVolume,
+        SettingsSlider::SoundVolume,
     ] {
         let mut slider = binding.slider(&settings);
         assert!(!binding.apply(&slider, &mut settings));
@@ -1786,4 +1790,42 @@ fn renderer_disables_gpu_light_clustering_without_changing_capabilities() {
             .get::<bevy::core_pipeline::tonemapping::Tonemapping>(camera),
         Some(&bevy::core_pipeline::tonemapping::Tonemapping::None)
     );
+}
+
+#[test]
+fn volumes_start_full_and_stay_between_silence_and_full() {
+    let mut settings = GameSettings::default();
+    assert_eq!((settings.sound_volume, settings.music_volume), (1.0, 1.0));
+    settings.sound_volume = 7.5;
+    settings.music_volume = -1.0;
+    settings.clamp();
+    assert_eq!((settings.sound_volume, settings.music_volume), (1.0, 0.0));
+    settings.sound_volume = f32::NAN;
+    settings.clamp();
+    assert_eq!(settings.sound_volume, 1.0);
+}
+
+#[test]
+fn a_settings_file_from_before_sound_plays_at_full_volume() {
+    let path = temp_settings_path("no-volume");
+    fs::write(&path, r#"{ "render_distance": 9, "view_bobbing": false }"#).unwrap();
+    let settings = load_settings(&path);
+    assert_eq!(settings.render_distance, 9);
+    assert_eq!((settings.sound_volume, settings.music_volume), (1.0, 1.0));
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn the_volume_sliders_move_in_whole_percents() {
+    use game::ui::screens::menu::SettingsSlider;
+    let mut settings = GameSettings::default();
+    let mut slider = SettingsSlider::SoundVolume.slider(&settings);
+    assert_eq!(slider.value(), 100.0);
+    slider.set_fraction(0.25);
+    assert!(SettingsSlider::SoundVolume.apply(&slider, &mut settings));
+    assert_eq!(settings.sound_volume, 0.25);
+    assert_eq!(settings.music_volume, 1.0, "the other slider is its own");
+    slider.set_fraction(0.0);
+    SettingsSlider::SoundVolume.apply(&slider, &mut settings);
+    assert_eq!(settings.sound_volume, 0.0);
 }

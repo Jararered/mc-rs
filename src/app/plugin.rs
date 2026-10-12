@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 
+use crate::audio::SoundPlugin;
 use crate::chat::ChatPlugin;
 use crate::entity::drops::items::DroppedItemPlugin;
 use crate::physics::PhysicsPlugin;
@@ -45,7 +46,7 @@ impl Plugin for GamePlugin {
                 // the seed recorded in its own `level.json`.
                 PersistencePlugin::default().deferred(),
                 PlayerPlugin,
-                (BlockParticlePlugin, EffectParticlePlugin),
+                (BlockParticlePlugin, EffectParticlePlugin, SoundPlugin),
                 (DroppedItemPlugin, DroppedItemRenderPlugin),
                 entity_shadow_plugin,
                 ParticleRegistryPlugin,

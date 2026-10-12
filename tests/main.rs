@@ -6,6 +6,7 @@
 #![recursion_limit = "256"]
 
 mod app;
+mod audio;
 mod block;
 mod chat;
 mod crafting;

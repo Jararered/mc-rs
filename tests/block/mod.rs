@@ -310,3 +310,72 @@ fn snow_layers_collide_from_three_layers_up() {
     // The decay-style high bit is ignored, as in `BlockSnow`.
     assert_eq!(Block::SnowLayer.collision_bounds_for(8), None);
 }
+
+#[test]
+fn blocks_sound_as_beta_set_them() {
+    use definition::StepSound;
+    let table = [
+        (Block::Stone, StepSound::Stone),
+        (Block::Grass, StepSound::Grass),
+        (Block::Dirt, StepSound::Gravel),
+        (Block::WoodenPlanks, StepSound::Wood),
+        (Block::Sand, StepSound::Sand),
+        (Block::Glass, StepSound::Glass),
+        (Block::Wool, StepSound::Cloth),
+        (Block::IronBlock, StepSound::Metal),
+        (Block::Rail, StepSound::Metal),
+        (Block::Tnt, StepSound::Grass),
+        (Block::Torch, StepSound::Wood),
+        (Block::SnowLayer, StepSound::Cloth),
+        (Block::Cactus, StepSound::Cloth),
+        (Block::Ice, StepSound::Glass),
+        (Block::Farmland, StepSound::Gravel),
+        // `BlockStairs` takes its material's sound.
+        (Block::WoodenStairs, StepSound::Wood),
+        (Block::CobblestoneStairs, StepSound::Stone),
+        // Never given one, so they keep the default every block starts with.
+        (Block::NoteBlock, StepSound::Stone),
+        (Block::RedstoneWire, StepSound::Stone),
+        (Block::Bed, StepSound::Stone),
+    ];
+    for (block, sound) in table {
+        assert_eq!(block.step_sound(), sound, "{block:?}");
+    }
+    // One of each kind `Block.java` hands out, counted over every block id.
+    let count = |sound: StepSound| {
+        (0..=96u8)
+            .filter(|id| Block::from_u8(*id).is_some_and(|block| block.step_sound() == sound))
+            .count()
+    };
+    assert_eq!(count(StepSound::Wood), 23);
+    assert_eq!(count(StepSound::Grass), 13);
+    assert_eq!(count(StepSound::Metal), 8);
+    assert_eq!(count(StepSound::Cloth), 5);
+    assert_eq!(count(StepSound::Gravel), 4);
+    assert_eq!(count(StepSound::Glass), 4);
+    assert_eq!(count(StepSound::Sand), 2);
+}
+
+#[test]
+fn glass_and_sand_break_with_a_sound_of_their_own() {
+    use definition::StepSound;
+    assert_eq!(StepSound::Glass.step(), "step.stone");
+    assert_eq!(StepSound::Glass.broken(), "random.glass");
+    assert_eq!(StepSound::Sand.step(), "step.sand");
+    assert_eq!(StepSound::Sand.broken(), "step.gravel");
+    for sound in [
+        StepSound::Stone,
+        StepSound::Wood,
+        StepSound::Gravel,
+        StepSound::Grass,
+        StepSound::Metal,
+        StepSound::Cloth,
+    ] {
+        assert_eq!(sound.step(), sound.broken(), "{sound:?}");
+        assert_eq!(sound.volume(), 1.0);
+    }
+    // Metal is stone, pitched up by half.
+    assert_eq!(StepSound::Metal.step(), "step.stone");
+    assert_eq!(StepSound::Metal.pitch(), 1.5);
+    assert_eq!(StepSound::Stone.pitch(), 1.0);
+}

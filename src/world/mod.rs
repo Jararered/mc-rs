@@ -15,6 +15,7 @@ pub mod lighting;
 pub mod persistence;
 pub mod plugin;
 pub mod portal;
+pub mod sound;
 pub mod streaming;
 pub mod tick;
 pub mod weather;

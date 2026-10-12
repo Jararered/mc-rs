@@ -2,7 +2,9 @@
 use crate::block::blocks::Block;
 use crate::world::block_ticks::BlockBehavior;
 use crate::world::block_ticks::TickWorld;
+use crate::world::sound::Pitch;
 use bevy::math::IVec3;
+use bevy::math::Vec3;
 
 pub struct Piston;
 pub static PISTON: Piston = Piston;
@@ -200,6 +202,16 @@ fn retract(world: &mut TickWorld, pos: IVec3, dir: IVec3, sticky: bool) {
     }
 }
 
+/// `BlockPistonBase.playBlock`'s sound: `nextFloat() * span + 0.6F`.
+fn thump(world: &mut TickWorld, pos: IVec3, name: &'static str, span: f32) {
+    world.play_sound(
+        name,
+        pos.as_vec3() + Vec3::splat(0.5),
+        0.5,
+        Pitch::Up(0.6, span),
+    );
+}
+
 /// `BlockPistonBase.updatePistonState`. Beta marks the base first and then
 /// moves the blocks over a few ticks, ignoring neighbor changes while it
 /// starts the move. The move is immediate here, so a change that arrives in
@@ -227,12 +239,14 @@ fn update_state(world: &mut TickWorld, pos: IVec3) {
         extend(world, pos, dir, head, push);
         world.end_piston_move();
         world.set_metadata_notify(pos, meta | EXTENDED);
+        thump(world, pos, "tile.piston.out", 0.25);
     } else if !powered && meta & EXTENDED != 0 {
         world.set_metadata(pos, meta & 7);
         world.begin_piston_move();
         retract(world, pos, dir, sticky);
         world.end_piston_move();
         world.set_metadata_notify(pos, meta & 7);
+        thump(world, pos, "tile.piston.in", 0.15);
     }
 }
 

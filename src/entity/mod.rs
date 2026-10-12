@@ -33,6 +33,7 @@ pub mod mount;
 pub mod pathfinding;
 pub mod projectiles;
 pub mod thrown;
+pub mod voice;
 
 /// Mob simulation and rendering costs collected since the last performance
 /// print.

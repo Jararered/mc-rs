@@ -27,6 +27,39 @@ from `git log --date=format:'%Y-%m-%d %H:%M'`). A commit cannot name its own has
       sign once and every client reads it.
       `de86ed1 · 2026-10-10 07:44`
 
+##### Sound
+
+Sounds need the original game's `resources/` folder beside `assets/`. Without it the game starts and stays silent.
+
+- [ ] Walking is heard every block and two thirds, by what is underfoot: stone, wood, grass, gravel (dirt too),
+      sand and wool each sound different. A snow layer muffles the block under it, sneaking is silent, and
+      swimming makes no footsteps.
+      `pending`
+- [ ] Holding the button on a block taps it five times a second. Breaking it plays its sound louder (glass
+      shatters, sand breaks like gravel, iron and gold blocks ring higher), and so does placing one.
+      `pending`
+- [ ] Levers, buttons and pressure plates click, higher going on than coming off. Pistons thump out and back. A
+      door or trapdoor creaks open or shut, by hand or by redstone. A dispenser twangs when it shoots, clicks
+      when it drops an item, and gives a higher click when empty.
+      `pending`
+- [ ] A powered or right-clicked note block plays its note: harp on most blocks, bass on wood, snare on sand or
+      gravel, hat on glass, bass drum on stone, an octave either side of the middle.
+      `pending`
+- [ ] TNT hisses as its fuse is lit, and an explosion booms and is heard from as far as 64 blocks.
+      `pending`
+- [ ] Fire crackles, flowing water runs, a portal hums, lava that meets water hisses, and a redstone torch that
+      burns out fizzes.
+      `pending`
+- [ ] Rain patters around you, quieter and duller under a roof, and thunder follows every lightning strike
+      however far off.
+      `pending`
+- [ ] Somewhere dark with no sky above (a cave, or the Nether), an eerie noise plays from nearby now and then,
+      never within five minutes of the last.
+      `pending`
+- [ ] A sound fades evenly with distance and is gone 16 blocks away, and it comes from the side it is on: turn
+      around and it changes ears.
+      `pending`
+
 #### Interactions
 
 - [ ] A powered dispenser launches eggs and snowballs as projectiles instead of dropping them as items.
@@ -135,6 +168,28 @@ from `git log --date=format:'%Y-%m-%d %H:%M'`). A commit cannot name its own has
 - [ ] The settings tabs read Gameplay, Controls, Video, Features.
       `d2fb059 · 2026-10-09 08:06`
 
+##### Sound and music
+
+- [ ] Settings, Gameplay: Music and Sound sliders run from OFF to 100%. Sound changes what is already playing;
+      Music at OFF stops the track and starts no other. Both are remembered.
+      `pending`
+- [ ] Music plays in a world: the first track within ten minutes, then ten to twenty minutes of quiet after each,
+      from the twelve in `resources/music` and `resources/newmusic`.
+      `pending`
+- [ ] Every menu button clicks.
+      `pending`
+- [ ] The bow twangs, and a snowball, egg or cast line leaves the hand with a softer, lower one. An arrow
+      thunks into what it hits. With Bow Charging on, a fuller draw sounds higher.
+      `pending`
+- [ ] Picking up an item or a spent arrow pops. An item that falls in lava fizzes as it is spat out.
+      `pending`
+- [ ] Flint and steel strikes, a hoe sounds like the soil it turns, a water bucket emptied in the Nether hisses,
+      and a bobber splashes when a fish bites.
+      `pending`
+- [ ] Standing in a portal gives a rising rush as it starts to charge and another as it takes you, which plays
+      on through the loading screen.
+      `pending`
+
 #### Interactions
 
 - [ ] Shift-clicking an item out of a chest puts it in the hotbar first, then the rest of the inventory.
@@ -146,20 +201,21 @@ from `git log --date=format:'%Y-%m-%d %H:%M'`). A commit cannot name its own has
       `a22f8d3 · 2026-10-09 07:55`
 - [ ] `/clear` empties your whole inventory: hotbar, main slots, armor, the 2×2 crafting grid and anything held
       on the cursor. Chat reports how many items went.
-      `pending`
+      `3966173 · 2026-10-11 03:31`
 
 #### Fixes
 
 - [ ] Each dye shows its own icon: a bone crafts into white bone meal, not what looked like yellow dye, and ink
       sacs, lapis and cocoa beans look like themselves.
-      `pending`
+      `a722019 · 2026-10-11 09:06`
 - [ ] Bone meal used on a sapling grows its tree at once (the bone meal is spent even when there is no room), on
       wheat ripens it, and on a grass block sprouts tall grass with the odd dandelion and rose around it.
-      `pending`
+      `2505096 · 2026-10-11 09:10`
 - [ ] A dye and white wool craft wool of that dye's color (bone meal leaves it white, an ink sac makes black).
-      `pending`
+      `a722019 · 2026-10-11 09:06`
 - [ ] Dyes mix: rose red and bone meal make pink, rose red and dandelion yellow make orange, and the rest of
       Beta's mixes (lime, gray, light gray, light blue, cyan, purple, magenta) work.
+      `a722019 · 2026-10-11 09:06`
 - [ ] View bobbing: the view and the held item or arm swing as far and as fast as Beta's when walking, the same
       at any frame rate, instead of a slower, smaller sway. The swing does not advance while sneaking.
       `cb5dc12 · 2026-10-11 03:19`
@@ -192,6 +248,27 @@ from `git log --date=format:'%Y-%m-%d %H:%M'`). A commit cannot name its own has
 
 - [ ] A thrown egg has a one in eight chance to hatch a chicken where it lands, and rarely hatches four.
       `a22f8d3 · 2026-10-09 07:55`
+
+##### Voices
+
+- [ ] Mobs speak now and then: pigs, sheep, chickens, cows (quietly), zombies, skeletons, spiders and zombie
+      pigmen, and a ghast's moan carries a long way. Creepers, slimes and squid have no idle sound, and animals
+      speak less often than monsters.
+      `pending`
+- [ ] A mob cries out when hit and makes its death sound with the blow that kills it. You grunt when hurt.
+      `pending`
+- [ ] A creeper hisses as it starts to swell. A skeleton's bow twangs. A ghast shrieks as it charges and again
+      as it fires. A zombie pigman snarls a moment after it turns on you.
+      `pending`
+- [ ] A slime squelches as it hops (not the smallest) and as it lands (only the biggest), and slaps when it
+      hurts you. A chicken plops out its egg.
+      `pending`
+- [ ] A wolf barks, sometimes pants, whines when tame and badly hurt, growls when angry, and rattles as it
+      shakes itself dry.
+      `pending`
+- [ ] Anything that drops into water splashes, louder the faster it went in; a burning mob or player that
+      reaches water or rain hisses out; and a fall that hurts lands with a thud of the block below.
+      `pending`
 
 #### Interactions
 

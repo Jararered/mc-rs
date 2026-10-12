@@ -929,3 +929,67 @@ fn creative_flight_lands_on_blocks_and_spectator_flight_passes_through() {
     assert!(y < 60.0, "a spectator sinks through the floor");
     assert!(flying);
 }
+
+#[test]
+fn a_walking_player_is_heard_at_each_step() {
+    use game::entity::StepDistance;
+    use game::world::sound::Sounds;
+    let mut chunks = floor_world(64);
+    // Half the floor is grass, and a snow layer lies on part of that.
+    for z in 0..CHUNK_SIZE {
+        for x in 0..CHUNK_SIZE {
+            if z < 8 {
+                chunks.set_block(x as i32, 64, z as i32, Block::Grass);
+            }
+            if z < 4 {
+                chunks.set_block(x as i32, 65, z as i32, Block::SnowLayer);
+            }
+        }
+    }
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins)
+        .insert_resource(chunks)
+        .init_resource::<Sounds>()
+        .add_plugins(PhysicsPlugin);
+    // Bevy's forward is -Z: from stone, over grass, into the snow.
+    let player = app
+        .world_mut()
+        .spawn((
+            Player,
+            Transform::from_xyz(8.5, 65.0 + EntitySize::PLAYER.y_offset, 14.5),
+            Velocity::default(),
+            EntitySize::PLAYER,
+            CollisionState {
+                on_ground: true,
+                ..default()
+            },
+            StepDistance::default(),
+            PlayerMovementInput {
+                forward: 1.0,
+                ..default()
+            },
+        ))
+        .id();
+    let mut heard = Vec::new();
+    for _ in 0..200 {
+        app.world_mut().resource_mut::<WorldTick>().advance(0.05);
+        app.update();
+        let feet = app.world().get::<Transform>(player).unwrap().translation
+            - Vec3::Y * EntitySize::PLAYER.y_offset;
+        for sound in app.world_mut().resource_mut::<Sounds>().drain() {
+            // `playSoundAtEntity`: at the walker's feet, quietly.
+            assert!(sound.position.unwrap().distance(feet) < 0.5);
+            assert!((sound.volume - 0.15).abs() < 1e-6);
+            assert_eq!(sound.pitch, 1.0);
+            heard.push(sound.name);
+        }
+        if feet.z < 1.0 {
+            break;
+        }
+    }
+    // Thirteen and a half blocks, a step every block and two thirds.
+    assert!((6..=9).contains(&heard.len()), "{heard:?}");
+    // Stone, then grass, then the snow layer that muffles the grass under it.
+    heard.dedup();
+    assert_eq!(heard, ["step.stone", "step.grass", "step.cloth"]);
+}

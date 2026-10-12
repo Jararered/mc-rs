@@ -22,6 +22,7 @@ mod sugar_cane;
 mod systems;
 
 use bevy::math::IVec3;
+use bevy::math::Vec3;
 use game::block::blocks::Block;
 use game::world::biome::Biome;
 use game::world::biome::BiomeMap;
@@ -37,6 +38,7 @@ use game::world::chunk::GeneratedChunk;
 use game::world::chunk::Heightmap;
 use game::world::chunk::WorldChunks;
 use game::world::lighting::LightCache;
+use game::world::sound::Pitch;
 
 pub fn generated(chunk: Chunk, biome: Biome) -> GeneratedChunk {
     GeneratedChunk {
@@ -173,6 +175,32 @@ impl TestWorld {
         self.ticks.take_effects()
     }
 
+    /// The effects since the last call that are not sounds, for a test of
+    /// what a circuit does and not of how its switch clicks.
+    pub fn silent_effects(&mut self) -> Vec<TickEffect> {
+        self.effects()
+            .into_iter()
+            .filter(|effect| !matches!(effect, TickEffect::Sound { .. }))
+            .collect()
+    }
+
+    /// The sounds blocks have made since the last call: name, place, volume
+    /// and pitch.
+    pub fn sounds(&mut self) -> Vec<(&'static str, Vec3, f32, Pitch)> {
+        self.effects()
+            .into_iter()
+            .filter_map(|effect| match effect {
+                TickEffect::Sound {
+                    name,
+                    position,
+                    volume,
+                    pitch,
+                } => Some((name, position, volume, pitch)),
+                _ => None,
+            })
+            .collect()
+    }
+
     pub fn changes(&mut self) -> Vec<BlockChange> {
         self.ticks.take_changes()
     }
@@ -194,7 +222,8 @@ impl TestWorld {
                 | TickEffect::Dispense { .. }
                 | TickEffect::DropStack { .. }
                 | TickEffect::LavaMix { .. }
-                | TickEffect::PistonPush { .. } => None,
+                | TickEffect::PistonPush { .. }
+                | TickEffect::Sound { .. } => None,
             })
             .collect()
     }

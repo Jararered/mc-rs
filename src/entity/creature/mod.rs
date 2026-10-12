@@ -59,6 +59,7 @@ use crate::entity::pathfinding::LastSearch;
 use crate::entity::pathfinding::Path;
 use crate::entity::pathfinding::Pathfinder;
 use crate::entity::projectiles::victim_of;
+use crate::entity::voice::voice;
 use crate::inventory::Inventory;
 use crate::item::ItemStack;
 use crate::physics::Aabb;
@@ -68,6 +69,7 @@ use crate::physics::collides;
 use crate::physics::eye_in_water;
 use crate::physics::inside_opaque_block;
 use crate::physics::intersects_liquid;
+use crate::physics::landing_sound;
 use crate::physics::lava_contains;
 use crate::physics::move_entity;
 use crate::physics::raycast_blocks;
@@ -87,6 +89,8 @@ use crate::world::difficulty::Difficulty;
 use crate::world::lighting::LightCache;
 use crate::world::lighting::beta_brightness;
 use crate::world::lighting::combined_light;
+use crate::world::sound::Pitch;
+use crate::world::sound::Sounds;
 use crate::world::tick::TICK_SECONDS;
 use crate::world::tick::WorldTick;
 
@@ -155,6 +159,14 @@ pub struct Living {
     /// `EntityCreature.hasAttacked`: this tick's attack holds the creature in
     /// place instead of letting it wander.
     has_attacked: bool,
+    /// `livingSoundTime`: below zero for a while after each idle sound, then
+    /// climbing, and the higher it is the likelier the next.
+    living_sound_time: i32,
+    /// `EntityPigZombie.randomSoundDelay`: ticks until it growls at whoever
+    /// angered it.
+    anger_sound_delay: i16,
+    /// Whether the pig zombie was angry a tick ago; `None` until its first.
+    was_angry: Option<bool>,
     /// `EntityWolf.isWolfShaking`: wet, and waiting to shake dry.
     pub(crate) wolf_shaking: bool,
     /// `EntityWolf.field_25052_g`: shaking right now.
@@ -206,6 +218,9 @@ impl Living {
             fall_distance: 0.0,
             air: MAX_AIR,
             has_attacked: false,
+            living_sound_time: 0,
+            anger_sound_delay: 0,
+            was_angry: None,
             wolf_shaking: false,
             wolf_drying: false,
             wolf_shake_time: 0.0,
@@ -367,6 +382,7 @@ pub(crate) struct Effects<'a, 'w, 's> {
     /// Each player that can take damage.
     pub victims: Vec<(Entity, Victim<'a>)>,
     pub particles: Option<&'a mut EffectParticles>,
+    pub sounds: Option<&'a mut Sounds>,
 }
 
 /// The optional, kind-specific components a creature carries.
@@ -423,6 +439,7 @@ pub(crate) struct CreatureItem {
 pub(crate) struct CreatureExtras<'w> {
     diagnostics: Option<ResMut<'w, EntityDiagnostics>>,
     particles: Option<ResMut<'w, EffectParticles>>,
+    sounds: Option<ResMut<'w, Sounds>>,
 }
 
 /// Run each mob's Beta update once per world tick this frame.
@@ -530,6 +547,7 @@ pub(crate) fn tick_creatures(
         block_ticks: block_ticks.as_deref_mut(),
         victims,
         particles: extras.particles.as_deref_mut(),
+        sounds: extras.sounds.as_deref_mut(),
     };
 
     for mut item in &mut creatures {
@@ -638,6 +656,61 @@ impl Body<'_> {
         matches!(self.mob.kind, MobType::Ghast | MobType::PigZombie)
     }
 
+    /// `EntityLiving.onEntityUpdate`'s idle voice: likelier each tick since
+    /// the last one, and never within the mob's talk interval of it. Beta
+    /// rolls for it on the mob's own `Random`; a world with nobody to hear
+    /// does not roll at all.
+    fn talk(&mut self, fx: &mut Effects) {
+        let Some(sounds) = fx.sounds.as_deref_mut() else {
+            return;
+        };
+        let voice = voice(self.mob.kind);
+        let living = &mut *self.living;
+        let waited = living.living_sound_time;
+        living.living_sound_time += 1;
+        if (sounds.random().next_int(1000) as i32) < waited {
+            living.living_sound_time = -voice.talk_interval;
+            let name = if self.mob.kind == MobType::Wolf {
+                // `EntityWolf.getLivingSound`.
+                Some(if self.mob.angry {
+                    "mob.wolf.growl"
+                } else if sounds.random().next_int(3) != 0 {
+                    "mob.wolf.bark"
+                } else if self.mob.tamed && self.mob.health < 10 {
+                    "mob.wolf.whine"
+                } else {
+                    "mob.wolf.panting"
+                })
+            } else {
+                voice.living
+            };
+            if let Some(name) = name {
+                sounds.play(name, self.feet, voice.volume, Pitch::VOICE);
+            }
+        }
+        // `EntityPigZombie.onUpdate`: a growl within two seconds of turning
+        // on someone.
+        if self.mob.kind == MobType::PigZombie {
+            let angry = self.mob.angry;
+            if living.was_angry.replace(angry) == Some(false) && angry {
+                living.anger_sound_delay = sounds.random().next_int(40) as i16;
+            }
+            if living.anger_sound_delay > 0 {
+                living.anger_sound_delay -= 1;
+                if living.anger_sound_delay == 0 {
+                    let random = sounds.random();
+                    let pitch = ((random.next_float() - random.next_float()) * 0.2 + 1.0) * 1.8;
+                    sounds.play(
+                        "mob.zombiepig.zpigangry",
+                        self.feet,
+                        voice.volume * 2.0,
+                        pitch,
+                    );
+                }
+            }
+        }
+    }
+
     /// `attackEntityFrom` against this creature, dropping its loot if the
     /// hit kills it.
     fn hurt(&mut self, hit: Hit, fx: &mut Effects) -> bool {
@@ -676,9 +749,14 @@ impl Body<'_> {
         let (in_water, current) = water_movement(band, world.chunks);
         let entered_water = in_water && !self.living.in_water && self.mob.age > 1;
         self.living.in_water = in_water;
-        if entered_water && let Some(particles) = fx.particles.as_deref_mut() {
-            let motion = self.motion;
-            particles.water_entry(self.feet, self.feet.y.floor(), self.size.width, motion);
+        if entered_water {
+            if let Some(sounds) = fx.sounds.as_deref_mut() {
+                sounds.splash(self.feet, self.motion);
+            }
+            if let Some(particles) = fx.particles.as_deref_mut() {
+                let motion = self.motion;
+                particles.water_entry(self.feet, self.feet.y.floor(), self.size.width, motion);
+            }
         }
         self.motion += current * WATER_CURRENT_PER_TICK;
         if in_water {
@@ -704,6 +782,7 @@ impl Body<'_> {
         }
 
         // `EntityLiving.onEntityUpdate`.
+        self.talk(fx);
         if self.alive() && self.inside_opaque_block(world) {
             self.hurt(Hit::environment(1), fx);
         }
@@ -747,7 +826,7 @@ impl Body<'_> {
         } else {
             match self.mob.kind {
                 MobType::Squid => self.squid_action(world, traits.swim.as_deref_mut()),
-                MobType::Slime => self.slime_action(world, traits.bounce.as_deref_mut()),
+                MobType::Slime => self.slime_action(world, traits.bounce.as_deref_mut(), fx),
                 MobType::Ghast => self.ghast_action(world, traits.hover.as_deref_mut(), fx),
                 MobType::Pig if world.pig_steering && self.rider(world).is_some() => {
                     self.steered_action(world);
@@ -1335,6 +1414,7 @@ impl Body<'_> {
         step_on_block(
             steps,
             fx.block_ticks.as_deref_mut(),
+            fx.sounds.as_deref_mut(),
             world.chunks,
             movement,
             false,
@@ -1357,6 +1437,9 @@ impl Body<'_> {
             self.mob.fire_ticks = -1;
         }
         if wet && self.mob.fire_ticks > 0 {
+            if let Some(sounds) = fx.sounds.as_deref_mut() {
+                sounds.quench(self.feet);
+            }
             self.mob.fire_ticks = -1;
         }
     }
@@ -1378,6 +1461,7 @@ impl Body<'_> {
         let damage = (distance - 3.0).ceil() as i16;
         if damage > 0 {
             self.hurt(Hit::environment(damage), fx);
+            landing_sound(fx.sounds.as_deref_mut(), world.chunks, self.aabb());
         }
     }
 

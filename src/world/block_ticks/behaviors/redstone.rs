@@ -1,9 +1,11 @@
 //! Beta's dust, two-state repeater, and redstone torch power propagation.
 use bevy::math::IVec3;
+use bevy::math::Vec3;
 
 use crate::block::blocks::Block;
 use crate::world::block_ticks::BlockBehavior;
 use crate::world::block_ticks::TickWorld;
+use crate::world::sound::Pitch;
 
 pub struct Wire;
 pub static WIRE: Wire = Wire;
@@ -397,7 +399,14 @@ impl BlockBehavior for RedstoneTorch {
         let meta = world.metadata(position);
         if powered && block == Block::RedstoneTorch {
             world.set_block_and_metadata_notify(position, Block::UnlitRedstoneTorch, meta);
-            world.torch_burned_out(position, true);
+            if world.torch_burned_out(position, true) {
+                world.play_sound(
+                    "random.fizz",
+                    position.as_vec3() + Vec3::splat(0.5),
+                    0.5,
+                    Pitch::Around(2.6, 0.8),
+                );
+            }
         } else if !powered
             && block == Block::UnlitRedstoneTorch
             && !world.torch_burned_out(position, false)

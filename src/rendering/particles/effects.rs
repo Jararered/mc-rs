@@ -37,6 +37,7 @@ use crate::world::lighting::LightCache;
 use crate::world::lighting::beta_brightness;
 use crate::world::lighting::column_channels;
 use crate::world::lighting::combined_light;
+use crate::world::sound::Sounds;
 use crate::world::tick::WorldTick;
 use crate::world::weather::WorldWeather;
 
@@ -385,9 +386,18 @@ impl EffectParticles {
 
     /// One tick of `addRainParticles`. `strength` is the rain strength and
     /// `eye` the player's eye, which Beta measures both reach and height from.
-    pub fn spawn_rain(&mut self, chunks: &WorldChunks, eye: Vec3, strength: f32, fancy: bool) {
+    /// Returns where one of the drops landed, for the rain to be heard from:
+    /// Beta picks one at random, and they all fall at random.
+    pub fn spawn_rain(
+        &mut self,
+        chunks: &WorldChunks,
+        eye: Vec3,
+        strength: f32,
+        fancy: bool,
+    ) -> Option<Vec3> {
         let strength = if fancy { strength } else { strength / 2.0 };
         let center = eye.floor().as_ivec3();
+        let mut heard = None;
         for _ in 0..(100.0 * strength * strength) as i32 {
             let mut spread = || {
                 self.random.next_int(REACH as u32) as i32
@@ -414,10 +424,12 @@ impl EffectParticles {
             let particle = if Fluid::of(below) == Some(Fluid::Lava) {
                 self.smoke(position, Vec3::ZERO, 1.0)
             } else {
+                heard = Some(position);
                 self.rain_drop(position)
             };
             self.push(particle);
         }
+        heard
     }
 
     /// `EntityFX`'s constructor: the given velocity plus a random push,
@@ -943,6 +955,24 @@ fn setup_renderer(
     commands.insert_resource(EffectRenderer { sheet, items });
 }
 
+/// The patter at the end of `addRainParticles`: every tick or three, from
+/// where a drop landed, and muffled for a player under a roof.
+fn rain_sound(sounds: &mut Sounds, counter: &mut u32, chunks: &WorldChunks, eye: Vec3, drop: Vec3) {
+    let waited = *counter;
+    *counter += 1;
+    if sounds.random().next_int(3) >= waited {
+        return;
+    }
+    *counter = 0;
+    let roofed =
+        chunks.top_solid_block(eye.x.floor() as i32, eye.z.floor() as i32) > eye.y.floor() as i32;
+    if drop.y > eye.y + 1.0 && roofed {
+        sounds.play("ambient.weather.rain", drop, 0.1, 0.5);
+    } else {
+        sounds.play("ambient.weather.rain", drop, 0.2, 1.0);
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn update_particles(
     tick: Res<WorldTick>,
@@ -956,6 +986,8 @@ fn update_particles(
     mut renderer: ResMut<EffectRenderer>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut visibility: Query<&mut Visibility>,
+    mut sounds: Option<ResMut<Sounds>>,
+    mut rain_sound_counter: Local<u32>,
 ) {
     let strength = weather
         .as_ref()
@@ -977,12 +1009,19 @@ fn update_particles(
     for _ in 0..tick.ticks_this_frame() {
         particles.tick(&chunks, light.as_deref(), subtracted);
         if let Some(viewer) = viewer {
-            random_display_updates(&mut particles, &chunks, viewer.floor().as_ivec3());
+            random_display_updates(
+                &mut particles,
+                sounds.as_deref_mut(),
+                &chunks,
+                viewer.floor().as_ivec3(),
+            );
         }
         if strength > 0.0
             && let Some(player) = player
+            && let Some(drop) = particles.spawn_rain(&chunks, player, strength, fancy)
+            && let Some(sounds) = sounds.as_deref_mut()
         {
-            particles.spawn_rain(&chunks, player, strength, fancy);
+            rain_sound(sounds, &mut rain_sound_counter, &chunks, player, drop);
         }
     }
     let rotation = camera

@@ -3,6 +3,7 @@ use crate::block::blocks::Block;
 use crate::world::block_ticks::BlockBehavior;
 use crate::world::block_ticks::TickWorld;
 use bevy::math::IVec3;
+use bevy::math::Vec3;
 
 fn attached(meta: u8) -> IVec3 {
     match meta & 7 {
@@ -23,6 +24,17 @@ fn support_lost(world: &mut TickWorld, position: IVec3) -> bool {
         false
     }
 }
+/// A switch's `random.click`, `height` up its cell: higher going on than
+/// coming off.
+fn click(world: &mut TickWorld, position: IVec3, height: f32, on: bool) {
+    world.play_sound(
+        "random.click",
+        position.as_vec3() + Vec3::new(0.5, height, 0.5),
+        0.3,
+        if on { 0.6 } else { 0.5 },
+    );
+}
+
 fn notify_switch(world: &mut TickWorld, position: IVec3, block: Block) {
     world.notify_neighbors(position, block);
     world.notify_neighbors(position + attached(world.metadata(position)), block);
@@ -52,7 +64,9 @@ impl BlockBehavior for Lever {
         support_lost(world, position);
     }
     fn activated(&self, world: &mut TickWorld, position: IVec3) {
-        world.set_metadata_notify(position, world.metadata(position) ^ 8);
+        let metadata = world.metadata(position) ^ 8;
+        world.set_metadata_notify(position, metadata);
+        click(world, position, 0.5, metadata & 8 != 0);
         notify_switch(world, position, Block::Lever);
     }
     fn clicked(&self, world: &mut TickWorld, position: IVec3) {
@@ -100,6 +114,7 @@ impl BlockBehavior for Button {
             return;
         }
         world.set_metadata_notify(position, world.metadata(position) | 8);
+        click(world, position, 0.5, true);
         notify_switch(world, position, Block::StoneButton);
         world.schedule(position, Block::StoneButton, 20);
     }
@@ -110,6 +125,7 @@ impl BlockBehavior for Button {
         if world.metadata(position) & 8 != 0 {
             world.set_metadata_notify(position, world.metadata(position) & 7);
             notify_switch(world, position, Block::StoneButton);
+            click(world, position, 0.5, false);
         }
     }
     fn on_removed(&self, world: &mut TickWorld, position: IVec3, _: Block, metadata: u8) {
@@ -170,6 +186,7 @@ fn update_plate(world: &mut TickWorld, position: IVec3) {
         world.set_metadata_notify(position, u8::from(occupied));
         world.notify_neighbors(position, block);
         world.notify_neighbors(position - IVec3::Y, block);
+        click(world, position, 0.1, occupied);
     }
     if occupied {
         world.schedule(position, block, 20);

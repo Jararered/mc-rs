@@ -1,4 +1,4 @@
-//! Inventory identities and Beta stack rules. Definitions do not imply that
+//! Item identities and Beta stack rules. Definitions do not imply that
 //! an item's use, crafting recipe, or rendering has been implemented.
 use super::tools::ToolType;
 use crate::block::blocks::Block;
@@ -136,8 +136,9 @@ static STANDALONE: LazyLock<Vec<ItemProperties>> = LazyLock::new(|| {
 
 /// Block items share their block's Beta id. Standalone items start at 256.
 ///
-/// Standalone variants use their Beta item ids as discriminants. Block item ids
-/// are represented by `BlockOrUnknown` and resolved through [`Self::block`].
+/// Standalone variants use their Beta item ids as discriminants. Block item
+/// ids are represented by the `Unknown` catch-all and resolved through
+/// [`Self::block`].
 #[repr(u16)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, FromPrimitive, IntoPrimitive, Deserialize)]
 pub enum Item {
@@ -300,8 +301,8 @@ impl Item {
         block.has_item_id().then_some(block)
     }
 
-    /// `ItemFood.healAmount`: half-hearts restored when eaten.
-    /// `ItemRecord.recordName` for a music disc.
+    /// `ItemRecord.recordName`: the track a disc plays in a jukebox, which is
+    /// the name of its file under `resources/streaming`.
     pub fn record_name(self) -> Option<&'static str> {
         self.properties().and_then(|properties| properties.record)
     }
@@ -345,7 +346,7 @@ impl Item {
     }
 }
 
-/// Formats block item IDs as their block variant and other IDs as item variants.
+/// Formats block item ids as their block variant and other ids as item variants.
 impl std::fmt::Display for Item {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.block() {

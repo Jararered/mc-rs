@@ -23,11 +23,8 @@ use crate::rendering::textures::BlockMaterial;
 use crate::rendering::textures::LineRasterSupported;
 use crate::rendering::textures::MeshWireframe;
 use crate::rendering::textures::configure_mesh_wireframe;
-use crate::world::block_ticks::BlockTicks;
 use crate::world::chunk::ChunkPosition;
-use crate::world::chunk::WorldChunks;
 use crate::world::persistence::WorldPersistence;
-use crate::world::streaming::WorldStreaming;
 use crate::world::tick::DAY_LENGTH;
 use crate::world::tick::WorldTick;
 
@@ -36,6 +33,7 @@ use super::ChatSubmission;
 use super::commands::*;
 use super::registry::CommandRegistry;
 
+use crate::world::edit::WorldEdit;
 use bevy::ecs::system::SystemParam;
 
 #[derive(SystemParam)]
@@ -62,10 +60,7 @@ pub(super) struct CommandContext<'w, 's> {
     >,
     local: Query<'w, 's, Entity, With<LocalPlayer>>,
     names: Query<'w, 's, &'static PlayerName>,
-    chunks: ResMut<'w, WorldChunks>,
-    streaming: Option<ResMut<'w, WorldStreaming>>,
-    persistence: Option<ResMut<'w, WorldPersistence>>,
-    ticks: Option<ResMut<'w, BlockTicks>>,
+    edit: WorldEdit<'w>,
     rng: Local<'s, ItemRng>,
     wireframe: Option<ResMut<'w, MeshWireframe>>,
     block_materials: Option<ResMut<'w, Assets<BlockMaterial>>>,
@@ -93,10 +88,7 @@ impl CommandContext<'_, '_> {
             player,
             local,
             names,
-            chunks,
-            streaming,
-            persistence,
-            ticks,
+            edit,
             rng,
             wireframe,
             block_materials,
@@ -138,14 +130,18 @@ impl CommandContext<'_, '_> {
                     }
                     _ => unreachable!(),
                 };
-                if let Some(ticks) = ticks.as_deref_mut() {
+                if let Some(ticks) = edit.ticks.as_deref_mut() {
                     ticks.rebase_time(previous, time);
                 }
                 clock.set_world_time(time);
                 // This frame's ticks were counted before the jump. Do not replay
                 // them against the new time (setting 0 could otherwise wrap).
                 clock.idle();
-                if let Some(storage) = persistence.as_deref().and_then(WorldPersistence::storage) {
+                if let Some(storage) = edit
+                    .persistence
+                    .as_deref()
+                    .and_then(WorldPersistence::storage)
+                {
                     storage.set_world_time(time);
                 }
                 chat.push(format!(
@@ -196,7 +192,11 @@ impl CommandContext<'_, '_> {
             weather.thunder_time = if thundering { 12_000 } else { 168_000 };
             weather.rain_strength = if raining { 1.0 } else { 0.0 };
             weather.thunder_strength = if thundering { 1.0 } else { 0.0 };
-            if let Some(storage) = persistence.as_deref().and_then(WorldPersistence::storage) {
+            if let Some(storage) = edit
+                .persistence
+                .as_deref()
+                .and_then(WorldPersistence::storage)
+            {
                 storage.set_weather(weather);
             }
             chat.push(format!(
@@ -245,7 +245,7 @@ impl CommandContext<'_, '_> {
                     spawn_block_drop(commands, rng, cell, stack);
                 }
                 if dropped > 0 {
-                    if let Some(persistence) = persistence.as_deref_mut() {
+                    if let Some(persistence) = edit.persistence.as_deref_mut() {
                         let pos = transform.translation;
                         persistence.mark_dirty(ChunkPosition::from_world(pos.x, pos.z));
                     }
@@ -291,7 +291,10 @@ impl CommandContext<'_, '_> {
             ChatCommand::SummonCommand(kind) => {
                 let feet =
                     transform.translation - Vec3::Y * size.y_offset + *transform.forward() * 2.0;
-                if !chunks.contains(ChunkPosition::from_world(feet.x, feet.z)) {
+                if !edit
+                    .chunks
+                    .contains(ChunkPosition::from_world(feet.x, feet.z))
+                {
                     "Cannot summon into an unloaded chunk".to_owned()
                 } else {
                     spawn(commands, Mob::new(kind, clock.world_time()), feet);
@@ -304,7 +307,7 @@ impl CommandContext<'_, '_> {
                 let furnace_drops = if block.is_furnace() {
                     Vec::new()
                 } else {
-                    chunks
+                    edit.chunks
                         .furnace_at(position.x, position.y, position.z)
                         .map(|furnace| furnace.slots.into_iter().flatten().collect())
                         .unwrap_or_default()
@@ -312,7 +315,7 @@ impl CommandContext<'_, '_> {
                 let chest_drops = if block.is_chest() {
                     Vec::new()
                 } else {
-                    chunks
+                    edit.chunks
                         .chest_at(position.x, position.y, position.z)
                         .map(|chest| chest.slots.into_iter().flatten().collect())
                         .unwrap_or_default()
@@ -320,12 +323,12 @@ impl CommandContext<'_, '_> {
                 let dispenser_drops = if block == crate::block::blocks::Block::Dispenser {
                     Vec::new()
                 } else {
-                    chunks
+                    edit.chunks
                         .dispenser_at(position.x, position.y, position.z)
                         .map(|dispenser| dispenser.slots.into_iter().flatten().collect())
                         .unwrap_or_default()
                 };
-                let change = match set_loaded_block(chunks, position, block) {
+                let change = match set_loaded_block(&mut edit.chunks, position, block) {
                     Ok(change) => change,
                     Err(error) => {
                         chat.push(error);
@@ -338,15 +341,7 @@ impl CommandContext<'_, '_> {
                     }
                     spawn_chest_drops(commands, rng, position, chest_drops);
                     spawn_chest_drops(commands, rng, position, dispenser_drops);
-                    if let Some(ticks) = ticks.as_deref_mut() {
-                        ticks.block_changed(position, previous, metadata);
-                    }
-                    if let Some(streaming) = streaming.as_deref_mut() {
-                        streaming.request_block_update(position.x, position.y, position.z);
-                    }
-                    if let Some(persistence) = persistence.as_deref_mut() {
-                        persistence.mark_dirty(ChunkPosition::from_block(position.x, position.z));
-                    }
+                    edit.changed(position, previous, metadata);
                     format!(
                         "Set block at {} {} {} to {}",
                         position.x,

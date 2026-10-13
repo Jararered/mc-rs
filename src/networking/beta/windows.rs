@@ -490,6 +490,21 @@ impl Clicking<'_> {
     }
 }
 
+/// `Packet102WindowClick`'s fields.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct WindowClick {
+    pub window: i8,
+    /// -999 is a click outside the window.
+    pub slot: i16,
+    /// 0 is the left button, 1 the right.
+    pub button: i8,
+    /// The client's number for this click, echoed in the answer.
+    pub action: i16,
+    pub shift: bool,
+    /// What the client believes was in the slot it clicked.
+    pub expected: Option<WireStack>,
+}
+
 /// The windows one client has: its inventory, and at most one other.
 #[derive(Default)]
 pub(super) struct Windows {
@@ -590,19 +605,21 @@ impl Windows {
     }
 
     /// `Packet102WindowClick`. Returns what the click threw out.
-    #[allow(clippy::too_many_arguments)]
     pub fn click(
         &mut self,
         world: &mut World,
         player: Entity,
-        window: i8,
-        slot: i16,
-        button: i8,
-        action: i16,
-        shift: bool,
-        expected: Option<WireStack>,
+        click: WindowClick,
         out: &mut Writer,
     ) -> Vec<ItemStack> {
+        let WindowClick {
+            window,
+            slot,
+            button,
+            action,
+            shift,
+            expected,
+        } = click;
         if self.refused.is_some() {
             return Vec::new();
         }

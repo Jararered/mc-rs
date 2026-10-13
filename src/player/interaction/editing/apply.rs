@@ -10,7 +10,6 @@ use bevy::prelude::*;
 
 use super::BOAT_REACH;
 use super::breaking::apply_break;
-use super::notify_edit;
 use super::pick_up_fluid;
 use super::place_bed;
 use super::place_door;
@@ -19,7 +18,6 @@ use super::place_selected_block_facing;
 use super::place_sign;
 use super::placement::furnace_facing_toward_player;
 use super::plant_seeds;
-use super::push_event;
 use super::till_with_selected_hoe;
 use crate::block::blocks::Block;
 use crate::block::fluids::Fluid;
@@ -67,18 +65,15 @@ use crate::rendering::particles::effects::EffectParticles;
 use crate::rendering::particles::effects::FxKind;
 use crate::world::block_ticks::AuxEffect;
 use crate::world::block_ticks::BlockEvent;
-use crate::world::block_ticks::BlockTicks;
 use crate::world::block_ticks::behaviors::jukebox::RECORD_EFFECT;
 use crate::world::block_ticks::behaviors::leaves::PLAYER_PLACED;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::OpenCart;
-use crate::world::chunk::WorldChunks;
-use crate::world::persistence::WorldPersistence;
+use crate::world::edit::WorldEdit;
 use crate::world::sound::Pitch;
 use crate::world::sound::Sounds;
-use crate::world::streaming::WorldStreaming;
 
-#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
+#[allow(clippy::too_many_lines)]
 pub(crate) fn apply_player_actions(
     mut commands: Commands,
     mut actions: MessageReader<PlayerAction>,
@@ -94,12 +89,7 @@ pub(crate) fn apply_player_actions(
         ),
         With<Player>,
     >,
-    mut chunks: ResMut<WorldChunks>,
-    mut streaming: Option<ResMut<WorldStreaming>>,
-    (mut persistence, mut block_ticks): (
-        Option<ResMut<WorldPersistence>>,
-        Option<ResMut<BlockTicks>>,
-    ),
+    mut edit: WorldEdit,
     (mut particles, mut effects, mut sounds, mut mobs, mut fireballs, mut carts, mut boats): (
         Option<ResMut<BlockParticles>>,
         Option<ResMut<EffectParticles>>,
@@ -143,12 +133,10 @@ pub(crate) fn apply_player_actions(
                         *transform.forward(),
                         stack,
                     );
-                    if let Some(persistence) = persistence.as_deref_mut() {
-                        persistence.mark_dirty(ChunkPosition::from_block(
-                            transform.translation.x.floor() as i32,
-                            transform.translation.z.floor() as i32,
-                        ));
-                    }
+                    edit.mark_dirty(ChunkPosition::from_block(
+                        transform.translation.x.floor() as i32,
+                        transform.translation.z.floor() as i32,
+                    ));
                 }
             }
             Action::UseEntity {
@@ -223,10 +211,7 @@ pub(crate) fn apply_player_actions(
                         {
                             let position = at.translation;
                             break_boat(&mut commands, &mut item_rng, target, seat.rider, position);
-                            if let Some(persistence) = persistence.as_deref_mut() {
-                                persistence
-                                    .mark_dirty(ChunkPosition::from_world(position.x, position.z));
-                            }
+                            edit.mark_dirty(ChunkPosition::from_world(position.x, position.z));
                         }
                     }
                     Pointed::Boat(target) => {
@@ -258,10 +243,7 @@ pub(crate) fn apply_player_actions(
                                 position,
                                 cargo,
                             );
-                            if let Some(persistence) = persistence.as_deref_mut() {
-                                persistence
-                                    .mark_dirty(ChunkPosition::from_world(position.x, position.z));
-                            }
+                            edit.mark_dirty(ChunkPosition::from_world(position.x, position.z));
                         }
                     }
                     Pointed::Minecart(target) => {
@@ -286,7 +268,7 @@ pub(crate) fn apply_player_actions(
                                         &mut workbench,
                                     );
                                     let cell = at.translation.floor().as_ivec3();
-                                    chunks.open_cart = Some(OpenCart {
+                                    edit.chunks.open_cart = Some(OpenCart {
                                         cart: target,
                                         slots: cargo.map_or([None; 27], |cargo| cargo.0),
                                     });
@@ -323,24 +305,19 @@ pub(crate) fn apply_player_actions(
                         .selected_stack()
                         .is_some_and(|stack| stack.item() == Item::FlintAndSteel)
                 {
-                    chunks.set_metadata(hit.x, hit.y, hit.z, 1);
-                    if let Some(persistence) = persistence.as_deref_mut() {
-                        persistence.mark_dirty(ChunkPosition::from_block(hit.x, hit.z));
-                    }
+                    edit.chunks.set_metadata(hit.x, hit.y, hit.z, 1);
+                    edit.mark_dirty(ChunkPosition::from_block(hit.x, hit.z));
                 }
                 // `Block.onBlockClicked`, when the player starts to dig.
-                push_event(
-                    &mut block_ticks,
-                    BlockEvent::Clicked {
-                        position: IVec3::new(hit.x, hit.y, hit.z),
-                    },
-                );
+                edit.push_event(BlockEvent::Clicked {
+                    position: IVec3::new(hit.x, hit.y, hit.z),
+                });
             }
             Action::Break { hit } => {
                 // The block may have gone since the player's hit was taken, and
                 // bedrock goes for nobody.
                 if hit.block.is_breakable()
-                    && chunks.block_at(hit.x, hit.y, hit.z) == Some(hit.block)
+                    && edit.chunks.block_at(hit.x, hit.y, hit.z) == Some(hit.block)
                 {
                     // `PlayerController.sendBlockRemoved`'s aux effect 2001.
                     if let Some(sounds) = sounds.as_deref_mut() {
@@ -350,10 +327,7 @@ pub(crate) fn apply_player_actions(
                     apply_break(
                         &mut commands,
                         &mut item_rng,
-                        &mut chunks,
-                        &mut streaming,
-                        &mut persistence,
-                        &mut block_ticks,
+                        &mut edit,
                         &mut particles,
                         &mut hotbar,
                         hit,
@@ -373,14 +347,15 @@ pub(crate) fn apply_player_actions(
                     let window = if hit.block.is_furnace() {
                         Some(Window::Furnace { position })
                     } else if hit.block.is_chest() || hit.block == Block::Dispenser {
-                        let Some(group) = chunks.container_group_at(hit.x, hit.y, hit.z) else {
+                        let Some(group) = edit.chunks.container_group_at(hit.x, hit.y, hit.z)
+                        else {
                             continue;
                         };
                         // Only a chest is blocked by a cube on top.
                         let blocked = !group.dispenser
                             && [Some(group.first), group.second].into_iter().flatten().any(
                                 |(x, y, z)| {
-                                    chunks
+                                    edit.chunks
                                         .block_at(x, y + 1, z)
                                         .is_some_and(Block::is_opaque_cube)
                                 },
@@ -420,13 +395,12 @@ pub(crate) fn apply_player_actions(
                     // `Block.blockActivated` runs before the held item is used.
                     // An empty jukebox's does nothing, and the event is
                     // handled after this click may have put a disc in.
-                    if hit.block != Block::Jukebox || chunks.metadata_at(hit.x, hit.y, hit.z) != 0 {
-                        push_event(
-                            &mut block_ticks,
-                            BlockEvent::Activated {
-                                position: IVec3::new(hit.x, hit.y, hit.z),
-                            },
-                        );
+                    if hit.block != Block::Jukebox
+                        || edit.chunks.metadata_at(hit.x, hit.y, hit.z) != 0
+                    {
+                        edit.push_event(BlockEvent::Activated {
+                            position: IVec3::new(hit.x, hit.y, hit.z),
+                        });
                     }
                     // `BlockBed.blockActivated` needs the player, so it is not a
                     // block behavior.
@@ -453,7 +427,7 @@ pub(crate) fn apply_player_actions(
                         // `BlockJukeBox.blockActivated`: one holding a disc
                         // throws it out and takes nothing in.
                         || (hit.block == Block::Jukebox
-                            && chunks.metadata_at(hit.x, hit.y, hit.z) != 0)
+                            && edit.chunks.metadata_at(hit.x, hit.y, hit.z) != 0)
                 });
                 if activated {
                 } else if right_click
@@ -492,7 +466,7 @@ pub(crate) fn apply_player_actions(
                     // in view, within five blocks. One set on a snow layer rests on
                     // the block under it.
                     if let Some(hit) =
-                        raycast_blocks_or_liquid(&chunks, view_origin, look, BOAT_REACH)
+                        raycast_blocks_or_liquid(&edit.chunks, view_origin, look, BOAT_REACH)
                     {
                         let mut cell = IVec3::new(hit.x, hit.y, hit.z);
                         if hit.block == Block::SnowLayer {
@@ -500,9 +474,7 @@ pub(crate) fn apply_player_actions(
                         }
                         spawn_boat(&mut commands, cell);
                         hotbar.take_selected(1);
-                        if let Some(persistence) = persistence.as_deref_mut() {
-                            persistence.mark_dirty(ChunkPosition::from_block(cell.x, cell.z));
-                        }
+                        edit.mark_dirty(ChunkPosition::from_block(cell.x, cell.z));
                     }
                 } else if let Some(hit) = hit
                     && matches!(
@@ -519,14 +491,12 @@ pub(crate) fn apply_player_actions(
                     hotbar.slots[selected] = hotbar.slots[selected].and_then(|stack| {
                         ItemStack::with_data(stack.item(), stack.count() - 1, stack.data()).ok()
                     });
-                    if let Some(persistence) = persistence.as_deref_mut() {
-                        persistence.mark_dirty(ChunkPosition::from_block(hit.x, hit.z));
-                    }
+                    edit.mark_dirty(ChunkPosition::from_block(hit.x, hit.z));
                 } else if hotbar
                     .selected_stack()
                     .is_some_and(|stack| stack.item() == Item::Bucket)
                     && let Some((x, y, z, previous, fluid)) =
-                        pick_up_fluid(&mut chunks, view_origin, look)
+                        pick_up_fluid(&mut edit.chunks, view_origin, look)
                 {
                     let filled = match fluid {
                         Fluid::Water => Item::WaterBucket,
@@ -534,24 +504,21 @@ pub(crate) fn apply_player_actions(
                     };
                     let selected = hotbar.selected;
                     hotbar.slots[selected] = ItemStack::new(filled, 1).ok();
-                    push_event(
-                        &mut block_ticks,
-                        BlockEvent::Changed {
-                            position: IVec3::new(x, y, z),
-                            previous,
-                            metadata: 0,
-                        },
-                    );
-                    notify_edit(&mut streaming, &mut persistence, x, y, z, false);
+                    edit.push_event(BlockEvent::Changed {
+                        position: IVec3::new(x, y, z),
+                        previous,
+                        metadata: 0,
+                    });
+                    edit.notify(x, y, z, false);
                 } else if let Some(hit) = hit
                     && let Some(stack) = hotbar.selected_stack()
                 {
                     let target = hit.face.neighbor(hit.x, hit.y, hit.z);
-                    let replaced = chunks.block_at(target.0, target.1, target.2);
-                    let replaced_metadata = chunks.metadata_at(target.0, target.1, target.2);
+                    let replaced = edit.chunks.block_at(target.0, target.1, target.2);
+                    let replaced_metadata = edit.chunks.metadata_at(target.0, target.1, target.2);
                     let placed = stack.runtime_block().is_some_and(|(block, metadata)| {
                         place_selected_block_facing(
-                            &mut chunks,
+                            &mut edit.chunks,
                             hit,
                             size.aabb(transform.translation),
                             block,
@@ -569,38 +536,35 @@ pub(crate) fn apply_player_actions(
                         // lays its dust without a sound.
                         if stack.item() != Item::Redstone
                             && let Some(sounds) = sounds.as_deref_mut()
-                            && let Some(block) = chunks.block_at(x, y, z)
+                            && let Some(block) = edit.chunks.block_at(x, y, z)
                         {
                             let sound = block.step_sound();
                             sounds.play_block(sound.step(), sound, IVec3::new(x, y, z));
                         }
                         // Placed leaves are persistent: they never decay.
-                        if chunks.block_at(x, y, z).is_some_and(Block::is_leaves) {
-                            let species = chunks.metadata_at(x, y, z);
-                            chunks.set_metadata(x, y, z, species | PLAYER_PLACED);
+                        if edit.chunks.block_at(x, y, z).is_some_and(Block::is_leaves) {
+                            let species = edit.chunks.metadata_at(x, y, z);
+                            edit.chunks.set_metadata(x, y, z, species | PLAYER_PLACED);
                         }
                         if let Some(replaced) = replaced {
-                            push_event(
-                                &mut block_ticks,
-                                BlockEvent::Changed {
-                                    position: IVec3::new(x, y, z),
-                                    previous: replaced,
-                                    metadata: replaced_metadata,
-                                },
-                            );
+                            edit.push_event(BlockEvent::Changed {
+                                position: IVec3::new(x, y, z),
+                                previous: replaced,
+                                metadata: replaced_metadata,
+                            });
                         }
-                        notify_edit(&mut streaming, &mut persistence, x, y, z, true);
+                        edit.notify(x, y, z, true);
                     } else if let Some(door) = match stack.item() {
                         Item::WoodenDoor => Some(Block::WoodenDoor),
                         Item::IronDoor => Some(Block::IronDoor),
                         _ => None,
                     } && let previous = [0, 1].map(|dy| {
                         (
-                            chunks.block_at(hit.x, hit.y + 1 + dy, hit.z),
-                            chunks.metadata_at(hit.x, hit.y + 1 + dy, hit.z),
+                            edit.chunks.block_at(hit.x, hit.y + 1 + dy, hit.z),
+                            edit.chunks.metadata_at(hit.x, hit.y + 1 + dy, hit.z),
                         )
                     }) && place_door(
-                        &mut chunks,
+                        &mut edit.chunks,
                         hit,
                         door,
                         furnace_facing_toward_player(transform.rotation * Vec3::NEG_Z),
@@ -611,43 +575,30 @@ pub(crate) fn apply_player_actions(
                                 .ok();
                         for (dy, (previous, metadata)) in previous.into_iter().enumerate() {
                             let y = hit.y + 1 + dy as i32;
-                            push_event(
-                                &mut block_ticks,
-                                BlockEvent::Changed {
-                                    position: IVec3::new(hit.x, y, hit.z),
-                                    previous: previous.unwrap_or(Block::Air),
-                                    metadata,
-                                },
-                            );
-                            notify_edit(&mut streaming, &mut persistence, hit.x, y, hit.z, false);
+                            edit.push_event(BlockEvent::Changed {
+                                position: IVec3::new(hit.x, y, hit.z),
+                                previous: previous.unwrap_or(Block::Air),
+                                metadata,
+                            });
+                            edit.notify(hit.x, y, hit.z, false);
                         }
                     } else if stack.item() == Item::Sign
                         && let Some((cell, previous, metadata)) =
-                            place_sign(&mut chunks, hit, transform.rotation * Vec3::NEG_Z)
+                            place_sign(&mut edit.chunks, hit, transform.rotation * Vec3::NEG_Z)
                     {
                         let selected = hotbar.selected;
                         hotbar.slots[selected] =
                             ItemStack::with_data(stack.item(), stack.count() - 1, stack.data())
                                 .ok();
-                        push_event(
-                            &mut block_ticks,
-                            BlockEvent::Changed {
-                                position: cell,
-                                previous,
-                                metadata,
-                            },
-                        );
-                        notify_edit(
-                            &mut streaming,
-                            &mut persistence,
-                            cell.x,
-                            cell.y,
-                            cell.z,
-                            false,
-                        );
+                        edit.push_event(BlockEvent::Changed {
+                            position: cell,
+                            previous,
+                            metadata,
+                        });
+                        edit.notify(cell.x, cell.y, cell.z, false);
                     } else if stack.item() == Item::Bed
                         && let Some(cells) = place_bed(
-                            &mut chunks,
+                            &mut edit.chunks,
                             hit,
                             furnace_facing_toward_player(transform.rotation * Vec3::NEG_Z),
                         )
@@ -657,60 +608,39 @@ pub(crate) fn apply_player_actions(
                             ItemStack::with_data(stack.item(), stack.count() - 1, stack.data())
                                 .ok();
                         for cell in cells {
-                            push_event(
-                                &mut block_ticks,
-                                BlockEvent::Changed {
-                                    position: cell,
-                                    previous: Block::Air,
-                                    metadata: 0,
-                                },
-                            );
-                            notify_edit(
-                                &mut streaming,
-                                &mut persistence,
-                                cell.x,
-                                cell.y,
-                                cell.z,
-                                false,
-                            );
+                            edit.push_event(BlockEvent::Changed {
+                                position: cell,
+                                previous: Block::Air,
+                                metadata: 0,
+                            });
+                            edit.notify(cell.x, cell.y, cell.z, false);
                         }
                     } else if stack.item().record_name().is_some()
                         && hit.block == Block::Jukebox
-                        && chunks.metadata_at(hit.x, hit.y, hit.z) == 0
+                        && edit.chunks.metadata_at(hit.x, hit.y, hit.z) == 0
                     {
                         // `ItemRecord.onItemUse`: the disc goes in and plays.
-                        chunks.set_record_at(hit.x, hit.y, hit.z, Some(stack.item()));
-                        chunks.set_metadata(hit.x, hit.y, hit.z, 1);
+                        edit.chunks
+                            .set_record_at(hit.x, hit.y, hit.z, Some(stack.item()));
+                        edit.chunks.set_metadata(hit.x, hit.y, hit.z, 1);
                         hotbar.take_selected(1);
-                        if let Some(persistence) = persistence.as_deref_mut() {
-                            persistence.mark_dirty(ChunkPosition::from_block(hit.x, hit.z));
-                        }
+                        edit.mark_dirty(ChunkPosition::from_block(hit.x, hit.z));
                         aux.write(AuxEffect {
                             position: IVec3::new(hit.x, hit.y, hit.z),
                             effect: RECORD_EFFECT,
                             data: i32::from(stack.item().as_u16()),
                         });
-                    } else if stack.item() == Item::Seeds && plant_seeds(&mut chunks, hit) {
+                    } else if stack.item() == Item::Seeds && plant_seeds(&mut edit.chunks, hit) {
                         let selected = hotbar.selected;
                         hotbar.slots[selected] =
                             ItemStack::with_data(stack.item(), stack.count() - 1, stack.data())
                                 .ok();
-                        push_event(
-                            &mut block_ticks,
-                            BlockEvent::Changed {
-                                position: IVec3::new(hit.x, hit.y + 1, hit.z),
-                                previous: Block::Air,
-                                metadata: 0,
-                            },
-                        );
-                        notify_edit(
-                            &mut streaming,
-                            &mut persistence,
-                            hit.x,
-                            hit.y + 1,
-                            hit.z,
-                            false,
-                        );
+                        edit.push_event(BlockEvent::Changed {
+                            position: IVec3::new(hit.x, hit.y + 1, hit.z),
+                            previous: Block::Air,
+                            metadata: 0,
+                        });
+                        edit.notify(hit.x, hit.y + 1, hit.z, false);
                     } else if stack.item() == Item::Dye
                         && stack.data() == 15
                         && matches!(hit.block, Block::Sapling | Block::Crops | Block::Grass)
@@ -721,34 +651,28 @@ pub(crate) fn apply_player_actions(
                         hotbar.slots[selected] =
                             ItemStack::with_data(stack.item(), stack.count() - 1, stack.data())
                                 .ok();
-                        push_event(
-                            &mut block_ticks,
-                            BlockEvent::Fertilized {
-                                position: IVec3::new(hit.x, hit.y, hit.z),
-                            },
-                        );
-                    } else if till_with_selected_hoe(&mut chunks, &mut hotbar, hit) {
+                        edit.push_event(BlockEvent::Fertilized {
+                            position: IVec3::new(hit.x, hit.y, hit.z),
+                        });
+                    } else if till_with_selected_hoe(&mut edit.chunks, &mut hotbar, hit) {
                         // `ItemHoe.onItemUse` sounds like the farmland it leaves.
                         if let Some(sounds) = sounds.as_deref_mut() {
                             let sound = Block::Farmland.step_sound();
                             sounds.play_block(sound.step(), sound, IVec3::new(hit.x, hit.y, hit.z));
                         }
-                        push_event(
-                            &mut block_ticks,
-                            BlockEvent::Changed {
-                                position: IVec3::new(hit.x, hit.y, hit.z),
-                                previous: hit.block,
-                                metadata: 0,
-                            },
-                        );
-                        notify_edit(&mut streaming, &mut persistence, hit.x, hit.y, hit.z, false);
+                        edit.push_event(BlockEvent::Changed {
+                            position: IVec3::new(hit.x, hit.y, hit.z),
+                            previous: hit.block,
+                            metadata: 0,
+                        });
+                        edit.notify(hit.x, hit.y, hit.z, false);
                     } else if stack.item() == Item::FlintAndSteel {
                         // `ItemFlintAndSteel.onItemUse`: fire in the cell against the
                         // clicked face if it is empty, and one use either way. Fire's
                         // `onBlockAdded` decides whether it stays or lights a portal.
                         let (x, y, z) = hit.face.neighbor(hit.x, hit.y, hit.z);
-                        if chunks.block_at(x, y, z) == Some(Block::Air)
-                            && chunks.set_block(x, y, z, Block::Fire).is_some()
+                        if edit.chunks.block_at(x, y, z) == Some(Block::Air)
+                            && edit.chunks.set_block(x, y, z, Block::Fire).is_some()
                         {
                             if let Some(sounds) = sounds.as_deref_mut() {
                                 sounds.play(
@@ -758,26 +682,25 @@ pub(crate) fn apply_player_actions(
                                     Pitch::Up(0.8, 0.4),
                                 );
                             }
-                            push_event(
-                                &mut block_ticks,
-                                BlockEvent::Changed {
-                                    position: IVec3::new(x, y, z),
-                                    previous: Block::Air,
-                                    metadata: 0,
-                                },
-                            );
-                            notify_edit(&mut streaming, &mut persistence, x, y, z, true);
+                            edit.push_event(BlockEvent::Changed {
+                                position: IVec3::new(x, y, z),
+                                previous: Block::Air,
+                                metadata: 0,
+                            });
+                            edit.notify(x, y, z, true);
                         }
                         hotbar.damage_selected(1);
                     } else if stack.item() == Item::WaterBucket
-                        && block_ticks
+                        && edit
+                            .ticks
                             .as_ref()
                             .is_some_and(|ticks| ticks.dimension().is_hell())
                     {
                         // `ItemBucket`: water poured in the Nether boils away, and
                         // the bucket comes back empty.
                         let (x, y, z) = hit.face.neighbor(hit.x, hit.y, hit.z);
-                        if chunks
+                        if edit
+                            .chunks
                             .block_at(x, y, z)
                             .is_some_and(|block| !block.is_solid_material())
                         {
@@ -811,19 +734,16 @@ pub(crate) fn apply_player_actions(
                         Item::LavaBucket => Some(Fluid::Lava),
                         _ => None,
                     } && let Some((x, y, z, previous, previous_metadata)) =
-                        place_fluid(&mut chunks, hit, fluid)
+                        place_fluid(&mut edit.chunks, hit, fluid)
                     {
                         let selected = hotbar.selected;
                         hotbar.slots[selected] = ItemStack::new(Item::Bucket, 1).ok();
-                        push_event(
-                            &mut block_ticks,
-                            BlockEvent::Changed {
-                                position: IVec3::new(x, y, z),
-                                previous,
-                                metadata: previous_metadata,
-                            },
-                        );
-                        notify_edit(&mut streaming, &mut persistence, x, y, z, false);
+                        edit.push_event(BlockEvent::Changed {
+                            position: IVec3::new(x, y, z),
+                            previous,
+                            metadata: previous_metadata,
+                        });
+                        edit.notify(x, y, z, false);
                     }
                 }
             }

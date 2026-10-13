@@ -401,7 +401,6 @@ fn add_creature_models(
 
 /// `RenderLiving.doRenderLiving`'s per-frame inputs, interpolated between
 /// the last two ticks.
-#[allow(clippy::too_many_arguments)]
 fn pose_creatures(
     tick: Res<WorldTick>,
     chunks: Res<WorldChunks>,

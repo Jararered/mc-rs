@@ -1,7 +1,5 @@
 //! Breaking a block: its drops, what was attached to it, and the edit itself.
 
-use super::notify_edit;
-use super::push_event;
 use crate::block::blocks::Block;
 use crate::block::direction::Direction;
 use crate::entity::drops::blocks::natural_drops_with_metadata;
@@ -15,23 +13,19 @@ use crate::physics::BlockHit;
 use crate::random::ItemRng;
 use crate::rendering::particles::block::BlockParticles;
 use crate::world::block_ticks::BlockEvent;
-use crate::world::block_ticks::BlockTicks;
 use crate::world::chunk::WorldChunks;
-use crate::world::persistence::WorldPersistence;
-use crate::world::streaming::WorldStreaming;
+use crate::world::edit::WorldEdit;
 use bevy::prelude::*;
 
 pub(super) fn apply_break(
     commands: &mut Commands,
     rng: &mut ItemRng,
-    chunks: &mut WorldChunks,
-    streaming: &mut Option<ResMut<WorldStreaming>>,
-    persistence: &mut Option<ResMut<WorldPersistence>>,
-    ticks: &mut Option<ResMut<BlockTicks>>,
+    edit: &mut WorldEdit,
     particles: &mut Option<ResMut<BlockParticles>>,
     hotbar: &mut Hotbar,
     hit: BlockHit,
 ) {
+    let chunks = &mut *edit.chunks;
     let metadata = chunks.metadata_at(hit.x, hit.y, hit.z);
     let mut attached = attached_blocks(chunks, hit);
     if let Some(plant) = chunks
@@ -81,41 +75,32 @@ pub(super) fn apply_break(
             spawn_block_drop(commands, rng, IVec3::new(hit.x, hit.y, hit.z), stack);
         }
         let position = IVec3::new(hit.x, hit.y, hit.z);
-        push_event(
-            ticks,
-            BlockEvent::Changed {
-                position,
-                previous: hit.block,
-                metadata,
-            },
-        );
+        edit.push_event(BlockEvent::Changed {
+            position,
+            previous: hit.block,
+            metadata,
+        });
         if can_harvest(tool, hit.block) {
-            push_event(
-                ticks,
-                BlockEvent::Harvested {
-                    position,
-                    block: hit.block,
-                    metadata,
-                },
-            );
+            edit.push_event(BlockEvent::Harvested {
+                position,
+                block: hit.block,
+                metadata,
+            });
         }
         for (x, y, z, attached_block, attached_metadata) in attached {
             for stack in natural_drops_with_metadata(attached_block, attached_metadata, rng) {
                 spawn_block_drop(commands, rng, IVec3::new(x, y, z), stack);
             }
-            push_event(
-                ticks,
-                BlockEvent::Changed {
-                    position: IVec3::new(x, y, z),
-                    previous: attached_block,
-                    metadata: attached_metadata,
-                },
-            );
+            edit.push_event(BlockEvent::Changed {
+                position: IVec3::new(x, y, z),
+                previous: attached_block,
+                metadata: attached_metadata,
+            });
         }
         if let Some(particles) = particles.as_deref_mut() {
             particles.emit_break_state(hit, metadata);
         }
-        notify_edit(streaming, persistence, hit.x, hit.y, hit.z, light_edit);
+        edit.notify(hit.x, hit.y, hit.z, light_edit);
         if let Some(tool) = tool {
             let cost = break_durability(tool, hit.block);
             if cost > 0 {

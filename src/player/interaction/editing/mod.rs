@@ -29,15 +29,9 @@ use crate::player::interaction::attack::ENTITY_REACH;
 use crate::player::interaction::attack::FIREBALL_BORDER;
 use crate::player::interaction::attack::MOB_BORDER;
 use crate::rendering::particles::block::BlockParticles;
-use crate::world::block_ticks::BlockEvent;
-use crate::world::block_ticks::BlockTicks;
 use crate::world::chunk::ChestGroup;
-use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
-use crate::world::chunk::remesh_chunks_touching;
-use crate::world::persistence::WorldPersistence;
 use crate::world::sound::Sounds;
-use crate::world::streaming::WorldStreaming;
 use crate::world::tick::WorldTick;
 
 use super::mining::MiningState;
@@ -360,36 +354,5 @@ pub(crate) fn open_windows(
             cursor.visible = true;
             cursor.grab_mode = CursorGrabMode::None;
         }
-    }
-}
-
-/// Queue a block event for the next tick pass.
-fn push_event(ticks: &mut Option<ResMut<BlockTicks>>, event: BlockEvent) {
-    if let Some(ticks) = ticks.as_deref_mut() {
-        ticks.push_event(event);
-    }
-}
-
-fn notify_edit(
-    streaming: &mut Option<ResMut<WorldStreaming>>,
-    persistence: &mut Option<ResMut<WorldPersistence>>,
-    x: i32,
-    y: i32,
-    z: i32,
-    light_edit: bool,
-) {
-    if let Some(persistence) = persistence.as_deref_mut() {
-        persistence.mark_dirty(ChunkPosition::from_block(x, z));
-        if light_edit {
-            // A detached wall torch may belong to the neighboring chunk.
-            for position in remesh_chunks_touching(x, z) {
-                persistence.mark_dirty(position);
-            }
-        }
-    }
-    // Relighting decides which sections actually changed, so torches and
-    // plain blocks take the same path.
-    if let Some(streaming) = streaming.as_deref_mut() {
-        streaming.request_block_update(x, y, z);
     }
 }

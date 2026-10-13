@@ -32,6 +32,7 @@ use super::tracker::Tracker;
 use super::tracker::Viewer;
 use super::tracker::beta_angles;
 use super::tracker::survey;
+use super::windows::WindowClick;
 use super::windows::Windows;
 use crate::app::settings::GameSettings;
 use crate::block::blocks::Block;
@@ -1145,12 +1146,14 @@ fn play(client: &mut Client, host: &mut WorldHost, shared: &mut Shared, packet: 
             let dropped = client.windows.click(
                 world,
                 entity,
-                window,
-                slot,
-                button,
-                action,
-                shift,
-                clicked,
+                WindowClick {
+                    window,
+                    slot,
+                    button,
+                    action,
+                    shift,
+                    expected: clicked,
+                },
                 &mut client.out,
             );
             throw(world, entity, shared.rng, dropped);

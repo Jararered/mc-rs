@@ -1,0 +1,5 @@
+# The widest function today takes 16 parameters, nearly all of them Bevy
+# systems. Past that, group what travels together: a `SystemParam` (`WorldEdit`,
+# `Environment`) for resources and queries, a plain struct (`SlotAccess`,
+# `Launch`) for values. Lower this as the wide systems shrink; do not raise it.
+too-many-arguments-threshold = 16

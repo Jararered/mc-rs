@@ -23,6 +23,7 @@ use crate::entity::creature::PLAYER_EYE_HEIGHT;
 use crate::entity::mobs::Mob;
 use crate::entity::mobs::MobType;
 use crate::entity::mobs::spawn_facing;
+use crate::entity::projectiles::Launch;
 use crate::entity::projectiles::Projectile;
 use crate::entity::projectiles::ProjectileRandom;
 use crate::entity::projectiles::Shooter;
@@ -30,7 +31,6 @@ use crate::entity::projectiles::Struck;
 use crate::entity::projectiles::first_struck;
 use crate::entity::projectiles::hand_origin;
 use crate::entity::projectiles::heading_angles;
-use crate::entity::projectiles::scattered_heading;
 use crate::entity::projectiles::victim_of;
 use crate::inventory::Inventory;
 use crate::item::Item;
@@ -97,14 +97,15 @@ pub struct Thrown {
 pub fn spawn_thrown(
     commands: &mut Commands,
     kind: ThrownKind,
-    position: Vec3,
-    heading: Vec3,
-    speed: f32,
-    spread: f32,
-    thrower: Option<Shooter>,
+    launch: Launch,
     rng: &mut JavaRandom,
 ) -> Entity {
-    let motion = scattered_heading(heading, speed, spread, rng);
+    let Launch {
+        position,
+        shooter: thrower,
+        ..
+    } = launch;
+    let motion = launch.motion(rng);
     commands
         .spawn((
             Name::new(match kind {
@@ -140,11 +141,13 @@ pub fn throw_from_player(
     spawn_thrown(
         commands,
         kind,
-        hand_origin(eye + Vec3::Y * PLAYER_EYE_HEIGHT, look),
-        look,
-        1.5,
-        1.0,
-        Some(Shooter::player(player, eye)),
+        Launch {
+            position: hand_origin(eye + Vec3::Y * PLAYER_EYE_HEIGHT, look),
+            heading: look,
+            speed: 1.5,
+            spread: 1.0,
+            shooter: Some(Shooter::player(player, eye)),
+        },
         rng,
     )
 }
@@ -161,7 +164,6 @@ pub fn egg_chickens(rng: &mut JavaRandom) -> u32 {
 }
 
 /// Advance every snowball and egg once per world tick.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn tick_thrown(
     mut commands: Commands,
     tick: Res<WorldTick>,

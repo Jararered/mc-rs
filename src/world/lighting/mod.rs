@@ -11,6 +11,7 @@ use crate::block::definition::BlockProperties;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::Chunk;
+use crate::world::chunk::ChunkNeighbors;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::SECTION_HEIGHT;
 use crate::world::chunk::SECTIONS_PER_CHUNK;
@@ -70,24 +71,22 @@ impl Skylight {
         south: Option<&Chunk>,
     ) -> Self {
         Self::from_chunk_with_neighbors_and_corners(
-            chunk, west, east, north, south, None, None, None, None,
+            chunk,
+            &ChunkNeighbors {
+                west,
+                east,
+                north,
+                south,
+                ..Default::default()
+            },
         )
     }
 
     pub fn from_chunk_with_neighbors_and_corners(
         chunk: &Chunk,
-        west: Option<&Chunk>,
-        east: Option<&Chunk>,
-        north: Option<&Chunk>,
-        south: Option<&Chunk>,
-        northwest: Option<&Chunk>,
-        northeast: Option<&Chunk>,
-        southwest: Option<&Chunk>,
-        southeast: Option<&Chunk>,
+        neighbors: &ChunkNeighbors,
     ) -> Self {
-        Self::from_chunk_with_neighbors_and_corners_impl(
-            chunk, west, east, north, south, northwest, northeast, southwest, southeast, 0,
-        )
+        Self::from_neighborhood(chunk, neighbors, 0)
     }
 
     /// Light a chunk alone without treating its open borders as sky. Light
@@ -95,9 +94,7 @@ impl Skylight {
     /// caves that reach a border, which suits light that is saved rather than
     /// rebuilt once the neighbors arrive.
     pub fn from_chunk_enclosed(chunk: &Chunk) -> Self {
-        Self::from_chunk_with_neighbors_and_corners_impl(
-            chunk, None, None, None, None, None, None, None, None, ALL_EDGES,
-        )
+        Self::from_neighborhood(chunk, &ChunkNeighbors::default(), ALL_EDGES)
     }
 
     /// Propagate both light channels once across the complete 3×3 snapshot.
@@ -185,20 +182,19 @@ impl Skylight {
         }
     }
 
-    fn from_chunk_with_neighbors_and_corners_impl(
-        chunk: &Chunk,
-        west: Option<&Chunk>,
-        east: Option<&Chunk>,
-        north: Option<&Chunk>,
-        south: Option<&Chunk>,
-        northwest: Option<&Chunk>,
-        northeast: Option<&Chunk>,
-        southwest: Option<&Chunk>,
-        southeast: Option<&Chunk>,
-        // One bit per edge (west, east, north, south) that is not seeded as
-        // open sky even though no neighbor is given for it.
-        suppressed_edges: u8,
-    ) -> Self {
+    /// `suppressed_edges` has one bit per edge (west, east, north, south)
+    /// that is not seeded as open sky even though no neighbor is given for it.
+    fn from_neighborhood(chunk: &Chunk, around: &ChunkNeighbors, suppressed_edges: u8) -> Self {
+        let ChunkNeighbors {
+            west,
+            east,
+            north,
+            south,
+            northwest,
+            northeast,
+            southwest,
+            southeast,
+        } = *around;
         if let (
             0,
             Some(west),
@@ -324,20 +320,40 @@ impl Skylight {
                 Self::from_chunk(neighbor)
             } else {
                 match border_index {
-                    0 => Self::from_chunk_with_neighbors_and_corners_impl(
-                        neighbor, None, None, northwest, southwest, None, None, None, None,
+                    0 => Self::from_neighborhood(
+                        neighbor,
+                        &ChunkNeighbors {
+                            north: northwest,
+                            south: southwest,
+                            ..Default::default()
+                        },
                         EAST_EDGE,
                     ),
-                    1 => Self::from_chunk_with_neighbors_and_corners_impl(
-                        neighbor, None, None, northeast, southeast, None, None, None, None,
+                    1 => Self::from_neighborhood(
+                        neighbor,
+                        &ChunkNeighbors {
+                            north: northeast,
+                            south: southeast,
+                            ..Default::default()
+                        },
                         WEST_EDGE,
                     ),
-                    2 => Self::from_chunk_with_neighbors_and_corners_impl(
-                        neighbor, northwest, northeast, None, None, None, None, None, None,
+                    2 => Self::from_neighborhood(
+                        neighbor,
+                        &ChunkNeighbors {
+                            west: northwest,
+                            east: northeast,
+                            ..Default::default()
+                        },
                         SOUTH_EDGE,
                     ),
-                    _ => Self::from_chunk_with_neighbors_and_corners_impl(
-                        neighbor, southwest, southeast, None, None, None, None, None, None,
+                    _ => Self::from_neighborhood(
+                        neighbor,
+                        &ChunkNeighbors {
+                            west: southwest,
+                            east: southeast,
+                            ..Default::default()
+                        },
                         NORTH_EDGE,
                     ),
                 }
@@ -667,14 +683,16 @@ impl LightCache {
         };
         let light = Skylight::from_chunk_with_neighbors_and_corners(
             &center.chunk,
-            neighbor(-1, 0),
-            neighbor(1, 0),
-            neighbor(0, -1),
-            neighbor(0, 1),
-            neighbor(-1, -1),
-            neighbor(1, -1),
-            neighbor(-1, 1),
-            neighbor(1, 1),
+            &ChunkNeighbors {
+                west: neighbor(-1, 0),
+                east: neighbor(1, 0),
+                north: neighbor(0, -1),
+                south: neighbor(0, 1),
+                northwest: neighbor(-1, -1),
+                northeast: neighbor(1, -1),
+                southwest: neighbor(-1, 1),
+                southeast: neighbor(1, 1),
+            },
         );
         self.insert(position, light.for_sky(self.has_sky).chunk_cells());
     }

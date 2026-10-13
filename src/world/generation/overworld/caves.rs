@@ -76,7 +76,6 @@ pub(super) fn carve(blocks: &mut RawBlocks, target: ChunkPosition, seed: u64) {
 
 /// `generateCaveNode`. `source` is `MapGenBase.rand`; the node draws its own
 /// random from it, and so does each branch it forks into.
-#[allow(clippy::too_many_arguments)]
 fn node(
     blocks: &mut RawBlocks,
     target: ChunkPosition,

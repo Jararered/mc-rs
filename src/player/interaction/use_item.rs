@@ -83,7 +83,6 @@ impl Default for LaunchRandom {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn use_items(
     mut commands: Commands,
     mut uses: MessageReader<ItemUse>,
@@ -203,7 +202,6 @@ pub(crate) fn use_items(
 /// The Bow Charging feature: count the draw while the button is held and
 /// shoot when it is let go, as Beta 1.8's `onPlayerStoppedUsing` does. A draw
 /// under a tenth of full strength shoots nothing and costs no arrow.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn draw_bow(
     mut commands: Commands,
     tick: Res<WorldTick>,

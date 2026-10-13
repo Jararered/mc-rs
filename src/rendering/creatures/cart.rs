@@ -184,7 +184,6 @@ pub(super) fn add_cart_models(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(super) fn pose_carts(
     tick: Res<WorldTick>,
     chunks: Res<WorldChunks>,

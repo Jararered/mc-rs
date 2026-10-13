@@ -559,14 +559,10 @@ fn chunk_corner_light_uses_loaded_diagonal_neighbor_values() {
     let isolated = Skylight::from_chunk(&center);
     let connected = Skylight::from_chunk_with_neighbors_and_corners(
         &center,
-        None,
-        None,
-        None,
-        None,
-        Some(&northwest),
-        None,
-        None,
-        None,
+        &ChunkNeighbors {
+            northwest: Some(&northwest),
+            ..Default::default()
+        },
     );
 
     assert_eq!(isolated.get_extended(-1, 2, -1), 15);
@@ -592,14 +588,16 @@ fn complete_neighborhood_does_not_invent_light_at_cave_edges() {
     }
     let light = Skylight::from_chunk_with_neighbors_and_corners(
         &center,
-        Some(&west),
-        Some(&east),
-        Some(&north),
-        Some(&south),
-        Some(&northwest),
-        Some(&northeast),
-        Some(&southwest),
-        Some(&southeast),
+        &ChunkNeighbors {
+            west: Some(&west),
+            east: Some(&east),
+            north: Some(&north),
+            south: Some(&south),
+            northwest: Some(&northwest),
+            northeast: Some(&northeast),
+            southwest: Some(&southwest),
+            southeast: Some(&southeast),
+        },
     );
     assert_eq!(light.sky(CHUNK_SIZE - 1, 64, 8), Some(0));
     assert_eq!(light.light_at(CHUNK_SIZE as i32, 64, 8, 0), 0);
@@ -608,14 +606,16 @@ fn complete_neighborhood_does_not_invent_light_at_cave_edges() {
     }
     let lit = Skylight::from_chunk_with_neighbors_and_corners(
         &center,
-        Some(&west),
-        Some(&east),
-        Some(&north),
-        Some(&south),
-        Some(&northwest),
-        Some(&northeast),
-        Some(&southwest),
-        Some(&southeast),
+        &ChunkNeighbors {
+            west: Some(&west),
+            east: Some(&east),
+            north: Some(&north),
+            south: Some(&south),
+            northwest: Some(&northwest),
+            northeast: Some(&northeast),
+            southwest: Some(&southwest),
+            southeast: Some(&southeast),
+        },
     );
     assert_eq!(lit.sky(CHUNK_SIZE - 1, 64, 8), Some(15));
     assert_eq!(lit.light_at(CHUNK_SIZE as i32, 64, 8, 0), 14);

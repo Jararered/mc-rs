@@ -443,7 +443,6 @@ pub(crate) struct CreatureExtras<'w> {
 }
 
 /// Run each mob's Beta update once per world tick this frame.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn tick_creatures(
     mut commands: Commands,
     tick: Res<WorldTick>,

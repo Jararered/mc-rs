@@ -16,6 +16,7 @@ use game::entity::mobs::Mob;
 use game::entity::mobs::MobType;
 use game::entity::projectiles::Arrow;
 use game::entity::projectiles::ArrowDamage;
+use game::entity::projectiles::Launch;
 use game::entity::projectiles::Projectile;
 use game::entity::projectiles::hand_origin;
 use game::entity::projectiles::spawn_arrow_with;
@@ -92,11 +93,13 @@ fn walled() -> WorldChunks {
 fn shoot_at_wall(app: &mut App, pickup: bool) -> Entity {
     let arrow = spawn_arrow_with(
         &mut app.world_mut().commands(),
-        Vec3::new(0.5, 6.0, 0.5),
-        Vec3::X,
-        1.5,
-        0.0,
-        None,
+        Launch {
+            position: Vec3::new(0.5, 6.0, 0.5),
+            heading: Vec3::X,
+            speed: 1.5,
+            spread: 0.0,
+            shooter: None,
+        },
         pickup,
         ArrowDamage::Flat(4),
         &mut JavaRandom::new(1),
@@ -300,11 +303,13 @@ fn a_thrown_egg_bursts_on_the_ground() {
     spawn_thrown(
         &mut app.world_mut().commands(),
         ThrownKind::Egg,
-        Vec3::new(0.5, 7.0, 0.5),
-        Vec3::new(1.0, 0.1, 0.0),
-        1.1,
-        6.0,
-        None,
+        Launch {
+            position: Vec3::new(0.5, 7.0, 0.5),
+            heading: Vec3::new(1.0, 0.1, 0.0),
+            speed: 1.1,
+            spread: 6.0,
+            shooter: None,
+        },
         &mut JavaRandom::new(2),
     );
     app.world_mut().flush();

@@ -973,7 +973,6 @@ fn rain_sound(sounds: &mut Sounds, counter: &mut u32, chunks: &WorldChunks, eye:
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn update_particles(
     tick: Res<WorldTick>,
     weather: Option<Res<WorldWeather>>,

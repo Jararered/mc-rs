@@ -284,6 +284,12 @@ fn sync_item_rendering(
         };
         let yaw = item_visual_yaw(cube, spin, camera_yaw);
         let scale = if cube { CUBE_SCALE } else { SPRITE_SCALE };
+        let pose = PilePose {
+            bob,
+            yaw,
+            scale,
+            slide,
+        };
         if !current {
             if !visual_ready(
                 cube,
@@ -300,29 +306,26 @@ fn sync_item_rendering(
             }
             let offsets = item_pile_offsets(item_stack_copies(dropped.0.count()), cube, scale);
             if let Some((block, metadata)) = model {
-                spawn_block_pieces(
-                    &mut commands,
-                    &mut meshes,
-                    &mut cache,
-                    entity,
+                let model = PieceModel {
                     block,
                     metadata,
                     fancy,
-                    climate_tints(
+                    tints: climate_tints(
                         &world.chunks,
                         world.grass_colors.as_deref(),
                         world.foliage_colors.as_deref(),
                         transform.translation,
                     ),
-                    world.terrain.as_deref(),
-                    world.grass_overlay.as_deref(),
-                    world.cutout.as_deref(),
-                    world.alpha_mask.as_deref(),
+                };
+                spawn_block_pieces(
+                    &mut commands,
+                    &mut meshes,
+                    &mut cache,
+                    &world,
+                    entity,
+                    model,
                     &offsets,
-                    bob,
-                    yaw,
-                    scale,
-                    slide,
+                    pose,
                 );
             } else {
                 let Some(material) = icon_material.clone() else {
@@ -340,7 +343,7 @@ fn sync_item_rendering(
                         .spawn((
                             item_quad(u0, v0, u1, v1, &mut meshes, &mut cache),
                             MeshMaterial3d(material.clone()),
-                            item_piece_transform(bob, yaw, scale, offset, slide),
+                            pose.piece(offset),
                             ItemPilePiece { offset },
                             NoFrustumCulling,
                         ))
@@ -362,7 +365,7 @@ fn sync_item_rendering(
             let Ok((piece, mut piece_transform)) = pieces.get_mut(child) else {
                 continue;
             };
-            *piece_transform = item_piece_transform(bob, yaw, scale, piece.offset, slide);
+            *piece_transform = pose.piece(piece.offset);
         }
     }
 }
@@ -406,28 +409,55 @@ fn climate_tints(
     (grass_tint, foliage_tint)
 }
 
-fn spawn_block_pieces(
-    commands: &mut Commands,
-    meshes: &mut Assets<Mesh>,
-    cache: &mut ItemMeshes,
-    parent: Entity,
-    block: Block,
-    metadata: u8,
-    fancy: bool,
-    tints: ([f32; 3], [f32; 3]),
-    terrain: Option<&TerrainMaterial>,
-    grass_overlay: Option<&GrassOverlayMaterial>,
-    cutout: Option<&CutoutMaterial>,
-    alpha_mask: Option<&AlphaMaskMaterial>,
-    offsets: &[Vec3],
+/// How a dropped stack's pile is posed this frame; each piece adds its own
+/// offset.
+#[derive(Clone, Copy)]
+struct PilePose {
     bob: f32,
     yaw: f32,
     scale: f32,
     slide: Vec3,
+}
+
+impl PilePose {
+    fn piece(self, offset: Vec3) -> Transform {
+        item_piece_transform(self.bob, self.yaw, self.scale, offset, self.slide)
+    }
+}
+
+/// What a dropped block's mesh is built from, and so what it is cached by.
+#[derive(Clone, Copy)]
+struct PieceModel {
+    block: Block,
+    metadata: u8,
+    fancy: bool,
+    tints: ([f32; 3], [f32; 3]),
+}
+
+fn spawn_block_pieces(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    cache: &mut ItemMeshes,
+    world: &ItemRenderResources,
+    parent: Entity,
+    model: PieceModel,
+    offsets: &[Vec3],
+    pose: PilePose,
 ) {
-    let Some(terrain) = terrain else {
+    let PieceModel {
+        block,
+        metadata,
+        fancy,
+        tints,
+    } = model;
+    let Some(terrain) = world.terrain.as_deref() else {
         return;
     };
+    let (grass_overlay, cutout, alpha_mask) = (
+        world.grass_overlay.as_deref(),
+        world.cutout.as_deref(),
+        world.alpha_mask.as_deref(),
+    );
     let key = (
         block,
         metadata,
@@ -454,7 +484,7 @@ fn spawn_block_pieces(
     let cutout_handle = cutout.map(|material| material.0.clone());
     let alpha_mask_handle = alpha_mask.map(|material| material.0.clone());
     for offset in offsets {
-        let pose = item_piece_transform(bob, yaw, scale, *offset, slide);
+        let pose = pose.piece(*offset);
         if use_cutout && let Some(material) = cutout_handle.clone() {
             let child = commands
                 .spawn((

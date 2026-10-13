@@ -7,6 +7,7 @@ use crate::world::biome::BiomeMap;
 use crate::world::chunk::CHUNK_HEIGHT;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunk::Chunk;
+pub use crate::world::chunk::ChunkNeighbors;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::SECTION_HEIGHT;
 use crate::world::lighting::Skylight;
@@ -126,91 +127,6 @@ impl ChunkMeshes {
             self.water,
             self.masked,
         ]
-    }
-}
-
-/// Block data surrounding a chunk, used for face culling and ambient
-/// occlusion at its edges. Streaming supplies all eight neighbors before
-/// meshing; isolated mesh helpers may leave them absent.
-#[derive(Default)]
-pub struct ChunkNeighbors<'a> {
-    pub west: Option<&'a Chunk>,
-    pub east: Option<&'a Chunk>,
-    pub north: Option<&'a Chunk>,
-    pub south: Option<&'a Chunk>,
-    pub northwest: Option<&'a Chunk>,
-    pub northeast: Option<&'a Chunk>,
-    pub southwest: Option<&'a Chunk>,
-    pub southeast: Option<&'a Chunk>,
-}
-
-impl ChunkNeighbors<'_> {
-    /// The block at a chunk-local cell, reading into the neighbors.
-    pub fn get(&self, center: &Chunk, x: i32, y: i32, z: i32) -> Option<Block> {
-        if !(0..CHUNK_HEIGHT as i32).contains(&y) {
-            return None;
-        }
-        if (0..CHUNK_SIZE as i32).contains(&x) && (0..CHUNK_SIZE as i32).contains(&z) {
-            return center.get(x as usize, y as usize, z as usize);
-        }
-        let region_x = if x < 0 {
-            -1
-        } else if x >= CHUNK_SIZE as i32 {
-            1
-        } else {
-            0
-        };
-        let region_z = if z < 0 {
-            -1
-        } else if z >= CHUNK_SIZE as i32 {
-            1
-        } else {
-            0
-        };
-        let chunk = match (region_x, region_z) {
-            (0, 0) => Some(center),
-            (-1, 0) => self.west,
-            (1, 0) => self.east,
-            (0, -1) => self.north,
-            (0, 1) => self.south,
-            (-1, -1) => self.northwest,
-            (1, -1) => self.northeast,
-            (-1, 1) => self.southwest,
-            (1, 1) => self.southeast,
-            _ => None,
-        }?;
-        let local_x = (x - region_x * CHUNK_SIZE as i32) as usize;
-        let local_z = (z - region_z * CHUNK_SIZE as i32) as usize;
-        chunk.get(local_x, y as usize, local_z)
-    }
-
-    /// The block and metadata at a chunk-local cell, reading into the
-    /// neighbors. Missing cells read as air.
-    fn cell(&self, center: &Chunk, x: i32, y: i32, z: i32) -> (Block, u8) {
-        let Some(block) = self.get(center, x, y, z) else {
-            return (Block::Air, 0);
-        };
-        let region = |value: i32| value.div_euclid(CHUNK_SIZE as i32);
-        let chunk = match (region(x), region(z)) {
-            (0, 0) => Some(center),
-            (-1, 0) => self.west,
-            (1, 0) => self.east,
-            (0, -1) => self.north,
-            (0, 1) => self.south,
-            (-1, -1) => self.northwest,
-            (1, -1) => self.northeast,
-            (-1, 1) => self.southwest,
-            (1, 1) => self.southeast,
-            _ => None,
-        };
-        let metadata = chunk.map_or(0, |chunk| {
-            chunk.metadata(
-                x.rem_euclid(CHUNK_SIZE as i32) as usize,
-                y as usize,
-                z.rem_euclid(CHUNK_SIZE as i32) as usize,
-            )
-        });
-        (block, metadata)
     }
 }
 

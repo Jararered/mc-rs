@@ -8,6 +8,7 @@
 //!
 //! `scale` is `GameSettings::gui_scale`, screen pixels per GUI pixel.
 
+use bevy::ecs::query::QueryData;
 use bevy::prelude::*;
 use bevy::text::FontSmoothing;
 use bevy::text::LineBreak;
@@ -113,99 +114,128 @@ pub fn icon_size(scale: f32) -> f32 {
     ICON_GUI * scale
 }
 
-/// Puts a stack label on the icon. Counts are right-justified in [`count_frame`]
-/// so a one-digit stack shares its right edge with `64`. Names, used only when
-/// the icon sprite is not ready, stay in the icon box.
-///
-/// Right alignment reads the node width. `LineBreak::NoWrap` would drop that
-/// width and pin every string to the left.
-pub fn place_stack_label(
-    scale: f32,
-    text: &mut Text,
-    node: &mut Node,
-    layout: &mut TextLayout,
-    font: &mut TextFont,
-    line_height: &mut LineHeight,
-    shadow: &mut TextShadow,
-    ui_font: &Handle<Font>,
-    icon_left: f32,
-    icon_top: f32,
-    label: &str,
-    has_icon: bool,
-) {
-    **text = label.to_string();
-    node.position_type = PositionType::Absolute;
-    node.right = Val::Auto;
-    node.bottom = Val::Auto;
-    layout.linebreak = LineBreak::WordBoundary;
-    if has_icon {
-        let frame = count_frame(scale, icon_left, icon_top);
-        node.left = px(frame.left);
-        node.top = px(frame.top);
-        node.width = px(frame.width);
-        node.height = px(frame.height);
-        layout.justify = Justify::Right;
-        *font = count_text_font(scale, ui_font);
-        *line_height = count_line_height(scale);
-        *shadow = count_shadow(scale);
-    } else {
-        node.left = px(icon_left);
-        node.top = px(icon_top);
-        node.width = px(icon_size(scale));
-        node.height = px(icon_size(scale));
-        layout.justify = Justify::Left;
-        *font = TextFont::from_font_size(10.0);
-        *line_height = LineHeight::default();
-        *shadow = TextShadow::default();
+/// Where a stack label goes and what it says: the icon's top-left corner in
+/// screen pixels, and whether the icon sprite is there to put a count on.
+#[derive(Clone, Copy)]
+pub struct LabelPlacement<'a> {
+    pub scale: f32,
+    pub font: &'a Handle<Font>,
+    pub icon_left: f32,
+    pub icon_top: f32,
+    pub label: &'a str,
+    pub has_icon: bool,
+}
+
+/// The components a stack label is made of, as plain values: what a new
+/// label is spawned with.
+#[derive(Bundle, Clone, Default)]
+pub struct StackLabelBundle {
+    pub text: Text,
+    pub node: Node,
+    pub layout: TextLayout,
+    pub font: TextFont,
+    pub line_height: LineHeight,
+    pub shadow: TextShadow,
+}
+
+impl StackLabelBundle {
+    /// A label laid out at `placement`.
+    pub fn placed(placement: LabelPlacement) -> Self {
+        let mut label = Self::default();
+        label.text.0 = placement.label.to_string();
+        label.place(placement);
+        label
+    }
+
+    /// Puts the label on the icon, leaving its text alone. Counts are
+    /// right-justified in [`count_frame`] so a one-digit stack shares its
+    /// right edge with `64`. Names, used only when the icon sprite is not
+    /// ready, stay in the icon box.
+    ///
+    /// Right alignment reads the node width. `LineBreak::NoWrap` would drop that
+    /// width and pin every string to the left.
+    fn place(&mut self, placement: LabelPlacement) {
+        let LabelPlacement {
+            scale,
+            font: ui_font,
+            icon_left,
+            icon_top,
+            has_icon,
+            ..
+        } = placement;
+        let Self {
+            node,
+            layout,
+            font,
+            line_height,
+            shadow,
+            ..
+        } = self;
+        node.position_type = PositionType::Absolute;
+        node.right = Val::Auto;
+        node.bottom = Val::Auto;
+        layout.linebreak = LineBreak::WordBoundary;
+        if has_icon {
+            let frame = count_frame(scale, icon_left, icon_top);
+            node.left = px(frame.left);
+            node.top = px(frame.top);
+            node.width = px(frame.width);
+            node.height = px(frame.height);
+            layout.justify = Justify::Right;
+            *font = count_text_font(scale, ui_font);
+            *line_height = count_line_height(scale);
+            *shadow = count_shadow(scale);
+        } else {
+            node.left = px(icon_left);
+            node.top = px(icon_top);
+            node.width = px(icon_size(scale));
+            node.height = px(icon_size(scale));
+            layout.justify = Justify::Left;
+            *font = TextFont::from_font_size(10.0);
+            *line_height = LineHeight::default();
+            *shadow = TextShadow::default();
+        }
     }
 }
 
-/// Apply label presentation without invalidating unchanged ECS components.
-/// The plain-value helper above is also used when initially spawning labels.
-pub fn sync_stack_label(
-    scale: f32,
-    text: &mut Mut<Text>,
-    node: &mut Mut<Node>,
-    layout: &mut Mut<TextLayout>,
-    font: &mut Mut<TextFont>,
-    line_height: &mut Mut<LineHeight>,
-    shadow: &mut Mut<TextShadow>,
-    ui_font: &Handle<Font>,
-    icon_left: f32,
-    icon_top: f32,
-    label: &str,
-    has_icon: bool,
-) {
-    let mut next_node = (**node).clone();
-    let mut next_layout = **layout;
-    let mut next_font = (**font).clone();
-    let mut next_height = **line_height;
-    let mut next_shadow = **shadow;
-    // No string allocation is needed to compute the geometry and font.
-    place_stack_label(
-        scale,
-        &mut Text::default(),
-        &mut next_node,
-        &mut next_layout,
-        &mut next_font,
-        &mut next_height,
-        &mut next_shadow,
-        ui_font,
-        icon_left,
-        icon_top,
-        "",
-        has_icon,
-    );
-    if text.0 != label {
-        text.0 = label.to_owned();
+/// A spawned stack label's components, for a query.
+#[derive(QueryData)]
+#[query_data(mutable)]
+pub struct StackLabel {
+    pub text: &'static mut Text,
+    pub node: &'static mut Node,
+    pub layout: &'static mut TextLayout,
+    pub font: &'static mut TextFont,
+    pub line_height: &'static mut LineHeight,
+    pub shadow: &'static mut TextShadow,
+}
+
+impl StackLabelItem<'_, '_> {
+    /// Apply label presentation without invalidating unchanged ECS components.
+    pub fn sync(&mut self, placement: LabelPlacement) {
+        // No string allocation is needed to compute the geometry and font.
+        let mut next = StackLabelBundle {
+            text: Text::default(),
+            node: (*self.node).clone(),
+            layout: *self.layout,
+            font: (*self.font).clone(),
+            line_height: *self.line_height,
+            shadow: *self.shadow,
+        };
+        next.place(placement);
+        if self.text.0 != placement.label {
+            self.text.0 = placement.label.to_owned();
+        }
+        self.node.set_if_neq(next.node);
+        if self.layout.justify != next.layout.justify
+            || self.layout.linebreak != next.layout.linebreak
+        {
+            *self.layout = next.layout;
+        }
+        self.font.set_if_neq(next.font);
+        self.line_height.set_if_neq(next.line_height);
+        self.shadow.set_if_neq(next.shadow);
     }
-    node.set_if_neq(next_node);
-    if layout.justify != next_layout.justify || layout.linebreak != next_layout.linebreak {
-        **layout = next_layout;
-    }
-    font.set_if_neq(next_font);
-    line_height.set_if_neq(next_height);
-    shadow.set_if_neq(next_shadow);
 }
 
 #[derive(Resource)]

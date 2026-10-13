@@ -1,6 +1,7 @@
 //! ECS wiring: run each world tick's block updates, then hand their changes
 //! to streaming and persistence and their effects to entities.
 
+use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 
 use crate::app::settings::GameSettings;
@@ -48,6 +49,7 @@ use super::BlockTicks;
 use super::RANDOM_TICK_RADIUS;
 use super::RedstoneOccupant;
 use super::TickEffect;
+use crate::entity::projectiles::Launch;
 
 /// Block updates run after player input and physics have written this
 /// frame's edits, and before streaming picks up the remeshes they request.
@@ -126,6 +128,49 @@ fn random_tick_chunks(
     positions
 }
 
+/// Every body a pressure plate or a detector rail can feel.
+#[derive(SystemParam)]
+pub(super) struct Bodies<'w, 's> {
+    player: Query<'w, 's, (&'static Transform, &'static EntitySize), With<Player>>,
+    dropped: Query<'w, 's, (&'static Transform, &'static EntitySize), With<DroppedItem>>,
+    creatures: Query<'w, 's, (&'static Transform, &'static EntitySize), With<Living>>,
+    primed: Query<'w, 's, (&'static Transform, &'static EntitySize), With<PrimedTnt>>,
+    carts: Query<'w, 's, (&'static Transform, &'static EntitySize), With<Minecart>>,
+    boats: Query<'w, 's, (&'static Transform, &'static EntitySize), With<Boat>>,
+    projectiles: Query<'w, 's, (&'static Transform, &'static EntitySize), With<Projectile>>,
+}
+
+impl Bodies<'_, '_> {
+    fn occupants(&self) -> Vec<RedstoneOccupant> {
+        let occupant = |transform: &Transform, size: &EntitySize, living| {
+            let box_ = size.aabb(transform.translation);
+            RedstoneOccupant {
+                min: box_.min.to_array(),
+                max: box_.max.to_array(),
+                living,
+                minecart: false,
+            }
+        };
+        let mut occupants: Vec<_> = self
+            .player
+            .iter()
+            .map(|(t, s)| occupant(t, s, true))
+            .collect();
+        occupants.extend(self.dropped.iter().map(|(t, s)| occupant(t, s, false)));
+        occupants.extend(self.creatures.iter().map(|(t, s)| occupant(t, s, true)));
+        occupants.extend(self.primed.iter().map(|(t, s)| occupant(t, s, false)));
+        occupants.extend(self.boats.iter().map(|(t, s)| occupant(t, s, false)));
+        // `EnumMobType.everything`: an arrow lying on a wooden plate holds it down.
+        occupants.extend(self.projectiles.iter().map(|(t, s)| occupant(t, s, false)));
+        occupants.extend(self.carts.iter().map(|(t, s)| {
+            let mut body = occupant(t, s, false);
+            body.minecart = true;
+            body
+        }));
+        occupants
+    }
+}
+
 pub(super) fn run_block_ticks(
     tick: Res<WorldTick>,
     environment: crate::world::dimension::Environment,
@@ -135,13 +180,7 @@ pub(super) fn run_block_ticks(
     mut streaming: Option<ResMut<WorldStreaming>>,
     mut persistence: Option<ResMut<WorldPersistence>>,
     settings: Option<Res<GameSettings>>,
-    player: Query<(&Transform, &EntitySize), With<Player>>,
-    dropped: Query<(&Transform, &EntitySize), With<DroppedItem>>,
-    creatures: Query<(&Transform, &EntitySize), With<Living>>,
-    primed: Query<(&Transform, &EntitySize), With<PrimedTnt>>,
-    carts: Query<(&Transform, &EntitySize), With<Minecart>>,
-    boats: Query<(&Transform, &EntitySize), With<Boat>>,
-    projectiles: Query<(&Transform, &EntitySize), With<Projectile>>,
+    bodies: Bodies,
 ) {
     let count = tick.ticks_this_frame();
     ticks.set_dimension(environment.dimension());
@@ -149,35 +188,15 @@ pub(super) fn run_block_ticks(
     let (rain, thunder) = environment.weather_strength();
     ticks.set_weather_strength(rain, thunder);
     let now = tick.world_time();
-    let occupant = |transform: &Transform, size: &EntitySize, living| {
-        let box_ = size.aabb(transform.translation);
-        RedstoneOccupant {
-            min: box_.min.to_array(),
-            max: box_.max.to_array(),
-            living,
-            minecart: false,
-        }
-    };
-    let mut occupants: Vec<_> = player.iter().map(|(t, s)| occupant(t, s, true)).collect();
-    occupants.extend(dropped.iter().map(|(t, s)| occupant(t, s, false)));
-    occupants.extend(creatures.iter().map(|(t, s)| occupant(t, s, true)));
-    occupants.extend(primed.iter().map(|(t, s)| occupant(t, s, false)));
-    occupants.extend(boats.iter().map(|(t, s)| occupant(t, s, false)));
-    // `EnumMobType.everything`: an arrow lying on a wooden plate holds it down.
-    occupants.extend(projectiles.iter().map(|(t, s)| occupant(t, s, false)));
-    occupants.extend(carts.iter().map(|(t, s)| {
-        let mut body = occupant(t, s, false);
-        body.minecart = true;
-        body
-    }));
-    ticks.set_occupants(occupants);
+    ticks.set_occupants(bodies.occupants());
     ticks.process_events(&mut chunks, &mut light, now);
 
     if count > 0 {
         let radius = settings.as_ref().map_or(RANDOM_TICK_RADIUS, |settings| {
             settings.render_distance.min(RANDOM_TICK_RADIUS)
         });
-        let centers: Vec<ChunkPosition> = player
+        let centers: Vec<ChunkPosition> = bodies
+            .player
             .iter()
             .map(|(player, _)| {
                 ChunkPosition::from_world(player.translation.x, player.translation.z)
@@ -264,11 +283,13 @@ fn apply_tick_effects(
                 if stack.item() == Item::Arrow {
                     spawn_arrow_with(
                         &mut commands,
-                        mouth,
-                        heading,
-                        1.1,
-                        6.0,
-                        None,
+                        Launch {
+                            position: mouth,
+                            heading: heading,
+                            speed: 1.1,
+                            spread: 6.0,
+                            shooter: None,
+                        },
                         true,
                         ArrowDamage::Flat(4),
                         &mut JavaRandom::new(rng.next_u64()),
@@ -277,11 +298,13 @@ fn apply_tick_effects(
                     spawn_thrown(
                         &mut commands,
                         kind,
-                        mouth,
-                        heading,
-                        1.1,
-                        6.0,
-                        None,
+                        Launch {
+                            position: mouth,
+                            heading: heading,
+                            speed: 1.1,
+                            spread: 6.0,
+                            shooter: None,
+                        },
                         &mut JavaRandom::new(rng.next_u64()),
                     );
                 } else {

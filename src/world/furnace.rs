@@ -2,7 +2,6 @@
 
 use bevy::math::IVec3;
 use bevy::prelude::Res;
-use bevy::prelude::ResMut;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::OnceLock;
@@ -10,11 +9,8 @@ use std::sync::OnceLock;
 use crate::block::blocks::Block;
 use crate::item::Item;
 use crate::item::ItemStack;
-use crate::world::block_ticks::BlockTicks;
 use crate::world::chunk::ChunkPosition;
-use crate::world::chunk::WorldChunks;
-use crate::world::persistence::WorldPersistence;
-use crate::world::streaming::WorldStreaming;
+use crate::world::edit::WorldEdit;
 use crate::world::tick::WorldTick;
 
 pub const SMELT_TICKS: u16 = 200;
@@ -190,23 +186,17 @@ fn consume_one(slot: &mut Option<ItemStack>) {
     *slot = ItemStack::with_data(stack.item(), stack.count() - 1, stack.data()).ok();
 }
 
-pub fn tick_furnaces(
-    tick: Res<WorldTick>,
-    mut chunks: ResMut<WorldChunks>,
-    mut persistence: Option<ResMut<WorldPersistence>>,
-    mut streaming: Option<ResMut<WorldStreaming>>,
-    mut block_ticks: Option<ResMut<BlockTicks>>,
-) {
+pub fn tick_furnaces(tick: Res<WorldTick>, mut edit: WorldEdit) {
     let ticks = tick.ticks_this_frame();
     if ticks == 0 {
         return;
     }
 
-    let positions = chunks.furnace_positions();
+    let positions = edit.chunks.furnace_positions();
     for (x, y, z) in positions {
         let mut burning = false;
         let mut changed = false;
-        if let Some(furnace) = chunks.furnace_at_mut(x, y, z) {
+        if let Some(furnace) = edit.chunks.furnace_at_mut(x, y, z) {
             let before = furnace.clone();
             for _ in 0..ticks {
                 furnace.tick();
@@ -214,7 +204,7 @@ pub fn tick_furnaces(
             burning = furnace.is_burning();
             changed = *furnace != before;
         }
-        let block = chunks.block_at(x, y, z);
+        let block = edit.chunks.block_at(x, y, z);
         if let Some(block) = block
             && block.is_furnace()
             && (block == Block::FurnaceActive) != burning
@@ -225,18 +215,13 @@ pub fn tick_furnaces(
                 Block::FurnaceInactive
             };
             // The swap keeps the furnace's facing.
-            let facing = chunks.metadata_at(x, y, z);
-            chunks.set_block_with_metadata(x, y, z, next, facing);
+            let facing = edit.chunks.metadata_at(x, y, z);
+            edit.chunks.set_block_with_metadata(x, y, z, next, facing);
             // `BlockFurnace.updateFurnaceBlockState` swaps with notify.
-            if let Some(block_ticks) = block_ticks.as_deref_mut() {
-                block_ticks.block_changed(IVec3::new(x, y, z), block, facing);
-            }
-            if let Some(streaming) = streaming.as_deref_mut() {
-                streaming.request_block_update(x, y, z);
-            }
+            edit.changed(IVec3::new(x, y, z), block, facing);
         }
-        if changed && let Some(persistence) = persistence.as_deref_mut() {
-            persistence.mark_dirty(ChunkPosition::from_block(x, z));
+        if changed {
+            edit.mark_dirty(ChunkPosition::from_block(x, z));
         }
     }
 }

@@ -43,12 +43,9 @@ use crate::random::ItemRng;
 use crate::random::JavaRandom;
 use crate::rendering::particles::effects::EffectParticles;
 use crate::rendering::particles::effects::FxKind;
-use crate::world::block_ticks::BlockTicks;
-use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
 use crate::world::difficulty::Difficulty;
-use crate::world::persistence::WorldPersistence;
-use crate::world::streaming::WorldStreaming;
+use crate::world::edit::WorldEdit;
 use crate::world::tick::TICK_SECONDS;
 use crate::world::tick::WorldTick;
 
@@ -235,14 +232,10 @@ fn impact(
     Some((damage, direction * impact))
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn apply_explosions(
     mut commands: Commands,
     mut blasts: MessageReader<Explosion>,
-    mut chunks: ResMut<WorldChunks>,
-    mut ticks: Option<ResMut<BlockTicks>>,
-    mut streaming: Option<ResMut<WorldStreaming>>,
-    mut persistence: Option<ResMut<WorldPersistence>>,
+    mut edit: WorldEdit,
     settings: Option<Res<GameSettings>>,
     mut mobs: Query<
         (
@@ -279,7 +272,7 @@ pub(crate) fn apply_explosions(
         .map_or(Difficulty::Normal, |settings| settings.difficulty);
     for blast in blasts.read().copied().collect::<Vec<_>>() {
         let center = blast.center;
-        let cells = blast_cells(&chunks, center, blast.strength, &mut rng.0);
+        let cells = blast_cells(&edit.chunks, center, blast.strength, &mut rng.0);
         exploded.write(Exploded {
             center,
             strength: blast.strength,
@@ -302,7 +295,7 @@ pub(crate) fn apply_explosions(
             if !within.intersects(aabb) {
                 continue;
             }
-            if let Some((damage, fling)) = impact(&chunks, center, feet, aabb, reach) {
+            if let Some((damage, fling)) = impact(&edit.chunks, center, feet, aabb, reach) {
                 let wound = hurt_creature(&mut mob, &mut living, &mut velocity, feet, hit(damage));
                 if wound.died {
                     drop_loot(&mut commands, &mut loot, &mut mob, feet);
@@ -314,7 +307,7 @@ pub(crate) fn apply_explosions(
             let eye = parts.0.translation;
             let aabb = EntitySize::PLAYER.aabb(eye);
             if within.intersects(aabb)
-                && let Some((damage, fling)) = impact(&chunks, center, eye, aabb, reach)
+                && let Some((damage, fling)) = impact(&edit.chunks, center, eye, aabb, reach)
             {
                 if let Some(mut victim) = victim_of(&mut parts, &mut spare_armor) {
                     hurt_player(&mut victim, hit(damage), difficulty, &mut loot);
@@ -326,7 +319,7 @@ pub(crate) fn apply_explosions(
             let aabb = TNT_SIZE.aabb(transform.translation);
             if within.intersects(aabb)
                 && let Some((_, fling)) =
-                    impact(&chunks, center, transform.translation, aabb, reach)
+                    impact(&edit.chunks, center, transform.translation, aabb, reach)
             {
                 velocity.0 += fling / TICK_SECONDS;
             }
@@ -335,12 +328,14 @@ pub(crate) fn apply_explosions(
         let mut changed = Vec::new();
         if blast.flaming {
             for &cell in cells.iter().rev() {
-                if chunks.block_at(cell.x, cell.y, cell.z) == Some(Block::Air)
-                    && chunks
+                if edit.chunks.block_at(cell.x, cell.y, cell.z) == Some(Block::Air)
+                    && edit
+                        .chunks
                         .block_at(cell.x, cell.y - 1, cell.z)
                         .is_some_and(Block::is_opaque_cube)
                     && rng.0.next_int(3) == 0
-                    && let Some(previous) = chunks.set_block(cell.x, cell.y, cell.z, Block::Fire)
+                    && let Some(previous) =
+                        edit.chunks.set_block(cell.x, cell.y, cell.z, Block::Fire)
                 {
                     changed.push((cell, previous, 0));
                 }
@@ -350,25 +345,25 @@ pub(crate) fn apply_explosions(
             if let Some(particles) = particles.as_deref_mut() {
                 particles.blast_cell(cell, center, blast.strength);
             }
-            let Some(block) = chunks.block_at(cell.x, cell.y, cell.z) else {
+            let Some(block) = edit.chunks.block_at(cell.x, cell.y, cell.z) else {
                 continue;
             };
             if block == Block::Air {
                 continue;
             }
-            let metadata = chunks.metadata_at(cell.x, cell.y, cell.z);
+            let metadata = edit.chunks.metadata_at(cell.x, cell.y, cell.z);
             // `onBlockRemoval`: a container spills everything it held. Writing
             // air discards the slots, so read them first.
-            if let Some(furnace) = chunks.furnace_at(cell.x, cell.y, cell.z) {
+            if let Some(furnace) = edit.chunks.furnace_at(cell.x, cell.y, cell.z) {
                 for stack in furnace.slots.into_iter().flatten() {
                     spawn_block_drop(&mut commands, &mut loot, cell, stack);
                 }
             }
-            if let Some(chest) = chunks.chest_at(cell.x, cell.y, cell.z) {
+            if let Some(chest) = edit.chunks.chest_at(cell.x, cell.y, cell.z) {
                 let stacks: Vec<_> = chest.slots.into_iter().flatten().collect();
                 spawn_chest_drops(&mut commands, &mut loot, cell, stacks);
             }
-            if let Some(dispenser) = chunks.dispenser_at(cell.x, cell.y, cell.z) {
+            if let Some(dispenser) = edit.chunks.dispenser_at(cell.x, cell.y, cell.z) {
                 let stacks: Vec<_> = dispenser.slots.into_iter().flatten().collect();
                 spawn_chest_drops(&mut commands, &mut loot, cell, stacks);
             }
@@ -377,7 +372,7 @@ pub(crate) fn apply_explosions(
                     spawn_block_drop(&mut commands, &mut loot, cell, stack);
                 }
             }
-            if let Some(previous) = chunks.set_block(cell.x, cell.y, cell.z, Block::Air) {
+            if let Some(previous) = edit.chunks.set_block(cell.x, cell.y, cell.z, Block::Air) {
                 changed.push((cell, previous, metadata));
             }
             // `BlockTNT.onBlockDestroyedByExplosion`: a short, random fuse.
@@ -387,15 +382,7 @@ pub(crate) fn apply_explosions(
             }
         }
         for (cell, previous, metadata) in changed {
-            if let Some(ticks) = ticks.as_deref_mut() {
-                ticks.block_changed(cell, previous, metadata);
-            }
-            if let Some(streaming) = streaming.as_deref_mut() {
-                streaming.request_block_update(cell.x, cell.y, cell.z);
-            }
-            if let Some(persistence) = persistence.as_deref_mut() {
-                persistence.mark_dirty(ChunkPosition::from_block(cell.x, cell.z));
-            }
+            edit.changed(cell, previous, metadata);
         }
     }
 }

@@ -569,7 +569,6 @@ impl<'a> Mesher<'a> {
 
     /// Full unit-cube faces. Flat shading joins a bit plane; a corner gradient
     /// stays a single quad so smooth light is unchanged.
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn queue_cube(
         &self,
         meshes: &mut ChunkMeshes,

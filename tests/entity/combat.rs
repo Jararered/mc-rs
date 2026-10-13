@@ -22,6 +22,7 @@ use game::entity::mobs::Mob;
 use game::entity::mobs::MobType;
 use game::entity::projectiles::Arrow;
 use game::entity::projectiles::Fireball;
+use game::entity::projectiles::Launch;
 use game::entity::projectiles::Shooter;
 use game::entity::projectiles::spawn_arrow;
 use game::item::Item;
@@ -363,11 +364,13 @@ fn arrows_stick_in_walls() {
     let mut app = creature_app(chunks, Vec3::new(-6.5, 5.0, 8.5));
     let arrow = spawn_arrow(
         &mut app.world_mut().commands(),
-        Vec3::new(0.5, 6.0, 0.5),
-        Vec3::X,
-        1.5,
-        0.0,
-        None,
+        Launch {
+            position: Vec3::new(0.5, 6.0, 0.5),
+            heading: Vec3::X,
+            speed: 1.5,
+            spread: 0.0,
+            shooter: None,
+        },
         &mut JavaRandom::new(1),
     );
     app.world_mut().flush();
@@ -468,15 +471,17 @@ fn an_arrow_stays_a_monster_s_after_its_skeleton_is_gone() {
     );
     spawn_arrow(
         &mut app.world_mut().commands(),
-        Vec3::new(0.5, 6.0, 0.5),
-        Vec3::X,
-        1.5,
-        0.0,
-        Some(Shooter {
-            entity: skeleton,
-            position: Vec3::new(-8.5, 5.0, 8.5),
-            source: Source::Monster,
-        }),
+        Launch {
+            position: Vec3::new(0.5, 6.0, 0.5),
+            heading: Vec3::X,
+            speed: 1.5,
+            spread: 0.0,
+            shooter: Some(Shooter {
+                entity: skeleton,
+                position: Vec3::new(-8.5, 5.0, 8.5),
+                source: Source::Monster,
+            }),
+        },
         &mut JavaRandom::new(1),
     );
     app.world_mut().despawn(skeleton);

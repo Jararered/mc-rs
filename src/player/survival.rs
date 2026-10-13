@@ -230,7 +230,6 @@ fn rained_on(chunks: &WorldChunks, cell: IVec3) -> bool {
         })
 }
 
-#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn tick_player_survival(
     tick: Res<WorldTick>,
     chunks: Res<WorldChunks>,

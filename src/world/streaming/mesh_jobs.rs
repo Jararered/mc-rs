@@ -81,21 +81,6 @@ pub(super) fn spawn_mesh_job(
     let southeast = neighbor(1, 1);
     let task = AsyncComputeTaskPool::get().spawn(async move {
         let start = Instant::now();
-        let skylight = Skylight::from_chunk_with_neighbors_and_corners(
-            &chunk,
-            west.as_ref(),
-            east.as_ref(),
-            north.as_ref(),
-            south.as_ref(),
-            northwest.as_ref(),
-            northeast.as_ref(),
-            southwest.as_ref(),
-            southeast.as_ref(),
-        )
-        .for_sky(has_sky);
-        // Block ticks read the raw cells; the mesh reads them as Beta's
-        // renderer does.
-        let light = skylight.chunk_cells();
         let neighbors = ChunkNeighbors {
             west: west.as_ref(),
             east: east.as_ref(),
@@ -106,6 +91,11 @@ pub(super) fn spawn_mesh_job(
             southwest: southwest.as_ref(),
             southeast: southeast.as_ref(),
         };
+        let skylight =
+            Skylight::from_chunk_with_neighbors_and_corners(&chunk, &neighbors).for_sky(has_sky);
+        // Block ticks read the raw cells; the mesh reads them as Beta's
+        // renderer does.
+        let light = skylight.chunk_cells();
         let skylight =
             skylight.with_neighbor_brightness(&chunk, |x, y, z| neighbors.get(&chunk, x, y, z));
         let fingerprints = skylight.section_fingerprints();

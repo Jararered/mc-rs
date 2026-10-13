@@ -30,11 +30,9 @@ use crate::player::Player;
 use crate::player::PlayerMovementInput;
 use crate::random::ItemRng;
 use crate::rendering::particles::effects::EffectParticles;
-use crate::world::block_ticks::BlockTicks;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
-use crate::world::persistence::WorldPersistence;
-use crate::world::streaming::WorldStreaming;
+use crate::world::edit::WorldEdit;
 use crate::world::tick::WorldTick;
 
 pub const BOAT_SIZE: EntitySize = EntitySize {
@@ -434,15 +432,11 @@ pub(crate) fn bump_boats(
 
 /// Run the boats' Beta update once per world tick, in a stable order, with
 /// the boat-to-boat bumps of `EntityBoat.onUpdate` after each boat moves.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn tick_boats(
     mut commands: Commands,
     tick: Res<WorldTick>,
     settings: Option<Res<GameSettings>>,
-    mut chunks: ResMut<WorldChunks>,
-    mut ticks: ResMut<BlockTicks>,
-    mut streaming: Option<ResMut<WorldStreaming>>,
-    mut persistence: Option<ResMut<WorldPersistence>>,
+    mut edit: WorldEdit,
     mut boats: Query<
         (Entity, &mut Boat, &Seat, &mut Transform, &mut PreviousTick),
         Without<Player>,
@@ -475,7 +469,7 @@ pub(crate) fn tick_boats(
             let Ok((_, mut boat, seat, mut transform, mut previous)) = boats.get_mut(entity) else {
                 continue;
             };
-            if !chunks.contains(ChunkPosition::from_world(
+            if !edit.chunks.contains(ChunkPosition::from_world(
                 transform.translation.x,
                 transform.translation.z,
             )) {
@@ -491,7 +485,7 @@ pub(crate) fn tick_boats(
             });
             previous.0 = transform.translation;
             let mut center = transform.translation;
-            let step = step_boat(&mut boat, &mut center, push, rules, &chunks);
+            let step = step_boat(&mut boat, &mut center, push, rules, &edit.chunks);
             transform.translation = center;
             if !step.wrecked
                 && let Some(particles) = particles.as_deref_mut()
@@ -506,15 +500,9 @@ pub(crate) fn tick_boats(
                 continue;
             }
             for cell in step.snow {
-                let metadata = chunks.metadata_at(cell.x, cell.y, cell.z);
-                if let Some(old) = chunks.set_block(cell.x, cell.y, cell.z, Block::Air) {
-                    ticks.block_changed(cell, old, metadata);
-                    if let Some(persistence) = persistence.as_deref_mut() {
-                        persistence.mark_dirty(ChunkPosition::from_block(cell.x, cell.z));
-                    }
-                    if let Some(streaming) = streaming.as_deref_mut() {
-                        streaming.request_block_update(cell.x, cell.y, cell.z);
-                    }
+                let metadata = edit.chunks.metadata_at(cell.x, cell.y, cell.z);
+                if let Some(old) = edit.chunks.set_block(cell.x, cell.y, cell.z, Block::Air) {
+                    edit.changed(cell, old, metadata);
                 }
             }
             let reach = grow(BOAT_SIZE.aabb(center), Vec3::new(0.2, 0.0, 0.2));

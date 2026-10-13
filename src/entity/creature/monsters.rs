@@ -14,6 +14,7 @@ use crate::entity::combat::Hit;
 use crate::entity::combat::Source;
 use crate::entity::mobs::Explosion;
 use crate::entity::mobs::MobType;
+use crate::entity::projectiles::Launch;
 use crate::entity::projectiles::Shooter;
 use crate::entity::projectiles::spawn_arrow;
 use crate::entity::projectiles::spawn_fireball;
@@ -209,15 +210,17 @@ impl Body<'_> {
             }
             spawn_arrow(
                 fx.commands,
-                start,
-                Vec3::new(dx, dy + lift, dz),
-                0.6,
-                12.0,
-                Some(Shooter {
-                    entity: self.entity,
-                    position: self.feet,
-                    source: Source::Monster,
-                }),
+                Launch {
+                    position: start,
+                    heading: Vec3::new(dx, dy + lift, dz),
+                    speed: 0.6,
+                    spread: 12.0,
+                    shooter: Some(Shooter {
+                        entity: self.entity,
+                        position: self.feet,
+                        source: Source::Monster,
+                    }),
+                },
                 &mut self.mob.rng,
             );
             self.living.attack_time = 30;

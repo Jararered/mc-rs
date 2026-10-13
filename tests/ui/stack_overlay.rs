@@ -42,39 +42,24 @@ fn durability_bar_starts_at_the_beta_overlay_origin() {
 fn unchanged_stack_labels_do_not_invalidate_text_or_layout() {
     use bevy::prelude::*;
     use bevy::text::LineHeight;
-    use game::ui::icons::overlay::sync_stack_label;
+    use game::ui::icons::overlay::LabelPlacement;
+    use game::ui::icons::overlay::StackLabel;
 
     #[derive(Resource)]
     struct Label(String, f32);
     #[derive(Resource, Default)]
     struct ChangedParts(usize);
 
-    fn sync(
-        label: Res<Label>,
-        mut query: Query<(
-            &mut Text,
-            &mut Node,
-            &mut TextLayout,
-            &mut TextFont,
-            &mut LineHeight,
-            &mut TextShadow,
-        )>,
-    ) {
-        for (mut text, mut node, mut layout, mut font, mut height, mut shadow) in &mut query {
-            sync_stack_label(
-                DEFAULT_GUI_SCALE,
-                &mut text,
-                &mut node,
-                &mut layout,
-                &mut font,
-                &mut height,
-                &mut shadow,
-                &Handle::default(),
-                label.1,
-                0.0,
-                &label.0,
-                true,
-            );
+    fn sync(label: Res<Label>, mut query: Query<StackLabel>) {
+        for mut parts in &mut query {
+            parts.sync(LabelPlacement {
+                scale: DEFAULT_GUI_SCALE,
+                font: &Handle::default(),
+                icon_left: label.1,
+                icon_top: 0.0,
+                label: &label.0,
+                has_icon: true,
+            });
         }
     }
     fn observe(

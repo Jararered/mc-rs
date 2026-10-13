@@ -7,6 +7,7 @@ pub mod chunk;
 pub mod difficulty;
 pub mod dimension;
 pub mod dispenser;
+pub mod edit;
 pub mod environment;
 pub mod furnace;
 pub mod generation;

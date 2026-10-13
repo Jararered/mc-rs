@@ -306,7 +306,6 @@ pub(super) fn pose_fishing_lines(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(super) fn pose_projectiles(
     tick: Res<WorldTick>,
     chunks: Res<WorldChunks>,

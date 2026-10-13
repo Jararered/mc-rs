@@ -25,8 +25,8 @@ use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
 use crate::world::dimension::ActiveDimension;
 use crate::world::dimension::Dimension;
+use crate::world::edit::WorldEdit;
 use crate::world::persistence::WorldPersistence;
-use crate::world::streaming::WorldStreaming;
 use crate::world::tick::DAY_LENGTH;
 use crate::world::tick::WorldTick;
 use crate::world::weather::WorldWeather;
@@ -148,16 +148,12 @@ pub fn bed_chunks(bed: IVec3) -> impl Iterator<Item = ChunkPosition> {
     (min.x..=max.x).flat_map(move |x| (min.z..=max.z).map(move |z| ChunkPosition { x, z }))
 }
 
-#[allow(clippy::too_many_arguments)]
 fn use_bed(
     mut uses: MessageReader<BedUse>,
     tick: Res<WorldTick>,
     dimension: Option<Res<ActiveDimension>>,
     weather: Option<Res<WorldWeather>>,
-    mut chunks: ResMut<WorldChunks>,
-    mut block_ticks: Option<ResMut<BlockTicks>>,
-    mut streaming: Option<ResMut<WorldStreaming>>,
-    mut persistence: Option<ResMut<WorldPersistence>>,
+    mut edit: WorldEdit,
     mut chat: Option<ResMut<ChatHistory>>,
     mut explosions: Option<ResMut<Messages<Explosion>>>,
     mut player: Query<
@@ -177,39 +173,32 @@ fn use_bed(
         position,
     } in uses.read().copied()
     {
-        if chunks.block_at(position.x, position.y, position.z) != Some(Block::Bed) {
+        if edit.chunks.block_at(position.x, position.y, position.z) != Some(Block::Bed) {
             continue;
         }
         let mut foot = position;
-        let mut metadata = chunks.metadata_at(foot.x, foot.y, foot.z);
+        let mut metadata = edit.chunks.metadata_at(foot.x, foot.y, foot.z);
         if !bed::is_foot(metadata) {
             foot += bed::head_to_foot(metadata);
-            if chunks.block_at(foot.x, foot.y, foot.z) != Some(Block::Bed) {
+            if edit.chunks.block_at(foot.x, foot.y, foot.z) != Some(Block::Bed) {
                 continue;
             }
-            metadata = chunks.metadata_at(foot.x, foot.y, foot.z);
+            metadata = edit.chunks.metadata_at(foot.x, foot.y, foot.z);
         }
 
         if !dimension.can_respawn() {
             // Beta steps on from the foot half, past the bed, and blows up
             // there. The other half goes when it finds its partner missing.
             let mut remove = |cell: IVec3| {
-                if chunks.block_at(cell.x, cell.y, cell.z) != Some(Block::Bed) {
+                if edit.chunks.block_at(cell.x, cell.y, cell.z) != Some(Block::Bed) {
                     return;
                 }
-                let previous_metadata = chunks.metadata_at(cell.x, cell.y, cell.z);
-                let Some(previous) = chunks.set_block(cell.x, cell.y, cell.z, Block::Air) else {
+                let previous_metadata = edit.chunks.metadata_at(cell.x, cell.y, cell.z);
+                let Some(previous) = edit.chunks.set_block(cell.x, cell.y, cell.z, Block::Air)
+                else {
                     return;
                 };
-                if let Some(ticks) = block_ticks.as_deref_mut() {
-                    ticks.block_changed(cell, previous, previous_metadata);
-                }
-                if let Some(streaming) = streaming.as_deref_mut() {
-                    streaming.request_block_update(cell.x, cell.y, cell.z);
-                }
-                if let Some(persistence) = persistence.as_deref_mut() {
-                    persistence.mark_dirty(ChunkPosition::from_block(cell.x, cell.z));
-                }
+                edit.changed(cell, previous, previous_metadata);
             };
             remove(foot);
             let beyond = foot + bed::head_to_foot(metadata);
@@ -258,7 +247,12 @@ fn use_bed(
         sleep.timer = 0;
         sleep.bed = Some(foot);
         sleep.last_health = health.current;
-        set_occupied(&mut chunks, persistence.as_deref_mut(), foot, true);
+        set_occupied(
+            &mut edit.chunks,
+            edit.persistence.as_deref_mut(),
+            foot,
+            true,
+        );
     }
 }
 
@@ -315,7 +309,6 @@ fn wake(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn tick_sleep(
     mut tick: ResMut<WorldTick>,
     dimension: Option<Res<ActiveDimension>>,

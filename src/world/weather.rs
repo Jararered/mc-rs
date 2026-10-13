@@ -220,10 +220,7 @@ pub fn can_strike(chunks: &WorldChunks, x: i32, y: i32, z: i32) -> bool {
 fn apply_lightning(
     mut commands: Commands,
     mut strikes: MessageReader<LightningStrike>,
-    mut chunks: ResMut<WorldChunks>,
-    mut ticks: ResMut<crate::world::block_ticks::BlockTicks>,
-    mut streaming: Option<ResMut<crate::world::streaming::WorldStreaming>>,
-    mut persistence: Option<ResMut<crate::world::persistence::WorldPersistence>>,
+    mut edit: crate::world::edit::WorldEdit,
     mut mobs: Query<(Entity, &mut Mob, &mut Living, &mut Velocity, &Transform), Without<Player>>,
     mut players: Query<
         (
@@ -245,20 +242,15 @@ fn apply_lightning(
 ) {
     for &LightningStrike(center) in strikes.read() {
         let at = center.floor().as_ivec3();
-        if chunks.block_at(at.x, at.y, at.z) == Some(Block::Air)
-            && chunks
+        if edit.chunks.block_at(at.x, at.y, at.z) == Some(Block::Air)
+            && edit
+                .chunks
                 .block_at(at.x, at.y - 1, at.z)
                 .is_some_and(Block::is_opaque_cube)
         {
-            let old_meta = chunks.metadata_at(at.x, at.y, at.z);
-            if let Some(old) = chunks.set_block(at.x, at.y, at.z, Block::Fire) {
-                ticks.block_changed(at, old, old_meta);
-                if let Some(s) = streaming.as_deref_mut() {
-                    s.request_block_update(at.x, at.y, at.z);
-                }
-                if let Some(p) = persistence.as_deref_mut() {
-                    p.mark_dirty(crate::world::chunk::ChunkPosition::from_block(at.x, at.z));
-                }
+            let old_meta = edit.chunks.metadata_at(at.x, at.y, at.z);
+            if let Some(old) = edit.chunks.set_block(at.x, at.y, at.z, Block::Fire) {
+                edit.changed(at, old, old_meta);
             }
         }
         for (entity, mut mob, mut living, mut velocity, transform) in &mut mobs {

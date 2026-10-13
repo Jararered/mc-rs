@@ -199,45 +199,47 @@ pub fn hand_origin(eye: Vec3, look: Vec3) -> Vec3 {
     eye - Vec3::new(flat.z * 0.16, 0.1, -flat.x * 0.16)
 }
 
-/// `EntityArrow.setArrowHeading`: aim along `heading` at `speed` blocks per
-/// tick, scattered by `spread`. The arrow does Beta's 4 damage and stays
-/// where it lands.
-pub fn spawn_arrow(
-    commands: &mut Commands,
-    position: Vec3,
-    heading: Vec3,
-    speed: f32,
-    spread: f32,
-    shooter: Option<Shooter>,
-    rng: &mut JavaRandom,
-) -> Entity {
-    spawn_arrow_with(
-        commands,
-        position,
-        heading,
-        speed,
-        spread,
-        shooter,
-        false,
-        ArrowDamage::Flat(4),
-        rng,
-    )
+/// How a projectile leaves: `setArrowHeading`'s and `setSnowballHeading`'s
+/// arguments, and the entity it starts on.
+#[derive(Clone, Copy, Debug)]
+pub struct Launch {
+    pub position: Vec3,
+    /// The aim; it need not be a unit vector.
+    pub heading: Vec3,
+    /// Blocks per tick.
+    pub speed: f32,
+    /// How far the aim scatters.
+    pub spread: f32,
+    /// Who let it go, if anyone did.
+    pub shooter: Option<Shooter>,
+}
+
+impl Launch {
+    /// The motion the projectile starts with.
+    pub(crate) fn motion(&self, rng: &mut JavaRandom) -> Vec3 {
+        scattered_heading(self.heading, self.speed, self.spread, rng)
+    }
+}
+
+/// `EntityArrow.setArrowHeading`: aim along `launch.heading` at its speed,
+/// scattered by its spread. The arrow does Beta's 4 damage and stays where
+/// it lands.
+pub fn spawn_arrow(commands: &mut Commands, launch: Launch, rng: &mut JavaRandom) -> Entity {
+    spawn_arrow_with(commands, launch, false, ArrowDamage::Flat(4), rng)
 }
 
 /// [`spawn_arrow`] with `doesArrowBelongToPlayer` and the damage chosen.
-#[allow(clippy::too_many_arguments)]
 pub fn spawn_arrow_with(
     commands: &mut Commands,
-    position: Vec3,
-    heading: Vec3,
-    speed: f32,
-    spread: f32,
-    shooter: Option<Shooter>,
+    launch: Launch,
     pickup: bool,
     damage: ArrowDamage,
     rng: &mut JavaRandom,
 ) -> Entity {
-    let motion = scattered_heading(heading, speed, spread, rng);
+    let Launch {
+        position, shooter, ..
+    } = launch;
+    let motion = launch.motion(rng);
     let (yaw, pitch) = heading_angles(motion);
     commands
         .spawn((
@@ -280,11 +282,13 @@ pub fn spawn_player_arrow(
     let origin = hand_origin(eye + Vec3::Y * PLAYER_EYE_HEIGHT, look);
     spawn_arrow_with(
         commands,
-        origin,
-        look,
-        speed,
-        1.0,
-        Some(Shooter::player(player, eye)),
+        Launch {
+            position: origin,
+            heading: look,
+            speed: speed,
+            spread: 1.0,
+            shooter: Some(Shooter::player(player, eye)),
+        },
         true,
         damage,
         rng,
@@ -413,7 +417,6 @@ pub(crate) fn victim_of<'a>(
 }
 
 /// Advance every arrow and fireball once per world tick.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn tick_projectiles(
     mut commands: Commands,
     tick: Res<WorldTick>,

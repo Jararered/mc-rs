@@ -10,14 +10,13 @@ use super::SlotDurability;
 use super::SlotHighlight;
 use super::SlotIcon;
 use super::SlotLabel;
+use super::access::SlotView;
 use super::chest::read_chest_group_slots;
 use super::clicks::to_slot_id;
 use crate::app::settings::GameSettings;
-use crate::crafting::beta_recipe_book;
 use crate::inventory::DragPlace;
 use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
-use crate::inventory::SlotId;
 use crate::inventory::preview_chest_drag_place;
 use crate::inventory::preview_drag_place;
 use crate::inventory::session::ActiveWorkbench;
@@ -26,15 +25,13 @@ use crate::item::ItemData;
 use crate::item::ItemStack;
 use crate::player::LocalPlayer;
 use crate::rendering::icons::BlockIcons;
+use crate::ui::icons::overlay::LabelPlacement;
+use crate::ui::icons::overlay::StackLabel;
 use crate::ui::icons::overlay::UiFont;
 use crate::ui::icons::overlay::count_label;
 use crate::ui::icons::overlay::durability_track;
-use crate::ui::icons::overlay::sync_stack_label;
-use crate::world::chunk::ChestGroup;
 use crate::world::chunk::WorldChunks;
 use bevy::prelude::*;
-use bevy::text::LineHeight;
-use bevy::text::TextLayout;
 use bevy::ui::RelativeCursorPosition;
 use bevy::window::PrimaryWindow;
 
@@ -82,16 +79,7 @@ pub(super) fn refresh(
     chunks: Res<WorldChunks>,
     drag: Res<SlotDrag>,
     mut labels: Query<
-        (
-            Entity,
-            &SlotLabel,
-            &mut Text,
-            &mut Node,
-            &mut TextLayout,
-            &mut TextFont,
-            &mut LineHeight,
-            &mut TextShadow,
-        ),
+        (Entity, &SlotLabel, StackLabel),
         (
             Without<SlotDurability>,
             Without<CarriedLabel>,
@@ -132,14 +120,7 @@ pub(super) fn refresh(
         ),
     >,
     mut carried: Query<
-        (
-            &mut Text,
-            &mut Node,
-            &mut TextLayout,
-            &mut TextFont,
-            &mut LineHeight,
-            &mut TextShadow,
-        ),
+        StackLabel,
         (
             With<CarriedLabel>,
             Without<SlotLabel>,
@@ -194,28 +175,15 @@ pub(super) fn refresh(
             )
         }
     });
-    for (
-        entity,
-        label,
-        mut text,
-        mut node,
-        mut layout,
-        mut text_font,
-        mut line_height,
-        mut shadow,
-    ) in &mut labels
-    {
-        let stack = displayed_stack(
-            label.0,
-            hotbar,
-            inventory,
-            &workbench,
-            screen.workbench,
-            screen.furnace_position,
-            screen.chest_group,
-            &chunks,
-            &preview,
-        );
+    let view = SlotView {
+        screen: &screen,
+        hotbar,
+        inventory,
+        workbench: &workbench,
+        chunks: &chunks,
+    };
+    for (entity, slot, mut label) in &mut labels {
+        let stack = view.displayed(slot.0, &preview);
         let has_icon = stack
             .and_then(|stack| block_icons.rect_for_stack(stack))
             .is_some();
@@ -229,33 +197,17 @@ pub(super) fn refresh(
         } else {
             stack_text(stack)
         };
-        sync_stack_label(
+        label.sync(LabelPlacement {
             scale,
-            &mut text,
-            &mut node,
-            &mut layout,
-            &mut text_font,
-            &mut line_height,
-            &mut shadow,
-            &font.minecraft,
-            0.0,
-            0.0,
-            &label_text,
+            font: &font.minecraft,
+            icon_left: 0.0,
+            icon_top: 0.0,
+            label: &label_text,
             has_icon,
-        );
+        });
     }
     for (bar, mut node, mut visibility, mut color) in &mut bars {
-        let stack = displayed_stack(
-            bar.0,
-            hotbar,
-            inventory,
-            &workbench,
-            screen.workbench,
-            screen.furnace_position,
-            screen.chest_group,
-            &chunks,
-            &preview,
-        );
+        let stack = view.displayed(bar.0, &preview);
         if let Some((width, red, green)) = stack.and_then(|stack| durability_bar(scale, stack)) {
             visibility.set_if_neq(Visibility::Inherited);
             let (_, _, track_width, _) = durability_track(scale, 0.0, 0.0, bar.1);
@@ -275,17 +227,7 @@ pub(super) fn refresh(
         }
     }
     for (icon, mut image, mut visibility) in &mut icons {
-        let stack = displayed_stack(
-            icon.0,
-            hotbar,
-            inventory,
-            &workbench,
-            screen.workbench,
-            screen.furnace_position,
-            screen.chest_group,
-            &chunks,
-            &preview,
-        );
+        let stack = view.displayed(icon.0, &preview);
         if let Some(rect) = stack.and_then(|stack| block_icons.rect_for_stack(stack)) {
             image
                 .reborrow()
@@ -394,9 +336,7 @@ pub(super) fn refresh(
                 .set_if_neq(px(top));
         }
     }
-    if let Ok((mut text, mut node, mut layout, mut text_font, mut line_height, mut shadow)) =
-        carried.single_mut()
-    {
+    if let Ok(mut label) = carried.single_mut() {
         let has_icon = block_icons.ready()
             && inventory
                 .carried
@@ -408,80 +348,19 @@ pub(super) fn refresh(
             stack_text(inventory.carried)
         };
         if let Some((left, top)) = cursor_icon {
-            sync_stack_label(
-                scale,
-                &mut text,
-                &mut node,
-                &mut layout,
-                &mut text_font,
-                &mut line_height,
-                &mut shadow,
-                &font.minecraft,
-                left,
-                top,
-                &label_text,
-                has_icon,
-            );
+            label.sync(LabelPlacement {
+                scale: scale,
+                font: &font.minecraft,
+                icon_left: left,
+                icon_top: top,
+                label: &label_text,
+                has_icon: has_icon,
+            });
         } else {
-            if text.0 != label_text {
-                text.0 = label_text;
+            if label.text.0 != label_text {
+                label.text.0 = label_text;
             }
         }
-    }
-}
-
-pub(super) fn displayed_stack(
-    slot: Slot,
-    hotbar: &Hotbar,
-    inventory: &Inventory,
-    workbench: &ActiveWorkbench,
-    workbench_open: bool,
-    furnace_position: Option<(i32, i32, i32)>,
-    chest_group: Option<ChestGroup>,
-    chunks: &WorldChunks,
-    preview: &[(SlotId, ItemStack)],
-) -> Option<ItemStack> {
-    preview
-        .iter()
-        .find_map(|(preview_slot, stack)| (*preview_slot == to_slot_id(slot)).then_some(*stack))
-        .or_else(|| {
-            slot_stack(
-                slot,
-                hotbar,
-                inventory,
-                workbench,
-                workbench_open,
-                furnace_position,
-                chest_group,
-                chunks,
-            )
-        })
-}
-
-pub(super) fn slot_stack(
-    slot: Slot,
-    hotbar: &Hotbar,
-    inventory: &Inventory,
-    workbench: &ActiveWorkbench,
-    workbench_open: bool,
-    furnace_position: Option<(i32, i32, i32)>,
-    chest_group: Option<ChestGroup>,
-    chunks: &WorldChunks,
-) -> Option<ItemStack> {
-    match slot {
-        Slot::Hotbar(i) => hotbar.slots[i],
-        Slot::Main(i) => inventory.main[i],
-        Slot::Craft(i) => inventory.crafting[i],
-        Slot::CraftResult if workbench_open => beta_recipe_book().find(&workbench.grid),
-        Slot::CraftResult => inventory.crafting_result(),
-        Slot::Workbench(i) => workbench.grid.get(i % 3, i / 3),
-        Slot::Chest(i) => chest_group
-            .map(|group| read_chest_group_slots(chunks, group))
-            .and_then(|slots| slots.get(i).copied().flatten()),
-        Slot::Furnace(i) => furnace_position
-            .and_then(|(x, y, z)| chunks.furnace_at(x, y, z))
-            .and_then(|furnace| furnace.slots.get(i).copied().flatten()),
-        Slot::Armor(i) => inventory.armor[i],
     }
 }
 

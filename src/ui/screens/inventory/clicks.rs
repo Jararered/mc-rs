@@ -6,9 +6,8 @@ use super::InventoryPanel;
 use super::LastInventoryClick;
 use super::Slot;
 use super::SlotDrag;
-use super::chest::collect_open_inventory;
+use super::access::SlotAccess;
 use super::chest::handle_chest_slots;
-use super::chest::mark_chest_dirty;
 use super::chest::read_chest_group_slots;
 use super::chest::write_chest_group_slots;
 use super::is_double_click;
@@ -145,6 +144,14 @@ pub(super) fn handle_slots(
     let Ok((player_transform, mut hotbar, mut inventory)) = player.single_mut() else {
         return;
     };
+    let mut access = SlotAccess {
+        screen: &screen,
+        hotbar: hotbar.reborrow(),
+        inventory: inventory.reborrow(),
+        workbench: &mut workbench,
+        chunks: &mut chunks,
+        persistence: persistence.as_deref_mut(),
+    };
     let cursor_outside_panel = windows
         .single()
         .is_ok_and(|window| window.cursor_position().is_some())
@@ -164,14 +171,9 @@ pub(super) fn handle_slots(
             &mut commands,
             &mut item_rng,
             player_transform,
-            &screen,
+            &mut access,
             hovered,
             drop_input,
-            &mut hotbar,
-            &mut inventory,
-            &mut workbench,
-            &mut chunks,
-            &mut persistence,
         ) {
             last_click.at = None;
             return;
@@ -179,15 +181,10 @@ pub(super) fn handle_slots(
     }
     if screen.chest {
         handle_chest_slots(
-            &screen,
+            &mut access,
             &mouse,
             &keys,
             &slots,
-            &mut hotbar,
-            &mut inventory,
-            &mut workbench,
-            &mut chunks,
-            &mut persistence,
             &mut drag,
             &mut last_click,
             time.elapsed_secs_f64(),
@@ -199,7 +196,7 @@ pub(super) fn handle_slots(
         .find_map(|(cursor, slot)| cursor.cursor_over().then_some(*slot));
     if keys.just_pressed(KeyCode::KeyS) && drag.button.is_none() {
         if matches!(hovered, Some(Slot::Main(_))) {
-            sort_main_inventory(&mut inventory);
+            sort_main_inventory(&mut access.inventory);
         }
         return;
     }
@@ -213,17 +210,23 @@ pub(super) fn handle_slots(
                 if !keys.just_pressed(*key) {
                     continue;
                 }
-                if let Some(furnace) = chunks.furnace_at_mut(position.0, position.1, position.2) {
-                    std::mem::swap(&mut furnace.slots[index], &mut hotbar.slots[hotbar_index]);
+                if let Some(furnace) = access
+                    .chunks
+                    .furnace_at_mut(position.0, position.1, position.2)
+                {
+                    std::mem::swap(
+                        &mut furnace.slots[index],
+                        &mut access.hotbar.slots[hotbar_index],
+                    );
                 }
             }
         } else if let Some(slot) = hovered.filter(|slot| !matches!(slot, Slot::Furnace(_))) {
             for (index, key) in HOTBAR_KEYS.iter().enumerate() {
                 if keys.just_pressed(*key) {
                     let _ = hotbar_key_swap(
-                        &mut inventory,
-                        &mut hotbar,
-                        Some(&mut workbench.grid),
+                        &mut access.inventory,
+                        &mut access.hotbar,
+                        Some(&mut access.workbench.grid),
                         false,
                         to_slot_id(slot),
                         index,
@@ -245,13 +248,14 @@ pub(super) fn handle_slots(
         }
         if drag.quick_move {
             if shift && let Some(slot) = hovered {
-                let moved = if let Some(furnace) =
-                    chunks.furnace_at_mut(position.0, position.1, position.2)
+                let moved = if let Some(furnace) = access
+                    .chunks
+                    .furnace_at_mut(position.0, position.1, position.2)
                 {
                     quick_move_drag_slot(
                         &mut drag.quick_move_visited,
-                        &mut inventory,
-                        &mut hotbar,
+                        &mut access.inventory,
+                        &mut access.hotbar,
                         None,
                         false,
                         None,
@@ -261,8 +265,8 @@ pub(super) fn handle_slots(
                 } else {
                     false
                 };
-                if moved && let Some(persistence) = persistence.as_deref_mut() {
-                    persistence.mark_dirty(ChunkPosition::from_block(position.0, position.2));
+                if moved {
+                    access.mark_dirty(ChunkPosition::from_block(position.0, position.2));
                 }
             }
             if mouse.pressed(MouseButton::Left) {
@@ -280,18 +284,9 @@ pub(super) fn handle_slots(
                 && !shift
                 && is_double_click(&mut last_click, &screen, slot, time.elapsed_secs_f64())
             {
-                collect_open_inventory(
-                    &screen,
-                    slot,
-                    &mut chunks,
-                    &mut hotbar,
-                    &mut inventory,
-                    &mut workbench,
-                );
-                if matches!(slot, Slot::Furnace(_))
-                    && let Some(persistence) = persistence.as_deref_mut()
-                {
-                    persistence.mark_dirty(ChunkPosition::from_block(position.0, position.2));
+                access.collect_open(slot);
+                if matches!(slot, Slot::Furnace(_)) {
+                    access.mark_dirty(ChunkPosition::from_block(position.0, position.2));
                 }
                 *drag = SlotDrag::default();
                 return;
@@ -300,25 +295,13 @@ pub(super) fn handle_slots(
                 last_click.at = None;
             }
             if shift {
-                shift_click_furnace(slot, position, &mut chunks, &mut hotbar, &mut inventory);
+                access.shift_click_furnace(slot, position);
             } else {
-                apply_furnace_click(
-                    slot,
-                    right,
-                    position,
-                    &mut chunks,
-                    &mut hotbar,
-                    &mut inventory,
-                    &mut workbench,
-                );
+                access.furnace_click(slot, right, position);
             }
-            if let Some(persistence) = persistence.as_deref_mut() {
-                persistence.mark_dirty(ChunkPosition::from_block(position.0, position.2));
-            }
+            access.mark_dirty(ChunkPosition::from_block(position.0, position.2));
         } else if hovered.is_some() && HOTBAR_KEYS.iter().any(|key| keys.just_pressed(*key)) {
-            if let Some(persistence) = persistence.as_deref_mut() {
-                persistence.mark_dirty(ChunkPosition::from_block(position.0, position.2));
-            }
+            access.mark_dirty(ChunkPosition::from_block(position.0, position.2));
         }
         *drag = SlotDrag::default();
         return;
@@ -328,9 +311,9 @@ pub(super) fn handle_slots(
             if keys.just_pressed(*key) {
                 *drag = SlotDrag::default();
                 let _ = hotbar_key_swap(
-                    &mut inventory,
-                    &mut hotbar,
-                    Some(&mut workbench.grid),
+                    &mut access.inventory,
+                    &mut access.hotbar,
+                    Some(&mut access.workbench.grid),
                     screen.workbench,
                     to_slot_id(slot),
                     index,
@@ -352,14 +335,7 @@ pub(super) fn handle_slots(
             && !shift
             && is_double_click(&mut last_click, &screen, slot, time.elapsed_secs_f64())
         {
-            collect_open_inventory(
-                &screen,
-                slot,
-                &mut chunks,
-                &mut hotbar,
-                &mut inventory,
-                &mut workbench,
-            );
+            access.collect_open(slot);
             *drag = SlotDrag::default();
             return;
         }
@@ -374,23 +350,16 @@ pub(super) fn handle_slots(
             drag.quick_move_visited.clear();
         } else if shift {
             let _ = shift_click_slot(
-                &mut inventory,
-                &mut hotbar,
-                Some(&mut workbench.grid),
+                &mut access.inventory,
+                &mut access.hotbar,
+                Some(&mut access.workbench.grid),
                 screen.workbench,
                 to_slot_id(slot),
             );
             return;
         }
-        if !drag.quick_move && inventory.carried.is_none() {
-            apply_click(
-                slot,
-                right,
-                screen.workbench,
-                &mut hotbar,
-                &mut inventory,
-                &mut workbench,
-            );
+        if !drag.quick_move && access.inventory.carried.is_none() {
+            access.click(slot, right, screen.workbench);
             return;
         }
         if !drag.quick_move {
@@ -410,9 +379,9 @@ pub(super) fn handle_slots(
         if shift && let Some(slot) = hovered {
             let _ = quick_move_drag_slot(
                 &mut drag.quick_move_visited,
-                &mut inventory,
-                &mut hotbar,
-                Some(&mut workbench.grid),
+                &mut access.inventory,
+                &mut access.hotbar,
+                Some(&mut access.workbench.grid),
                 screen.workbench,
                 None,
                 None,
@@ -426,7 +395,13 @@ pub(super) fn handle_slots(
         return;
     }
     if let Some(slot) = hovered {
-        remember_drag_slot(&mut drag, slot, &inventory, &hotbar, &workbench.grid);
+        remember_drag_slot(
+            &mut drag,
+            slot,
+            &access.inventory,
+            &access.hotbar,
+            &access.workbench.grid,
+        );
     }
     if mouse.pressed(button) {
         return;
@@ -442,9 +417,9 @@ pub(super) fn handle_slots(
     if painted.len() >= 2 {
         let ids: Vec<SlotId> = painted.into_iter().map(to_slot_id).collect();
         let _ = drag_place(
-            &mut inventory,
-            &mut hotbar,
-            Some(&mut workbench.grid),
+            &mut access.inventory,
+            &mut access.hotbar,
+            Some(&mut access.workbench.grid),
             &ids,
             mode,
         );
@@ -456,14 +431,7 @@ pub(super) fn handle_slots(
         origin
     });
     if let Some(slot) = click {
-        apply_click(
-            slot,
-            mode == DragPlace::OneEach,
-            screen.workbench,
-            &mut hotbar,
-            &mut inventory,
-            &mut workbench,
-        );
+        access.click(slot, mode == DragPlace::OneEach, screen.workbench);
     }
 }
 
@@ -489,55 +457,30 @@ impl DropInput {
 /// hovered slot, its whole stack with Control held, or every stack of that item
 /// with Control and Shift held. A click outside the inventory image throws the carried stack
 /// (left) or one item of it (right). Returns whether input was consumed.
-#[allow(clippy::too_many_arguments)]
 pub(super) fn drop_items(
     commands: &mut Commands,
     rng: &mut ItemRng,
     player: &Transform,
-    screen: &InventorySession,
+    access: &mut SlotAccess,
     hovered: Option<Slot>,
     input: DropInput,
-    hotbar: &mut Hotbar,
-    inventory: &mut Inventory,
-    workbench: &mut ActiveWorkbench,
-    chunks: &mut WorldChunks,
-    persistence: &mut Option<ResMut<WorldPersistence>>,
 ) -> bool {
     let thrown: Vec<ItemStack> = if input.key {
         let Some(slot) = hovered else {
             return false;
         };
         if input.whole_stack && input.shift {
-            take_all_matching(
-                screen,
-                slot,
-                hotbar,
-                inventory,
-                workbench,
-                chunks,
-                persistence,
-            )
+            access.take_all_matching(slot)
         } else {
             let count = if input.whole_stack { u8::MAX } else { 1 };
-            take_from_slot(
-                screen,
-                slot,
-                count,
-                hotbar,
-                inventory,
-                workbench,
-                chunks,
-                persistence,
-            )
-            .into_iter()
-            .collect()
+            access.take(slot, count).into_iter().collect()
         }
-    } else if input.shift || inventory.carried.is_none() || hovered.is_some() {
+    } else if input.shift || access.inventory.carried.is_none() || hovered.is_some() {
         return false;
     } else if input.left {
-        inventory.carried.take().into_iter().collect()
+        access.inventory.carried.take().into_iter().collect()
     } else if input.right {
-        take_from_stack(&mut inventory.carried, 1)
+        take_from_stack(&mut access.inventory.carried, 1)
             .into_iter()
             .collect()
     } else {
@@ -550,116 +493,91 @@ pub(super) fn drop_items(
     for stack in thrown {
         spawn_thrown_item(commands, rng, player, *player.forward(), stack);
     }
-    if let Some(persistence) = persistence.as_deref_mut() {
-        persistence.mark_dirty(ChunkPosition::from_block(
-            player.translation.x.floor() as i32,
-            player.translation.z.floor() as i32,
-        ));
-    }
+    access.mark_dirty(ChunkPosition::from_block(
+        player.translation.x.floor() as i32,
+        player.translation.z.floor() as i32,
+    ));
     true
 }
 
-/// Every stack of the hovered slot's item: across the hotbar and main storage
-/// for those slots, or across the container for a chest slot. Other slots give
-/// up just their own stack.
-pub(super) fn take_all_matching(
-    screen: &InventorySession,
-    slot: Slot,
-    hotbar: &mut Hotbar,
-    inventory: &mut Inventory,
-    workbench: &mut ActiveWorkbench,
-    chunks: &mut WorldChunks,
-    persistence: &mut Option<ResMut<WorldPersistence>>,
-) -> Vec<ItemStack> {
-    match slot {
-        Slot::Hotbar(_) | Slot::Main(_) => {
-            let template = match slot {
-                Slot::Hotbar(i) => hotbar.slots.get(i).copied().flatten(),
-                Slot::Main(i) => inventory.main.get(i).copied().flatten(),
-                _ => None,
-            };
-            let Some(template) = template else {
-                return Vec::new();
-            };
-            take_matching_stacks(
-                hotbar.slots.iter_mut().chain(inventory.main.iter_mut()),
-                template,
-            )
+impl SlotAccess<'_> {
+    /// Every stack of the hovered slot's item: across the hotbar and main storage
+    /// for those slots, or across the container for a chest slot. Other slots give
+    /// up just their own stack.
+    pub(super) fn take_all_matching(&mut self, slot: Slot) -> Vec<ItemStack> {
+        match slot {
+            Slot::Hotbar(_) | Slot::Main(_) => {
+                let template = match slot {
+                    Slot::Hotbar(i) => self.hotbar.slots.get(i).copied().flatten(),
+                    Slot::Main(i) => self.inventory.main.get(i).copied().flatten(),
+                    _ => None,
+                };
+                let Some(template) = template else {
+                    return Vec::new();
+                };
+                take_matching_stacks(
+                    self.hotbar
+                        .slots
+                        .iter_mut()
+                        .chain(self.inventory.main.iter_mut()),
+                    template,
+                )
+            }
+            Slot::Chest(i) => {
+                let Some(group) = self.screen.chest_group else {
+                    return Vec::new();
+                };
+                let mut chest_slots = read_chest_group_slots(self.chunks, group);
+                let Some(template) = chest_slots.get(i).copied().flatten() else {
+                    return Vec::new();
+                };
+                let taken = take_matching_stacks(chest_slots.iter_mut(), template);
+                write_chest_group_slots(self.chunks, group, &chest_slots);
+                self.mark_chest_dirty(group);
+                taken
+            }
+            _ => self.take(slot, u8::MAX).into_iter().collect(),
         }
-        Slot::Chest(i) => {
-            let Some(group) = screen.chest_group else {
-                return Vec::new();
-            };
-            let mut chest_slots = read_chest_group_slots(chunks, group);
-            let Some(template) = chest_slots.get(i).copied().flatten() else {
-                return Vec::new();
-            };
-            let taken = take_matching_stacks(chest_slots.iter_mut(), template);
-            write_chest_group_slots(chunks, group, &chest_slots);
-            mark_chest_dirty(persistence, group);
-            taken
-        }
-        _ => take_from_slot(
-            screen,
-            slot,
-            u8::MAX,
-            hotbar,
-            inventory,
-            workbench,
-            chunks,
-            persistence,
-        )
-        .into_iter()
-        .collect(),
     }
-}
 
-#[allow(clippy::too_many_arguments)]
-pub(super) fn take_from_slot(
-    screen: &InventorySession,
-    slot: Slot,
-    count: u8,
-    hotbar: &mut Hotbar,
-    inventory: &mut Inventory,
-    workbench: &mut ActiveWorkbench,
-    chunks: &mut WorldChunks,
-    persistence: &mut Option<ResMut<WorldPersistence>>,
-) -> Option<ItemStack> {
-    match slot {
-        Slot::Hotbar(i) => take_from_stack(hotbar.slots.get_mut(i)?, count),
-        Slot::Main(i) => take_from_stack(inventory.main.get_mut(i)?, count),
-        Slot::Craft(i) => take_from_stack(inventory.crafting.get_mut(i)?, count),
-        Slot::Armor(i) => take_from_stack(inventory.armor.get_mut(i)?, count),
-        Slot::Workbench(i) if screen.workbench => {
-            let (x, y) = (i % 3, i / 3);
-            let mut value = workbench.grid.get(x, y);
-            let taken = take_from_stack(&mut value, count);
-            workbench.grid.set(x, y, value);
-            taken
-        }
-        Slot::Furnace(i) if screen.furnace => {
-            let position = screen.furnace_position?;
-            let furnace = chunks.furnace_at_mut(position.0, position.1, position.2)?;
-            let taken = take_from_stack(furnace.slots.get_mut(i)?, count);
-            if taken.is_some()
-                && let Some(persistence) = persistence.as_deref_mut()
-            {
-                persistence.mark_dirty(ChunkPosition::from_block(position.0, position.2));
+    /// Up to `count` items out of `slot`.
+    pub(super) fn take(&mut self, slot: Slot, count: u8) -> Option<ItemStack> {
+        match slot {
+            Slot::Hotbar(i) => take_from_stack(self.hotbar.slots.get_mut(i)?, count),
+            Slot::Main(i) => take_from_stack(self.inventory.main.get_mut(i)?, count),
+            Slot::Craft(i) => take_from_stack(self.inventory.crafting.get_mut(i)?, count),
+            Slot::Armor(i) => take_from_stack(self.inventory.armor.get_mut(i)?, count),
+            Slot::Workbench(i) if self.screen.workbench => {
+                let (x, y) = (i % 3, i / 3);
+                let mut value = self.workbench.grid.get(x, y);
+                let taken = take_from_stack(&mut value, count);
+                self.workbench.grid.set(x, y, value);
+                taken
             }
-            taken
-        }
-        Slot::Chest(i) => {
-            let group = screen.chest_group?;
-            let mut chest_slots = read_chest_group_slots(chunks, group);
-            let taken = take_from_stack(chest_slots.get_mut(i)?, count);
-            if taken.is_some() {
-                write_chest_group_slots(chunks, group, &chest_slots);
-                mark_chest_dirty(persistence, group);
+            Slot::Furnace(i) if self.screen.furnace => {
+                let position = self.screen.furnace_position?;
+                let furnace = self
+                    .chunks
+                    .furnace_at_mut(position.0, position.1, position.2)?;
+                let taken = take_from_stack(furnace.slots.get_mut(i)?, count);
+                if taken.is_some() {
+                    self.mark_dirty(ChunkPosition::from_block(position.0, position.2));
+                }
+                taken
             }
-            taken
+            Slot::Chest(i) => {
+                let group = self.screen.chest_group?;
+                let mut chest_slots = read_chest_group_slots(self.chunks, group);
+                let taken = take_from_stack(chest_slots.get_mut(i)?, count);
+                if taken.is_some() {
+                    write_chest_group_slots(self.chunks, group, &chest_slots);
+                    self.mark_chest_dirty(group);
+                }
+                taken
+            }
+            // Throwing the result would skip consuming the ingredients.
+            Slot::CraftResult | Slot::Workbench(_) | Slot::Furnace(_) => None,
         }
-        // Throwing the result would skip consuming the ingredients.
-        Slot::CraftResult | Slot::Workbench(_) | Slot::Furnace(_) => None,
     }
 }
 
@@ -700,57 +618,72 @@ pub(super) fn to_slot_id(slot: Slot) -> SlotId {
     }
 }
 
-pub(super) fn apply_furnace_click(
-    slot: Slot,
-    right: bool,
-    position: (i32, i32, i32),
-    chunks: &mut WorldChunks,
-    hotbar: &mut Hotbar,
-    inventory: &mut Inventory,
-    workbench: &mut ActiveWorkbench,
-) {
-    let Some(furnace) = chunks.furnace_at_mut(position.0, position.1, position.2) else {
-        return;
-    };
-    match slot {
-        Slot::Furnace(index) if index < 2 => {
-            click_slot(&mut furnace.slots[index], &mut inventory.carried, right);
-        }
-        Slot::Furnace(2) => {
-            if inventory.carried.is_some() {
-                return;
+impl SlotAccess<'_> {
+    pub(super) fn furnace_click(&mut self, slot: Slot, right: bool, position: (i32, i32, i32)) {
+        let Self {
+            hotbar,
+            inventory,
+            workbench,
+            chunks,
+            ..
+        } = self;
+        let Some(furnace) = chunks.furnace_at_mut(position.0, position.1, position.2) else {
+            return;
+        };
+        match slot {
+            Slot::Furnace(index) if index < 2 => {
+                click_slot(&mut furnace.slots[index], &mut inventory.carried, right);
             }
-            let Some(stack) = furnace.slots[2] else {
-                return;
-            };
-            let count = if right {
-                stack.count().div_ceil(2)
-            } else {
-                stack.count()
-            };
-            inventory.carried = ItemStack::with_data(stack.item(), count, stack.data()).ok();
-            furnace.slots[2] =
-                ItemStack::with_data(stack.item(), stack.count() - count, stack.data()).ok();
+            Slot::Furnace(2) => {
+                if inventory.carried.is_some() {
+                    return;
+                }
+                let Some(stack) = furnace.slots[2] else {
+                    return;
+                };
+                let count = if right {
+                    stack.count().div_ceil(2)
+                } else {
+                    stack.count()
+                };
+                inventory.carried = ItemStack::with_data(stack.item(), count, stack.data()).ok();
+                furnace.slots[2] =
+                    ItemStack::with_data(stack.item(), stack.count() - count, stack.data()).ok();
+            }
+            Slot::Furnace(_) => {}
+            _ => click_player_slot(slot, right, false, hotbar, inventory, workbench),
         }
-        Slot::Furnace(_) => {}
-        _ => apply_click(slot, right, false, hotbar, inventory, workbench),
+    }
+
+    pub(super) fn shift_click_furnace(&mut self, slot: Slot, position: (i32, i32, i32)) -> bool {
+        let Some(furnace) = self
+            .chunks
+            .furnace_at_mut(position.0, position.1, position.2)
+        else {
+            return false;
+        };
+        shift_click_furnace_slot(
+            &mut self.inventory,
+            &mut self.hotbar,
+            &mut furnace.slots,
+            to_slot_id(slot),
+        )
+    }
+
+    /// A click on a slot of the player's own inventory or the workbench grid.
+    pub(super) fn click(&mut self, slot: Slot, right: bool, workbench_open: bool) {
+        click_player_slot(
+            slot,
+            right,
+            workbench_open,
+            &mut self.hotbar,
+            &mut self.inventory,
+            self.workbench,
+        );
     }
 }
 
-pub(super) fn shift_click_furnace(
-    slot: Slot,
-    position: (i32, i32, i32),
-    chunks: &mut WorldChunks,
-    hotbar: &mut Hotbar,
-    inventory: &mut Inventory,
-) -> bool {
-    let Some(furnace) = chunks.furnace_at_mut(position.0, position.1, position.2) else {
-        return false;
-    };
-    shift_click_furnace_slot(inventory, hotbar, &mut furnace.slots, to_slot_id(slot))
-}
-
-pub(super) fn apply_click(
+fn click_player_slot(
     slot: Slot,
     right: bool,
     workbench_open: bool,

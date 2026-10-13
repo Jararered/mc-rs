@@ -4,7 +4,6 @@ use bevy::picking::prelude::Pickable;
 use bevy::prelude::*;
 use bevy::text::FontSize;
 use bevy::text::FontSource;
-use bevy::text::LineHeight;
 
 use super::inventory::durability_bar;
 use crate::app::settings::GameSettings;
@@ -27,12 +26,13 @@ use crate::player::PlayerCamera;
 use crate::player::PlayerHealth;
 use crate::player::PlayerSurvival;
 use crate::rendering::icons::BlockIcons;
+use crate::ui::icons::overlay::LabelPlacement;
+use crate::ui::icons::overlay::StackLabel;
+use crate::ui::icons::overlay::StackLabelBundle;
 use crate::ui::icons::overlay::UiFont;
 use crate::ui::icons::overlay::count_label;
 use crate::ui::icons::overlay::durability_track;
 use crate::ui::icons::overlay::icon_size;
-use crate::ui::icons::overlay::place_stack_label;
-use crate::ui::icons::overlay::sync_stack_label;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
 use crate::world::tick::WorldTick;
@@ -536,36 +536,18 @@ fn spawn_hotbar_item(
     } else {
         hotbar_label(stack)
     };
-    let mut text = Text::new(label.clone());
-    let mut node = Node::default();
-    let mut layout = TextLayout::default();
-    let mut text_font = TextFont::default();
-    let mut line_height = LineHeight::default();
-    let mut shadow = TextShadow::default();
-    place_stack_label(
-        scale,
-        &mut text,
-        &mut node,
-        &mut layout,
-        &mut text_font,
-        &mut line_height,
-        &mut shadow,
-        font,
-        left,
-        top,
-        &label,
-        has_icon,
-    );
     parent.spawn((
         HotbarItem(index),
         Pickable::IGNORE,
-        text,
-        text_font,
-        layout,
-        line_height,
         TextColor(Color::WHITE),
-        shadow,
-        node,
+        StackLabelBundle::placed(LabelPlacement {
+            scale,
+            font,
+            icon_left: left,
+            icon_top: top,
+            label: &label,
+            has_icon,
+        }),
     ));
 }
 
@@ -667,15 +649,7 @@ fn update_hotbar_selector(
 
 fn update_hotbar_items(
     hotbar: Query<Ref<Hotbar>, With<LocalPlayer>>,
-    mut labels: Query<(
-        &HotbarItem,
-        &mut Text,
-        &mut Node,
-        &mut TextLayout,
-        &mut TextFont,
-        &mut LineHeight,
-        &mut TextShadow,
-    )>,
+    mut labels: Query<(&HotbarItem, StackLabel)>,
     icons: Res<BlockIcons>,
     font: Res<UiFont>,
     settings: Res<GameSettings>,
@@ -687,33 +661,25 @@ fn update_hotbar_items(
     if !hotbar.is_changed() && !icons.is_changed() {
         return;
     }
-    for (item, mut text, mut node, mut layout, mut text_font, mut line_height, mut shadow) in
-        &mut labels
-    {
+    for (item, mut label) in &mut labels {
         let stack = hotbar.slots[item.0];
         let has_icon = stack
             .and_then(|stack| icons.rect_for_stack(stack))
             .is_some();
-        let label = if has_icon {
+        let label_text = if has_icon {
             count_label(stack)
         } else {
             hotbar_label(stack)
         };
         let (left, top) = hotbar_item_rect(scale, item.0);
-        sync_stack_label(
-            scale,
-            &mut text,
-            &mut node,
-            &mut layout,
-            &mut text_font,
-            &mut line_height,
-            &mut shadow,
-            &font.minecraft,
-            left,
-            top,
-            &label,
-            has_icon,
-        );
+        label.sync(LabelPlacement {
+            scale: scale,
+            font: &font.minecraft,
+            icon_left: left,
+            icon_top: top,
+            label: &label_text,
+            has_icon: has_icon,
+        });
     }
 }
 

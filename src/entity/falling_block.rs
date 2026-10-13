@@ -22,8 +22,7 @@ use crate::world::block_ticks::behaviors::falling::can_fall_below;
 use crate::world::block_ticks::behaviors::falling::can_land_in;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
-use crate::world::persistence::WorldPersistence;
-use crate::world::streaming::WorldStreaming;
+use crate::world::edit::WorldEdit;
 use crate::world::tick::WorldTick;
 
 /// `setSize(0.98F, 0.98F)`, centered on the entity position.
@@ -163,10 +162,7 @@ fn write_block(
 pub(crate) fn tick_falling_blocks(
     mut commands: Commands,
     tick: Res<WorldTick>,
-    mut chunks: ResMut<WorldChunks>,
-    mut ticks: ResMut<BlockTicks>,
-    mut streaming: Option<ResMut<WorldStreaming>>,
-    mut persistence: Option<ResMut<WorldPersistence>>,
+    mut edit: WorldEdit,
     mut falling: Query<(Entity, &mut FallingBlock, &mut Transform, &mut PreviousTick)>,
     mut rng: Local<ItemRng>,
     mut edits: Local<Vec<IVec3>>,
@@ -176,6 +172,10 @@ pub(crate) fn tick_falling_blocks(
         return;
     }
     edits.clear();
+    let WorldEdit { chunks, ticks, .. } = &mut edit;
+    let Some(ticks) = ticks.as_deref_mut() else {
+        return;
+    };
     for (entity, mut block, mut transform, mut previous) in &mut falling {
         let position = transform.translation;
         if !chunks.contains(ChunkPosition::from_world(position.x, position.z)) {
@@ -185,8 +185,7 @@ pub(crate) fn tick_falling_blocks(
         let mut outcome = FallingStep::Falling;
         for _ in 0..count {
             previous.0 = center;
-            outcome =
-                step_falling_block(&mut block, &mut center, &mut chunks, &mut ticks, &mut edits);
+            outcome = step_falling_block(&mut block, &mut center, chunks, ticks, &mut edits);
             if outcome != FallingStep::Falling {
                 break;
             }
@@ -205,11 +204,6 @@ pub(crate) fn tick_falling_blocks(
         }
     }
     for cell in edits.drain(..) {
-        if let Some(persistence) = persistence.as_deref_mut() {
-            persistence.mark_dirty(ChunkPosition::from_block(cell.x, cell.z));
-        }
-        if let Some(streaming) = streaming.as_deref_mut() {
-            streaming.request_block_update(cell.x, cell.y, cell.z);
-        }
+        edit.notify(cell.x, cell.y, cell.z, false);
     }
 }

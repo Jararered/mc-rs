@@ -150,7 +150,6 @@ pub fn boat_rotation(yaw: f32, rock: f32) -> Quat {
     Quat::from_rotation_y((180.0 - yaw).to_radians()) * Quat::from_rotation_x(rock.to_radians())
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(super) fn pose_boats(
     tick: Res<WorldTick>,
     chunks: Res<WorldChunks>,

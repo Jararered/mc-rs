@@ -203,21 +203,25 @@ its definition, placement, and rendering before its behavior matters.
 
 Anything that writes `WorldChunks` directly — player editing, the falling
 block entity, furnaces changing their lit state — bypasses the hooks, so it
-must report the write:
+must report the write. A system takes `world::edit::WorldEdit` for that:
 
 ```rust
-let metadata = chunks.metadata_at(x, y, z);
-if let Some(previous) = chunks.set_block(x, y, z, block) {
-    ticks.block_changed(IVec3::new(x, y, z), previous, metadata);
+fn system(mut edit: WorldEdit) {
+    let metadata = edit.chunks.metadata_at(x, y, z);
+    if let Some(previous) = edit.chunks.set_block(x, y, z, block) {
+        edit.changed(IVec3::new(x, y, z), previous, metadata);
+    }
 }
 ```
 
-The next tick pass runs the old block's `on_removed`, the new block's
-`on_added`, and notifies the neighbors, as `setBlockWithNotify` would have.
-Interactions go through `BlockEvent::{Clicked, Activated, Walked,
-Harvested}`. Streaming and persistence still need their own
-`request_block_update` / `mark_dirty` calls for such writes; changes made
-inside the tick pass get them automatically.
+`changed` is `BlockTicks::block_changed` plus streaming's
+`request_block_update` and persistence's `mark_dirty`. The next tick pass
+runs the old block's `on_removed`, the new block's `on_added`, and notifies
+the neighbors, as `setBlockWithNotify` would have. Interactions go through
+`edit.push_event(BlockEvent::{Clicked, Activated, Walked, Harvested})`, with
+`edit.notify` for the remesh and save. Code that has a `World` rather than
+system parameters makes the three calls itself; changes made inside the tick
+pass get them automatically.
 
 ## Effects
 

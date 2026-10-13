@@ -6,6 +6,7 @@ use crate::inventory::SlotId;
 use crate::inventory::session::ActiveWorkbench;
 use crate::inventory::session::InventorySession;
 
+mod access;
 mod chest;
 mod clicks;
 mod refresh;

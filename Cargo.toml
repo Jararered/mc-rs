@@ -100,10 +100,10 @@ libc = "0.2"
 # Groups at a lower priority so per-lint allows below can override them.
 all = { level = "warn", priority = -1 }
 pedantic = { level = "warn", priority = -1 }
-# Bevy `SystemParam` queries and systems trip these constantly; leave them off
-# so the rest of `clippy::all` stays usable.
+# Bevy `SystemParam` queries trip this constantly; leave it off so the rest of
+# `clippy::all` stays usable. Systems are wide too, so `too_many_arguments` is
+# on with its threshold raised in `clippy.toml` rather than allowed outright.
 type_complexity = "allow"
-too_many_arguments = "allow"
 
 # Tests live under `tests/`, never in `src/`, so skip the empty unit-test and
 # doctest harnesses; each one would be another Bevy link. The lib crate stays

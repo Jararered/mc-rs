@@ -441,17 +441,14 @@ fn tick_spawners(
                     (y + rng.next_int(3) as i32 - 1) as f32,
                     z as f32 + (rng.next_double() - rng.next_double()) as f32 * 4.0,
                 );
-                if can_spawn_at(
-                    spawner.kind,
-                    1,
-                    feet,
-                    &chunks,
-                    &light,
-                    tick.world_time(),
-                    weather.as_deref(),
-                    persistence.as_ref().map_or(0, |p| p.seed()),
-                    &mut rng,
-                ) {
+                let site = SpawnSite {
+                    chunks: &chunks,
+                    light: &light,
+                    tick: tick.world_time(),
+                    weather: weather.as_deref(),
+                    seed: persistence.as_ref().map_or(0, |p| p.seed()),
+                };
+                if site.can_spawn(spawner.kind, 1, feet, &mut rng) {
                     requests.write(SpawnMob {
                         kind: spawner.kind,
                         feet,
@@ -618,83 +615,97 @@ pub fn spawn_table(biome: Biome, category: SpawnCategory) -> &'static [(MobType,
     }
 }
 
-pub fn can_spawn_at(
-    kind: MobType,
-    variant: u8,
-    feet: Vec3,
-    chunks: &WorldChunks,
-    light: &LightCache,
-    tick: u64,
-    weather: Option<&crate::world::weather::WorldWeather>,
-    seed: u64,
-    rng: &mut JavaRandom,
-) -> bool {
-    let x = feet.x.floor() as i32;
-    let y = feet.y.floor() as i32;
-    let z = feet.z.floor() as i32;
-    if !(1..CHUNK_HEIGHT as i32 - 2).contains(&y) {
-        return false;
-    }
-    let size = kind.size(variant);
-    let aabb = size.aabb(feet);
-    let low = aabb.min.floor().as_ivec3();
-    let high = aabb.max.ceil().as_ivec3();
-    for bx in low.x..high.x {
-        for by in low.y..high.y {
-            for bz in low.z..high.z {
-                let Some(block) = chunks.block_at(bx, by, bz) else {
-                    return false;
-                };
-                if kind == MobType::Squid {
-                    if by == y && !matches!(block, Block::Water | Block::WaterFlowing) {
+/// What `getCanSpawnHere` reads of the world.
+#[derive(Clone, Copy)]
+pub struct SpawnSite<'a> {
+    pub chunks: &'a WorldChunks,
+    pub light: &'a LightCache,
+    /// `WorldTick::world_time`, for the sun's height.
+    pub tick: u64,
+    pub weather: Option<&'a crate::world::weather::WorldWeather>,
+    /// The world seed, which picks the slime chunks.
+    pub seed: u64,
+}
+
+impl SpawnSite<'_> {
+    /// `getCanSpawnHere` for a `kind` standing at `feet`.
+    pub fn can_spawn(&self, kind: MobType, variant: u8, feet: Vec3, rng: &mut JavaRandom) -> bool {
+        let Self {
+            chunks,
+            light,
+            tick,
+            weather,
+            seed,
+        } = *self;
+        let x = feet.x.floor() as i32;
+        let y = feet.y.floor() as i32;
+        let z = feet.z.floor() as i32;
+        if !(1..CHUNK_HEIGHT as i32 - 2).contains(&y) {
+            return false;
+        }
+        let size = kind.size(variant);
+        let aabb = size.aabb(feet);
+        let low = aabb.min.floor().as_ivec3();
+        let high = aabb.max.ceil().as_ivec3();
+        for bx in low.x..high.x {
+            for by in low.y..high.y {
+                for bz in low.z..high.z {
+                    let Some(block) = chunks.block_at(bx, by, bz) else {
+                        return false;
+                    };
+                    if kind == MobType::Squid {
+                        if by == y && !matches!(block, Block::Water | Block::WaterFlowing) {
+                            return false;
+                        }
+                    } else if block.collision_bounds().is_some()
+                        || matches!(
+                            block,
+                            Block::Water | Block::WaterFlowing | Block::Lava | Block::LavaFlowing
+                        )
+                    {
                         return false;
                     }
-                } else if block.collision_bounds().is_some()
-                    || matches!(
-                        block,
-                        Block::Water | Block::WaterFlowing | Block::Lava | Block::LavaFlowing
-                    )
-                {
-                    return false;
                 }
             }
         }
+        if kind == MobType::Squid {
+            return true;
+        }
+        if !(chunks.block_at(x, y - 1, z).unwrap_or(Block::Air)).is_opaque_cube() {
+            return false;
+        }
+        if kind == MobType::Slime {
+            // Chunk.getRandomWithSeed(987234911L), independent of the spawn RNG.
+            let pos = ChunkPosition::from_block(x, z);
+            let coord = (i64::from(pos.x.wrapping_mul(pos.x).wrapping_mul(4_987_142))
+                .wrapping_add(i64::from(pos.x.wrapping_mul(5_947_611)))
+                .wrapping_add(i64::from(pos.z.wrapping_mul(pos.z)).wrapping_mul(4_392_871))
+                .wrapping_add(i64::from(pos.z.wrapping_mul(389_711))))
+                as u64;
+            return y < 16
+                && rng.next_int(10) == 0
+                && JavaRandom::new(seed.wrapping_add(coord) ^ 987_234_911).next_int(10) == 0;
+        }
+        match kind {
+            // `EntityGhast.getCanSpawnHere`: one attempt in twenty, with no
+            // light test.
+            MobType::Ghast => return rng.next_int(20) == 0,
+            // `EntityPigZombie.getCanSpawnHere` skips `EntityMob`'s light test.
+            MobType::PigZombie => return true,
+            _ => {}
+        }
+        let Some((sky, block)) = light.channels(x, y, z) else {
+            return false;
+        };
+        let subtracted =
+            crate::world::weather::skylight_subtracted(weather, celestial_angle(tick, 0.0));
+        if !kind.hostile() {
+            return chunks.block_at(x, y - 1, z) == Some(Block::Grass)
+                && combined_light(sky, block, subtracted) > 8;
+        }
+        sky <= rng.next_int(32) as u8
+            && combined_light(sky, block, subtracted) <= rng.next_int(8) as u8
     }
-    if kind == MobType::Squid {
-        return true;
-    }
-    if !(chunks.block_at(x, y - 1, z).unwrap_or(Block::Air)).is_opaque_cube() {
-        return false;
-    }
-    if kind == MobType::Slime {
-        // Chunk.getRandomWithSeed(987234911L), independent of the spawn RNG.
-        let pos = ChunkPosition::from_block(x, z);
-        let coord = (i64::from(pos.x.wrapping_mul(pos.x).wrapping_mul(4_987_142))
-            .wrapping_add(i64::from(pos.x.wrapping_mul(5_947_611)))
-            .wrapping_add(i64::from(pos.z.wrapping_mul(pos.z)).wrapping_mul(4_392_871))
-            .wrapping_add(i64::from(pos.z.wrapping_mul(389_711)))) as u64;
-        return y < 16
-            && rng.next_int(10) == 0
-            && JavaRandom::new(seed.wrapping_add(coord) ^ 987_234_911).next_int(10) == 0;
-    }
-    match kind {
-        // `EntityGhast.getCanSpawnHere`: one attempt in twenty, with no
-        // light test.
-        MobType::Ghast => return rng.next_int(20) == 0,
-        // `EntityPigZombie.getCanSpawnHere` skips `EntityMob`'s light test.
-        MobType::PigZombie => return true,
-        _ => {}
-    }
-    let Some((sky, block)) = light.channels(x, y, z) else {
-        return false;
-    };
-    let subtracted =
-        crate::world::weather::skylight_subtracted(weather, celestial_angle(tick, 0.0));
-    if !kind.hostile() {
-        return chunks.block_at(x, y - 1, z) == Some(Block::Grass)
-            && combined_light(sky, block, subtracted) > 8;
-    }
-    sky <= rng.next_int(32) as u8 && combined_light(sky, block, subtracted) <= rng.next_int(8) as u8
 }
 
 fn natural_spawning(
@@ -719,18 +730,21 @@ fn natural_spawning(
         return;
     }
     let start = std::time::Instant::now();
+    let site = SpawnSite {
+        chunks: &chunks,
+        light: &light,
+        tick: tick.world_time(),
+        weather: weather.as_deref(),
+        seed: persistence.as_ref().map_or(0, |p| p.seed()),
+    };
     spawn_naturally(
+        site,
         &mut eligible,
-        &tick,
-        &chunks,
-        &light,
-        weather.as_deref(),
         settings.as_deref(),
         &players,
         &mobs,
         &mut requests,
         &mut random,
-        persistence.as_deref(),
     );
     if let Some(diagnostics) = diagnostics.as_deref_mut() {
         diagnostics.spawning.record(start.elapsed());
@@ -738,20 +752,16 @@ fn natural_spawning(
 }
 
 /// `SpawnerAnimals.performSpawning`.
-#[allow(clippy::too_many_arguments)]
 fn spawn_naturally(
+    site: SpawnSite,
     eligible: &mut Vec<(ChunkPosition, bool)>,
-    tick: &WorldTick,
-    chunks: &WorldChunks,
-    light: &LightCache,
-    weather: Option<&crate::world::weather::WorldWeather>,
     settings: Option<&GameSettings>,
     players: &[Vec3],
     mobs: &Query<(&Mob, &Transform)>,
     requests: &mut MessageWriter<SpawnMob>,
     random: &mut MobRandom,
-    persistence: Option<&crate::world::persistence::WorldPersistence>,
 ) {
+    let SpawnSite { chunks, light, .. } = site;
     let radius = settings.as_ref().map_or(4, |s| s.render_distance.min(8));
     let difficulty = settings
         .as_ref()
@@ -796,9 +806,8 @@ fn spawn_naturally(
     }
     // The chunks are in grid order, so start somewhere new each tick: a
     // category near its cap would otherwise always fill the same corner.
-    let first = tick.world_time() as usize % eligible.len();
+    let first = site.tick as usize % eligible.len();
     let world_spawn = default_spawn_feet(chunks);
-    let seed = persistence.as_ref().map_or(0, |p| p.seed());
     for category in [
         SpawnCategory::Monster,
         SpawnCategory::Creature,
@@ -872,17 +881,7 @@ fn spawn_naturally(
                     .iter()
                     .any(|player| feet.distance_squared(*player) < 576.0)
                     || feet.distance_squared(world_spawn) < 576.0
-                    || !can_spawn_at(
-                        kind,
-                        variant as u8,
-                        feet,
-                        &chunks,
-                        &light,
-                        tick.world_time(),
-                        weather,
-                        seed,
-                        &mut random.0,
-                    )
+                    || !site.can_spawn(kind, variant as u8, feet, &mut random.0)
                 {
                     continue;
                 }

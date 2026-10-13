@@ -5,7 +5,7 @@ use super::HOTBAR_KEYS;
 use super::LastInventoryClick;
 use super::Slot;
 use super::SlotDrag;
-use super::clicks::apply_click;
+use super::access::SlotAccess;
 use super::clicks::click_slot;
 use super::clicks::to_slot_id;
 use super::is_double_click;
@@ -19,34 +19,25 @@ use crate::inventory::collect_matching_stacks;
 use crate::inventory::hotbar_key_swap_chest;
 use crate::inventory::quick_move_drag_slot;
 use crate::inventory::session::ActiveWorkbench;
-use crate::inventory::session::InventorySession;
 use crate::inventory::shift_click_chest_slot;
 use crate::inventory::sort_container_slots;
 use crate::inventory::sort_main_inventory;
 use crate::item::ItemStack;
 use crate::world::chunk::ChestGroup;
-use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
-use crate::world::persistence::WorldPersistence;
 use bevy::prelude::*;
 use bevy::ui::RelativeCursorPosition;
 
-#[allow(clippy::too_many_arguments)]
 pub(super) fn handle_chest_slots(
-    screen: &InventorySession,
+    access: &mut SlotAccess,
     mouse: &ButtonInput<MouseButton>,
     keys: &ButtonInput<KeyCode>,
     slots: &Query<(&RelativeCursorPosition, &Slot)>,
-    hotbar: &mut Hotbar,
-    inventory: &mut Inventory,
-    workbench: &mut ActiveWorkbench,
-    chunks: &mut WorldChunks,
-    persistence: &mut Option<ResMut<WorldPersistence>>,
     drag: &mut SlotDrag,
     last_click: &mut LastInventoryClick,
     now: f64,
 ) {
-    let Some(group) = screen.chest_group else {
+    let Some(group) = access.screen.chest_group else {
         return;
     };
     let hovered = slots
@@ -57,28 +48,28 @@ pub(super) fn handle_chest_slots(
         for (index, key) in HOTBAR_KEYS.iter().enumerate() {
             if keys.just_pressed(*key) {
                 *drag = SlotDrag::default();
-                let mut chest_slots = read_chest_group_slots(chunks, group);
+                let mut chest_slots = read_chest_group_slots(access.chunks, group);
                 let _ = hotbar_key_swap_chest(
-                    inventory,
-                    hotbar,
+                    &mut access.inventory,
+                    &mut access.hotbar,
                     &mut chest_slots,
                     to_slot_id(slot),
                     index,
                 );
-                write_chest_group_slots(chunks, group, &chest_slots);
-                mark_chest_dirty(persistence, group);
+                write_chest_group_slots(access.chunks, group, &chest_slots);
+                access.mark_chest_dirty(group);
             }
         }
     }
     if keys.just_pressed(KeyCode::KeyS) && drag.button.is_none() {
         match hovered {
             Some(Slot::Chest(_)) => {
-                let mut chest_slots = read_chest_group_slots(chunks, group);
+                let mut chest_slots = read_chest_group_slots(access.chunks, group);
                 sort_container_slots(&mut chest_slots);
-                write_chest_group_slots(chunks, group, &chest_slots);
-                mark_chest_dirty(persistence, group);
+                write_chest_group_slots(access.chunks, group, &chest_slots);
+                access.mark_chest_dirty(group);
             }
-            Some(Slot::Main(_)) => sort_main_inventory(inventory),
+            Some(Slot::Main(_)) => sort_main_inventory(&mut access.inventory),
             _ => {}
         }
         return;
@@ -93,14 +84,14 @@ pub(super) fn handle_chest_slots(
             return;
         };
         let right = right && !left;
-        if !right && !shift && is_double_click(last_click, screen, slot, now) {
+        if !right && !shift && is_double_click(last_click, access.screen, slot, now) {
             if matches!(slot, Slot::Chest(_)) {
-                let mut chest_slots = read_chest_group_slots(chunks, group);
-                collect_matching_stacks(&mut inventory.carried, &mut chest_slots);
-                write_chest_group_slots(chunks, group, &chest_slots);
-                mark_chest_dirty(persistence, group);
+                let mut chest_slots = read_chest_group_slots(access.chunks, group);
+                collect_matching_stacks(&mut access.inventory.carried, &mut chest_slots);
+                write_chest_group_slots(access.chunks, group, &chest_slots);
+                access.mark_chest_dirty(group);
             } else {
-                collect_storage_stacks(inventory, hotbar);
+                collect_storage_stacks(&mut access.inventory, &mut access.hotbar);
             }
             *drag = SlotDrag::default();
             return;
@@ -115,15 +106,20 @@ pub(super) fn handle_chest_slots(
             drag.quick_move = true;
             drag.quick_move_visited.clear();
         } else if shift {
-            let mut chest_slots = read_chest_group_slots(chunks, group);
-            let _ = shift_click_chest_slot(inventory, hotbar, &mut chest_slots, to_slot_id(slot));
-            write_chest_group_slots(chunks, group, &chest_slots);
-            mark_chest_dirty(persistence, group);
+            let mut chest_slots = read_chest_group_slots(access.chunks, group);
+            let _ = shift_click_chest_slot(
+                &mut access.inventory,
+                &mut access.hotbar,
+                &mut chest_slots,
+                to_slot_id(slot),
+            );
+            write_chest_group_slots(access.chunks, group, &chest_slots);
+            access.mark_chest_dirty(group);
             return;
         }
-        if !drag.quick_move && inventory.carried.is_none() {
-            apply_chest_click(slot, right, group, chunks, hotbar, inventory, workbench);
-            mark_chest_dirty(persistence, group);
+        if !drag.quick_move && access.inventory.carried.is_none() {
+            access.chest_click(slot, right, group);
+            access.mark_chest_dirty(group);
             return;
         }
         if !drag.quick_move {
@@ -141,20 +137,20 @@ pub(super) fn handle_chest_slots(
     };
     if drag.quick_move {
         if shift && let Some(slot) = hovered {
-            let mut chest_slots = read_chest_group_slots(chunks, group);
+            let mut chest_slots = read_chest_group_slots(access.chunks, group);
             let moved = quick_move_drag_slot(
                 &mut drag.quick_move_visited,
-                inventory,
-                hotbar,
-                Some(&mut workbench.grid),
-                screen.workbench,
+                &mut access.inventory,
+                &mut access.hotbar,
+                Some(&mut access.workbench.grid),
+                access.screen.workbench,
                 Some(&mut chest_slots),
                 None,
                 to_slot_id(slot),
             );
             if moved {
-                write_chest_group_slots(chunks, group, &chest_slots);
-                mark_chest_dirty(persistence, group);
+                write_chest_group_slots(access.chunks, group, &chest_slots);
+                access.mark_chest_dirty(group);
             }
         }
         if mouse.pressed(button) {
@@ -164,8 +160,8 @@ pub(super) fn handle_chest_slots(
         return;
     }
     if let Some(slot) = hovered {
-        let chest_slots = read_chest_group_slots(chunks, group);
-        remember_chest_drag_slot(drag, slot, inventory, hotbar, &chest_slots);
+        let chest_slots = read_chest_group_slots(access.chunks, group);
+        remember_chest_drag_slot(drag, slot, &access.inventory, &access.hotbar, &chest_slots);
     }
     if mouse.pressed(button) {
         return;
@@ -180,25 +176,23 @@ pub(super) fn handle_chest_slots(
     *drag = SlotDrag::default();
     if painted.len() >= 2 {
         let ids: Vec<SlotId> = painted.into_iter().map(to_slot_id).collect();
-        let mut chest_slots = read_chest_group_slots(chunks, group);
-        let _ = chest_drag_place(inventory, hotbar, &mut chest_slots, &ids, mode);
-        write_chest_group_slots(chunks, group, &chest_slots);
+        let mut chest_slots = read_chest_group_slots(access.chunks, group);
+        let _ = chest_drag_place(
+            &mut access.inventory,
+            &mut access.hotbar,
+            &mut chest_slots,
+            &ids,
+            mode,
+        );
+        write_chest_group_slots(access.chunks, group, &chest_slots);
     } else if let Some(slot) = hovered.or(if painted.len() == 1 {
         painted.first().copied()
     } else {
         origin
     }) {
-        apply_chest_click(
-            slot,
-            mode == DragPlace::OneEach,
-            group,
-            chunks,
-            hotbar,
-            inventory,
-            workbench,
-        );
+        access.chest_click(slot, mode == DragPlace::OneEach, group);
     }
-    mark_chest_dirty(persistence, group);
+    access.mark_chest_dirty(group);
 }
 
 pub(super) fn remember_chest_drag_slot(
@@ -219,23 +213,42 @@ pub(super) fn remember_chest_drag_slot(
     }
 }
 
-pub(super) fn apply_chest_click(
-    slot: Slot,
-    right: bool,
-    group: ChestGroup,
-    chunks: &mut WorldChunks,
-    hotbar: &mut Hotbar,
-    inventory: &mut Inventory,
-    workbench: &mut ActiveWorkbench,
-) {
-    if let Slot::Chest(index) = slot {
-        let mut chest_slots = read_chest_group_slots(chunks, group);
-        if let Some(stack) = chest_slots.get_mut(index) {
-            click_slot(stack, &mut inventory.carried, right);
+impl SlotAccess<'_> {
+    pub(super) fn chest_click(&mut self, slot: Slot, right: bool, group: ChestGroup) {
+        if let Slot::Chest(index) = slot {
+            let mut chest_slots = read_chest_group_slots(self.chunks, group);
+            if let Some(stack) = chest_slots.get_mut(index) {
+                click_slot(stack, &mut self.inventory.carried, right);
+            }
+            write_chest_group_slots(self.chunks, group, &chest_slots);
+        } else {
+            self.click(slot, right, false);
         }
-        write_chest_group_slots(chunks, group, &chest_slots);
-    } else {
-        apply_click(slot, right, false, hotbar, inventory, workbench);
+    }
+
+    /// A double click: gather onto the cursor every stack like the one it
+    /// holds, from the part of the screen `clicked` is in.
+    pub(super) fn collect_open(&mut self, clicked: Slot) {
+        if self.screen.furnace {
+            if matches!(clicked, Slot::Furnace(_)) {
+                if let Some(position) = self.screen.furnace_position
+                    && let Some(furnace) = self
+                        .chunks
+                        .furnace_at_mut(position.0, position.1, position.2)
+                {
+                    collect_matching_stacks(&mut self.inventory.carried, &mut furnace.slots);
+                }
+            } else {
+                collect_storage_stacks(&mut self.inventory, &mut self.hotbar);
+            }
+        } else {
+            collect_player_stacks(
+                &mut self.inventory,
+                &mut self.hotbar,
+                self.workbench,
+                self.screen.workbench,
+            );
+        }
     }
 }
 
@@ -264,29 +277,6 @@ pub(super) fn collect_storage_stacks(inventory: &mut Inventory, hotbar: &mut Hot
     let Inventory { main, carried, .. } = inventory;
     collect_matching_stacks(carried, &mut hotbar.slots);
     collect_matching_stacks(carried, main);
-}
-
-pub(super) fn collect_open_inventory(
-    screen: &InventorySession,
-    clicked: Slot,
-    chunks: &mut WorldChunks,
-    hotbar: &mut Hotbar,
-    inventory: &mut Inventory,
-    workbench: &mut ActiveWorkbench,
-) {
-    if screen.furnace {
-        if matches!(clicked, Slot::Furnace(_)) {
-            if let Some(position) = screen.furnace_position
-                && let Some(furnace) = chunks.furnace_at_mut(position.0, position.1, position.2)
-            {
-                collect_matching_stacks(&mut inventory.carried, &mut furnace.slots);
-            }
-        } else {
-            collect_storage_stacks(inventory, hotbar);
-        }
-    } else {
-        collect_player_stacks(inventory, hotbar, workbench, screen.workbench);
-    }
 }
 
 pub(super) fn read_chest_group_slots(
@@ -343,17 +333,5 @@ pub(super) fn write_chest_group_slots(
         && let Some(chest) = chunks.chest_at_mut(x, y, z)
     {
         chest.slots.copy_from_slice(&slots[CHEST_HALF_SLOTS..]);
-    }
-}
-
-pub(super) fn mark_chest_dirty(
-    persistence: &mut Option<ResMut<WorldPersistence>>,
-    group: ChestGroup,
-) {
-    if let Some(persistence) = persistence.as_deref_mut() {
-        persistence.mark_dirty(ChunkPosition::from_block(group.first.0, group.first.2));
-        if let Some((x, _, z)) = group.second {
-            persistence.mark_dirty(ChunkPosition::from_block(x, z));
-        }
     }
 }

@@ -280,6 +280,7 @@ fn ensure_menu(
     screen: Res<State<AppScreen>>,
     textures: Res<MenuTextures>,
     settings: Res<GameSettings>,
+    settings_return: Res<SettingsReturn>,
     worlds: Res<super::worlds::WorldList>,
     delete: Res<super::worlds::DeleteWorld>,
     form: Res<super::worlds::NewWorldForm>,
@@ -290,7 +291,12 @@ fn ensure_menu(
     }
     match screen.get() {
         AppScreen::Menu => spawn_main_menu(&mut commands, &textures),
-        AppScreen::Settings => spawn_settings_menu(&mut commands, &textures, &settings),
+        AppScreen::Settings => spawn_settings_menu(
+            &mut commands,
+            &textures,
+            &settings,
+            settings_return.0 == AppScreen::Playing,
+        ),
         AppScreen::WorldSelect => {
             super::worlds::spawn_world_select(&mut commands, &textures, &worlds, &delete)
         }
@@ -343,10 +349,21 @@ fn spawn_main_menu(commands: &mut Commands, textures: &MenuTextures) {
     });
 }
 
-fn spawn_settings_menu(commands: &mut Commands, textures: &MenuTextures, settings: &GameSettings) {
+fn spawn_settings_menu(
+    commands: &mut Commands,
+    textures: &MenuTextures,
+    settings: &GameSettings,
+    in_world: bool,
+) {
     let root = spawn_root(commands, textures, 12.0);
-    // The settings screen is a plain backdrop, not the tiled menu dirt.
-    commands.entity(root).remove::<ImageNode>();
+    if in_world {
+        // Opened from the pause menu: dim the world behind it, as the pause
+        // menu does, instead of covering it with the menu dirt.
+        commands
+            .entity(root)
+            .remove::<ImageNode>()
+            .insert(BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.45)));
+    }
     commands.entity(root).with_children(|root| {
         // Padding sits on an inner node: an image background only paints the
         // content box, so padding on the root shows as a dark border.

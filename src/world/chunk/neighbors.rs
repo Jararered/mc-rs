@@ -10,14 +10,14 @@ use crate::block::blocks::Block;
 /// meshing; isolated mesh helpers may leave them absent.
 #[derive(Clone, Copy, Default)]
 pub struct ChunkNeighbors<'a> {
-    pub west: Option<&'a Chunk>,
-    pub east: Option<&'a Chunk>,
-    pub north: Option<&'a Chunk>,
-    pub south: Option<&'a Chunk>,
-    pub northwest: Option<&'a Chunk>,
-    pub northeast: Option<&'a Chunk>,
-    pub southwest: Option<&'a Chunk>,
-    pub southeast: Option<&'a Chunk>,
+    pub w: Option<&'a Chunk>,
+    pub e: Option<&'a Chunk>,
+    pub n: Option<&'a Chunk>,
+    pub s: Option<&'a Chunk>,
+    pub nw: Option<&'a Chunk>,
+    pub ne: Option<&'a Chunk>,
+    pub sw: Option<&'a Chunk>,
+    pub se: Option<&'a Chunk>,
 }
 
 impl ChunkNeighbors<'_> {
@@ -45,14 +45,14 @@ impl ChunkNeighbors<'_> {
         };
         let chunk = match (region_x, region_z) {
             (0, 0) => Some(center),
-            (-1, 0) => self.west,
-            (1, 0) => self.east,
-            (0, -1) => self.north,
-            (0, 1) => self.south,
-            (-1, -1) => self.northwest,
-            (1, -1) => self.northeast,
-            (-1, 1) => self.southwest,
-            (1, 1) => self.southeast,
+            (-1, 0) => self.w,
+            (1, 0) => self.e,
+            (0, -1) => self.n,
+            (0, 1) => self.s,
+            (-1, -1) => self.nw,
+            (1, -1) => self.ne,
+            (-1, 1) => self.sw,
+            (1, 1) => self.se,
             _ => None,
         }?;
         let local_x = (x - region_x * CHUNK_SIZE as i32) as usize;
@@ -69,14 +69,14 @@ impl ChunkNeighbors<'_> {
         let region = |value: i32| value.div_euclid(CHUNK_SIZE as i32);
         let chunk = match (region(x), region(z)) {
             (0, 0) => Some(center),
-            (-1, 0) => self.west,
-            (1, 0) => self.east,
-            (0, -1) => self.north,
-            (0, 1) => self.south,
-            (-1, -1) => self.northwest,
-            (1, -1) => self.northeast,
-            (-1, 1) => self.southwest,
-            (1, 1) => self.southeast,
+            (-1, 0) => self.w,
+            (1, 0) => self.e,
+            (0, -1) => self.n,
+            (0, 1) => self.s,
+            (-1, -1) => self.nw,
+            (1, -1) => self.ne,
+            (-1, 1) => self.sw,
+            (1, 1) => self.se,
             _ => None,
         };
         let metadata = chunk.map_or(0, |chunk| {

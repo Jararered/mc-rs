@@ -269,7 +269,7 @@ fn extended_piston_recess_does_not_cull_stone_across_chunk_boundary() {
         mesh_chunk_with_neighbors(
             &center,
             &ChunkNeighbors {
-                east: Some(east),
+                e: Some(east),
                 ..Default::default()
             },
             &light,

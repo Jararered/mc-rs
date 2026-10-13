@@ -82,14 +82,14 @@ pub(super) fn spawn_mesh_job(
     let task = AsyncComputeTaskPool::get().spawn(async move {
         let start = Instant::now();
         let neighbors = ChunkNeighbors {
-            west: west.as_ref(),
-            east: east.as_ref(),
-            north: north.as_ref(),
-            south: south.as_ref(),
-            northwest: northwest.as_ref(),
-            northeast: northeast.as_ref(),
-            southwest: southwest.as_ref(),
-            southeast: southeast.as_ref(),
+            w: west.as_ref(),
+            e: east.as_ref(),
+            n: north.as_ref(),
+            s: south.as_ref(),
+            nw: northwest.as_ref(),
+            ne: northeast.as_ref(),
+            sw: southwest.as_ref(),
+            se: southeast.as_ref(),
         };
         let skylight =
             Skylight::from_chunk_with_neighbors_and_corners(&chunk, &neighbors).for_sky(has_sky);

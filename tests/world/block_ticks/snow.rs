@@ -196,7 +196,7 @@ fn snow_layers_cull_shared_sides_across_chunk_boundaries() {
     let mesh = mesh_chunk_with_neighbors(
         &chunk,
         &ChunkNeighbors {
-            east: Some(&east),
+            e: Some(&east),
             ..Default::default()
         },
         &Skylight::from_chunk(&chunk),

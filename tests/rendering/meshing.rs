@@ -133,7 +133,7 @@ fn neighboring_block_data_culls_shared_faces_and_darkens_border_corners() {
     let connected = mesh_chunk_with_neighbors(
         &center,
         &ChunkNeighbors {
-            east: Some(&east),
+            e: Some(&east),
             ..Default::default()
         },
         &light,
@@ -149,7 +149,7 @@ fn neighboring_block_data_culls_shared_faces_and_darkens_border_corners() {
     let connected = mesh_chunk_with_neighbors(
         &center,
         &ChunkNeighbors {
-            east: Some(&east),
+            e: Some(&east),
             ..Default::default()
         },
         &lit_with_east,
@@ -560,7 +560,7 @@ fn chunk_corner_light_uses_loaded_diagonal_neighbor_values() {
     let connected = Skylight::from_chunk_with_neighbors_and_corners(
         &center,
         &ChunkNeighbors {
-            northwest: Some(&northwest),
+            nw: Some(&northwest),
             ..Default::default()
         },
     );
@@ -589,14 +589,14 @@ fn complete_neighborhood_does_not_invent_light_at_cave_edges() {
     let light = Skylight::from_chunk_with_neighbors_and_corners(
         &center,
         &ChunkNeighbors {
-            west: Some(&west),
-            east: Some(&east),
-            north: Some(&north),
-            south: Some(&south),
-            northwest: Some(&northwest),
-            northeast: Some(&northeast),
-            southwest: Some(&southwest),
-            southeast: Some(&southeast),
+            w: Some(&west),
+            e: Some(&east),
+            n: Some(&north),
+            s: Some(&south),
+            nw: Some(&northwest),
+            ne: Some(&northeast),
+            sw: Some(&southwest),
+            ne: Some(&southeast),
         },
     );
     assert_eq!(light.sky(CHUNK_SIZE - 1, 64, 8), Some(0));
@@ -607,14 +607,14 @@ fn complete_neighborhood_does_not_invent_light_at_cave_edges() {
     let lit = Skylight::from_chunk_with_neighbors_and_corners(
         &center,
         &ChunkNeighbors {
-            west: Some(&west),
-            east: Some(&east),
-            north: Some(&north),
-            south: Some(&south),
-            northwest: Some(&northwest),
-            northeast: Some(&northeast),
-            southwest: Some(&southwest),
-            southeast: Some(&southeast),
+            w: Some(&west),
+            e: Some(&east),
+            n: Some(&north),
+            s: Some(&south),
+            nw: Some(&northwest),
+            ne: Some(&northeast),
+            sw: Some(&southwest),
+            ne: Some(&southeast),
         },
     );
     assert_eq!(lit.sky(CHUNK_SIZE - 1, 64, 8), Some(15));
@@ -1030,7 +1030,7 @@ fn greedy_mesh_merges_a_chunk_edge_and_culls_it_against_the_neighbor() {
     let culled = mesh_chunk_with_neighbors(
         &chunk,
         &ChunkNeighbors {
-            east: Some(&neighbor),
+            e: Some(&neighbor),
             ..Default::default()
         },
         &light,

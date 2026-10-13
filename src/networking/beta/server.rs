@@ -985,7 +985,7 @@ fn play(client: &mut Client, host: &mut WorldHost, shared: &mut Shared, packet: 
             client.resend.push(IVec3::new(x, y, z));
             match status {
                 0 => {
-                    act(world, Action::StartDig { hit });
+                    act(world, Action::Mine { hit });
                     // `ItemInWorldManager.blockClicked`: a block that breaks
                     // in one blow goes on the click.
                     let tool = world.get::<Hotbar>(entity).and_then(Hotbar::selected_stack);

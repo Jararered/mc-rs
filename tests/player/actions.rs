@@ -87,7 +87,7 @@ fn dropped(app: &mut App) -> usize {
 fn a_player_digs_and_builds_with_their_own_hands() {
     let (mut app, first, second) = two_players();
     let hit = top_of(&app, 9, 4, 0);
-    act(&mut app, second, Action::StartDig { hit });
+    act(&mut app, second, Action::Mine { hit });
     act(&mut app, second, Action::Break { hit });
     assert_eq!(block(&app, 9, 4, 0), Block::Air);
     assert_eq!(dropped(&mut app), 1, "the grass block dropped its dirt");

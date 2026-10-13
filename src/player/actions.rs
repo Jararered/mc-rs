@@ -33,7 +33,7 @@ pub enum Action {
     },
     /// `Packet14BlockDig` status 0: the player starts digging `hit`
     /// (`Block.onBlockClicked`).
-    StartDig { hit: BlockHit },
+    Mine { hit: BlockHit },
     /// `Packet14BlockDig` status 2: the dig is done and the block goes.
     Break { hit: BlockHit },
     /// `Packet15Place`: the use button, on the block in view if there is one.

@@ -265,7 +265,7 @@ pub(crate) fn interact_blocks(
     if left_held {
         let tool = hotbar.selected_stack();
         if left_click && let Some(hit) = hit {
-            send(Action::StartDig { hit });
+            send(Action::Mine { hit });
             if let Some(broken) = state.mining.try_instant(hit, tool, on_ground, in_water) {
                 send(Action::Break { hit: broken });
             }

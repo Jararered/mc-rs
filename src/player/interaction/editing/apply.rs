@@ -315,7 +315,7 @@ pub(crate) fn apply_player_actions(
                     }
                 }
             }
-            Action::StartDig { hit } => {
+            Action::Mine { hit } => {
                 // `BlockTNT.onBlockClicked`: flint and steel marks the block,
                 // and breaking it then lights the fuse instead of dropping it.
                 if hit.block == Block::Tnt

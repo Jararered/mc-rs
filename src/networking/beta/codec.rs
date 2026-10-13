@@ -406,10 +406,16 @@ impl Writer {
         self.0.extend_from_slice(bytes);
     }
 
-    /// `DataOutputStream.writeUTF`, for text that is all ASCII.
+    /// `DataOutputStream.writeUTF`, for text that is all ASCII: anything else
+    /// is written as `?`, and the text is cut at the count a short holds.
     fn utf(&mut self, text: &str) {
-        self.i16(text.len() as i16);
-        self.bytes(text.as_bytes());
+        let ascii: Vec<u8> = text
+            .chars()
+            .map(|c| if c.is_ascii() { c as u8 } else { b'?' })
+            .take(i16::MAX as usize)
+            .collect();
+        self.i16(ascii.len() as i16);
+        self.bytes(&ascii);
     }
 
     /// Append packets written elsewhere.
@@ -620,19 +626,23 @@ impl Writer {
 
     /// `Packet52MultiBlockChange`: several blocks of one chunk, each as its
     /// position within the chunk, its id and its metadata.
+    ///
+    /// The count is a short, so a larger set goes out as several packets.
     pub fn multi_block_change(&mut self, chunk_x: i32, chunk_z: i32, blocks: &[([u8; 3], u8, u8)]) {
-        self.u8(52);
-        self.i32(chunk_x);
-        self.i32(chunk_z);
-        self.i16(blocks.len() as i16);
-        for ([x, y, z], _, _) in blocks {
-            self.i16(((u16::from(*x) << 12) | (u16::from(*z) << 8) | u16::from(*y)) as i16);
-        }
-        for (_, block, _) in blocks {
-            self.u8(*block);
-        }
-        for (_, _, metadata) in blocks {
-            self.u8(*metadata);
+        for blocks in blocks.chunks(i16::MAX as usize) {
+            self.u8(52);
+            self.i32(chunk_x);
+            self.i32(chunk_z);
+            self.i16(blocks.len() as i16);
+            for ([x, y, z], _, _) in blocks {
+                self.i16(((u16::from(*x) << 12) | (u16::from(*z) << 8) | u16::from(*y)) as i16);
+            }
+            for (_, block, _) in blocks {
+                self.u8(*block);
+            }
+            for (_, _, metadata) in blocks {
+                self.u8(*metadata);
+            }
         }
     }
 

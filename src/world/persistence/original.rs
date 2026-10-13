@@ -167,19 +167,33 @@ fn zlib(bytes: &[u8]) -> io::Result<Vec<u8>> {
     encoder.finish()
 }
 
-fn decompress(compression: u8, bytes: &[u8]) -> io::Result<Vec<u8>> {
+/// The most a chunk, `level.dat` or player file may inflate to. A real chunk
+/// is under 100 KB; the cap stops a crafted file that deflates to gigabytes.
+const MAX_INFLATED_BYTES: u64 = 8 * 1024 * 1024;
+
+/// Read `decoder` to its end, failing once it yields more than
+/// [`MAX_INFLATED_BYTES`].
+fn inflate(decoder: impl Read) -> io::Result<Vec<u8>> {
     let mut out = Vec::new();
-    match compression {
-        region::COMPRESSION_GZIP => GzDecoder::new(bytes).read_to_end(&mut out)?,
-        region::COMPRESSION_ZLIB => ZlibDecoder::new(bytes).read_to_end(&mut out)?,
-        _ => {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "unknown chunk compression",
-            ));
-        }
-    };
+    decoder.take(MAX_INFLATED_BYTES + 1).read_to_end(&mut out)?;
+    if out.len() as u64 > MAX_INFLATED_BYTES {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "compressed data inflates past the size limit",
+        ));
+    }
     Ok(out)
+}
+
+fn decompress(compression: u8, bytes: &[u8]) -> io::Result<Vec<u8>> {
+    match compression {
+        region::COMPRESSION_GZIP => inflate(GzDecoder::new(bytes)),
+        region::COMPRESSION_ZLIB => inflate(ZlibDecoder::new(bytes)),
+        _ => Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "unknown chunk compression",
+        )),
+    }
 }
 
 fn unix_millis() -> i64 {
@@ -904,8 +918,7 @@ fn write_sidecar(root: &Path, sidecar: &Sidecar) -> io::Result<()> {
 
 fn read_level_file(path: &Path) -> io::Result<Compound> {
     let bytes = fs::read(path)?;
-    let mut decoded = Vec::new();
-    GzDecoder::new(bytes.as_slice()).read_to_end(&mut decoded)?;
+    let decoded = inflate(GzDecoder::new(bytes.as_slice()))?;
     nbt::read_root(&decoded)
 }
 

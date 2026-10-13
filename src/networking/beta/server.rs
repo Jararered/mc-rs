@@ -92,6 +92,30 @@ const EFFECT_RANGE: f32 = 64.0;
 const LIGHTNING_RANGE: f32 = 512.0;
 /// `Packet7UseEntity` reaches this far.
 const ENTITY_REACH: f32 = 6.0;
+/// `handleBlockDig`: a dig further than this (squared) from the player's feet
+/// to the block's centre is ignored.
+const DIG_REACH_SQUARED: f32 = 36.0;
+/// `handlePlace`: the same for a placement.
+const PLACE_REACH_SQUARED: f32 = 64.0;
+/// Bytes read from one client in a tick. A packet is under 150 bytes, so a
+/// client that sends more than this each tick is flooding, and the rest waits
+/// in its socket.
+const MAX_READ_PER_TICK: usize = 64 * 1024;
+/// The longest incomplete packet a client can have sent. Longer is garbage.
+const MAX_PARTIAL_PACKET: usize = 1024;
+/// A connection that has not logged in after this many ticks is dropped.
+const LOGIN_TICKS: u32 = 600;
+/// `NetworkManager`'s time-out: a client silent for this long is dropped.
+const TIMEOUT_TICKS: u32 = 1200;
+/// Connections accepted at once, logged in or not.
+const MAX_CONNECTIONS: usize = 128;
+/// Beta's world limit; a position beyond it is not believed.
+const WORLD_LIMIT: f64 = 3.2e7;
+/// The lowest and highest feet a position packet may name. The low end sits
+/// above the -999 a rider sends in place of a position.
+const FEET_RANGE: std::ops::RangeInclusive<f64> = -900.0..=4096.0;
+/// The most a rider's own motion packet can carry in a tick.
+const MOTION_LIMIT: f64 = 100.0;
 
 /// How a [`BetaServer`] runs.
 #[derive(Clone, Copy, Debug)]
@@ -165,6 +189,10 @@ struct Client {
     shown: HashSet<i32>,
     /// The riders it has been told about, and what each rides.
     attached: HashMap<i32, i32>,
+    /// Ticks since the connection was made.
+    age: u32,
+    /// Ticks since the client last sent a byte.
+    idle: u32,
 }
 
 /// `World.playAuxSFX` from a player's click: a sound the others near it hear.
@@ -189,6 +217,10 @@ struct Shared<'a> {
     effects: &'a mut Vec<Effect>,
     signs: &'a mut Vec<SignChange>,
     rng: &'a mut ItemRng,
+    /// Lower-cased names of the players in the world, for a login to be
+    /// refused when another differs only in case: they share one record
+    /// file on a case-insensitive disk.
+    online: HashSet<String>,
 }
 
 /// What a hosted dimension has to say that is not in its components: the
@@ -326,6 +358,12 @@ impl BetaServer {
             effects: &mut self.effects,
             signs: &mut self.signs,
             rng: &mut self.rng,
+            online: self
+                .clients
+                .iter()
+                .filter(|client| client.stage != Stage::Login && !client.closed)
+                .map(|client| client.name.to_ascii_lowercase())
+                .collect(),
         };
         for client in &mut self.clients {
             receive(client, &mut self.host, &mut shared);
@@ -575,6 +613,9 @@ impl BetaServer {
                     if stream.set_nonblocking(true).is_err() {
                         continue;
                     }
+                    if self.clients.len() >= MAX_CONNECTIONS {
+                        continue;
+                    }
                     // Movement packets are tiny and frequent.
                     let _ = stream.set_nodelay(true);
                     self.clients.push(Client {
@@ -600,6 +641,8 @@ impl BetaServer {
                         swung: false,
                         shown: HashSet::new(),
                         attached: HashMap::new(),
+                        age: 0,
+                        idle: 0,
                     });
                 }
                 Err(error) if error.kind() == io::ErrorKind::WouldBlock => return,
@@ -658,14 +701,27 @@ fn throw(world: &mut World, player: Entity, rng: &mut ItemRng, stacks: Vec<ItemS
 
 /// Read what `client` has sent and apply it.
 fn receive(client: &mut Client, host: &mut WorldHost, shared: &mut Shared) {
+    client.age = client.age.saturating_add(1);
+    client.idle = client.idle.saturating_add(1);
+    if client.stage == Stage::Login && client.age > LOGIN_TICKS {
+        return kick(client, "Took too long to log in");
+    }
+    if client.idle > TIMEOUT_TICKS {
+        return kick(client, "Timed out");
+    }
     let mut buffer = [0u8; 4096];
-    loop {
+    let mut taken = 0;
+    while taken < MAX_READ_PER_TICK {
         match client.stream.read(&mut buffer) {
             Ok(0) => {
                 client.closed = true;
                 break;
             }
-            Ok(count) => client.inbox.extend_from_slice(&buffer[..count]),
+            Ok(count) => {
+                taken += count;
+                client.idle = 0;
+                client.inbox.extend_from_slice(&buffer[..count]);
+            }
             Err(error) if error.kind() == io::ErrorKind::WouldBlock => break,
             Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
             Err(_) => {
@@ -690,6 +746,15 @@ fn receive(client: &mut Client, host: &mut WorldHost, shared: &mut Shared) {
         }
     }
     client.inbox.drain(..at);
+    if !client.closed && client.inbox.len() > MAX_PARTIAL_PACKET {
+        warn!("Dropping {}: an endless packet", client.address);
+        kick(client, "Bad packet");
+    }
+}
+
+/// Whether `value` is a coordinate within `limit` of zero (and so not NaN).
+fn within(value: f64, limit: f64) -> bool {
+    value.abs() <= limit
 }
 
 /// Write as much of what is queued for `client` as its socket takes.
@@ -775,7 +840,9 @@ fn handle(client: &mut Client, host: &mut WorldHost, shared: &mut Shared, packet
             if !valid {
                 return kick(client, "Invalid username");
             }
-            if host.find(&username).is_some() {
+            if host.find(&username).is_some()
+                || shared.online.contains(&username.to_ascii_lowercase())
+            {
                 return kick(client, "You are already playing on this server");
             }
             let fresh = host.storage().load_named_player(&username).is_none();
@@ -785,6 +852,7 @@ fn handle(client: &mut Client, host: &mut WorldHost, shared: &mut Shared, packet
             if let Some(world) = host.world_mut(dimension) {
                 world.entity_mut(entity).insert(ClientRespawn::default());
             }
+            shared.online.insert(username.to_ascii_lowercase());
             client.name = username;
             client.id = shared.tracker.allocate();
             client.dimension = dimension;
@@ -831,7 +899,9 @@ fn play(client: &mut Client, host: &mut WorldHost, shared: &mut Shared, packet: 
             // A rider sends -999 for both heights and no position of its own.
             if let Some([x, feet, _, z]) = position
                 && feet > -900.0
-                && [x, feet, z].iter().all(|value| value.is_finite())
+                && FEET_RANGE.contains(&feet)
+                && within(x, WORLD_LIMIT)
+                && within(z, WORLD_LIMIT)
             {
                 let eyes = Vec3::new(
                     x as f32,
@@ -852,7 +922,9 @@ fn play(client: &mut Client, host: &mut WorldHost, shared: &mut Shared, packet: 
             // pushed by. A boat and a steered pig read the keys behind that
             // motion, so it is turned back into them.
             let steering = match position {
-                Some([x, feet, _, z]) if feet <= -900.0 && x.is_finite() && z.is_finite() => {
+                Some([x, feet, _, z])
+                    if feet <= -900.0 && within(x, MOTION_LIMIT) && within(z, MOTION_LIMIT) =>
+                {
                     // One airborne `moveFlying` and its drag: see
                     // `boat::rider_motion`.
                     const FULL: f32 = 0.02 * 0.98 * 0.91;
@@ -885,9 +957,24 @@ fn play(client: &mut Client, host: &mut WorldHost, shared: &mut Shared, packet: 
                 client.windows.resend();
                 return act(world, Action::DropItem);
             }
+            // `handleBlockDig` ignores a start or a finish out of reach; the
+            // client is shown the block as it is.
+            let out_of_reach = status != 1 && {
+                let feet = world
+                    .get::<Transform>(entity)
+                    .map(|transform| transform.translation - Vec3::Y * EntitySize::PLAYER.y_offset);
+                feet.is_none_or(|feet| {
+                    let center = Vec3::new(x as f32 + 0.5, y as f32 + 0.5, z as f32 + 0.5);
+                    feet.distance_squared(center) > DIG_REACH_SQUARED
+                })
+            };
             let Some(block) = world.resource::<WorldChunks>().block_at(x, y, z) else {
                 return;
             };
+            if out_of_reach {
+                client.resend.push(IVec3::new(x, y, z));
+                return;
+            }
             let hit = BlockHit {
                 x,
                 y,
@@ -918,8 +1005,15 @@ fn play(client: &mut Client, host: &mut WorldHost, shared: &mut Shared, packet: 
             let Some(transform) = world.get::<Transform>(entity).copied() else {
                 return;
             };
-            // Direction 255 uses the held item on nothing.
+            // Direction 255 uses the held item on nothing. `handlePlace`
+            // ignores a block further than eight from the player's feet.
+            let feet = transform.translation - Vec3::Y * EntitySize::PLAYER.y_offset;
             let hit = face(direction).and_then(|face| {
+                let center = Vec3::new(x as f32 + 0.5, y as f32 + 0.5, z as f32 + 0.5);
+                if feet.distance_squared(center) >= PLACE_REACH_SQUARED {
+                    client.resend.push(IVec3::new(x, y, z));
+                    return None;
+                }
                 let block = world.resource::<WorldChunks>().block_at(x, y, z)?;
                 Some(BlockHit {
                     x,
@@ -967,6 +1061,21 @@ fn play(client: &mut Client, host: &mut WorldHost, shared: &mut Shared, packet: 
             }
         }
         ClientPacket::Chat(text) => {
+            // `handleChat`: a character the chat box cannot type is a cheat.
+            if text
+                .chars()
+                .any(|c| c < ' ' || c == '\u{a7}' || c == '\u{7f}')
+            {
+                return kick(client, "Illegal characters in chat");
+            }
+            // There are no operators yet, so a remote player has no
+            // commands: `/give` and `/tp` would be open to everyone.
+            if text.starts_with('/') {
+                client
+                    .out
+                    .chat("Commands are not available to remote players.");
+                return;
+            }
             if let Some(mut submissions) = world.get_resource_mut::<Messages<ChatSubmission>>() {
                 submissions.write(ChatSubmission::from_player(entity, text));
             }

@@ -54,12 +54,14 @@ when it lands and add what you find missing.
 ## Beta server: trust and robustness
 
 - [ ] Dig time check, as `ItemInWorldManager` does, instead of trusting the client's status 2
-- [ ] Reach and line-of-sight checks on dig, place and use
+- [x] Reach checks on dig and place (`handleBlockDig`'s 6 and `handlePlace`'s 8 from the feet)
+- [ ] Line-of-sight check on use
+- [x] A position beyond the world limit or out of the height range is ignored
 - [ ] Movement checks: speed, "moved wrongly", illegal stance
 - [ ] Fall damage for remote players (nothing integrates them on the server)
 - [ ] Username check against a session server, or an explicit offline-mode setting
-- [ ] Time-out for a client that stops sending, and a cap on connections
-- [ ] Command permissions (ops), so not every player can `/give` and `/tp`
+- [x] Time-out for a client that stops sending, a login deadline, a per-tick read cap and a cap on connections
+- [ ] Command permissions (ops): until then a remote player's `/` commands are refused outright
 - [ ] Chat and command feedback to the right audience: chat to everyone, feedback to the sender only
       (one `ChatHistory` per dimension today)
 - [ ] Logging to the terminal (join, leave, errors); the server sets up no logger

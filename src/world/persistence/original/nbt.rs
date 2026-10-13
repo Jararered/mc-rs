@@ -4,6 +4,7 @@
 //! a `u16` byte length, NUL encoded as `C0 80`, and supplementary characters
 //! as two three-byte surrogates.
 
+use std::collections::HashMap;
 use std::io;
 
 const END: u8 = 0;
@@ -321,6 +322,9 @@ impl<'a> Reader<'a> {
 
     fn compound(&mut self, depth: usize) -> io::Result<Compound> {
         let mut compound = Compound::new();
+        // `Compound::put` scans for the key, which is quadratic over a
+        // compound of many keys; a file can hold hundreds of thousands.
+        let mut index: HashMap<String, usize> = HashMap::new();
         loop {
             let id = self.u8()?;
             if id == END {
@@ -328,7 +332,13 @@ impl<'a> Reader<'a> {
             }
             let name = self.string()?;
             let tag = self.payload(id, depth)?;
-            compound.put(&name, tag);
+            match index.get(&name) {
+                Some(&at) => compound.0[at].1 = tag,
+                None => {
+                    index.insert(name.clone(), compound.0.len());
+                    compound.0.push((name, tag));
+                }
+            }
         }
     }
 }
@@ -370,7 +380,12 @@ fn write_payload(out: &mut Vec<u8>, tag: &Tag) {
         }
         Tag::String(value) => write_string(out, value),
         Tag::List(tags) => {
-            out.push(tags.first().map_or(BYTE, Tag::id));
+            let element = tags.first().map_or(BYTE, Tag::id);
+            debug_assert!(
+                tags.iter().all(|tag| tag.id() == element),
+                "an NBT list holds one tag type"
+            );
+            out.push(element);
             out.extend_from_slice(&(tags.len() as i32).to_be_bytes());
             for tag in tags {
                 write_payload(out, tag);

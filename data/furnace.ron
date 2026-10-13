@@ -35,7 +35,7 @@
         "NoteBlock": 300,
         "Jukebox": 300,
         "LockedChest": 300,
-        "StandingSign": 300,
+        "block.Sign": 300,
         "WallSign": 300,
     },
 )

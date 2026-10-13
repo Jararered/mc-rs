@@ -1472,3 +1472,146 @@ fn primed_tnt_falls_and_a_riders_motion_steers() {
     let released = input(&mut server);
     assert_eq!((released.forward, released.strafe), (0.0, 0.0));
 }
+
+/// Raw bytes, as a hostile client may send them.
+impl Player {
+    fn stand_raw(&mut self, values: [f64; 4]) {
+        let mut out = vec![13];
+        for value in values {
+            out.extend(value.to_be_bytes());
+        }
+        out.extend(0f32.to_be_bytes());
+        out.extend(0f32.to_be_bytes());
+        out.push(1);
+        self.send(&out);
+    }
+}
+
+fn feet_of(server: &mut BetaServer) -> bevy::math::Vec3 {
+    let world = overworld(server);
+    let mut query = world.query_filtered::<&Transform, With<game::player::Player>>();
+    query.single(world).unwrap().translation
+}
+
+#[test]
+fn a_position_outside_the_world_is_not_believed() {
+    let mut server = server("far");
+    let (mut player, [x, feet, z]) = join(&mut server, "wanderer");
+    for _ in 0..5 {
+        server.tick();
+    }
+    let before = feet_of(&mut server);
+    for far in [1e300, 1e30, -3.3e7, f64::INFINITY, f64::NAN] {
+        player.stand_raw([far, feet, feet + 1.62, z]);
+        player.stand_raw([x, feet, feet + 1.62, far]);
+        player.stand_raw([x, 1e9, 1e9, z]);
+    }
+    for _ in 0..5 {
+        server.tick();
+    }
+    let after = feet_of(&mut server);
+    assert!(after.is_finite(), "{after}");
+    assert!(after.distance(before) < 1.0, "{before} -> {after}");
+    // And a position that is fine is still taken.
+    player.stand(x + 2.0, feet, z);
+    for _ in 0..5 {
+        server.tick();
+    }
+    assert!((feet_of(&mut server).x - (x as f32 + 2.0)).abs() < 0.01);
+}
+
+#[test]
+fn a_dig_out_of_reach_changes_nothing() {
+    let mut server = server("reach");
+    let (mut player, [x, feet, z]) = join(&mut server, "digger");
+    for _ in 0..5 {
+        server.tick();
+    }
+    // Ten blocks down: stone or dirt, well beyond six from the feet.
+    let target = [x.floor() as i32, feet as i32 - 10, z.floor() as i32];
+    let block = |server: &mut BetaServer| {
+        overworld(server)
+            .resource::<game::world::chunk::WorldChunks>()
+            .block_at(target[0], target[1], target[2])
+    };
+    let before = block(&mut server);
+    assert!(before.is_some_and(|block| block != game::block::blocks::Block::Air));
+    player.dig(0, target);
+    player.dig(2, target);
+    for _ in 0..10 {
+        server.tick();
+    }
+    assert_eq!(block(&mut server), before);
+}
+
+#[test]
+fn a_remote_player_gets_no_commands_and_no_forbidden_characters() {
+    let mut server = server("commands");
+    let (mut player, _) = join(&mut server, "typist");
+    player.chat("/gamemode creative");
+    until(
+        &mut server,
+        &mut player,
+        "the refusal",
+        |heard| matches!(heard, Heard::Chat(line) if line.contains("not available")),
+    );
+    assert!(
+        !player
+            .heard
+            .iter()
+            .any(|heard| matches!(heard, Heard::Chat(line) if line.contains("typist"))),
+        "the command must not be echoed as chat"
+    );
+    // A colour code is not typable, so the client is turned away.
+    player.chat("\u{a7}4red");
+    until(&mut server, &mut player, "the kick", |heard| {
+        matches!(heard, Heard::Kick(_))
+    });
+}
+
+#[test]
+fn a_name_differing_only_in_case_cannot_join_twice() {
+    let mut server = server("case");
+    let (_first, _) = join(&mut server, "Steve");
+    let mut second = Player::connect(&server);
+    second.handshake("steve");
+    second.login("steve", 14);
+    let Heard::Kick(reason) = until(&mut server, &mut second, "the kick", |heard| {
+        matches!(heard, Heard::Kick(_))
+    }) else {
+        unreachable!()
+    };
+    assert!(reason.contains("already"), "{reason}");
+}
+
+#[test]
+fn a_client_that_never_logs_in_or_floods_is_dropped() {
+    let mut server = server("hostile");
+    // Never says anything.
+    let mut silent = Player::connect(&server);
+    // Sends one endless "packet": a chat string whose count never completes.
+    let mut flood = Player::connect(&server);
+    let mut bytes = vec![3];
+    bytes.extend(100i16.to_be_bytes());
+    bytes.extend(vec![0u8; 4000]);
+    flood.send(&bytes);
+    // Tick the server through the login deadline.
+    let mut kicked = false;
+    for _ in 0..700 {
+        server.tick();
+        silent.read();
+        kicked |= silent
+            .heard
+            .iter()
+            .any(|heard| matches!(heard, Heard::Kick(_)));
+    }
+    assert!(kicked, "a connection that never logs in is kicked");
+    flood.read();
+    assert!(
+        flood
+            .heard
+            .iter()
+            .any(|heard| matches!(heard, Heard::Kick(_)))
+            || flood.stream.peek(&mut [0u8; 1]).is_err()
+    );
+}

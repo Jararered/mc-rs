@@ -1010,3 +1010,66 @@ fn a_jukebox_keeps_its_disc_as_a_record_player_tile() {
     );
     let _ = fs::remove_dir_all(saves);
 }
+
+/// `chunk`'s own record with zeros after it: still a chunk to a reader that
+/// ignores trailing bytes, but one that inflates to `length` bytes.
+fn inflation_bomb(record: &[u8], length: usize) -> Vec<u8> {
+    use std::io::Write;
+    let mut nbt = Vec::new();
+    ZlibDecoder::new(record).read_to_end(&mut nbt).unwrap();
+    nbt.resize(length, 0);
+    let mut encoder = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::best());
+    encoder.write_all(&nbt).unwrap();
+    encoder.finish().unwrap()
+}
+
+#[test]
+fn a_chunk_that_inflates_past_the_limit_is_not_loaded() {
+    let (_saves, storage) = original_world("original-bomb");
+    let position = ChunkPosition { x: 0, z: 0 };
+    storage
+        .save_chunks([(position, &busy_chunk(position))])
+        .unwrap();
+    assert!(storage.load_chunk(position).is_some());
+
+    // Point the chunk's table entry at a bomb appended to the file.
+    let path = storage.root().join("region").join("r.0.0.mcr");
+    let mut file = fs::read(&path).unwrap();
+    let entry = u32::from_be_bytes(file[..4].try_into().unwrap());
+    let at = (entry >> 8) as usize * 4096;
+    let record_length = u32::from_be_bytes(file[at..at + 4].try_into().unwrap()) as usize;
+    let record = file[at + 5..at + 4 + record_length].to_vec();
+    let bomb = inflation_bomb(&record, 64 * 1024 * 1024);
+    assert_eq!(file.len() % 4096, 0);
+    let start = file.len() / 4096;
+    let sectors = (bomb.len() + 5).div_ceil(4096);
+    assert!(sectors < 256);
+    file.extend((bomb.len() as u32 + 1).to_be_bytes());
+    file.push(2);
+    file.extend(&bomb);
+    file.resize((start + sectors) * 4096, 0);
+    // The chunk's slot is its x and z within the region; (0, 0) is first.
+    file[..4].copy_from_slice(&(((start as u32) << 8) | sectors as u32).to_be_bytes());
+    fs::write(&path, file).unwrap();
+
+    let reopened = WorldStorage::open(storage.root().to_path_buf()).unwrap();
+    assert!(reopened.load_chunk(position).is_none());
+}
+
+#[test]
+fn a_chunk_that_moves_in_its_region_file_still_reads_back() {
+    let (_saves, storage) = original_world("original-relocate");
+    let position = ChunkPosition { x: 3, z: 4 };
+    let other = ChunkPosition { x: 4, z: 4 };
+    let chunk = busy_chunk(position);
+    storage
+        .save_chunks([(position, &chunk), (other, &busy_chunk(other))])
+        .unwrap();
+    storage.save_chunks([(position, &chunk)]).unwrap();
+    assert_busy_chunk_loaded(&storage.load_chunk(position).unwrap(), &chunk, position);
+    assert!(storage.load_chunk(other).is_some());
+    let length = fs::metadata(storage.root().join("region").join("r.0.0.mcr"))
+        .unwrap()
+        .len();
+    assert_eq!(length % 4096, 0);
+}

@@ -144,12 +144,11 @@ impl RegionFile {
         let in_file =
             offset != 0 && old_start >= HEADER_SECTORS && old_start + old_count <= self.free.len();
 
-        let start = if in_file && old_count == needed {
-            old_start
-        } else {
-            if in_file {
-                self.free[old_start..old_start + old_count].fill(true);
-            }
+        // A chunk that moves is written to a run that does not overlap its
+        // old one, which stays intact until the offset table points away
+        // from it, so a crash in between leaves the old record readable.
+        let relocated = !(in_file && old_count == needed);
+        let start = if relocated {
             let start = self
                 .find_free_run(needed)
                 .unwrap_or_else(|| self.free.len());
@@ -159,6 +158,8 @@ impl RegionFile {
             }
             self.free[start..start + needed].fill(false);
             start
+        } else {
+            old_start
         };
 
         let mut record = Vec::with_capacity(compressed.len() + 5);
@@ -178,7 +179,11 @@ impl RegionFile {
         self.file.write_all(&entry.to_be_bytes())?;
         self.file
             .seek(SeekFrom::Start(SECTOR_BYTES + index as u64 * 4))?;
-        self.file.write_all(&seconds.to_be_bytes())
+        self.file.write_all(&seconds.to_be_bytes())?;
+        if relocated && in_file {
+            self.free[old_start..old_start + old_count].fill(true);
+        }
+        Ok(())
     }
 
     fn find_free_run(&self, needed: usize) -> Option<usize> {

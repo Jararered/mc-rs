@@ -7,6 +7,7 @@ use bevy::render::renderer::RenderDevice;
 
 use crate::app::settings::GameSettings;
 use crate::app::state::AppScreen;
+use crate::app::state::SettingsReturn;
 use crate::physics::PhysicsSet;
 use crate::ui::screens::panorama::MenuPanoramaCamera;
 
@@ -155,11 +156,17 @@ fn apply_graphics_pipeline(
 /// missing from the camera's list once it is active again.
 fn apply_world_camera_activity(
     screen: Option<Res<State<AppScreen>>>,
+    settings_return: Option<Res<SettingsReturn>>,
     mut cameras: Query<&mut Camera, (With<Camera3d>, Without<MenuPanoramaCamera>)>,
     mut chunks: Query<&mut Visibility, With<ChunkPosition>>,
     mut shown: Local<Option<bool>>,
 ) {
-    let playing = screen.is_none_or(|screen| *screen.get() == AppScreen::Playing);
+    // The settings screen opened from the pause menu is drawn over the world.
+    let playing = screen.is_none_or(|screen| {
+        *screen.get() == AppScreen::Playing
+            || (*screen.get() == AppScreen::Settings
+                && settings_return.is_some_and(|back| back.0 == AppScreen::Playing))
+    });
     for mut camera in &mut cameras {
         if camera.is_active != playing {
             camera.is_active = playing;

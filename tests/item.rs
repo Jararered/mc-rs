@@ -307,7 +307,10 @@ fn tool_break_times_match_beta_173() {
     assert_eq!(t(Some(Item::GoldPickaxe), Block::GoldOre), Some(300));
     assert_eq!(t(Some(Item::WoodenPickaxe), Block::CoalOre), Some(45));
     assert_eq!(t(Some(Item::DiamondPickaxe), Block::CoalOre), Some(12));
-    assert_eq!(t(Some(Item::IronPickaxe), Block::RedstoneOreInactive), Some(90));
+    assert_eq!(
+        t(Some(Item::IronPickaxe), Block::RedstoneOreInactive),
+        Some(90)
+    );
     assert_eq!(
         t(Some(Item::IronPickaxe), Block::RedstoneOreActive),
         Some(90)

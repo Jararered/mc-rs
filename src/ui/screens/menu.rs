@@ -345,6 +345,8 @@ fn spawn_main_menu(commands: &mut Commands, textures: &MenuTextures) {
 
 fn spawn_settings_menu(commands: &mut Commands, textures: &MenuTextures, settings: &GameSettings) {
     let root = spawn_root(commands, textures, 12.0);
+    // The settings screen is a plain backdrop, not the tiled menu dirt.
+    commands.entity(root).remove::<ImageNode>();
     commands.entity(root).with_children(|root| {
         // Padding sits on an inner node: an image background only paints the
         // content box, so padding on the root shows as a dark border.

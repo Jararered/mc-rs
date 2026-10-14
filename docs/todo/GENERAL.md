@@ -21,8 +21,6 @@ These are registered and craftable, but right-click does nothing, or only part o
 - **Sign** (`ItemSign`, `BlockSign`, `TileEntitySign`, `GuiEditSign`): placing and support work
   (`player::place_sign`, `behaviors/attached.rs`), and the four lines save in both formats (`SignText`). Missing: the
   text is not drawn and there is no edit screen, so only text a Beta client wrote shows up.
-- **Cake** (`ItemReed` for the cake item, `BlockCake`): the block is not placeable or drawn (`Block::placed` returns
-  `None`), and there is no eating. Six slices; each heals 3 while health is below 20 (`BlockCake.eatCakeSlice`).
 - **Dye** (`ItemDye`): the dye recipes work, but two uses do not. Bone meal (damage 15) does nothing. Beta's bone meal
   grows a sapling (`growTree`), fertilizes a crop (`BlockCrops.fertilize`), and spreads tall grass and flowers from
   grass. Dye on a sheep recolors its fleece: `ItemStack.useItemOnEntity` calls `ItemDye.saddleEntity` when the sheep's

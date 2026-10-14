@@ -432,6 +432,15 @@ fn redstone_parts_drop_as_flat_sprites() {
     assert_eq!(dropped_block_model(stone), Some((Block::Stone, 0)));
 }
 
+#[test]
+fn a_dropped_cake_is_the_item_sprite_not_the_block() {
+    // `RenderItem` models only IDs below 256. The cake item places the cake
+    // block, but it is drawn from `items.png` like any other item.
+    let cake = ItemStack::new(Item::Cake, 1).unwrap();
+    assert_eq!(cake.runtime_block(), Some((Block::Cake, 0)));
+    assert_eq!(dropped_block_model(cake), None);
+}
+
 fn position_count(mesh: &BlockGeometry) -> usize {
     mesh.vertex_count()
 }

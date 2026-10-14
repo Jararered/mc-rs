@@ -19,6 +19,7 @@ use super::place_sign;
 use super::placement::furnace_facing_toward_player;
 use super::plant_seeds;
 use super::till_with_selected_hoe;
+use crate::app::settings::GameSettings;
 use crate::block::blocks::Block;
 use crate::block::fluids::Fluid;
 use crate::entity::EntitySize;
@@ -45,6 +46,7 @@ use crate::item::Item;
 use crate::item::ItemStack;
 use crate::item::tools::damage_vs_entity;
 use crate::physics::raycast_blocks_or_liquid;
+use crate::player::MAX_PLAYER_HEALTH;
 use crate::player::Player;
 use crate::player::PlayerHealth;
 use crate::player::actions::Action;
@@ -108,7 +110,9 @@ pub(crate) fn apply_player_actions(
     ),
     mut workbench: ResMut<ActiveWorkbench>,
     mut item_rng: Local<ItemRng>,
+    settings: Option<Res<GameSettings>>,
 ) {
+    let punch_eats_cake = settings.is_some_and(|settings| !settings.cake_right_click_only);
     for PlayerAction {
         player: player_entity,
         action,
@@ -298,6 +302,12 @@ pub(crate) fn apply_player_actions(
                 }
             }
             Action::Mine { hit } => {
+                // `BlockCake.onBlockClicked`: the same bite as a right-click,
+                // and mining continues on whatever is left. Off by default
+                // (`GameSettings::cake_right_click_only`).
+                if punch_eats_cake && hit.block == Block::Cake {
+                    eat_cake(&mut edit, &mut health, hit.x, hit.y, hit.z);
+                }
                 // `BlockTNT.onBlockClicked`: flint and steel marks the block,
                 // and breaking it then lights the fuse instead of dropping it.
                 if hit.block == Block::Tnt
@@ -410,6 +420,10 @@ pub(crate) fn apply_player_actions(
                             position: IVec3::new(hit.x, hit.y, hit.z),
                         });
                     }
+                    // `BlockCake.eatCakeSlice`. The click is consumed either way.
+                    if hit.block == Block::Cake {
+                        eat_cake(&mut edit, &mut health, hit.x, hit.y, hit.z);
+                    }
                 }
                 // `Block.blockActivated` returning true keeps the held item unused.
                 let activated = hit.is_some_and(|hit| {
@@ -417,6 +431,7 @@ pub(crate) fn apply_player_actions(
                         || matches!(
                             hit.block,
                             Block::Bed
+                                | Block::Cake
                                 | Block::Trapdoor
                                 | Block::Lever
                                 | Block::StoneButton
@@ -749,4 +764,25 @@ pub(crate) fn apply_player_actions(
             }
         }
     }
+}
+
+/// `BlockCake.eatCakeSlice`. Below full health, heal 3 and take one of six
+/// slices. The last slice removes the block. A full player takes nothing.
+fn eat_cake(edit: &mut WorldEdit, health: &mut PlayerHealth, x: i32, y: i32, z: i32) -> bool {
+    if health.current >= MAX_PLAYER_HEALTH || edit.chunks.block_at(x, y, z) != Some(Block::Cake) {
+        return false;
+    }
+    let metadata = edit.chunks.metadata_at(x, y, z);
+    let next = metadata.saturating_add(1);
+    let wrote = if next >= 6 {
+        edit.chunks.set_block(x, y, z, Block::Air).is_some()
+    } else {
+        edit.chunks.set_metadata(x, y, z, next)
+    };
+    if !wrote {
+        return false;
+    }
+    health.heal(3);
+    edit.changed(IVec3::new(x, y, z), Block::Cake, metadata);
+    true
 }

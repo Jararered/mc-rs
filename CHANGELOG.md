@@ -77,6 +77,19 @@ Sounds need the original game's `resources/` folder beside `assets/`. Without it
       again by itself), and a Beta client on the server hears discs that other players start.
       `9959e9e · 2026-10-12 06:54`
 
+##### Cake
+
+- [ ] Right-click a solid block with a cake to set it down. It will not sit on air, a torch, or snow, and it will
+      not go where you are standing. It is a low block, and each bite comes off its west side.
+      `pending`
+- [ ] Right-click the cake while hurt: one of six slices is eaten and you heal three half-hearts, up to full.
+      Punching it only digs. At full health a right-click takes no bite and does not use whatever is in your hand.
+      `pending`
+- [ ] A dropped or thrown cake is the flat cake picture, as in your hand, not a small cake block.
+      `pending`
+- [ ] The sixth bite removes the cake. Breaking one, or taking away the block under it, leaves nothing behind.
+      `pending`
+
 #### Interactions
 
 - [ ] A powered dispenser launches eggs and snowballs as projectiles instead of dropping them as items.
@@ -191,10 +204,13 @@ Sounds need the original game's `resources/` folder beside `assets/`. Without it
       `8b1d6d5 · 2026-10-14 14:17`
 - [ ] Video, Anti-aliasing starts OFF in a new settings file, as Beta has none; a settings file that already has it
       keeps its choice. With it off the frame rate is higher, most of all on a high-resolution display.
-      `pending`
+      `8723961 · 2026-10-14 15:01`
 - [ ] The sky, sun, moon, stars and sunrise glow look as before, by day, at dusk, at night and in rain: terrain,
       clouds and mobs cover them, water and rain are drawn over them, and the Nether shows its fog color. The frame
       rate is higher, most of all while turning at a long render distance.
+      `8723961 · 2026-10-14 15:01`
+- [ ] Features, Cake by right-click only (on by default): punching a cake digs it without taking a bite. Off, a
+      punch eats a slice too, as in Beta.
       `pending`
 - [ ] Features, Pig steering (on by default): a ridden pig turns to where you look and walks while W is held,
       hopping up blocks in its way. Off, the pig wanders wherever it likes, as in Beta.

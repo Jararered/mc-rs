@@ -934,6 +934,68 @@ fn greedy_mesh_merges_a_uniform_stone_slab_into_one_top_quad() {
 }
 
 #[test]
+fn cake_is_a_half_block_inset_and_bites_come_off_the_west_side() {
+    let mut whole = Chunk::new();
+    whole.set(8, 40, 8, Block::Cake);
+    let mesh = mesh_chunk(&whole, &Skylight::from_chunk(&whole));
+    let tops = quads_facing(&mesh, |normal| normal[1] > 0.5);
+    assert_eq!(tops.len(), 1);
+    assert!(spans(tops[0], 0, 8.0625, 8.9375));
+    assert!(spans(tops[0], 2, 8.0625, 8.9375));
+    assert!(
+        tops[0]
+            .iter()
+            .all(|vertex| (vertex.position[1] - 40.5).abs() < 1e-4)
+    );
+    let top = block_tile(Block::Cake, 0, 0, false);
+    assert!(
+        tops[0]
+            .iter()
+            .all(|vertex| vertex.texel.tile == [top.0, top.1])
+    );
+    let west = quads_facing(&mesh, |normal| normal[0] < -0.5);
+    assert_eq!(west.len(), 1);
+    assert!(
+        west[0]
+            .iter()
+            .all(|vertex| (vertex.position[0] - 8.0625).abs() < 1e-4)
+    );
+    let side = block_tile(Block::Cake, 0, 3, false);
+    assert!(
+        west[0]
+            .iter()
+            .all(|vertex| vertex.texel.tile == [side.0, side.1])
+    );
+
+    let mut bitten = Chunk::new();
+    bitten.set_with_metadata(8, 40, 8, Block::Cake, 1);
+    let mesh = mesh_chunk(&bitten, &Skylight::from_chunk(&bitten));
+    let west = quads_facing(&mesh, |normal| normal[0] < -0.5);
+    assert_eq!(west.len(), 1);
+    assert!(
+        west[0]
+            .iter()
+            .all(|vertex| (vertex.position[0] - (8.0 + 3.0 / 16.0)).abs() < 1e-4)
+    );
+    assert!(spans(west[0], 1, 40.0, 40.5));
+    let inside = block_tile(Block::Cake, 1, 3, false);
+    assert_eq!(inside, (11, 7));
+    assert!(
+        west[0]
+            .iter()
+            .all(|vertex| vertex.texel.tile == [inside.0, inside.1])
+    );
+    let east = quads_facing(&mesh, |normal| normal[0] > 0.5);
+    assert_eq!(east.len(), 1);
+    let outer = block_tile(Block::Cake, 1, 2, false);
+    assert!(
+        east[0]
+            .iter()
+            .all(|vertex| vertex.texel.tile == [outer.0, outer.1])
+    );
+}
+
+#[test]
 fn greedy_mesh_splits_a_row_where_torch_light_changes() {
     let fill_row = |chunk: &mut Chunk| {
         for x in 1..5 {

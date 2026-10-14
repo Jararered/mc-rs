@@ -2,6 +2,7 @@
 //! for a player nobody is holding a mouse for.
 
 use bevy::prelude::*;
+use game::app::settings::GameSettings;
 use game::block::blocks::Block;
 use game::entity::DroppedItem;
 use game::entity::creature::Living;
@@ -9,10 +10,12 @@ use game::entity::mobs::Mob;
 use game::entity::mobs::MobType;
 use game::inventory::Hotbar;
 use game::inventory::Inventory;
+use game::item::Item;
 use game::item::ItemStack;
 use game::physics::BlockFace;
 use game::physics::BlockHit;
 use game::player::Player;
+use game::player::PlayerHealth;
 use game::player::actions::Action;
 use game::player::actions::PlayerAction;
 use game::player::actions::PlayerActionsPlugin;
@@ -184,6 +187,123 @@ fn a_chest_opens_for_the_player_who_clicked_it() {
     ));
     // The stone in hand was not placed against it.
     assert_eq!(held(&app, second), 2);
+}
+
+fn use_block(hit: BlockHit) -> Action {
+    Action::Use {
+        hit: Some(hit),
+        origin: Vec3::new(8.5, 6.62, 0.5),
+        look: Vec3::X,
+        click: true,
+    }
+}
+
+fn health_of(app: &App, player: Entity) -> u8 {
+    app.world().get::<PlayerHealth>(player).unwrap().current
+}
+
+fn set_health(app: &mut App, player: Entity, current: u8) {
+    app.world_mut()
+        .get_mut::<PlayerHealth>(player)
+        .unwrap()
+        .current = current;
+}
+
+#[test]
+fn a_cake_is_placed_from_the_hand_and_eaten_in_slices() {
+    let (mut app, _, player) = two_players();
+    {
+        let mut hotbar = app.world_mut().get_mut::<Hotbar>(player).unwrap();
+        hotbar.slots[0] = ItemStack::new(Item::Cake, 1).ok();
+    }
+    let ground = top_of(&app, 10, 4, 2);
+    act(&mut app, player, use_block(ground));
+    assert_eq!(block(&app, 10, 5, 2), Block::Cake);
+    assert_eq!(held(&app, player), 0);
+    assert_eq!(
+        app.world().resource::<WorldChunks>().metadata_at(10, 5, 2),
+        0
+    );
+
+    // Full health: the click is consumed, so the stone in hand is not placed
+    // on the cake, and neither click takes a bite.
+    {
+        let mut hotbar = app.world_mut().get_mut::<Hotbar>(player).unwrap();
+        hotbar.slots[0] = ItemStack::from_block(Block::Stone, 2).ok();
+    }
+    set_health(&mut app, player, 20);
+    let cake = top_of(&app, 10, 5, 2);
+    act(&mut app, player, use_block(cake));
+    act(&mut app, player, Action::Mine { hit: cake });
+    assert_eq!(block(&app, 10, 5, 2), Block::Cake);
+    assert_eq!(block(&app, 10, 6, 2), Block::Air);
+    assert_eq!(held(&app, player), 2);
+    assert_eq!(
+        app.world().resource::<WorldChunks>().metadata_at(10, 5, 2),
+        0
+    );
+    assert_eq!(health_of(&app, player), 20);
+
+    set_health(&mut app, player, 10);
+    act(&mut app, player, use_block(cake));
+    assert_eq!(
+        app.world().resource::<WorldChunks>().metadata_at(10, 5, 2),
+        1
+    );
+    assert_eq!(health_of(&app, player), 13);
+    assert_eq!(held(&app, player), 2);
+    assert_eq!(block(&app, 10, 6, 2), Block::Air);
+
+    // By default only a right-click eats: a punch digs and takes no bite.
+    act(&mut app, player, Action::Mine { hit: cake });
+    assert_eq!(block(&app, 10, 5, 2), Block::Cake);
+    assert_eq!(
+        app.world().resource::<WorldChunks>().metadata_at(10, 5, 2),
+        1
+    );
+    assert_eq!(health_of(&app, player), 13);
+
+    // With the feature off, a punch takes a bite as in Beta, and the cake is
+    // still there to keep digging.
+    app.insert_resource(GameSettings {
+        cake_right_click_only: false,
+        ..default()
+    });
+    act(&mut app, player, Action::Mine { hit: cake });
+    assert_eq!(
+        app.world().resource::<WorldChunks>().metadata_at(10, 5, 2),
+        2
+    );
+    assert_eq!(health_of(&app, player), 16);
+
+    app.world_mut()
+        .resource_mut::<WorldChunks>()
+        .set_metadata(10, 5, 2, 5);
+    set_health(&mut app, player, 10);
+    let last = top_of(&app, 10, 5, 2);
+    act(&mut app, player, use_block(last));
+    assert_eq!(block(&app, 10, 5, 2), Block::Air);
+    assert_eq!(health_of(&app, player), 13);
+    assert_eq!(dropped(&mut app), 0);
+
+    app.world_mut()
+        .resource_mut::<WorldChunks>()
+        .set_block(10, 5, 2, Block::Cake);
+    let broken = top_of(&app, 10, 5, 2);
+    act(&mut app, player, Action::Break { hit: broken });
+    assert_eq!(block(&app, 10, 5, 2), Block::Air);
+    assert_eq!(dropped(&mut app), 0);
+
+    // Taking the block under a cake removes it and still drops nothing.
+    app.world_mut()
+        .resource_mut::<WorldChunks>()
+        .set_block(4, 5, 4, Block::Cake);
+    let support = top_of(&app, 4, 4, 4);
+    act(&mut app, player, Action::Break { hit: support });
+    assert_eq!(block(&app, 4, 4, 4), Block::Air);
+    assert_eq!(block(&app, 4, 5, 4), Block::Air);
+    // The grass block drops its dirt. The cake does not.
+    assert_eq!(dropped(&mut app), 1);
 }
 
 #[test]

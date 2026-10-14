@@ -122,7 +122,6 @@ fn native_save_values_and_supported_states_round_trip() {
     // Shapes the mesher cannot draw, and parts placed by another block or
     // item, are not placeable directly.
     for id in [
-        Block::Cake,
         Block::Bed,
         Block::WoodenDoor,
         Block::PistonHead,
@@ -154,6 +153,11 @@ fn native_save_values_and_supported_states_round_trip() {
     assert_eq!(
         ItemStack::new(Item::Repeater, 1).unwrap().runtime_block(),
         Some((Block::RepeaterInactive, 0))
+    );
+    assert_eq!(Block::Cake.placed(0), Some((Block::Cake, 0)));
+    assert_eq!(
+        ItemStack::new(Item::Cake, 1).unwrap().runtime_block(),
+        Some((Block::Cake, 0))
     );
     for id in [Block::Fence, Block::Trapdoor, Block::Glass] {
         assert_eq!(

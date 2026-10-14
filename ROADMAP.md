@@ -31,7 +31,7 @@ Each step already has its data, block or item in place, and needs no audio.
 - [ ] **Death screen.** `GuiGameOver`: the score line, and Respawn and Title buttons. The respawn waits for the
       button, as a remote player's already does (`ClientRespawn`). The score is Beta's `EntityPlayer.score`, which the
       game does not track yet and `original.rs` drops, so it goes into both formats.
-- [ ] **Cake.** Place it with the box already in `data/blocks.ron`. Right-click eats one of six slices, healing 3 while
+- [x] **Cake.** Place it with the box already in `data/blocks.ron`. Right-click eats one of six slices, healing 3 while
       health is below 20 (`BlockCake`). The last slice removes the block. `Block::placed` needs the cake case.
 - [ ] **Sign text.** `GuiEditSign` for the four lines, and draw them on the sign faces. Storage and both formats
       already work (`SignText`), so this is UI and mesh work.

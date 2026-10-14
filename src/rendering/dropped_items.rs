@@ -160,8 +160,13 @@ pub fn item_piece_transform(
 
 /// Blocks drawn as a 3D model. `RenderBlocks.renderItemIn3d` accepts only a few
 /// render types; torches, ladders, plants, repeaters, levers, and the rest use
-/// Beta's flat item sprite instead (`Shape::Flat`).
+/// Beta's flat item sprite instead (`Shape::Flat`). `RenderItem` only asks for
+/// block items (IDs below 256), so an item that places a block, such as cake,
+/// keeps its sprite.
 pub fn dropped_block_model(stack: ItemStack) -> Option<(Block, u8)> {
+    if stack.item().as_u16() >= 256 {
+        return None;
+    }
     let (block, metadata) = stack.runtime_block()?;
     if block.is_ladder()
         || block.is_torch()

@@ -255,6 +255,7 @@ pub(super) fn neighbor_hides_face(
     if neighbor == Block::Air
         || neighbor == Block::SnowLayer
         || neighbor == Block::Cactus
+        || neighbor == Block::Cake
         || neighbor == Block::Farmland
         || neighbor == Block::Crops
         || neighbor == Block::Water

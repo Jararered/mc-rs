@@ -97,6 +97,7 @@ enum MenuAction {
     PigSteering,
     SteadyBoats,
     BoatCrashes,
+    CakeRightClickOnly,
     Tab(SettingsTab),
 }
 
@@ -121,6 +122,7 @@ pub(super) enum SettingLabel {
     PigSteering,
     SteadyBoats,
     BoatCrashes,
+    CakeRightClickOnly,
     Fullscreen,
 }
 
@@ -596,6 +598,13 @@ fn spawn_settings_menu(
                                 MenuAction::BoatCrashes,
                                 SettingLabel::BoatCrashes,
                             );
+                            spawn_setting_button(
+                                parent,
+                                textures,
+                                cake_right_click_only_text(settings),
+                                MenuAction::CakeRightClickOnly,
+                                SettingLabel::CakeRightClickOnly,
+                            );
                         });
                     content
                         .spawn((
@@ -946,6 +955,9 @@ fn handle_buttons(
             MenuAction::PigSteering => settings.pig_steering = !settings.pig_steering,
             MenuAction::SteadyBoats => settings.steady_boats = !settings.steady_boats,
             MenuAction::BoatCrashes => settings.boat_crashes = !settings.boat_crashes,
+            MenuAction::CakeRightClickOnly => {
+                settings.cake_right_click_only = !settings.cake_right_click_only;
+            }
             MenuAction::Tab(selected) => {
                 drag.0 = None;
                 for (tab, mut node) in &mut panels {
@@ -993,6 +1005,7 @@ fn refresh_settings_labels(
             SettingLabel::PigSteering => pig_steering_text(&settings),
             SettingLabel::SteadyBoats => steady_boats_text(&settings),
             SettingLabel::BoatCrashes => boat_crashes_text(&settings),
+            SettingLabel::CakeRightClickOnly => cake_right_click_only_text(&settings),
         };
         if let Ok(mut text) = texts.get_mut(entity) {
             **text = value;
@@ -1074,6 +1087,17 @@ fn pig_steering_text(settings: &GameSettings) -> String {
     format!(
         "Pig steering: {}",
         if settings.pig_steering { "ON" } else { "OFF" }
+    )
+}
+
+fn cake_right_click_only_text(settings: &GameSettings) -> String {
+    format!(
+        "Cake by right-click only: {}",
+        if settings.cake_right_click_only {
+            "ON"
+        } else {
+            "OFF"
+        }
     )
 }
 

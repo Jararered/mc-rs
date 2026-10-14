@@ -137,6 +137,7 @@ convert facings, and `blocks::species` names the species values.
 | Ladder | 2 south, 3 north, 4 east, 5 west wall |
 | Furnace, lit furnace, chest | 2 north, 3 south, 4 west, 5 east front |
 | Pumpkin | 0 west, 1 south, 2 east, 3 north front |
+| Cake | Bites taken, 0–5. The sixth removes the block |
 
 ## Adding update behavior to a block
 

@@ -168,6 +168,7 @@ pub(crate) fn is_box_shape(block: Block) -> bool {
     matches!(
         block,
         Block::StoneSlab
+            | Block::Cake
             | Block::Fence
             | Block::Trapdoor
             | Block::StoneButton
@@ -186,6 +187,9 @@ pub(crate) fn block_boxes(block: Block, metadata: u8, fence_links: [bool; 4]) ->
     let mut boxes = BlockBoxes::default();
     match block {
         Block::StoneSlab => boxes.push([0.0, 0.0, 0.0, 1.0, 0.5, 1.0]),
+        // `BlockCake.setBlockBoundsBasedOnState`: the selection box, not the
+        // shorter collision box.
+        Block::Cake => boxes.push(flat(block.selection_bounds_for(metadata))),
         Block::WoodenStairs | Block::CobblestoneStairs => {
             for bounds in block.collision_boxes_for(metadata).into_iter().flatten() {
                 boxes.push(flat(bounds));

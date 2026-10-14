@@ -127,6 +127,14 @@ pub fn place_selected_block_facing(
     {
         return false;
     }
+    // `BlockCake.canPlaceBlockAt`: the block under it has a solid material.
+    if selected == Block::Cake
+        && !chunks
+            .block_at(x, y - 1, z)
+            .is_some_and(Block::is_solid_material)
+    {
+        return false;
+    }
     // `BlockFence.canPlaceBlockAt`: on another fence or on solid ground.
     if selected == Block::Fence
         && !chunks

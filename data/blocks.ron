@@ -121,7 +121,7 @@
     Glowstone: (base: ToolOnly, hardness: 0.3, light_emission: 15, pick_level: 0, sound: Glass),
     NetherPortal: (base: NonColliding, hardness: -1, targetable: false, light_emission: 11, solid_material: false, sound: Glass),
     JackOLantern: (base: Solid, hardness: 1, light_emission: 15, sound: Wood),
-    Cake: (base: Solid, hardness: 0.5, opaque_cube: false, light_opacity: 0, collision: ((0.0625, 0, 0.0625), (0.9375, 0.5, 0.9375)), selection: ((0.0625, 0, 0.0625), (0.9375, 0.5, 0.9375)), sound: Cloth),
+    Cake: (base: Solid, hardness: 0.5, opaque_cube: false, light_opacity: 0, collision: ((0.0625, 0, 0.0625), (0.9375, 0.4375, 0.9375)), selection: ((0.0625, 0, 0.0625), (0.9375, 0.5, 0.9375)), sound: Cloth),
     RepeaterInactive: (base: Solid, opaque_cube: false, light_opacity: 0, collision: ((0, 0, 0), (1, 0.125, 1)), selection: ((0, 0, 0), (1, 0.125, 1)), solid_material: false, sound: Wood),
     RepeaterActive: (base: Solid, opaque_cube: false, light_opacity: 0, light_emission: 9, collision: ((0, 0, 0), (1, 0.125, 1)), selection: ((0, 0, 0), (1, 0.125, 1)), solid_material: false, sound: Wood),
     LockedChest: (base: Solid, light_emission: 15, sound: Wood),

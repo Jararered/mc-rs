@@ -115,7 +115,7 @@
     Dye: (subtypes: 15),
     Bone: (),
     Sugar: (),
-    Cake: (stack: 1),
+    Cake: (stack: 1, places: Cake),
     Bed: (stack: 1),
     Repeater: (places: RepeaterInactive),
     Cookie: (stack: 8, heal: 1),

@@ -572,6 +572,12 @@ pub fn block_tile(
         Block::NoteBlock => tile(74),
         Block::Jukebox if face == 0 => tile(75),
         Block::Jukebox => tile(74),
+        // `BlockCake.getBlockTextureFromSideAndMetadata`. Face 3 is west,
+        // Java side 4: the cut face, once a slice has been eaten.
+        Block::Cake if face == 0 => tile(121),
+        Block::Cake if face == 1 => tile(124),
+        Block::Cake if face == 3 && metadata > 0 => tile(123),
+        Block::Cake => tile(122),
         Block::Dispenser if face == 0 || face == 1 => tile(62),
         Block::Dispenser => {
             if block

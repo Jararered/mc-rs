@@ -303,6 +303,14 @@ impl Block {
             | Self::WallSign => metadata,
             // The occupied bit is not drawn.
             Self::Bed => metadata & 0b1011,
+            // Bites taken. Six removes the block, so a larger value draws as five.
+            Self::Cake => {
+                if metadata > 5 {
+                    5
+                } else {
+                    metadata
+                }
+            }
             _ => 0,
         }
     }
@@ -334,6 +342,7 @@ impl Block {
     pub fn selection_bounds_for(self, metadata: u8) -> definition::BlockBounds {
         match self {
             Self::Torch | Self::Ladder => definition::oriented_bounds(self, metadata),
+            Self::Cake => cake_bounds(metadata, false),
             Self::WoodenDoor | Self::IronDoor => definition::door_bounds(metadata),
             Self::Trapdoor => definition::trapdoor_bounds(metadata),
             Self::Sign | Self::WallSign => definition::sign_bounds(self, metadata),
@@ -348,6 +357,7 @@ impl Block {
     pub fn collision_bounds_for(self, metadata: u8) -> Option<definition::BlockBounds> {
         match self {
             Self::Ladder => Some(definition::oriented_bounds(self, metadata)),
+            Self::Cake => Some(cake_bounds(metadata, true)),
             Self::SnowLayer if metadata & 7 >= 3 => Some(([0.0; 3], [1.0, 0.5, 1.0])),
             Self::WoodenDoor | Self::IronDoor => Some(definition::door_bounds(metadata)),
             Self::Trapdoor => Some(definition::trapdoor_bounds(metadata)),
@@ -399,7 +409,6 @@ impl Block {
                 | Self::IronDoor
                 | Self::RedstoneTorchInactive
                 | Self::NetherPortal
-                | Self::Cake
                 | Self::RepeaterActive,
                 _,
             ) => None,
@@ -429,4 +438,15 @@ impl Block {
             _ => ItemData::None,
         }
     }
+}
+
+/// `BlockCake.setBlockBoundsBasedOnState`, and the collision box one sixteenth
+/// shorter (`getCollisionBoundingBoxFromPool`). Slices come off the west side.
+/// Metadata past the fifth bite is clamped so a bad value cannot invert the box.
+fn cake_bounds(metadata: u8, collision: bool) -> definition::BlockBounds {
+    let bites = metadata.min(5);
+    let min_x = f32::from(1 + bites * 2) / 16.0;
+    let inset = 1.0 / 16.0;
+    let max_y = if collision { 0.5 - inset } else { 0.5 };
+    ([min_x, 0.0, inset], [1.0 - inset, max_y, 1.0 - inset])
 }

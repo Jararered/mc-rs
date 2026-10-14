@@ -2,6 +2,7 @@
 //! block family's behavior, run against small hand-built worlds.
 
 mod cactus;
+mod cake;
 mod dead_bush;
 mod engine;
 mod falling;

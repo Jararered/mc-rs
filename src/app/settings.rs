@@ -121,6 +121,9 @@ pub struct GameSettings {
     /// Features tab: any hit above the wreck speed breaks a boat. Beta's
     /// only breaks when it scrapes along what it hits.
     pub boat_crashes: bool,
+    /// Features tab: only a right-click eats cake. Beta's punch takes a
+    /// bite too (`BlockCake.onBlockClicked`).
+    pub cake_right_click_only: bool,
 }
 
 impl Default for GameSettings {
@@ -154,6 +157,7 @@ impl Default for GameSettings {
             pig_steering: true,
             steady_boats: true,
             boat_crashes: true,
+            cake_right_click_only: true,
         }
     }
 }
@@ -361,6 +365,7 @@ struct StoredSettings {
     pig_steering: bool,
     steady_boats: bool,
     boat_crashes: bool,
+    cake_right_click_only: bool,
 }
 
 impl Default for StoredSettings {
@@ -401,6 +406,7 @@ impl From<&GameSettings> for StoredSettings {
             pig_steering: settings.pig_steering,
             steady_boats: settings.steady_boats,
             boat_crashes: settings.boat_crashes,
+            cake_right_click_only: settings.cake_right_click_only,
         }
     }
 }
@@ -436,6 +442,7 @@ impl From<StoredSettings> for GameSettings {
             pig_steering: stored.pig_steering,
             steady_boats: stored.steady_boats,
             boat_crashes: stored.boat_crashes,
+            cake_right_click_only: stored.cake_right_click_only,
         };
         settings.clamp();
         settings

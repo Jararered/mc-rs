@@ -415,6 +415,7 @@ fn settings_round_trip_through_json() {
         pig_steering: false,
         steady_boats: false,
         boat_crashes: false,
+        cake_right_click_only: false,
     };
     save_settings(&path, &settings).unwrap();
     assert_eq!(load_settings(&path), settings);

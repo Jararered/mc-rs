@@ -223,6 +223,11 @@ fn busy_chunk(position: ChunkPosition) -> GeneratedChunk {
             motion: [0.0, 0.0, 0.125],
             yaw: 90.0,
         },
+        SavedBody::Painting {
+            tile: [position.x * 16 + 11, 66, position.z * 16 + 4],
+            direction: 2,
+            motive: "Fighters".to_owned(),
+        },
     ]);
 
     generated.items.push(ChunkDroppedItem {
@@ -299,7 +304,12 @@ fn assert_busy_chunk_loaded(
     assert!((wolf.velocity[0] - 0.1).abs() < 0.001);
 
     let carts = loaded.chunk.saved_bodies();
-    assert_eq!(carts.len(), 3);
+    assert_eq!(carts.len(), 4);
+    assert!(carts.contains(&SavedBody::Painting {
+        tile: [position.x * 16 + 11, 66, position.z * 16 + 4],
+        direction: 2,
+        motive: "Fighters".to_owned(),
+    }));
     let boat = carts.iter().find_map(|body| match body {
         SavedBody::Boat {
             center,
@@ -498,6 +508,38 @@ fn region_files_follow_beta_s_layout() {
         b"TerrainPopulated",
         b"Entities",
         b"TileEntities",
+    ] {
+        assert!(
+            contains(&nbt, key),
+            "chunk lacks {}",
+            String::from_utf8_lossy(key)
+        );
+    }
+}
+
+#[test]
+fn a_painting_is_written_as_beta_s_painting_entity() {
+    let (_saves, storage) = original_world("original-painting");
+    let position = ChunkPosition { x: 0, z: 0 };
+    storage.save_chunk(position, &busy_chunk(position)).unwrap();
+
+    let bytes = fs::read(storage.root().join("region").join("r.0.0.mcr")).unwrap();
+    let entry = u32::from_be_bytes(bytes[..4].try_into().unwrap());
+    let sector = (entry >> 8) as usize;
+    let record = &bytes[sector * 4096..];
+    let length = u32::from_be_bytes(record[..4].try_into().unwrap()) as usize;
+    let mut nbt = Vec::new();
+    ZlibDecoder::new(&record[5..4 + length])
+        .read_to_end(&mut nbt)
+        .unwrap();
+    for key in [
+        &b"Painting"[..],
+        b"Fighters",
+        b"Dir",
+        b"Motive",
+        b"TileX",
+        b"TileY",
+        b"TileZ",
     ] {
         assert!(
             contains(&nbt, key),

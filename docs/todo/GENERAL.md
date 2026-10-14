@@ -16,8 +16,9 @@ server (see Networking).
 
 These are registered and craftable, but right-click does nothing, or only part of the item works.
 
-- **Painting** (`ItemPainting`, `EntityPainting`, `EnumArt`): no entity, placement or art selection. Beta keeps
-  paintings in the chunk's entity list.
+- **Painting leftovers** (`EntityPainting`): an arrow does not knock a painting down (`EntityArrow` calls
+  `attackEntityFrom` on whatever it hits), and neither do other entities' solid boxes, such as a boat's, stop one
+  being hung, because entities have none here.
 - **Sign** (`ItemSign`, `BlockSign`, `TileEntitySign`, `GuiEditSign`): placing and support work
   (`player::place_sign`, `behaviors/attached.rs`), and the four lines save in both formats (`SignText`). Missing: the
   text is not drawn and there is no edit screen, so only text a Beta client wrote shows up.

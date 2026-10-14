@@ -81,14 +81,14 @@ Sounds need the original game's `resources/` folder beside `assets/`. Without it
 
 - [ ] Right-click a solid block with a cake to set it down. It will not sit on air, a torch, or snow, and it will
       not go where you are standing. It is a low block, and each bite comes off its west side.
-      `pending`
+      `7181961 · 2026-10-14 18:26`
 - [ ] Right-click the cake while hurt: one of six slices is eaten and you heal three half-hearts, up to full.
       Punching it only digs. At full health a right-click takes no bite and does not use whatever is in your hand.
-      `pending`
+      `7181961 · 2026-10-14 18:26`
 - [ ] A dropped or thrown cake is the flat cake picture, as in your hand, not a small cake block.
-      `pending`
+      `7181961 · 2026-10-14 18:26`
 - [ ] The sixth bite removes the cake. Breaking one, or taking away the block under it, leaves nothing behind.
-      `pending`
+      `7181961 · 2026-10-14 18:26`
 
 #### Interactions
 
@@ -194,6 +194,25 @@ Sounds need the original game's `resources/` folder beside `assets/`. Without it
 - [ ] A boat is still there, with its heading, after saving and reloading, in both save formats.
       `94d9f67 · 2026-10-09 08:53`
 
+##### Painting
+
+- [ ] Right-click the side of a block with a painting to hang one there, facing you. It picks a random motive
+      among those that fit: a lone block takes a one-block picture, and a wide wall can take the big ones, up to
+      four blocks across. It will not go on the top or bottom of a block, on a non-solid block such as a torch,
+      with a block in front of it, or over another painting.
+      `pending`
+- [ ] Each motive shows its picture from `art/kz.png`, with a wooden back and frame, lit block by block. Without
+      `assets/` a painting is a plain brown panel.
+      `pending`
+- [ ] Take the wall away and within five seconds the painting drops as an item. Any hit, or an explosion nearby,
+      knocks it off the wall the same way.
+      `pending`
+- [ ] A painting stays on its wall with the same motive after saving and reloading, in both save formats, and one
+      in a Beta world loads.
+      `pending`
+- [ ] On the server, a Beta client sees paintings and can punch them down.
+      `pending`
+
 ##### Settings
 
 - [ ] F3 shows the frame rate on its first line, as `N fps`, counted afresh each second.
@@ -211,7 +230,7 @@ Sounds need the original game's `resources/` folder beside `assets/`. Without it
       `8723961 · 2026-10-14 15:01`
 - [ ] Features, Cake by right-click only (on by default): punching a cake digs it without taking a bite. Off, a
       punch eats a slice too, as in Beta.
-      `pending`
+      `7181961 · 2026-10-14 18:26`
 - [ ] Features, Pig steering (on by default): a ridden pig turns to where you look and walks while W is held,
       hopping up blocks in its way. Off, the pig wanders wherever it likes, as in Beta.
       `94d9f67 · 2026-10-09 08:53`

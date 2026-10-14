@@ -243,6 +243,26 @@ pub fn spawn_entity_drop(commands: &mut Commands, rng: &mut ItemRng, feet: Vec3,
     );
 }
 
+/// The `EntityItem` constructor at `position`, its centre: an item left by
+/// an entity that is not a creature, such as a painting. Pickup waits 10
+/// ticks.
+pub fn spawn_constructed_drop(
+    commands: &mut Commands,
+    rng: &mut ItemRng,
+    position: Vec3,
+    stack: ItemStack,
+) {
+    spawn_item(
+        commands,
+        position,
+        stack,
+        item_constructor_motion(rng.unit(), rng.unit()),
+        PICKUP_DELAY_TICKS,
+        rng.unit() * std::f32::consts::TAU,
+        rng.next_u64(),
+    );
+}
+
 /// Spill chest contents as Beta-style random piles when the chest block breaks.
 pub fn spawn_chest_drops(
     commands: &mut Commands,

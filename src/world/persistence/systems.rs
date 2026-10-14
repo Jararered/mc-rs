@@ -223,9 +223,9 @@ pub(super) fn flush_persistence(
         }
         let mut bodies_by_chunk: HashMap<ChunkPosition, Vec<crate::entity::SavedBody>> =
             HashMap::new();
-        for (_, transform, falling, tnt, velocity, minecart, cargo, boat) in &bodies {
+        for (_, transform, falling, tnt, velocity, minecart, cargo, boat, painting) in &bodies {
             if let Some(body) = crate::entity::SavedBody::capture(
-                transform, falling, tnt, velocity, minecart, cargo, boat,
+                transform, falling, tnt, velocity, minecart, cargo, boat, painting,
             ) {
                 bodies_by_chunk
                     .entry(ChunkPosition::from_world(

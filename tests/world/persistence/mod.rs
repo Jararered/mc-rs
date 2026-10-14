@@ -1414,6 +1414,17 @@ fn a_saved_boat_returns_with_its_speed_and_heading() {
 }
 
 #[test]
+fn a_saved_painting_keeps_its_wall_facing_and_motive() {
+    let body = SavedBody::Painting {
+        tile: [-3, 70, 12],
+        direction: 3,
+        motive: "DonkeyKong".to_owned(),
+    };
+    let json = serde_json::to_string(&body).unwrap();
+    assert_eq!(serde_json::from_str::<SavedBody>(&json).unwrap(), body);
+}
+
+#[test]
 fn a_cart_saved_before_chest_and_furnace_carts_loads_as_an_empty_one() {
     let json = r#"{"Minecart":{"center":[8.5,64.5,8.5],"motion":[0.2,0.0,0.0]}}"#;
     assert_eq!(

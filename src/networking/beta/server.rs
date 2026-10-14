@@ -1104,6 +1104,11 @@ fn play(client: &mut Client, host: &mut WorldHost, shared: &mut Shared, packet: 
                 Pointed::Boat(target)
             } else if world.get::<Fireball>(target).is_some() {
                 Pointed::Fireball(target)
+            } else if world
+                .get::<crate::entity::painting::Painting>(target)
+                .is_some()
+            {
+                Pointed::Painting(target)
             } else {
                 // Something that is not clicked on.
                 return;

@@ -42,9 +42,9 @@ Each step already has its data, block or item in place, and needs no audio.
       `audio::records`.
 - [ ] **Projectiles in saves.** Save arrows (with their `player` flag), snowballs, eggs and bobbers in both formats, so
       a stuck arrow a player could pick up survives a reload.
-- [ ] **Painting entity.** `EntityPainting` and `EnumArt`: place on a wall that fits the art, drop the item when it
-      breaks, and save it with its chunk in both formats. The art needs a source, so either wait for Phase 2 or draw a
-      flat placeholder (see open questions).
+- [x] **Painting entity.** `EntityPainting` and `EnumArt`: place on a wall that fits the art, drop the item when it
+      breaks, and save it with its chunk in both formats. The art loads from `assets/art/kz.png`, like the mob
+      skins, with a flat colour when it is missing.
 - [ ] **Compass and clock icons.** Choose the icon frame per stack: the compass needle points at the world spawn, and
       the clock shows `world_time` (Beta's `TextureCompassFX` and `TextureWatchFX`). Write the frames from the render
       world, as the water tiles are, rather than editing the atlas.
@@ -138,7 +138,7 @@ order:
 - [ ] **Windows and signs.** Container windows and their clicks (`Packet100OpenWindow`, `Packet102WindowClick` answered
       with `Packet106Transaction`), signs (`Packet130UpdateSign`), note blocks and doors.
 - [ ] **Weather, sleep and explosions.** `Packet71Weather`, `Packet70Bed`, `Packet17Sleep` and `Packet60Explosion`.
-- [ ] **Paintings on the wire.** `Packet25EntityPainting` and a tracker row, once Phase 1's painting exists.
+- [x] **Paintings on the wire.** `Packet25EntityPainting` and a tracker row.
 - [ ] **Two original clients.** The open checks in MULTIPLAYER.md, then its trust and robustness list.
 - [ ] **Our own client.** Draw other players, the join screen (`GuiMultiplayer`, `GuiConnecting`,
       `GuiConnectFailed`), and the remote-world mode. The server split (light without meshes, generation separated from
@@ -163,11 +163,9 @@ Checked against the reference classes. These are later features and stay out of 
 ## Open questions
 
 1. **Resource pack format.** Read ZIPs first (which needs a crate) or folders first? This decides the Phase 2 dependency.
-2. **Paintings before a pack exists.** Draw placeholder paintings, or hold the painting entity until Phase 2? Sounds
-   already play from the player's `resources/` folder.
-3. **Multiplayer pace.** Keep it running alongside Phases 1 to 7, or pause it until the singleplayer phases land? AGENTS
+2. **Multiplayer pace. Keep it running alongside Phases 1 to 7, or pause it until the singleplayer phases land? AGENTS
    puts Beta-world compatibility last, but the server is already built.
-4. **Death screen score.** Build the score counter with the death screen in Phase 1, or leave the score line out until
+3. **Death screen score.** Build the score counter with the death screen in Phase 1, or leave the score line out until
    statistics exist in Phase 6?
 
 ## Checks at phase ends

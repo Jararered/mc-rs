@@ -32,6 +32,8 @@ use crate::entity::drops::blocks::natural_drops_with_metadata;
 use crate::entity::drops::items::spawn_block_drop;
 use crate::entity::drops::items::spawn_chest_drops;
 use crate::entity::mobs::Mob;
+use crate::entity::painting::Painting;
+use crate::entity::painting::break_painting;
 use crate::entity::projectiles::victim_of;
 use crate::inventory::Inventory;
 use crate::item::ItemStack;
@@ -43,6 +45,7 @@ use crate::random::ItemRng;
 use crate::random::JavaRandom;
 use crate::rendering::particles::effects::EffectParticles;
 use crate::rendering::particles::effects::FxKind;
+use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
 use crate::world::difficulty::Difficulty;
 use crate::world::edit::WorldEdit;
@@ -261,6 +264,7 @@ pub(crate) fn apply_explosions(
         (&Transform, &mut Velocity),
         (With<PrimedTnt>, Without<Living>, Without<Player>),
     >,
+    paintings: Query<(Entity, &Painting, &Transform), Without<Player>>,
     mut rng: ResMut<ExplosionRandom>,
     mut particles: Option<ResMut<EffectParticles>>,
     mut loot: Local<ItemRng>,
@@ -270,6 +274,7 @@ pub(crate) fn apply_explosions(
     let difficulty = settings
         .as_ref()
         .map_or(Difficulty::Normal, |settings| settings.difficulty);
+    let mut knocked_off = Vec::new();
     for blast in blasts.read().copied().collect::<Vec<_>>() {
         let center = blast.center;
         let cells = blast_cells(&edit.chunks, center, blast.strength, &mut rng.0);
@@ -322,6 +327,19 @@ pub(crate) fn apply_explosions(
                     impact(&edit.chunks, center, transform.translation, aabb, reach)
             {
                 velocity.0 += fling / TICK_SECONDS;
+            }
+        }
+        // `EntityPainting.attackEntityFrom`: any blow knocks it off the wall.
+        for (entity, painting, transform) in &paintings {
+            let aabb = painting.aabb();
+            let position = transform.translation;
+            if within.intersects(aabb)
+                && !knocked_off.contains(&entity)
+                && impact(&edit.chunks, center, position, aabb, reach).is_some()
+            {
+                knocked_off.push(entity);
+                break_painting(&mut commands, &mut loot, entity, position);
+                edit.mark_dirty(ChunkPosition::from_world(position.x, position.z));
             }
         }
 

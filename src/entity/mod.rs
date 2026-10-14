@@ -16,6 +16,8 @@ use crate::entity::falling_block::spawn_falling;
 use crate::entity::minecart::Cargo;
 use crate::entity::minecart::CartKind;
 use crate::entity::minecart::Minecart;
+use crate::entity::painting::Art;
+use crate::entity::painting::Painting;
 use crate::entity::pathfinding::SearchStats;
 use crate::item::ItemStack;
 use crate::world::streaming::TimingStats;
@@ -30,6 +32,7 @@ pub mod fishing;
 pub mod minecart;
 pub mod mobs;
 pub mod mount;
+pub mod painting;
 pub mod pathfinding;
 pub mod projectiles;
 pub mod thrown;
@@ -61,9 +64,9 @@ impl EntityDiagnostics {
     }
 }
 
-/// A falling block or primed TNT stored with the chunk it is in. Both have
-/// already taken their block out of the world, so losing the entity would
-/// lose the block. Arrows, fireballs, thrown snowballs and eggs, and fishing
+/// A body stored with the chunk it is in: a falling block or primed TNT
+/// (both have already taken their block out of the world, so losing the
+/// entity would lose the block), a minecart, a boat, or a painting. Arrows, fireballs, thrown snowballs and eggs, and fishing
 /// bobbers are not saved, so an arrow left stuck in a wall is gone on reload.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum SavedBody {
@@ -101,6 +104,13 @@ pub enum SavedBody {
         motion: [f32; 3],
         #[serde(default)]
         yaw: f32,
+    },
+    /// A painting, by its wall block, the way it faces, and its motive's
+    /// title. Its position follows from those.
+    Painting {
+        tile: [i32; 3],
+        direction: u8,
+        motive: String,
     },
 }
 
@@ -157,12 +167,14 @@ pub type SavedBodyData = (
     Option<&'static Minecart>,
     Option<&'static Cargo>,
     Option<&'static Boat>,
+    Option<&'static Painting>,
 );
 pub type SavedBodyFilter = Or<(
     With<FallingBlock>,
     With<PrimedTnt>,
     With<Minecart>,
     With<Boat>,
+    With<Painting>,
 )>;
 
 impl SavedBody {
@@ -174,8 +186,16 @@ impl SavedBody {
         minecart: Option<&Minecart>,
         cargo: Option<&Cargo>,
         boat: Option<&Boat>,
+        painting: Option<&Painting>,
     ) -> Option<Self> {
         let position = transform.translation.to_array();
+        if let Some(painting) = painting {
+            return Some(Self::Painting {
+                tile: painting.tile.to_array(),
+                direction: painting.direction,
+                motive: painting.art.title().to_owned(),
+            });
+        }
         if let Some(boat) = boat {
             return Some(Self::Boat {
                 center: position,
@@ -274,6 +294,16 @@ impl SavedBody {
                         prev_yaw: yaw,
                         ..Boat::default()
                     },
+                );
+            }
+            Self::Painting {
+                tile,
+                direction,
+                motive,
+            } => {
+                painting::spawn_painting(
+                    commands,
+                    Painting::new(IVec3::from_array(tile), direction, Art::named(&motive)),
                 );
             }
         }

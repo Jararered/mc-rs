@@ -37,6 +37,9 @@ use crate::entity::minecart::spawn_cart;
 use crate::entity::mount::Seat;
 use crate::entity::mount::dismount;
 use crate::entity::mount::mount;
+use crate::entity::painting::Painting;
+use crate::entity::painting::break_painting;
+use crate::entity::painting::spawn_painting;
 use crate::entity::projectiles::Fireball;
 use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
@@ -92,7 +95,16 @@ pub(crate) fn apply_player_actions(
         With<Player>,
     >,
     mut edit: WorldEdit,
-    (mut particles, mut effects, mut sounds, mut mobs, mut fireballs, mut carts, mut boats): (
+    (
+        mut particles,
+        mut effects,
+        mut sounds,
+        mut mobs,
+        mut fireballs,
+        mut carts,
+        mut boats,
+        paintings,
+    ): (
         Option<ResMut<BlockParticles>>,
         Option<ResMut<EffectParticles>>,
         Option<ResMut<Sounds>>,
@@ -100,6 +112,7 @@ pub(crate) fn apply_player_actions(
         Query<(Entity, &mut Fireball, &Transform), Without<Player>>,
         Query<(Entity, &Transform, &mut Minecart, Option<&Cargo>), Without<Player>>,
         Query<(Entity, &Transform, &mut Boat, &Seat), Without<Player>>,
+        Query<(&Painting, &Transform), Without<Player>>,
     ),
     (mut bed_uses, mut item_uses, mut windows, mut strikes, mut aux): (
         MessageWriter<BedUse>,
@@ -229,6 +242,16 @@ pub(crate) fn apply_player_actions(
                             }
                         }
                     }
+                    Pointed::Painting(target) if left_click => {
+                        // `EntityPainting.attackEntityFrom`: any blow knocks it off.
+                        if let Ok((_, at)) = paintings.get(target) {
+                            let position = at.translation;
+                            break_painting(&mut commands, &mut item_rng, target, position);
+                            edit.mark_dirty(ChunkPosition::from_world(position.x, position.z));
+                        }
+                    }
+                    // `Entity.interact` does nothing for a painting.
+                    Pointed::Painting(_) => {}
                     Pointed::Minecart(target) if left_click => {
                         // `EntityMinecart.attackEntityFrom`: the blow's damage
                         // (a point more when falling) shakes the cart, and enough
@@ -507,6 +530,29 @@ pub(crate) fn apply_player_actions(
                         ItemStack::with_data(stack.item(), stack.count() - 1, stack.data()).ok()
                     });
                     edit.mark_dirty(ChunkPosition::from_block(hit.x, hit.z));
+                } else if let Some(hit) = hit
+                    && hotbar
+                        .selected_stack()
+                        .is_some_and(|stack| stack.item() == Item::Painting)
+                {
+                    // `ItemPainting.onItemUse`: a painting on the clicked side,
+                    // if a motive fits there. The click is used up either way.
+                    let others: Vec<_> = paintings
+                        .iter()
+                        .map(|(painting, _)| painting.aabb())
+                        .collect();
+                    if let Some(painting) = Painting::hang(
+                        &edit.chunks,
+                        IVec3::new(hit.x, hit.y, hit.z),
+                        hit.face,
+                        &others,
+                        &mut item_rng,
+                    ) {
+                        let center = painting.center();
+                        spawn_painting(&mut commands, painting);
+                        hotbar.take_selected(1);
+                        edit.mark_dirty(ChunkPosition::from_world(center.x, center.z));
+                    }
                 } else if hotbar
                     .selected_stack()
                     .is_some_and(|stack| stack.item() == Item::Bucket)

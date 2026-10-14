@@ -21,6 +21,7 @@ use crate::entity::falling_block;
 use crate::entity::minecart;
 use crate::entity::minecart::Minecart;
 use crate::entity::mount;
+use crate::entity::painting;
 use crate::entity::projectiles::ArrowDamage;
 use crate::entity::projectiles::Projectile;
 use crate::entity::projectiles::spawn_arrow_with;
@@ -75,6 +76,7 @@ impl Plugin for BlockTicksPlugin {
                     boat::bump_boats,
                     run_block_ticks,
                     falling_block::tick_falling_blocks,
+                    painting::tick_paintings,
                     apply_tick_effects,
                 )
                     .chain()

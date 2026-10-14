@@ -1,0 +1,31 @@
+// Beta 1.7.3's `EnumArt`, in its order: a new painting picks at random among
+// the motives that fit, in this order, so the order is part of the behavior.
+// `size` is in pixels (16 to a block) and `offset` is the motive's top-left
+// corner on `art/kz.png`, a 256×256 sheet. The title is what saves name.
+[
+    (title: "Kebab", size: (16, 16), offset: (0, 0)),
+    (title: "Aztec", size: (16, 16), offset: (16, 0)),
+    (title: "Alban", size: (16, 16), offset: (32, 0)),
+    (title: "Aztec2", size: (16, 16), offset: (48, 0)),
+    (title: "Bomb", size: (16, 16), offset: (64, 0)),
+    (title: "Plant", size: (16, 16), offset: (80, 0)),
+    (title: "Wasteland", size: (16, 16), offset: (96, 0)),
+    (title: "Pool", size: (32, 16), offset: (0, 32)),
+    (title: "Courbet", size: (32, 16), offset: (32, 32)),
+    (title: "Sea", size: (32, 16), offset: (64, 32)),
+    (title: "Sunset", size: (32, 16), offset: (96, 32)),
+    (title: "Creebet", size: (32, 16), offset: (128, 32)),
+    (title: "Wanderer", size: (16, 32), offset: (0, 64)),
+    (title: "Graham", size: (16, 32), offset: (16, 64)),
+    (title: "Match", size: (32, 32), offset: (0, 128)),
+    (title: "Bust", size: (32, 32), offset: (32, 128)),
+    (title: "Stage", size: (32, 32), offset: (64, 128)),
+    (title: "Void", size: (32, 32), offset: (96, 128)),
+    (title: "SkullAndRoses", size: (32, 32), offset: (128, 128)),
+    (title: "Fighters", size: (64, 32), offset: (0, 96)),
+    (title: "Pointer", size: (64, 64), offset: (0, 192)),
+    (title: "Pigscene", size: (64, 64), offset: (64, 192)),
+    (title: "BurningSkull", size: (64, 64), offset: (128, 192)),
+    (title: "Skeleton", size: (64, 48), offset: (192, 64)),
+    (title: "DonkeyKong", size: (64, 48), offset: (192, 112)),
+]

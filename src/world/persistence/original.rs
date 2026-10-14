@@ -20,7 +20,8 @@
 //! mid-fuse by a save is lost with its block; the native format keeps them.
 //! Minecarts are written as Beta's `Minecart` entity (type, a furnace cart's
 //! push and fuel, a chest cart's items) and boats as its `Boat`, which has no
-//! fields of its own; who rides one is not kept.
+//! fields of its own; who rides one is not kept. Paintings are Beta's
+//! `Painting`: the wall block, the way it faces, and the motive's title.
 //! Neither format keeps arrows (a stuck one that could have been picked up
 //! included), fireballs, thrown snowballs and eggs, or bobbers. The format
 //! is described by `ChunkLoader`, `McRegionChunkLoader`, `RegionFile`, `WorldInfo`
@@ -42,6 +43,7 @@ use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
 use bevy::log::warn;
+use bevy::math::IVec3;
 use flate2::Compression;
 use flate2::read::GzDecoder;
 use flate2::read::ZlibDecoder;
@@ -68,6 +70,8 @@ use crate::entity::mobs::Mob;
 use crate::entity::mobs::MobRecord;
 use crate::entity::mobs::MobSpawner;
 use crate::entity::mobs::MobType;
+use crate::entity::painting::Art;
+use crate::entity::painting::Painting;
 use crate::item::Item;
 use crate::item::ItemStack;
 use crate::random::JavaRandom;
@@ -353,6 +357,46 @@ fn boat_entity(body: &SavedBody) -> Option<Compound> {
         return None;
     };
     Some(entity_base("Boat", *center, *motion, *yaw))
+}
+
+/// `EntityPainting.writeEntityToNBT`: the way it faces, the motive, and the
+/// wall block.
+fn painting_entity(body: &SavedBody) -> Option<Compound> {
+    let SavedBody::Painting {
+        tile,
+        direction,
+        motive,
+    } = body
+    else {
+        return None;
+    };
+    let painting = Painting::new(IVec3::from_array(*tile), *direction, Art::named(motive));
+    let mut entity = entity_base(
+        "Painting",
+        painting.center().to_array(),
+        [0.0; 3],
+        painting.yaw(),
+    );
+    entity.put_byte("Dir", *direction as i8);
+    entity.put_string("Motive", motive);
+    entity.put_int("TileX", tile[0]);
+    entity.put_int("TileY", tile[1]);
+    entity.put_int("TileZ", tile[2]);
+    Some(entity)
+}
+
+/// `EntityPainting.readEntityFromNBT`: an unknown motive is Kebab.
+fn read_painting_entity(entity: &Compound) -> SavedBody {
+    let direction = (entity.byte("Dir") & 3) as u8;
+    SavedBody::Painting {
+        tile: [
+            entity.int("TileX"),
+            entity.int("TileY"),
+            entity.int("TileZ"),
+        ],
+        direction,
+        motive: Art::named(entity.string("Motive")).title().to_owned(),
+    }
 }
 
 fn read_boat_entity(entity: &Compound, position: [f64; 3]) -> SavedBody {
@@ -648,7 +692,11 @@ impl ChunkSnapshot {
             chunk
                 .saved_bodies()
                 .iter()
-                .filter_map(|body| minecart_entity(body).or_else(|| boat_entity(body)))
+                .filter_map(|body| {
+                    minecart_entity(body)
+                        .or_else(|| boat_entity(body))
+                        .or_else(|| painting_entity(body))
+                })
                 .map(Tag::Compound),
         );
         level.put_list("Entities", entities);
@@ -860,6 +908,7 @@ fn decode_chunk(
             "Item" => items.extend(read_item_entity(entity, position)),
             "Minecart" => carts.push(read_minecart_entity(entity, position)),
             "Boat" => carts.push(read_boat_entity(entity, position)),
+            "Painting" => carts.push(read_painting_entity(entity)),
             id => {
                 if let Some(kind) = mob_type(id) {
                     mobs.extend(read_mob_entity(entity, kind, position));

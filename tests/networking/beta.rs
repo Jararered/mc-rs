@@ -16,6 +16,9 @@ use game::entity::explosion::Explosion;
 use game::entity::explosion::prime_tnt;
 use game::entity::mobs::MobType;
 use game::entity::mobs::SpawnMob;
+use game::entity::painting::Art;
+use game::entity::painting::Painting;
+use game::entity::painting::spawn_painting;
 use game::inventory::Hotbar;
 use game::inventory::Inventory;
 use game::item::Item;
@@ -80,6 +83,13 @@ enum Heard {
     Object {
         entity: i32,
         kind: i8,
+    },
+    /// `Packet25EntityPainting`.
+    Painting {
+        entity: i32,
+        title: String,
+        tile: [i32; 3],
+        direction: i32,
     },
     /// `Packet24MobSpawn`, with its metadata as index and byte pairs.
     Mob {
@@ -321,6 +331,12 @@ fn hear(bytes: &[u8]) -> Option<(Heard, usize)> {
                 bytes: w.metadata()?,
             }
         }
+        25 => Heard::Painting {
+            entity: w.i32()?,
+            title: w.string()?,
+            tile: [w.i32()?, w.i32()?, w.i32()?],
+            direction: w.i32()?,
+        },
         28 => {
             let entity = w.i32()?;
             w.take(6)?;
@@ -977,6 +993,42 @@ fn a_client_is_shown_mobs_and_hits_them() {
                 status: 2,
             }
     });
+}
+
+#[test]
+fn a_client_is_shown_a_painting_and_knocks_it_down() {
+    let mut server = server("painting");
+    let (mut player, [x, feet, z]) = join(&mut server, "critic");
+    let me = own_id(&player);
+
+    let tile = IVec3::new(
+        x.floor() as i32 + 1,
+        feet.floor() as i32 + 1,
+        z.floor() as i32,
+    );
+    let world = overworld(&mut server);
+    spawn_painting(
+        &mut world.commands(),
+        Painting::new(tile, 3, Art::find("Bomb").unwrap()),
+    );
+    world.flush();
+    let Heard::Painting { entity, .. } = until(&mut server, &mut player, "the painting", |heard| {
+        matches!(
+            heard,
+            Heard::Painting { title, tile: at, direction: 3, .. }
+                if title == "Bomb" && *at == tile.to_array()
+        )
+    }) else {
+        unreachable!()
+    };
+
+    player.use_entity(me, entity, true);
+    until(
+        &mut server,
+        &mut player,
+        "the painting coming down",
+        |heard| *heard == Heard::Gone(entity),
+    );
 }
 
 #[test]

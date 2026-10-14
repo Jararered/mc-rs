@@ -7,6 +7,7 @@
 //! read arm, or its `Writer` method, from that one list. The rest are written
 //! out by hand below them.
 
+use bevy::math::IVec3;
 use bevy::math::Vec3;
 
 /// Why a packet could not be read.
@@ -588,6 +589,18 @@ impl Writer {
             }
             _ => self.i32(0),
         }
+    }
+
+    /// `Packet25EntityPainting`: the client hangs the motive on the wall
+    /// block itself, as `EntityPainting` does from `TileX/Y/Z` and `Dir`.
+    pub fn painting_spawn(&mut self, entity: i32, title: &str, tile: IVec3, direction: u8) {
+        self.u8(25);
+        self.i32(entity);
+        self.string(title);
+        self.i32(tile.x);
+        self.i32(tile.y);
+        self.i32(tile.z);
+        self.i32(i32::from(direction));
     }
 
     /// `Packet31RelEntityMove`, `Packet32EntityLook` or

@@ -331,7 +331,10 @@ struct WorldState<'w, 's> {
             With<FallingBlock>,
             With<PrimedTnt>,
             With<crate::entity::minecart::Minecart>,
-            With<crate::entity::boat::Boat>,
+            Or<(
+                With<crate::entity::boat::Boat>,
+                With<crate::entity::painting::Painting>,
+            )>,
             With<Arrow>,
             With<Fireball>,
             With<Thrown>,

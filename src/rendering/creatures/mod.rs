@@ -11,6 +11,7 @@
 pub mod boat;
 mod cart;
 pub mod models;
+pub mod painting;
 mod projectiles;
 mod shading;
 
@@ -59,7 +60,7 @@ pub use shading::Pass;
 pub use shading::creature_tag;
 
 /// Skins with a flat color to stand in when the reference texture is absent.
-const SKINS: [(&str, [u8; 3]); 22] = [
+const SKINS: [(&str, [u8; 3]); 23] = [
     ("mob/pig.png", [237, 167, 175]),
     ("mob/saddle.png", [112, 72, 40]),
     ("mob/cow.png", [124, 93, 74]),
@@ -82,6 +83,7 @@ const SKINS: [(&str, [u8; 3]); 22] = [
     ("particles.png", [200, 60, 50]),
     ("item/cart.png", [127, 127, 127]),
     ("item/boat.png", [150, 118, 70]),
+    (painting::TEXTURE, [168, 132, 88]),
 ];
 
 /// `EntitySheep.fleeceColorTable`, by wool color.
@@ -171,6 +173,8 @@ pub(super) fn plugin(app: &mut App) {
                 cart::pose_carts,
                 boat::add_boat_models,
                 boat::pose_boats,
+                painting::add_painting_models,
+                painting::pose_paintings,
             )
                 .chain()
                 .before(TransformSystems::Propagate)
@@ -588,9 +592,23 @@ fn entity_brightness(
     subtracted: u8,
     ambient: f32,
 ) -> f32 {
-    let x = feet.x.floor() as i32;
-    let y = (feet.y + height * 0.66).floor() as i32;
-    let z = feet.z.floor() as i32;
+    let cell = IVec3::new(
+        feet.x.floor() as i32,
+        (feet.y + height * 0.66).floor() as i32,
+        feet.z.floor() as i32,
+    );
+    cell_brightness(chunks, light, cell, subtracted, ambient)
+}
+
+/// `World.getLightBrightness` for one cell.
+fn cell_brightness(
+    chunks: &WorldChunks,
+    light: Option<&LightCache>,
+    cell: IVec3,
+    subtracted: u8,
+    ambient: f32,
+) -> f32 {
+    let IVec3 { x, y, z } = cell;
     let level = light.and_then(|light| light.channels(x, y, z)).map_or_else(
         || light_level_at(chunks, x, y, z, subtracted),
         |(sky, block)| combined_light(sky, block, subtracted),

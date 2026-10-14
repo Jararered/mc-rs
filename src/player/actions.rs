@@ -58,6 +58,7 @@ pub enum Pointed {
     Fireball(Entity),
     Minecart(Entity),
     Boat(Entity),
+    Painting(Entity),
 }
 
 /// `Packet100OpenWindow`: the world opened a container for `player`.

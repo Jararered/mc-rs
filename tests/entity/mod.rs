@@ -3,6 +3,7 @@ mod combat;
 mod dropped_items;
 pub(crate) mod mobs;
 
+mod painting;
 pub(crate) mod pathfinding;
 mod projectiles;
 mod voice;

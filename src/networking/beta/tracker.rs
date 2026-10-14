@@ -34,6 +34,7 @@ use crate::entity::minecart::Minecart;
 use crate::entity::mobs::Mob;
 use crate::entity::mobs::MobType;
 use crate::entity::mount::Mounted;
+use crate::entity::painting::Painting;
 use crate::entity::projectiles::Arrow;
 use crate::entity::projectiles::Fireball;
 use crate::entity::thrown::Thrown;
@@ -65,6 +66,13 @@ pub(super) enum Kind {
         kind: i8,
         owner: Option<Entity>,
         launch: Option<Vec3>,
+    },
+    /// `Packet25EntityPainting`: the motive, the wall block, and the way it
+    /// faces.
+    Painting {
+        title: &'static str,
+        tile: IVec3,
+        direction: u8,
     },
 }
 
@@ -115,6 +123,8 @@ fn tracking(kind: &Kind) -> (f64, u32, bool) {
             50 => (160.0, 10, true),
             _ => (160.0, 20, true),
         },
+        // Never updated: a painting does not move.
+        Kind::Painting { .. } => (160.0, u32::MAX, false),
     }
 }
 
@@ -364,6 +374,18 @@ pub(super) fn survey(world: &mut World) -> Vec<Seen> {
         seen.push(Seen {
             yaw: boat.yaw,
             ..plain(entity, object(1), transform.translation, boat.motion)
+        });
+    }
+    let mut paintings = world.query::<(Entity, &Painting, &Transform)>();
+    for (entity, painting, transform) in paintings.iter(world) {
+        let kind = Kind::Painting {
+            title: painting.art.title(),
+            tile: painting.tile,
+            direction: painting.direction,
+        };
+        seen.push(Seen {
+            yaw: painting.yaw(),
+            ..plain(entity, kind, transform.translation, Vec3::ZERO)
         });
     }
     let mut tnt = world.query_filtered::<(Entity, &Transform, &Velocity), With<PrimedTnt>>();
@@ -626,6 +648,11 @@ impl Entry {
                     launch.map(|launch| (owner.unwrap_or(id), launch)),
                 );
             }
+            Kind::Painting {
+                title,
+                tile,
+                direction,
+            } => out.painting_spawn(id, title, *tile, *direction),
         }
         if self.sends_motion {
             out.velocity(id, seen.motion);

@@ -37,6 +37,7 @@ use crate::world::tick::WorldTick;
 use super::mining::MiningState;
 use super::overlay::BlockFocus;
 use crate::entity::mobs::Mob;
+use crate::entity::painting::Painting;
 use crate::player::LocalPlayer;
 use crate::player::PlayerCamera;
 use crate::player::actions::Action;
@@ -104,11 +105,12 @@ pub(crate) fn interact_blocks(
     camera: Query<&Transform, With<PlayerCamera>>,
     chunks: Res<WorldChunks>,
     (mut particles, mut sounds): (Option<ResMut<BlockParticles>>, Option<ResMut<Sounds>>),
-    (mobs, fireballs, carts, boats): (
+    (mobs, fireballs, carts, boats, paintings): (
         Query<(Entity, &Transform, &EntitySize), (With<Mob>, Without<LocalPlayer>)>,
         Query<(Entity, &Transform), (With<Fireball>, Without<LocalPlayer>)>,
         Query<(Entity, &Transform), (With<Minecart>, Without<LocalPlayer>)>,
         Query<(Entity, &Transform), (With<Boat>, Without<LocalPlayer>)>,
+        Query<(Entity, &Painting), Without<LocalPlayer>>,
     ),
     mut focus: ResMut<BlockFocus>,
     (mut state, frame): (Local<BlockInteractState>, Res<bevy::diagnostic::FrameCount>),
@@ -213,6 +215,12 @@ pub(crate) fn interact_blocks(
                 .chain(boats.iter().map(|(entity, transform)| {
                     let aabb = BOAT_SIZE.aabb(transform.translation);
                     (Pointed::Boat(entity), bordered(aabb, MOB_BORDER))
+                }))
+                .chain(paintings.iter().map(|(entity, painting)| {
+                    (
+                        Pointed::Painting(entity),
+                        bordered(painting.aabb(), MOB_BORDER),
+                    )
                 })),
         );
         if let Some(target) = pointed {

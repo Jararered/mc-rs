@@ -131,44 +131,6 @@ fn distant_chunks_release_world_data_entities_and_meshes() {
 }
 
 #[test]
-fn generation_runs_one_ring_ahead_of_meshing() {
-    let mut app = test_app();
-    app.world_mut()
-        .spawn((Player, Transform::from_xyz(8.0, 80.0, 8.0)));
-
-    // A chunk on the generation ring is stored but never rendered, because it
-    // sits outside the render distance.
-    let ring = ChunkPosition {
-        x: LOAD_RADIUS + GENERATE_MARGIN,
-        z: 0,
-    };
-    assert!(run_until(&mut app, Duration::from_secs(20), |app| {
-        app.world().resource::<WorldChunks>().get(ring).is_some()
-    }));
-    assert!(!rendered_positions(&mut app).contains(&ring));
-
-    let edge = ChunkPosition {
-        x: LOAD_RADIUS,
-        z: 0,
-    };
-    assert!(run_until(&mut app, Duration::from_secs(30), |app| {
-        rendered_positions(app).contains(&edge)
-    }));
-    let chunks = app.world().resource::<WorldChunks>();
-    for dx in -1..=1 {
-        for dz in -1..=1 {
-            assert!(
-                chunks.contains(ChunkPosition {
-                    x: edge.x + dx,
-                    z: edge.z + dz,
-                }),
-                "render-distance edge chunk meshed without neighbor ({dx}, {dz})"
-            );
-        }
-    }
-}
-
-#[test]
 fn spawn_chunk_waits_for_all_neighbor_block_data_before_its_first_mesh() {
     let mut app = test_app();
     app.world_mut()

@@ -1,9 +1,13 @@
+use bevy::camera::CameraOutputMode;
+use bevy::camera::RenderTarget;
 use bevy::light::DirectionalLightShadowMap;
 use bevy::light::PointLightShadowMap;
 use bevy::prelude::*;
+use bevy::render::render_resource::BlendState;
 use bevy::render::render_resource::WgpuFeatures;
 use bevy::render::renderer::RenderAdapterInfo;
 use bevy::render::renderer::RenderDevice;
+use bevy::window::WindowRef;
 
 use crate::app::settings::GameSettings;
 use crate::app::state::AppScreen;
@@ -75,7 +79,8 @@ impl Plugin for WorldRenderingPlugin {
             )
             .add_systems(
                 PostUpdate,
-                apply_world_camera_activity
+                (apply_world_camera_activity, composite_window_cameras)
+                    .chain()
                     .before(bevy::camera::CameraUpdateSystems)
                     .before(bevy::camera::visibility::VisibilitySystems::VisibilityPropagate),
             )
@@ -159,6 +164,48 @@ fn apply_graphics_pipeline(
         if current != Some(&msaa) {
             commands.entity(entity).insert(msaa);
         }
+    }
+}
+
+/// Let only the last camera drawn on the window copy the frame to it.
+///
+/// Every window camera draws into one shared main texture (they all carry
+/// the same `Msaa`), and by default each one then blits that whole texture
+/// to the swapchain, the later ones alpha-blending over the earlier. Only the
+/// highest-order active camera's copy survives, so the others skip theirs,
+/// and that one replaces the swapchain outright.
+pub fn composite_window_cameras(mut cameras: Query<(Entity, &mut Camera, &RenderTarget)>) {
+    let on_window =
+        |target: &RenderTarget| matches!(target, RenderTarget::Window(WindowRef::Primary));
+    let last = cameras
+        .iter()
+        .filter(|(_, camera, target)| camera.is_active && on_window(target))
+        .max_by_key(|(_, camera, _)| camera.order)
+        .map(|(entity, ..)| entity);
+    for (entity, mut camera, target) in &mut cameras {
+        if !on_window(target) {
+            continue;
+        }
+        let writes = Some(entity) == last;
+        let current = match camera.output_mode {
+            CameraOutputMode::Skip => Some(false),
+            CameraOutputMode::Write {
+                blend_state: Some(BlendState::REPLACE),
+                clear_color: ClearColorConfig::Default,
+            } => Some(true),
+            CameraOutputMode::Write { .. } => None,
+        };
+        if current == Some(writes) {
+            continue;
+        }
+        camera.output_mode = if writes {
+            CameraOutputMode::Write {
+                blend_state: Some(BlendState::REPLACE),
+                clear_color: ClearColorConfig::Default,
+            }
+        } else {
+            CameraOutputMode::Skip
+        };
     }
 }
 

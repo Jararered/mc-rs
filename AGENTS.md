@@ -242,6 +242,8 @@ simulation about the protocol. What clients are not told, and what is still sing
   `Aabb` (`rendering/chunk_regions.rs`, `world/streaming/regions.rs`). Its `MeshTag` names a draw
   list in the quad buffer, rebuilt on the CPU when the camera or a layer changes. Cave culling
   (`rendering/occlusion.rs`), frustum culling per section, and facing culling decide what it lists.
+  The sorted section order is kept until a layer, cave culling, or the camera's block changes, so
+  turning only filters it (`fill_draw_lists`).
   Do not add another chunk draw path without measurements. `MC_CHUNK_REGIONS=off` and the vertex
   path keep one entity per section layer. `world::streaming::ChunkCulling` decides GPU versus CPU
   culling of those entities. `MC_CHUNK_CULLING=gpu|cpu` forces it.
@@ -249,8 +251,11 @@ simulation about the protocol. What clients are not told, and what is still sing
   resources at 16 pixels. Materials are unlit. Do not turn clustering or custom-material shadow
   participation back on.
 - Every camera on the window carries the same `Msaa`, from `GameSettings::msaa`, set in
-  `apply_graphics_pipeline`. Do not set `Msaa` on a camera anywhere else. Do not add a camera
-  without reading the Memory section of `docs/PERFORMANCE.md`.
+  `apply_graphics_pipeline`. Do not set `Msaa` on a camera anywhere else. Only the highest-order
+  active window camera copies the frame to the swapchain (`composite_window_cameras`). The world
+  camera clears to the sky color and draws the sun, moon, stars, and sunrise fan with
+  `SkyMaterial`, on the far plane. Every camera on the window costs a full-screen pass, so do not
+  add one without reading the Camera stack and Memory sections of `docs/PERFORMANCE.md`.
 - Textures use nearest sampling and no mipmaps. `main` sets that on `ImagePlugin`. Loaders leave
   `ImageSampler::Default` unless they need a different address mode. The terrain atlas pins
   `lod_max_clamp` to 0.

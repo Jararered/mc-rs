@@ -17,7 +17,7 @@ use bevy::render::render_resource::AsBindGroup;
 use bevy::shader::Shader;
 use bevy::shader::ShaderRef;
 
-const INSTANCE_TINT_SHADER_HANDLE: Handle<Shader> =
+pub(super) const INSTANCE_TINT_SHADER_HANDLE: Handle<Shader> =
     uuid_handle!("2f6b9d31-0c4e-4a57-8e1d-93b5c7a2f408");
 
 /// `StandardMaterial` tinted by the entity's [`MeshTag`].

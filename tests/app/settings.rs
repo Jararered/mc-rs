@@ -250,21 +250,22 @@ fn anti_aliasing_and_shadow_map_sizes_follow_the_settings() {
         let mut cameras = app.world_mut().query_filtered::<&Msaa, With<Camera>>();
         cameras.iter(app.world()).copied().collect()
     }
-    assert_eq!(samples(&mut app), [Msaa::Sample4; 2]);
+    // Off by default, as in Beta, although Bevy's own default is 4x.
+    assert_eq!(samples(&mut app), [Msaa::Off; 2]);
     // Nothing is a directional or point light, so both maps stay unused.
     assert!(app.world().resource::<DirectionalLightShadowMap>().size < 64);
     assert!(app.world().resource::<PointLightShadowMap>().size < 64);
 
-    app.world_mut().resource_mut::<GameSettings>().anti_aliasing = false;
+    app.world_mut().resource_mut::<GameSettings>().anti_aliasing = true;
     app.update();
     app.update();
-    assert_eq!(samples(&mut app), [Msaa::Off; 2]);
+    assert_eq!(samples(&mut app), [Msaa::Sample4; 2]);
 
     // A camera that appears later, such as a loaded world's, follows too.
     app.world_mut().spawn(Camera3d::default());
     app.update();
     app.update();
-    assert_eq!(samples(&mut app), [Msaa::Off; 3]);
+    assert_eq!(samples(&mut app), [Msaa::Sample4; 3]);
     let mut cameras = app
         .world_mut()
         .query_filtered::<&bevy::light::cluster::ClusterConfig, With<Camera3d>>();
@@ -277,11 +278,11 @@ fn anti_aliasing_and_shadow_map_sizes_follow_the_settings() {
 
     {
         let mut settings = app.world_mut().resource_mut::<GameSettings>();
-        settings.anti_aliasing = true;
+        settings.anti_aliasing = false;
     }
     app.update();
     app.update();
-    assert_eq!(samples(&mut app), [Msaa::Sample4; 3]);
+    assert_eq!(samples(&mut app), [Msaa::Off; 3]);
     assert!(app.world().resource::<DirectionalLightShadowMap>().size < 64);
     assert!(app.world().resource::<PointLightShadowMap>().size < 64);
 }
@@ -1083,7 +1084,7 @@ fn settings_tabs_buttons_and_live_labels() {
         "Graphics: Fancy",
         "Smooth lighting: ON",
         "Wiggle leaves: ON",
-        "Anti-aliasing: 4x",
+        "Anti-aliasing: OFF",
         "Max FPS: 60",
         "VSync: ON",
         "Fullscreen: OFF",

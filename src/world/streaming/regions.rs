@@ -5,6 +5,8 @@
 use std::collections::HashMap;
 use std::time::Instant;
 
+use bevy::camera::primitives::Aabb;
+use bevy::camera::primitives::Frustum;
 use bevy::camera::visibility::NoAutoAabb;
 use bevy::camera::visibility::NoCpuCulling;
 use bevy::mesh::MeshTag;
@@ -16,19 +18,19 @@ use super::render::ChunkCulling;
 use super::render::ChunkMaterials;
 use super::render::LAYER_COUNT;
 use super::render::LAYER_NAMES;
+use super::render::RenderedChunk;
 use super::render::WATER_LAYER;
 use crate::player::PlayerCamera;
 use crate::rendering::chunk_quads::ChunkQuadWrites;
 use crate::rendering::chunk_quads::ChunkQuads;
 use crate::rendering::chunk_quads::QuadRange;
 use crate::rendering::chunk_regions::DrawList;
+use crate::rendering::chunk_regions::OrderedLayer;
+use crate::rendering::chunk_regions::fill_draw_lists;
 use crate::rendering::chunk_regions::region_aabb;
 use crate::rendering::chunk_regions::region_of;
 use crate::rendering::chunk_regions::region_origin;
-use crate::rendering::chunk_regions::section_offset;
 use crate::rendering::chunk_regions::section_origin;
-use crate::rendering::chunk_regions::visible_facings;
-use crate::rendering::meshing::FACINGS;
 use crate::rendering::occlusion::VisibleSections;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::SECTION_HEIGHT;
@@ -37,14 +39,27 @@ use crate::world::chunk::SECTIONS_PER_CHUNK;
 /// Fewest entries a draw list's range holds, so small lists do not move
 /// every time they grow.
 const MIN_ENTRIES: usize = 16;
-/// Every facing group, for water, which is drawn from both sides.
-const ALL_FACINGS: u8 = (1 << FACINGS) - 1;
 
 #[derive(Default)]
 pub(super) struct ChunkRegions {
     regions: HashMap<IVec2, Region>,
-    /// Sections the last build ordered, nearest first.
-    order: Vec<(f32, ChunkPosition, usize)>,
+    /// Every section layer cave culling reached, in draw order: opaque layers
+    /// nearest first, then water farthest first. Its lists are
+    /// `slot * LAYER_COUNT + layer`.
+    order: Vec<OrderedLayer>,
+    /// Bounds of each chunk column's layers in `order`.
+    columns: Vec<Aabb>,
+    /// The region of each slot.
+    slots: Vec<IVec2>,
+    /// The lists `order` fills, swapped into the regions after each build.
+    lists: Vec<DrawList>,
+    /// Layers being sorted by squared distance, opaque and water. Kept for
+    /// their allocations.
+    sorting: [Vec<(f32, OrderedLayer)>; 2],
+    in_frustum: Vec<bool>,
+    /// What `order` was built for: `WorldStreaming::layer_revision` and the
+    /// camera's block. Turning in place keeps it.
+    ordered_for: Option<(u64, IVec3)>,
     /// What the lists were last built for: `WorldStreaming::layer_revision`
     /// and the camera's clip-from-world matrix.
     built_for: Option<(u64, Mat4)>,
@@ -99,7 +114,92 @@ impl ChunkRegions {
             }
         }
         self.stats = RegionStats::default();
+        self.ordered_for = None;
         self.built_for = None;
+    }
+
+    /// Order every reached section layer for a camera at `eye`, and mark the
+    /// regions that hold a rendered chunk.
+    fn order_layers(
+        &mut self,
+        rendered: &HashMap<ChunkPosition, RenderedChunk>,
+        visible: &VisibleSections,
+        eye: Vec3,
+    ) {
+        for region in self.regions.values_mut() {
+            region.occupied = false;
+        }
+        self.columns.clear();
+        self.slots.clear();
+        self.sorting.iter_mut().for_each(Vec::clear);
+        let mut slots = HashMap::<IVec2, u32>::new();
+        for (&position, chunk) in rendered {
+            let key = region_of(position);
+            self.regions.entry(key).or_default().occupied = true;
+            let mask = visible.mask(position);
+            if mask == 0 {
+                continue;
+            }
+            let slot = *slots.entry(key).or_insert_with(|| {
+                self.slots.push(key);
+                (self.slots.len() - 1) as u32
+            });
+            let column = self.columns.len() as u32;
+            let (mut min, mut max) = (Vec3::INFINITY, Vec3::NEG_INFINITY);
+            for section in (0..SECTIONS_PER_CHUNK).filter(|section| mask >> section & 1 != 0) {
+                let centre = section_origin(position, section) + SECTION_HEIGHT as f32 / 2.0;
+                let distance = centre.distance_squared(eye);
+                for (layer, drawn) in chunk.region_layers(section) {
+                    let is_water = layer == WATER_LAYER;
+                    let list = slot * LAYER_COUNT as u32 + layer as u32;
+                    let entry =
+                        OrderedLayer::new(column, list, position, section, *drawn, is_water);
+                    min = min.min(entry.min);
+                    max = max.max(entry.max);
+                    self.sorting[usize::from(is_water)].push((distance, entry));
+                }
+            }
+            self.columns.push(if min.cmple(max).all() {
+                Aabb::from_min_max(min, max)
+            } else {
+                Aabb::from_min_max(Vec3::ZERO, Vec3::ZERO)
+            });
+        }
+        // Opaque layers nearest first, so the depth test rejects more; water
+        // farthest first, so it blends over what is behind it.
+        let [opaque, water] = &mut self.sorting;
+        opaque.sort_unstable_by(|a, b| a.0.total_cmp(&b.0));
+        water.sort_unstable_by(|a, b| b.0.total_cmp(&a.0));
+        self.order.clear();
+        self.order
+            .extend(opaque.iter().chain(water.iter()).map(|(_, entry)| *entry));
+        self.lists
+            .resize_with(self.slots.len() * LAYER_COUNT, DrawList::default);
+    }
+
+    /// List what the camera sees into each region's draw lists.
+    fn fill_lists(&mut self, frustum: &Frustum, eye: Vec3) {
+        self.lists.iter_mut().for_each(DrawList::clear);
+        fill_draw_lists(
+            &self.order,
+            &self.columns,
+            frustum,
+            eye,
+            &mut self.lists,
+            &mut self.in_frustum,
+        );
+        for region in self.regions.values_mut() {
+            region.lists.iter_mut().for_each(DrawList::clear);
+        }
+        for (slot, key) in self.slots.iter().enumerate() {
+            let Some(region) = self.regions.get_mut(key) else {
+                continue;
+            };
+            let filled = &mut self.lists[slot * LAYER_COUNT..(slot + 1) * LAYER_COUNT];
+            for (list, filled) in region.lists.iter_mut().zip(filled) {
+                std::mem::swap(list, filled);
+            }
+        }
     }
 }
 
@@ -141,69 +241,26 @@ pub(crate) fn draw_chunk_regions(
     let eye = transform.translation();
     let frustum = projection.compute_frustum(transform);
 
-    regions.order.clear();
-    for region in regions.regions.values_mut() {
-        region.occupied = false;
-        region.lists.iter_mut().for_each(DrawList::clear);
-    }
-    for &position in rendered.keys() {
-        regions
-            .regions
-            .entry(region_of(position))
-            .or_default()
-            .occupied = true;
-        let mask = visible.mask(position);
-        for section in 0..SECTIONS_PER_CHUNK {
-            if mask >> section & 1 != 0 {
-                let centre = section_origin(position, section) + SECTION_HEIGHT as f32 / 2.0;
-                regions
-                    .order
-                    .push((centre.distance_squared(eye), position, section));
+    // Distances only change when the camera moves, so turning in place
+    // reuses the order and only filters it.
+    let ordered_for = Some((*layer_revision, eye.floor().as_ivec3()));
+    if regions.ordered_for != ordered_for || visible.is_changed() {
+        regions.ordered_for = ordered_for;
+        regions.order_layers(rendered, &visible, eye);
+        regions.regions.retain(|_, region| {
+            if region.occupied {
+                return true;
             }
-        }
-    }
-    regions.order.sort_unstable_by(|a, b| a.0.total_cmp(&b.0));
-    // Opaque layers nearest first, so the depth test rejects more; water
-    // farthest first, so it blends over what is behind it.
-    let order = std::mem::take(&mut regions.order);
-    for water in [false, true] {
-        for nth in 0..order.len() {
-            let (_, position, section) = order[if water { order.len() - 1 - nth } else { nth }];
-            let Some(chunk) = rendered.get(&position) else {
-                continue;
-            };
-            let region = regions
-                .regions
-                .get_mut(&region_of(position))
-                .expect("every rendered chunk's region was added");
-            for (layer, drawn) in chunk.region_layers(section) {
-                if (layer == WATER_LAYER) != water || !drawn.in_frustum(&frustum, position, section)
-                {
-                    continue;
-                }
-                let facings = if water {
-                    ALL_FACINGS
-                } else {
-                    let (min, max) = drawn.world_bounds(position, section);
-                    visible_facings(eye, min, max)
-                };
-                region.lists[layer].push(drawn, facings, section_offset(position, section));
+            for layer in region.layers.iter_mut().filter_map(Option::take) {
+                commands.entity(layer.entity).despawn();
+                quads.free(layer.range);
             }
-        }
+            false
+        });
     }
-    regions.order = order;
+    regions.fill_lists(&frustum, eye);
 
     let mut stats = RegionStats::default();
-    regions.regions.retain(|_, region| {
-        if region.occupied {
-            return true;
-        }
-        for layer in region.layers.iter_mut().filter_map(Option::take) {
-            commands.entity(layer.entity).despawn();
-            quads.free(layer.range);
-        }
-        false
-    });
     for (&key, region) in &mut regions.regions {
         for (index, list) in region.lists.iter().enumerate() {
             let slot = &mut region.layers[index];
@@ -304,9 +361,9 @@ fn update_region_layer(
         layer.written = DrawList::default();
         entity.insert(MeshTag::new(layer.range.tag()));
     }
-    // Shrink only well below the proxy, so a list near a size boundary does
-    // not swap meshes every frame.
-    if list.quads() > layer.proxy || list.quads().saturating_mul(4) < layer.proxy {
+    // Shrink only below half the proxy, more than one capacity step, so a
+    // list near a size boundary does not swap meshes every frame.
+    if list.quads() > layer.proxy || list.quads().saturating_mul(2) < layer.proxy {
         let (mesh, proxy) = quads.region_proxy(meshes, list.quads());
         if proxy != layer.proxy {
             entity.insert(Mesh3d(mesh));

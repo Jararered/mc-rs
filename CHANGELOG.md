@@ -184,10 +184,17 @@ Sounds need the original game's `resources/` folder beside `assets/`. Without it
 ##### Settings
 
 - [ ] F3 shows the frame rate on its first line, as `N fps`, counted afresh each second.
-      `pending`
+      `8b1d6d5 · 2026-10-14 14:17`
 - [ ] Video, Max FPS dragged all the way right reads Unlimited and no longer caps the frame rate. A new VSync
       button (on by default) holds frames to the display; with it off and Max FPS at Unlimited, the frame rate
       climbs past the refresh rate. Both survive a restart.
+      `8b1d6d5 · 2026-10-14 14:17`
+- [ ] Video, Anti-aliasing starts OFF in a new settings file, as Beta has none; a settings file that already has it
+      keeps its choice. With it off the frame rate is higher, most of all on a high-resolution display.
+      `pending`
+- [ ] The sky, sun, moon, stars and sunrise glow look as before, by day, at dusk, at night and in rain: terrain,
+      clouds and mobs cover them, water and rain are drawn over them, and the Nether shows its fog color. The frame
+      rate is higher, most of all while turning at a long render distance.
       `pending`
 - [ ] Features, Pig steering (on by default): a ridden pig turns to where you look and walks while W is held,
       hopping up blocks in its way. Off, the pig wanders wherever it likes, as in Beta.

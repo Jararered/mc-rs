@@ -22,6 +22,7 @@ pub const ATLAS_PAD_TEXELS: u32 = 2;
 mod biome_color;
 mod block_material;
 mod instance_tint;
+mod sky_backdrop;
 mod water;
 mod wireframe;
 
@@ -36,6 +37,9 @@ pub use block_material::LEAF_WIGGLE_AMPLITUDE;
 pub use instance_tint::InstanceTint;
 pub use instance_tint::TintedMaterial;
 pub use instance_tint::tint_tag;
+pub use sky_backdrop::BACKDROP_SORT;
+pub use sky_backdrop::SkyBackdrop;
+pub use sky_backdrop::SkyMaterial;
 pub use water::FIRE_TILE;
 pub use water::FIRE_TILE_ALT;
 pub use water::FlamesTexture;
@@ -61,6 +65,7 @@ impl Plugin for TerrainTexturePlugin {
         block_material::plugin(app);
         crate::rendering::chunk_quads::plugin(app);
         instance_tint::plugin(app);
+        sky_backdrop::plugin(app);
         water::render_plugin(app);
         app.init_resource::<GameSettings>()
             .add_plugins(MeshWireframePlugin)

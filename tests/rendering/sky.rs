@@ -2,7 +2,6 @@ use game::player::interpolated_swing;
 use game::rendering::sky::SkyWeather;
 use game::rendering::sky::base_fog_rgb;
 use game::rendering::sky::sky_disc_color;
-use game::rendering::sky::sky_fog_end;
 use game::rendering::sky::sky_rgb;
 use game::rendering::sky::star_brightness;
 use game::rendering::sky::sunrise_rgba;
@@ -37,7 +36,6 @@ fn fog_distances_follow_the_loaded_chunk_radius() {
         let (start, end) = world_fog_range(far);
         near(start, far * 0.8);
         near(end, far);
-        near(sky_fog_end(far), far * 0.8);
     }
 }
 

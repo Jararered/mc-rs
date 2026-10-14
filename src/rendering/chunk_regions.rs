@@ -138,6 +138,84 @@ impl SectionLayer {
     }
 }
 
+/// Every facing group, for water, which is drawn from both sides.
+pub const ALL_FACINGS: u8 = (1 << FACINGS) - 1;
+
+/// One section layer in a frame's draw order, with everything listing it
+/// needs, so turning the camera only walks a flat slice.
+#[derive(Clone, Copy, Debug)]
+pub struct OrderedLayer {
+    /// The chunk column it is in, as an index into the columns passed with
+    /// it to [`fill_draw_lists`].
+    pub column: u32,
+    /// The draw list it joins.
+    pub list: u32,
+    /// [`section_offset`] of its section.
+    pub offset: u32,
+    /// Water lists every facing group; other layers only those that can
+    /// face the camera.
+    pub all_facings: bool,
+    pub layer: SectionLayer,
+    /// World bounds.
+    pub bounds: Aabb,
+    pub min: Vec3,
+    pub max: Vec3,
+}
+
+impl OrderedLayer {
+    pub fn new(
+        column: u32,
+        list: u32,
+        position: ChunkPosition,
+        section: usize,
+        layer: SectionLayer,
+        all_facings: bool,
+    ) -> Self {
+        let (min, max) = layer.world_bounds(position, section);
+        Self {
+            column,
+            list,
+            offset: section_offset(position, section),
+            all_facings,
+            layer,
+            bounds: Aabb::from_min_max(min, max),
+            min,
+            max,
+        }
+    }
+}
+
+/// List the layers of `order` that `frustum` holds into `lists`, in order.
+///
+/// `columns` bound every layer of a column, so a column wholly outside the
+/// frustum skips all of its layers with one test. `in_frustum` is scratch.
+pub fn fill_draw_lists(
+    order: &[OrderedLayer],
+    columns: &[Aabb],
+    frustum: &Frustum,
+    eye: Vec3,
+    lists: &mut [DrawList],
+    in_frustum: &mut Vec<bool>,
+) {
+    in_frustum.clear();
+    in_frustum.extend(
+        columns
+            .iter()
+            .map(|column| frustum.intersects_obb_identity(column)),
+    );
+    for entry in order {
+        if !in_frustum[entry.column as usize] || !frustum.intersects_obb_identity(&entry.bounds) {
+            continue;
+        }
+        let facings = if entry.all_facings {
+            ALL_FACINGS
+        } else {
+            visible_facings(eye, entry.min, entry.max)
+        };
+        lists[entry.list as usize].push(&entry.layer, facings, entry.offset);
+    }
+}
+
 /// The runs one region layer draws this frame.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct DrawList {

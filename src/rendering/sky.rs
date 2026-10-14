@@ -1,12 +1,13 @@
 //! Beta sky and distance fog.
 //!
-//! The sky is the geometry from `RenderGlobal.renderSky`: a flat ceiling 16
-//! blocks above the camera, a void floor 16 blocks below, a sunrise fan, the
-//! sun, the moon, and a star field. Bevy's cubemap skybox cannot rotate those
-//! bodies or fog the ceiling on a shorter range than the world, so this uses
-//! `DistanceFog` on a backdrop camera. The horizon is the world's fog line.
-//! A dome centered on the camera would pin that line to eye level, so looking
-//! down would drag it up the screen.
+//! `RenderGlobal.renderSky` draws a flat ceiling 16 blocks above the camera, a
+//! void floor 16 blocks below, a sunrise fan, the sun, the moon, and a star
+//! field. Here the world camera clears to the sky color, which stands in for
+//! the ceiling, and the horizon is the world's fog line. A dome centered on
+//! the camera would pin that line to eye level, so looking down would drag it
+//! up the screen. The fan, sun, moon, and stars hang from an anchor that
+//! follows the camera and are drawn with [`SkyMaterial`], on the far plane
+//! behind everything else.
 //!
 //! Color math follows `World.getSkyColor`, `WorldProvider.func_4096_a`, and
 //! `EntityRenderer.updateFogColor`. Channels are the same 0..=1 values Beta
@@ -14,7 +15,6 @@
 
 use bevy::asset::RenderAssetUsages;
 use bevy::camera::visibility::NoFrustumCulling;
-use bevy::camera::visibility::RenderLayers;
 use bevy::ecs::system::SystemParam;
 use bevy::mesh::Indices;
 use bevy::mesh::MeshTag;
@@ -28,8 +28,9 @@ use crate::block::blocks::Block;
 use crate::player::LocalPlayer;
 use crate::player::PlayerCamera;
 use crate::random::JavaRandom;
-use crate::rendering::textures::InstanceTint;
-use crate::rendering::textures::TintedMaterial;
+use crate::rendering::textures::BACKDROP_SORT;
+use crate::rendering::textures::SkyBackdrop;
+use crate::rendering::textures::SkyMaterial;
 use crate::rendering::textures::tint_tag;
 use crate::world::chunk::WorldChunks;
 use crate::world::lighting::beta_brightness;
@@ -37,7 +38,6 @@ use crate::world::lighting::light_level_at;
 
 use crate::world::tick::WorldTick;
 
-const SKY_LAYER: usize = 2;
 /// `MathHelper` and the fog code use this float, not `std` PI.
 #[allow(clippy::approx_constant)]
 const MC_PI: f32 = 3.141_592_7;
@@ -46,16 +46,6 @@ const SUN_SIZE: f32 = 30.0;
 const MOON_SIZE: f32 = 20.0;
 /// Height of Beta's sky plane (`glSkyList` uses `16`, `glSkyList2` uses `-16`).
 const SKY_PLANE_HEIGHT: f32 = 16.0;
-const CELESTIAL_LAYER: usize = 3;
-
-/// Marker for the backdrop camera, which has its own fog range.
-#[derive(Component)]
-pub(crate) struct SkyCamera;
-
-/// Sun, moon, stars, and the sunrise fan. Drawn after the ceiling so the
-/// ceiling's depth does not cover them.
-#[derive(Component)]
-pub(crate) struct CelestialCamera;
 
 #[derive(Component)]
 struct SkyAttached;
@@ -96,10 +86,10 @@ impl Default for EyeFog {
 
 #[derive(Clone, Resource)]
 struct SkyAssets {
-    sun: Handle<TintedMaterial>,
-    moon: Handle<TintedMaterial>,
-    stars: Handle<TintedMaterial>,
-    sunrise: Handle<TintedMaterial>,
+    sun: Handle<SkyMaterial>,
+    moon: Handle<SkyMaterial>,
+    stars: Handle<SkyMaterial>,
+    sunrise: Handle<SkyMaterial>,
     sunrise_mesh: Handle<Mesh>,
 }
 
@@ -110,36 +100,12 @@ struct SkyViews<'w, 's> {
     player_cameras: Query<
         'w,
         's,
-        (&'static mut DistanceFog, &'static mut Projection),
-        (
-            With<PlayerCamera>,
-            Without<SkyCamera>,
-            Without<CelestialCamera>,
-        ),
-    >,
-    sky_cameras: Query<
-        'w,
-        's,
         (
             &'static mut DistanceFog,
             &'static mut Camera,
             &'static mut Projection,
         ),
-        (
-            With<SkyCamera>,
-            Without<PlayerCamera>,
-            Without<CelestialCamera>,
-        ),
-    >,
-    celestial_cameras: Query<
-        'w,
-        's,
-        &'static mut Projection,
-        (
-            With<CelestialCamera>,
-            Without<PlayerCamera>,
-            Without<SkyCamera>,
-        ),
+        With<PlayerCamera>,
     >,
     anchors: Query<
         'w,
@@ -221,11 +187,6 @@ pub fn view_distance_blocks(render_chunks: i32) -> f32 {
 /// gradual haze at modern render distances. A later start keeps the view clear.
 pub fn world_fog_range(far_blocks: f32) -> (f32, f32) {
     (far_blocks * 0.8, far_blocks)
-}
-
-/// Sky pass (`setupFog(-1)`): fog starts at the camera and ends earlier than the world.
-pub fn sky_fog_end(far_blocks: f32) -> f32 {
-    far_blocks * 0.8
 }
 
 /// How strongly fog is pulled toward the sky color. Farther views pull harder.
@@ -423,7 +384,7 @@ enum Medium {
 fn ensure_sky(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<TintedMaterial>>,
+    mut materials: ResMut<Assets<SkyMaterial>>,
     assets: Option<Res<SkyAssets>>,
     asset_server: Res<AssetServer>,
     settings: Res<GameSettings>,
@@ -435,7 +396,6 @@ fn ensure_sky(
     let Ok((camera, mut view, mut projection)) = cameras.single_mut() else {
         return;
     };
-    view.clear_color = ClearColorConfig::None;
     let far = view_distance_blocks(settings.render_distance);
     if let Projection::Perspective(perspective) = projection.as_mut() {
         perspective.far = far * 2.0;
@@ -449,6 +409,8 @@ fn ensure_sky(
         directional_light_color: Color::NONE,
         ..default()
     };
+    // The sky color, which `update_atmosphere` keeps current.
+    view.clear_color = ClearColorConfig::Custom(initial.color);
     commands
         .entity(camera)
         .insert((SkyAttached, initial.clone()));
@@ -459,9 +421,9 @@ fn ensure_sky(
         // Star fade and sunrise color ride in each entity's `MeshTag`, so
         // these materials never change after creation.
         let created = SkyAssets {
-            sun: materials.add(tinted(body_material(&asset_server, "terrain/sun.png"))),
-            moon: materials.add(tinted(body_material(&asset_server, "terrain/moon.png"))),
-            stars: materials.add(tinted(StandardMaterial {
+            sun: materials.add(backdrop(body_material(&asset_server, "terrain/sun.png"))),
+            moon: materials.add(backdrop(body_material(&asset_server, "terrain/moon.png"))),
+            stars: materials.add(backdrop(StandardMaterial {
                 base_color: Color::WHITE,
                 unlit: true,
                 fog_enabled: false,
@@ -470,7 +432,7 @@ fn ensure_sky(
                 double_sided: true,
                 ..default()
             })),
-            sunrise: materials.add(tinted(StandardMaterial {
+            sunrise: materials.add(backdrop(StandardMaterial {
                 unlit: true,
                 fog_enabled: false,
                 alpha_mode: AlphaMode::Blend,
@@ -483,48 +445,6 @@ fn ensure_sky(
         commands.insert_resource(created.clone());
         created
     };
-
-    commands.entity(camera).with_children(|parent| {
-        parent.spawn((
-            Name::new("Sky camera"),
-            SkyCamera,
-            Camera3d::default(),
-            bevy::core_pipeline::tonemapping::Tonemapping::None,
-            bevy::core_pipeline::tonemapping::DebandDither::Disabled,
-            Camera {
-                order: -2,
-                clear_color: ClearColorConfig::Custom(initial.color),
-                ..default()
-            },
-            Projection::from(PerspectiveProjection {
-                fov: settings.fov_radians(),
-                far: 1024.0,
-                ..default()
-            }),
-            initial,
-            RenderLayers::layer(SKY_LAYER),
-        ));
-        parent.spawn((
-            Name::new("Celestial camera"),
-            CelestialCamera,
-            Camera3d::default(),
-            bevy::core_pipeline::tonemapping::Tonemapping::None,
-            bevy::core_pipeline::tonemapping::DebandDither::Disabled,
-            Camera {
-                order: -1,
-                clear_color: ClearColorConfig::None,
-                ..default()
-            },
-            Projection::from(PerspectiveProjection {
-                // Same view as the world camera. A narrower default fov makes
-                // the stars slide against the terrain when the player looks.
-                fov: settings.fov_radians(),
-                far: 1024.0,
-                ..default()
-            }),
-            RenderLayers::layer(CELESTIAL_LAYER),
-        ));
-    });
 
     let sun_mesh = meshes.add(textured_quad(SUN_DISTANCE, SUN_SIZE, SUN_UVS));
     let moon_mesh = meshes.add(textured_quad(-SUN_DISTANCE, MOON_SIZE, MOON_UVS));
@@ -545,7 +465,6 @@ fn ensure_sky(
                 MeshMaterial3d(sky_assets.sunrise.clone()),
                 Transform::default(),
                 Visibility::Hidden,
-                RenderLayers::layer(CELESTIAL_LAYER),
                 NoFrustumCulling,
             ));
             sky.spawn((
@@ -567,7 +486,6 @@ fn ensure_sky(
                         MeshMaterial3d(material),
                         Transform::default(),
                         Visibility::default(),
-                        RenderLayers::layer(CELESTIAL_LAYER),
                         NoFrustumCulling,
                     ));
                 }
@@ -579,7 +497,6 @@ fn ensure_sky(
                     MeshMaterial3d(sky_assets.stars.clone()),
                     Transform::default(),
                     Visibility::default(),
-                    RenderLayers::layer(CELESTIAL_LAYER),
                     NoFrustumCulling,
                 ));
             });
@@ -686,44 +603,26 @@ fn update_atmosphere(
         Medium::Lava => FogFalloff::Exponential { density: 2.0 },
         Medium::Air => FogFalloff::Linear { start, end },
     };
-    let mut view_fov = None;
-    for (mut distance, mut projection) in &mut views.player_cameras {
+    // Beta draws no sky in the Nether; what shows is the clear colour, which
+    // is the fog's.
+    let clear = if dimension.has_sky() {
+        srgb(sky)
+    } else {
+        fog_color
+    };
+    for (mut distance, mut camera, mut projection) in &mut views.player_cameras {
         distance.color = fog_color;
         distance.falloff = world_falloff.clone();
         distance.directional_light_color = Color::NONE;
-        if let Projection::Perspective(perspective) = projection.as_ref() {
-            view_fov = Some(perspective.fov);
-            if perspective.far != far * 2.0
-                && let Projection::Perspective(perspective) = projection.as_mut()
-            {
-                perspective.far = far * 2.0;
-            }
-        }
-    }
-    for (mut distance, mut camera, mut projection) in &mut views.sky_cameras {
-        distance.color = fog_color;
-        distance.falloff = FogFalloff::Linear {
-            start: 0.0,
-            end: sky_fog_end(far),
-        };
-        distance.directional_light_color = Color::NONE;
-        // Keep the atmosphere behind the fog-free sky geometry. World
-        // blocks and clouds still use the player's fog, but the sky pass
-        // should not introduce a second fog-colored horizon.
-        // Beta draws no sky in the Nether; what shows is the clear colour,
-        // which is the fog's.
-        let clear = if dimension.has_sky() {
-            srgb(sky)
-        } else {
-            fog_color
-        };
         if !matches!(camera.clear_color, ClearColorConfig::Custom(color) if color == clear) {
             camera.clear_color = ClearColorConfig::Custom(clear);
         }
-        copy_fov(view_fov, &mut projection);
-    }
-    for mut projection in &mut views.celestial_cameras {
-        copy_fov(view_fov, &mut projection);
+        if let Projection::Perspective(perspective) = projection.as_ref()
+            && perspective.far != far * 2.0
+            && let Projection::Perspective(perspective) = projection.as_mut()
+        {
+            perspective.far = far * 2.0;
+        }
     }
 
     if let Ok(camera) = views.player.single() {
@@ -783,17 +682,6 @@ fn update_atmosphere(
     }
 }
 
-fn copy_fov(fov: Option<f32>, projection: &mut Mut<Projection>) {
-    let (Some(fov), Projection::Perspective(perspective)) = (fov, projection.as_ref()) else {
-        return;
-    };
-    if perspective.fov != fov
-        && let Projection::Perspective(perspective) = projection.as_mut()
-    {
-        perspective.fov = fov;
-    }
-}
-
 fn unlit_color(color: Color, fog: bool) -> StandardMaterial {
     StandardMaterial {
         base_color: color,
@@ -805,10 +693,14 @@ fn unlit_color(color: Color, fog: bool) -> StandardMaterial {
     }
 }
 
-fn tinted(base: StandardMaterial) -> TintedMaterial {
-    TintedMaterial {
-        base,
-        extension: InstanceTint {},
+/// `base` on the far plane, sorted ahead of every other blended mesh.
+fn backdrop(base: StandardMaterial) -> SkyMaterial {
+    SkyMaterial {
+        base: StandardMaterial {
+            depth_bias: BACKDROP_SORT,
+            ..base
+        },
+        extension: SkyBackdrop {},
     }
 }
 

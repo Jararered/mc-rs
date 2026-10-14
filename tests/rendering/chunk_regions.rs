@@ -166,3 +166,82 @@ fn near_water_sorts_per_block_and_far_water_per_section() {
     assert!(!needs_sort(Some(sorted), step, camera, far));
     assert!(needs_sort(Some(sorted), IVec3::new(17, 70, 5), camera, far));
 }
+
+#[test]
+fn column_culling_lists_the_same_layers_as_testing_each_one() {
+    use game::rendering::chunk_regions::ALL_FACINGS;
+    use game::rendering::chunk_regions::OrderedLayer;
+    use game::rendering::chunk_regions::fill_draw_lists;
+
+    // Columns of three sections each, with uneven bounds, the top section
+    // water. Lists alternate by section, as region slots would.
+    let mut order = Vec::new();
+    let mut columns = Vec::new();
+    for x in -6..6 {
+        for z in -6..6 {
+            let position = ChunkPosition { x, z };
+            let column = columns.len() as u32;
+            let (mut min, mut max) = (Vec3::INFINITY, Vec3::NEG_INFINITY);
+            for section in [3, 4, 5] {
+                let low = Vec3::new((x + z).rem_euclid(4) as f32, 0.0, z.rem_euclid(3) as f32);
+                let drawn = SectionLayer {
+                    header: order.len() as u32 * 16,
+                    facings: [1, 2, 1, 2, 1, 2, 1],
+                    aabb: Aabb::from_min_max(low, Vec3::new(16.0, 12.0, 16.0)),
+                };
+                let entry = OrderedLayer::new(
+                    column,
+                    (section % 2) as u32,
+                    position,
+                    section,
+                    drawn,
+                    section == 5,
+                );
+                min = min.min(entry.min);
+                max = max.max(entry.max);
+                order.push(entry);
+            }
+            columns.push(Aabb::from_min_max(min, max));
+        }
+    }
+
+    let projection = Projection::Perspective(PerspectiveProjection::default());
+    let mut skipped = false;
+    for (eye, target) in [
+        (Vec3::new(0.0, 70.0, 0.0), Vec3::new(40.0, 60.0, 10.0)),
+        (Vec3::new(5.0, 70.0, -3.0), Vec3::new(-30.0, 75.0, 50.0)),
+        (Vec3::new(-50.0, 90.0, 20.0), Vec3::new(0.0, 64.0, 0.0)),
+        // Inside a section, looking along a column's edge.
+        (Vec3::new(16.0, 72.0, 16.0), Vec3::new(16.0, 72.0, 80.0)),
+    ] {
+        let transform =
+            GlobalTransform::from(Transform::from_translation(eye).looking_at(target, Vec3::Y));
+        let frustum = projection.compute_frustum(&transform);
+        let mut culled = vec![DrawList::default(); 2];
+        let mut in_frustum = Vec::new();
+        fill_draw_lists(
+            &order,
+            &columns,
+            &frustum,
+            eye,
+            &mut culled,
+            &mut in_frustum,
+        );
+        skipped |= in_frustum.contains(&false);
+
+        let mut each = vec![DrawList::default(); 2];
+        for entry in &order {
+            if frustum.intersects_obb_identity(&entry.bounds) {
+                let facings = if entry.all_facings {
+                    ALL_FACINGS
+                } else {
+                    visible_facings(eye, entry.min, entry.max)
+                };
+                each[entry.list as usize].push(&entry.layer, facings, entry.offset);
+            }
+        }
+        assert_eq!(culled, each);
+        assert!(!each[0].is_empty() || !each[1].is_empty());
+    }
+    assert!(skipped, "some column should be outside every frustum");
+}

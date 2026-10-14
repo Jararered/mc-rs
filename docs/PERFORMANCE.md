@@ -187,13 +187,87 @@ wgpu debug flags, the window size, or the number of cameras, and their owner
 was not identified.
 
 Each additional `Camera3d` added about 30 MB in that test (per-view buffers
-and heap). The game runs four on the window while playing (sky, celestial,
-world, arm) plus the UI camera, so folding the sky passes into the world
-camera is the next thing to measure.
+and heap). The game now runs two on the window while playing (world and arm)
+plus the UI camera; see [Camera stack](#camera-stack).
 
 A release build of the last two rows measured 586 MB with 4x MSAA (GPU 354
 MB) and 527 MB without (GPU 316 MB), so the dev profile is not what makes
 the footprint large, and the MSAA saving was smaller there, about 40 MB.
+
+### Camera stack
+
+Every camera on the window draws into one shared main texture, and each of
+its passes loads and stores that whole texture (four samples a pixel with
+anti-aliasing) and its own depth texture. Bevy begins a camera's opaque pass
+even when it has nothing to draw. By default each camera then also copied
+the main texture to the swapchain, the later ones alpha-blending over the
+earlier.
+
+The game used to run five cameras while playing: sky (which drew nothing and
+only cleared to the sky color), celestial (sun, moon, stars, sunrise fan),
+world, arm, and UI. Now:
+
+- The world camera clears to the sky color and draws the sky bodies itself
+  with `SkyMaterial` (`rendering/textures/sky_backdrop.rs`). Its vertex
+  shader puts them on the far plane, so terrain covers them at any distance,
+  and its `depth_bias` sorts them ahead of every other blended mesh.
+- `composite_window_cameras` (`rendering/plugin.rs`) lets only the
+  highest-order active window camera copy the frame to the swapchain, as a
+  plain replace. The others skip their copy.
+- Anti-aliasing is off by default, as in Beta.
+
+The arm camera remains: it needs its own depth. Merging it, and then drawing
+the HUD through the world camera, would leave one camera.
+
+#### Measuring frame time on macOS
+
+A visible window is paced by the compositor. On the Apple M5 Pro (120 Hz
+display) `examples/chunk_render.rs` averaged 12.2 ms a frame, alternating
+between refresh intervals, whatever it drew: a 320x180 window at render
+distance 2 took as long as 3024x1890 at 16, with or without anti-aliasing.
+Bevy's default `WinitSettings` also drops an unfocused window to 60 Hz; the
+harness now updates continuously. `HIDDEN=1` opens the window invisible,
+which removes the pacing; frame times then follow resolution and
+anti-aliasing, so the GPU work is still done, but the screenshot is black.
+Take screenshots from a visible window and timings from a hidden one.
+
+Medians of three interleaved runs of 600 frames each, `--profile fast`, seed 0,
+3024x1890, `HIDDEN=1`, anti-aliasing off unless noted. `TURN=1` turns the
+camera every frame, so the draw lists are filtered every frame. "Before" is
+commit `8b1d6d5` with the same harness.
+
+| View                          | Before   | After   | Draw lists before (avg / max) | After (avg / max) |
+| ----------------------------- | -------- | ------- | ----------------------------- | ----------------- |
+| `VIEW=0`, distance 16, 4x MSAA | 2.16 ms | 1.36 ms |                               |                   |
+| `VIEW=0`, distance 16          | 1.83 ms | 1.37 ms |                               |                   |
+| `VIEW=2`, distance 16          | 1.76 ms | 1.41 ms |                               |                   |
+| `VIEW=3` (a cave), distance 16 | 1.75 ms | 1.33 ms |                               |                   |
+| `VIEW=0`, distance 16, turning | 2.48 ms | 1.51 ms | 0.78 / 2.28 ms                | 0.05 / 0.09 ms    |
+| `VIEW=0`, distance 24, turning | 3.65 ms | 1.54 ms | 1.85 / 5.63 ms                | 0.07 / 0.14 ms    |
+
+- The after column sits at the harness's floor: a 320x180 window at distance
+  2 took 1.4 to 1.5 ms before these changes. Anti-aliasing no longer changes
+  its frame time at this size, so what is left is CPU work.
+- The harness has no arm or UI camera, so it shows three cameras becoming
+  one. The game goes from five to three, and from five swapchain copies to
+  one.
+- Draw lists used to be rebuilt from scratch whenever the view matrix
+  changed: every reached section sorted by distance, and two hash lookups
+  per section. Now the order is kept until a layer, cave culling, or the
+  camera's block changes, and turning only walks it. A column wholly outside
+  the frustum skips all its layers with one test. The longest rebuild left
+  is the reorder itself, about 1.2 ms at distance 24, when the camera enters
+  another block.
+- Screenshots of the two builds at distance 12 (1280x720, visible window)
+  matched exactly for views 2 and 4x MSAA view 0, rain over view 2, and the
+  sky at noon, at dusk to the west, and at midnight to the east and west
+  (`VIEW=5`/`6`, `TIME`; both look up through tree leaves). Views 1 and 4 and the
+  Nether differed in 0.015% to 0.9% of pixels, and view 0 without MSAA in
+  1.7%, where a tree canopy was present in one run and not the other; the
+  two builds draw the same lists for the same sections (a test checks the
+  column culling against testing each layer).
+- The harness sometimes captures a blank frame, in either build: rerunning
+  the same view gave the old build's image once and a blank one once.
 
 ### Permanent Beta lighting cleanup
 

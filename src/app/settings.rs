@@ -86,8 +86,9 @@ pub struct GameSettings {
     pub smooth_lighting: bool,
     pub wiggle_leaves: bool,
     pub graphics: GraphicsQuality,
-    /// 4x MSAA. Beta had none; off drops the window-sized multisampled
-    /// colour and depth targets, the largest textures the renderer holds.
+    /// 4x MSAA, off by default as in Beta. On adds window-sized multisampled
+    /// colour and depth targets, the largest textures the renderer holds, and
+    /// every pass over the window loads and stores four samples a pixel.
     pub anti_aliasing: bool,
     pub mouse_sensitivity: f32,
     pub view_bobbing: bool,
@@ -135,7 +136,7 @@ impl Default for GameSettings {
             smooth_lighting: true,
             wiggle_leaves: DEFAULT_WIGGLE_LEAVES,
             graphics: GraphicsQuality::Fancy,
-            anti_aliasing: true,
+            anti_aliasing: false,
             mouse_sensitivity: 1.0,
             view_bobbing: true,
             fullscreen: false,

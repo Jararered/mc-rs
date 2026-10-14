@@ -104,6 +104,13 @@ fn decode(vertex: Vertex) -> DecodedBlockVertex {
 fn vertex(vertex: Vertex) -> VertexOutput {
     var out: VertexOutput;
     let decoded = decode(vertex);
+    if !decoded.visible {
+        // Every vertex of an unused proxy quad lands on one point, so its
+        // triangles have no area. The rest of a proxy past the list's end is
+        // all such quads, so skip the transforms for them.
+        out.position = vec4(0.0, 0.0, 0.0, 1.0);
+        return out;
+    }
     let world_from_local = mesh_functions::get_world_from_local(vertex.instance_index);
     let world_position = mesh_functions::mesh_position_local_to_world(
         world_from_local,
@@ -116,11 +123,6 @@ fn vertex(vertex: Vertex) -> VertexOutput {
         world_position.w,
     );
     out.position = position_world_to_clip(out.world_position.xyz);
-    if !decoded.visible {
-        // Every vertex of an unused proxy quad lands on one point, so its
-        // triangles have no area.
-        out.position = vec4(0.0, 0.0, 0.0, 1.0);
-    }
     out.world_normal = mesh_functions::mesh_normal_local_to_world(
         decoded.normal,
         vertex.instance_index,

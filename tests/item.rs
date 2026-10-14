@@ -102,7 +102,7 @@ fn known_beta_identities_are_the_only_block_ids() {
 fn item_ids_format_as_their_rust_variants() {
     assert_eq!(Item::from_block(Block::Stone).unwrap().to_string(), "Stone");
     assert_eq!(Item::IronPickaxe.to_string(), "IronPickaxe");
-    assert_eq!(Item::Unknown(999).to_string(), "BlockOrUnknown(999)");
+    assert_eq!(Item::Unknown(999).to_string(), "Unknown(999)");
 }
 
 #[test]

@@ -4,18 +4,22 @@
 //! branch), in Beta's order. `Transform.translation` is Beta's
 //! `posX/posY/posZ`: the centre of the box.
 //!
-//! Not copied: the `splash` particles of a fast boat (there is no such
-//! particle yet), and the boat's solid collision box, so a body cannot stand
-//! on one.
+//! A boat is solid both ways, as in Beta. Its `getBoundingBox` puts its box
+//! among the colliders of every other body ([`crate::physics::SolidEntities`]),
+//! so a body can stand on one, and its `getCollisionBox` makes the bodies
+//! around it block its own sweep, all but its rider. A fast glancing hit on a
+//! mob wrecks it as a wall does.
 use bevy::prelude::*;
 
 use crate::app::settings::GameSettings;
 use crate::block::blocks::Block;
+use crate::entity::DroppedItem;
 use crate::entity::EntitySize;
 use crate::entity::PreviousTick;
 use crate::entity::Velocity;
 use crate::entity::creature::Living;
 use crate::entity::drops::items::spawn_entity_drop;
+use crate::entity::minecart::Minecart;
 use crate::entity::minecart::push_offset;
 use crate::entity::mobs::Mob;
 use crate::entity::mount::Mounted;
@@ -24,7 +28,7 @@ use crate::entity::mount::dismount;
 use crate::item::Item;
 use crate::item::ItemStack;
 use crate::physics::Aabb;
-use crate::physics::move_entity;
+use crate::physics::move_entity_among;
 use crate::physics::water_within;
 use crate::player::Player;
 use crate::player::PlayerMovementInput;
@@ -250,6 +254,19 @@ pub fn step_boat(
     rules: BoatRules,
     chunks: &WorldChunks,
 ) -> BoatStep {
+    step_boat_among(boat, center, rider_motion, rules, chunks, &[])
+}
+
+/// [`step_boat`] among the boxes of the bodies around it, which block its
+/// sweep as blocks do (`EntityBoat.getCollisionBox`).
+pub fn step_boat_among(
+    boat: &mut Boat,
+    center: &mut Vec3,
+    rider_motion: Option<Vec2>,
+    rules: BoatRules,
+    chunks: &WorldChunks,
+    others: &[Aabb],
+) -> BoatStep {
     if boat.time_since_hit > 0 {
         boat.time_since_hit -= 1;
     }
@@ -291,7 +308,7 @@ pub fn step_boat(
     // but a glancing one does.
     let delta = boat.motion;
     let arriving = delta.xz().length();
-    let moved = move_entity(aabb, delta, 0.0, boat.on_ground, chunks);
+    let moved = move_entity_among(aabb, delta, 0.0, boat.on_ground, false, chunks, others);
     *center = BOAT_SIZE.position_from_aabb(moved.aabb);
     boat.on_ground = delta.y < 0.0 && moved.collision.collided_y;
     if moved.collision.collided_x {
@@ -442,10 +459,23 @@ pub(crate) fn tick_boats(
         Without<Player>,
     >,
     riders: Query<(&Transform, &PlayerMovementInput), With<Player>>,
+    bodies: Query<
+        (Entity, &Transform, &EntitySize),
+        (
+            Or<(
+                With<Player>,
+                With<Living>,
+                With<DroppedItem>,
+                With<Minecart>,
+            )>,
+            Without<Boat>,
+        ),
+    >,
     mut particles: Option<ResMut<EffectParticles>>,
     mut rng: Local<ItemRng>,
     mut order: Local<Vec<Entity>>,
     mut wrecked: Local<Vec<Entity>>,
+    mut others: Local<Vec<Aabb>>,
 ) {
     let count = tick.ticks_this_frame();
     if count == 0 {
@@ -466,6 +496,26 @@ pub(crate) fn tick_boats(
             if wrecked.contains(&entity) {
                 continue;
             }
+            // `getCollisionBox`: every body near the boat but its rider,
+            // and the other boats where they are now.
+            let rider = boats
+                .get(entity)
+                .ok()
+                .and_then(|(_, _, seat, ..)| seat.rider);
+            others.clear();
+            others.extend(
+                bodies
+                    .iter()
+                    .filter(|(body, ..)| Some(*body) != rider)
+                    .map(|(_, transform, size)| size.aabb(transform.translation)),
+            );
+            others.extend(
+                order
+                    .iter()
+                    .filter(|&&other| other != entity && !wrecked.contains(&other))
+                    .filter_map(|&other| boats.get(other).ok())
+                    .map(|(_, _, _, transform, _)| BOAT_SIZE.aabb(transform.translation)),
+            );
             let Ok((_, mut boat, seat, mut transform, mut previous)) = boats.get_mut(entity) else {
                 continue;
             };
@@ -485,7 +535,7 @@ pub(crate) fn tick_boats(
             });
             previous.0 = transform.translation;
             let mut center = transform.translation;
-            let step = step_boat(&mut boat, &mut center, push, rules, &edit.chunks);
+            let step = step_boat_among(&mut boat, &mut center, push, rules, &edit.chunks, &others);
             transform.translation = center;
             if !step.wrecked
                 && let Some(particles) = particles.as_deref_mut()

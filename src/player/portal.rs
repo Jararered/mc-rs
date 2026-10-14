@@ -10,6 +10,8 @@ use super::Player;
 use super::PlayerCamera;
 use crate::app::session::Travel;
 use crate::app::session::WorldSession;
+use crate::entity::mount::Mounted;
+use crate::entity::mount::dismount;
 use crate::inventory::session::InventorySession;
 use crate::world::sound::Pitch;
 use crate::world::sound::Sounds;
@@ -85,6 +87,15 @@ impl PortalTravel {
         travel
     }
 
+    /// One tick of `EntityPlayerMP.onUpdateEntity`'s portal block for a
+    /// rider in a portal: the server puts the rider off instead of charging,
+    /// and the charge neither grows nor fades that tick.
+    pub fn tick_dismounting(&mut self) {
+        self.previous_time = self.time;
+        self.in_portal = false;
+        self.cooldown = self.cooldown.saturating_sub(1);
+    }
+
     /// Whether a portal is charging, which closes any open screen.
     pub fn charging(&self) -> bool {
         self.in_portal
@@ -143,8 +154,9 @@ pub(super) fn plugin(app: &mut App) {
 }
 
 fn tick_portal_travel(
+    mut commands: Commands,
     tick: Res<WorldTick>,
-    mut players: Query<(&mut PortalTravel, Has<LocalPlayer>), With<Player>>,
+    mut players: Query<(Entity, &mut PortalTravel, Has<LocalPlayer>, Has<Mounted>), With<Player>>,
     mut session: Option<ResMut<WorldSession>>,
     mut inventory: Option<ResMut<InventorySession>>,
     mut sounds: Option<ResMut<Sounds>>,
@@ -153,10 +165,15 @@ fn tick_portal_travel(
     if ticks == 0 {
         return;
     }
-    for (mut portal, local) in &mut players {
+    for (entity, mut portal, local, mounted) in &mut players {
         // Physics reports contact once for the frame's ticks; spend it on
         // each of them, as the player has not moved between.
         let touching = portal.in_portal;
+        // `EntityPlayerSP.onLivingUpdate`: a rider in a portal is put off its
+        // vehicle, and the portal charges on as usual.
+        if touching && mounted {
+            dismount(&mut commands, entity);
+        }
         for _ in 0..ticks {
             portal.in_portal = touching;
             if touching

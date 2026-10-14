@@ -8,6 +8,8 @@ use game::entity::boat::Boat;
 use game::entity::boat::BoatRules;
 use game::entity::boat::rider_motion;
 use game::entity::boat::step_boat;
+use game::entity::boat::step_boat_among;
+use game::physics::Aabb;
 
 use crate::world::block_ticks::TestWorld;
 use crate::world::block_ticks::at;
@@ -259,4 +261,74 @@ fn with_boat_crashes_a_square_hit_at_speed_wrecks_the_boat_too() {
     };
     assert!(crash(0.3));
     assert!(!crash(0.1), "a gentle bump only stops it");
+}
+
+/// A body's box standing on the floor just ahead of a boat at x = 8.2.
+fn body_ahead() -> Aabb {
+    Aabb::new(Vec3::new(9.3, 61.0, 8.2), Vec3::new(9.9, 62.8, 8.8))
+}
+
+#[test]
+fn a_body_in_the_way_stops_a_boat_square_on() {
+    let w = land();
+    let mut boat = Boat {
+        motion: Vec3::new(0.3, 0.0, 0.0),
+        ..Boat::default()
+    };
+    let mut center = Vec3::new(8.2, 61.3, 8.5);
+    let others = [body_ahead()];
+    let wrecked = (0..4).any(|_| {
+        step_boat_among(
+            &mut boat,
+            &mut center,
+            None,
+            BoatRules::BETA,
+            &w.chunks,
+            &others,
+        )
+        .wrecked
+    });
+    assert!(
+        !wrecked,
+        "a square hit stops the boat whole, as a wall does"
+    );
+    assert!(
+        (center.x + 0.75 - 9.3).abs() < 1e-4,
+        "stopped against it at {center}"
+    );
+}
+
+#[test]
+fn a_fast_glancing_hit_on_a_body_wrecks_the_boat() {
+    let w = land();
+    let mut boat = Boat {
+        motion: Vec3::new(0.3, 0.0, 0.3),
+        ..Boat::default()
+    };
+    // Close enough to hit it on the first tick, before the floor slows it.
+    let mut center = Vec3::new(8.45, 61.3, 8.5);
+    // A long body, so the boat scrapes along it.
+    let others = [Aabb::new(
+        Vec3::new(9.3, 61.0, 0.0),
+        Vec3::new(9.9, 62.8, 16.0),
+    )];
+    let wrecked = (0..3).any(|_| {
+        step_boat_among(
+            &mut boat,
+            &mut center,
+            None,
+            BoatRules::BETA,
+            &w.chunks,
+            &others,
+        )
+        .wrecked
+    });
+    assert!(wrecked);
+    // The same slide with nothing beside it carries on.
+    let mut boat = Boat {
+        motion: Vec3::new(0.3, 0.0, 0.3),
+        ..Boat::default()
+    };
+    let mut center = Vec3::new(8.45, 61.3, 8.5);
+    assert!(!run(&w, &mut boat, &mut center, 3));
 }

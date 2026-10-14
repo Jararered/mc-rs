@@ -632,3 +632,88 @@ fn only_vehicles_can_be_mounted() {
     app.world_mut().flush();
     assert!(app.world().get::<Mounted>(rider).is_none());
 }
+
+#[test]
+fn a_body_ahead_blocks_a_boat_but_its_own_rider_does_not() {
+    let mut app = app();
+    let boat = spawn_boat_at(
+        &mut app.world_mut().commands(),
+        Vec3::new(7.5, 61.3, 8.5),
+        Boat {
+            motion: Vec3::new(0.2, 0.0, 0.0),
+            ..Boat::default()
+        },
+    );
+    let rider = player(&mut app, Vec3::new(20.5, 61.0, 20.5));
+    mount(&mut app.world_mut().commands(), rider, boat);
+    app.world_mut().flush();
+    // Someone standing just in its way, closer than the floor would slide it.
+    let stander = player(&mut app, Vec3::new(8.8, 61.0, 8.5));
+    // The bow's furthest reach: once against the player, the two push apart.
+    let mut front = f32::MIN;
+    for _ in 0..20 {
+        step(&mut app);
+        let at_boat = app.world().get::<Transform>(boat).unwrap().translation;
+        front = front.max(at_boat.x + 0.75);
+    }
+    assert!(
+        front > 8.35,
+        "the rider sitting in it does not hold it: {front}"
+    );
+    assert!(
+        front <= 8.5 + 1e-3,
+        "stopped against the player at x = 8.5: {front}"
+    );
+    assert!(app.world().get_entity(stander).is_ok());
+    assert_eq!(seat_of(&app, boat), Some(rider));
+}
+
+#[test]
+fn a_local_rider_s_view_turns_after_its_boat() {
+    use game::player::LocalPlayer;
+
+    let mut app = app();
+    let boat = spawn_boat_at(
+        &mut app.world_mut().commands(),
+        Vec3::new(8.5, 61.3, 8.5),
+        Boat {
+            motion: Vec3::new(0.0, 0.0, 0.3),
+            ..Boat::default()
+        },
+    );
+    let rider = app
+        .world_mut()
+        .spawn((LocalPlayer, Transform::from_xyz(20.5, 62.62, 20.5)))
+        .id();
+    mount(&mut app.world_mut().commands(), rider, boat);
+    app.world_mut().flush();
+    // A look at the boat before it turns.
+    step(&mut app);
+    let boat_before = app.world().get::<Boat>(boat).unwrap().yaw;
+    let (look_before, ..) = app
+        .world()
+        .get::<Transform>(rider)
+        .unwrap()
+        .rotation
+        .to_euler(EulerRot::YXZ);
+    for _ in 0..10 {
+        step(&mut app);
+    }
+    let turned = app.world().get::<Boat>(boat).unwrap().yaw - boat_before;
+    let (look, ..) = app
+        .world()
+        .get::<Transform>(rider)
+        .unwrap()
+        .rotation
+        .to_euler(EulerRot::YXZ);
+    assert!(
+        turned.abs() > 30.0,
+        "the boat swung round to its travel: {turned}"
+    );
+    // Beta's yaw runs the other way to Bevy's.
+    let followed = -(look - look_before).to_degrees();
+    assert!(
+        followed * turned.signum() > 0.0 && followed.abs() <= turned.abs() + 1e-3,
+        "the view follows the boat's {turned} by {followed}"
+    );
+}

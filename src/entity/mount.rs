@@ -3,23 +3,80 @@
 //! A rider carries [`Mounted`]; the vehicle (a minecart, a boat, a saddled
 //! pig) carries a [`Seat`] with the back-reference. Riders run their own
 //! update as usual, then are put back where the vehicle holds them, as Beta's
-//! `updateRidden` does. Nothing here is saved, as in Beta.
+//! `updateRidden` does, and their view drifts after the vehicle's turns
+//! ([`RiderDrift`]). Nothing here is saved, as in Beta.
 
 use bevy::prelude::*;
 
+use crate::app::settings::GameSettings;
 use crate::entity::EntitySize;
 use crate::entity::PreviousTick;
 use crate::entity::Velocity;
 use crate::entity::boat::Boat;
+use crate::entity::creature::Living;
 use crate::entity::minecart::MOUNTED_OFFSET;
 use crate::entity::minecart::Minecart;
+use crate::player::LocalPlayer;
 use crate::player::Player;
 use crate::player::PlayerInterpolation;
+use crate::world::tick::WorldTick;
 
 /// The rider's side of a mount.
 #[derive(Component, Clone, Copy, Debug, PartialEq)]
 pub struct Mounted {
     pub vehicle: Entity,
+}
+
+/// `Entity.entityRiderYawDelta` and `entityRiderPitchDelta`: the vehicle's
+/// turns the rider's view has still to follow, in Beta's degrees. Mounting
+/// starts it afresh, as `mountEntity` zeroes both.
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq)]
+pub struct RiderDrift {
+    pub yaw: f32,
+    pub pitch: f32,
+    /// The vehicle's yaw and pitch when last looked at.
+    pub seen: Option<Vec2>,
+}
+
+impl RiderDrift {
+    /// Most of a turn the view follows in one tick.
+    const MAX_STEP: f32 = 10.0;
+
+    /// Add how far the vehicle has turned since it was last seen
+    /// (`rotationYaw - prevRotationYaw`). The first look only remembers.
+    pub fn follow(&mut self, vehicle: Vec2) {
+        if let Some(seen) = self.seen {
+            self.yaw += vehicle.x - seen.x;
+            self.pitch += vehicle.y - seen.y;
+        }
+        self.seen = Some(vehicle);
+    }
+
+    /// One tick of `updateRidden`: wrap what is owed into `[-180, 180)`, and
+    /// return the half of it the rider turns by, at most ten degrees on each
+    /// axis, as `(yaw, pitch)`.
+    pub fn step(&mut self) -> Vec2 {
+        self.yaw = wrap_degrees(self.yaw);
+        self.pitch = wrap_degrees(self.pitch);
+        let turn = Vec2::new(
+            (self.yaw * 0.5).clamp(-Self::MAX_STEP, Self::MAX_STEP),
+            (self.pitch * 0.5).clamp(-Self::MAX_STEP, Self::MAX_STEP),
+        );
+        self.yaw -= turn.x;
+        self.pitch -= turn.y;
+        turn
+    }
+}
+
+/// `updateRidden`'s `while` loops: an angle into `[-180, 180)`.
+fn wrap_degrees(mut angle: f32) -> f32 {
+    while angle >= 180.0 {
+        angle -= 360.0;
+    }
+    while angle < -180.0 {
+        angle += 360.0;
+    }
+    angle
 }
 
 /// The vehicle's side of a mount (`riddenByEntity`). Anything that can be
@@ -64,13 +121,20 @@ pub fn mount(commands: &mut Commands, rider: Entity, vehicle: Entity) {
             release(world, old, true);
         }
         set_rider(world, vehicle, Some(rider));
-        world.entity_mut(rider).insert(Mounted { vehicle });
+        world
+            .entity_mut(rider)
+            .insert((Mounted { vehicle }, RiderDrift::default()));
     });
 }
 
 /// `mountEntity(null)`: the rider steps off onto the top of its vehicle.
 pub fn dismount(commands: &mut Commands, rider: Entity) {
     commands.queue(move |world: &mut World| release(world, rider, true));
+}
+
+/// [`dismount`] at once, for code that holds the `World`.
+pub fn release_now(world: &mut World, rider: Entity) {
+    release(world, rider, true);
 }
 
 /// Let go without moving the rider, for one that is being put somewhere else.
@@ -112,7 +176,7 @@ fn release(world: &mut World, rider: Entity, place: bool) {
     }
     let size = world.get::<EntitySize>(rider).copied().unwrap_or_default();
     let mut entity = world.entity_mut(rider);
-    entity.remove::<Mounted>();
+    entity.remove::<(Mounted, RiderDrift)>();
     if let Some(top) = top
         && let Some(mut transform) = entity.get_mut::<Transform>()
     {
@@ -188,7 +252,7 @@ pub(crate) fn release_orphans(
             .get(mounted.vehicle)
             .is_ok_and(|(_, seat, _)| seat.rider == Some(rider));
         if !attached {
-            commands.entity(rider).remove::<Mounted>();
+            commands.entity(rider).remove::<(Mounted, RiderDrift)>();
         }
     }
     for (entity, mut seat, cart) in &mut seats {
@@ -203,6 +267,102 @@ pub(crate) fn release_orphans(
             && cart.rider != seat.rider
         {
             cart.rider = seat.rider;
+        }
+    }
+}
+
+/// `Entity.updateRidden`'s turn: a rider's view follows its vehicle's yaw
+/// and pitch, half of what is owed a tick and at most ten degrees. This
+/// client's player and mobs turn; a remote player's look is its client's.
+/// Boats and carts never pitch; a pig does as it looks about. A pig the
+/// rider steers (`GameSettings::pig_steering`) turns after the rider's view,
+/// so the view does not follow it back.
+pub(crate) fn drift_riders(
+    tick: Res<WorldTick>,
+    settings: Option<Res<GameSettings>>,
+    mut sets: ParamSet<(
+        Query<(Entity, &Mounted), With<RiderDrift>>,
+        Query<(Option<&Boat>, Option<&Minecart>, Option<&Living>)>,
+        Query<
+            (
+                &mut RiderDrift,
+                Option<&mut Transform>,
+                Option<&mut Living>,
+                Has<LocalPlayer>,
+            ),
+            With<Mounted>,
+        >,
+    )>,
+    mut pairs: Local<Vec<(Entity, Entity)>>,
+    mut turns: Local<Vec<(Entity, Option<Vec2>)>>,
+) {
+    let ticks = tick.ticks_this_frame();
+    if ticks == 0 {
+        return;
+    }
+    // Look the vehicles up once the riders' borrow has ended.
+    pairs.clear();
+    pairs.extend(
+        sets.p0()
+            .iter()
+            .map(|(rider, mounted)| (rider, mounted.vehicle)),
+    );
+    let steering = settings
+        .as_ref()
+        .is_none_or(|settings| settings.pig_steering);
+    turns.clear();
+    {
+        let vehicles = sets.p1();
+        for &(rider, vehicle) in &*pairs {
+            let Ok((boat, cart, living)) = vehicles.get(vehicle) else {
+                continue;
+            };
+            let angles = if let Some(boat) = boat {
+                Vec2::new(boat.yaw, 0.0)
+            } else if let Some(cart) = cart {
+                Vec2::new(cart.yaw, 0.0)
+            } else if let Some(living) = living {
+                if steering {
+                    turns.push((rider, None));
+                    continue;
+                }
+                Vec2::new(living.yaw, living.pitch)
+            } else {
+                continue;
+            };
+            turns.push((rider, Some(angles)));
+        }
+    }
+    let mut riders = sets.p2();
+    for &(rider, angles) in &*turns {
+        let Ok((mut drift, transform, living, local)) = riders.get_mut(rider) else {
+            continue;
+        };
+        let Some(angles) = angles else {
+            *drift = RiderDrift::default();
+            continue;
+        };
+        drift.follow(angles);
+        let mut turn = Vec2::ZERO;
+        for _ in 0..ticks {
+            turn += drift.step();
+        }
+        if turn == Vec2::ZERO {
+            continue;
+        }
+        if let Some(mut living) = living {
+            living.yaw += turn.x;
+            living.pitch += turn.y;
+        } else if local && let Some(mut transform) = transform {
+            // Bevy's yaw is `PI - ` Beta's and its pitch looks up where
+            // Beta's looks down, so both turn the other way.
+            let (yaw, pitch, _) = transform.rotation.to_euler(EulerRot::YXZ);
+            let yaw = yaw - turn.x.to_radians();
+            let pitch = (pitch - turn.y.to_radians()).clamp(
+                -std::f32::consts::FRAC_PI_2 + 0.01,
+                std::f32::consts::FRAC_PI_2 - 0.01,
+            );
+            transform.rotation = Quat::from_euler(EulerRot::YXZ, yaw, pitch, 0.0);
         }
     }
 }

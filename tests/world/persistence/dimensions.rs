@@ -276,6 +276,74 @@ fn travelling_through_a_portal_swaps_the_dimension_and_keeps_the_player() {
 }
 
 #[test]
+fn respawning_from_the_nether_leaves_a_stray_portal_in_the_overworld() {
+    use game::world::portal;
+
+    let saves = temp_saves("stray-portal");
+    let mut app = session_app(&saves);
+    load_world(
+        &mut app,
+        WorldChoice::New {
+            name: "Stray".to_owned(),
+            seed: 21,
+            difficulty: Difficulty::Peaceful,
+            format: SaveFormat::Binary,
+        },
+    );
+    let root = app
+        .world()
+        .resource::<WorldPersistence>()
+        .storage()
+        .unwrap()
+        .root()
+        .to_path_buf();
+    let player = app
+        .world_mut()
+        .query_filtered::<Entity, With<Player>>()
+        .single(app.world())
+        .unwrap();
+    app.world_mut()
+        .entity_mut(player)
+        .get_mut::<Transform>()
+        .unwrap()
+        .translation = Vec3::new(400.5, 80.0, -240.5);
+    // Into the Nether without a portal on the Overworld side.
+    travel(&mut app, Travel::Portal);
+    let died = player_position(&mut app);
+
+    travel(&mut app, Travel::Respawn);
+    assert_eq!(
+        app.world().resource::<ActiveDimension>().0,
+        Dimension::Overworld
+    );
+    let spawn = player_position(&mut app);
+    assert_eq!(
+        (spawn.x, spawn.z),
+        (8.5, 8.5),
+        "the player is not put in it"
+    );
+
+    // The teleporter built a portal near where the dead player stood, scaled
+    // by eight, and it is saved with its chunk.
+    super::leave_world(&mut app);
+    let storage = WorldStorage::open(root).unwrap();
+    let center = ChunkPosition::from_world(died.x * 8.0, died.z * 8.0);
+    let built: Vec<ChunkPosition> = (-2..=2)
+        .flat_map(|x| (-2..=2).map(move |z| (x, z)))
+        .map(|(x, z)| ChunkPosition {
+            x: center.x + x,
+            z: center.z + z,
+        })
+        .filter(|&position| {
+            storage
+                .load_chunk_in(Dimension::Overworld, position)
+                .is_some_and(|chunk| portal::has_portal(&chunk))
+        })
+        .collect();
+    assert!(!built.is_empty(), "no stray portal near {center:?}");
+}
+
+#[test]
 fn a_world_saved_in_the_nether_reopens_there() {
     let saves = temp_saves("reopen-nether");
     let mut app = session_app(&saves);

@@ -21,6 +21,7 @@ use bevy::math::DVec3;
 use bevy::prelude::*;
 
 use crate::entity::EntitySize;
+use crate::entity::mount::Mounted;
 use crate::player::Player;
 use crate::player::PlayerName;
 use crate::player::portal::PortalTravel;
@@ -365,8 +366,26 @@ impl WorldHost {
                 crate::physics::touch_portals(aabb, chunks, &mut charge);
                 *world.get_mut::<PortalTravel>(entity).unwrap() = charge;
             }
+            // `EntityPlayerMP.onUpdateEntity`: a rider in a portal is put off
+            // its vehicle, and that tick does not charge.
+            let mut riders = world
+                .query_filtered::<(Entity, &mut PortalTravel), (With<Player>, With<Mounted>)>();
+            let dismounting: Vec<Entity> = riders
+                .iter_mut(world)
+                .filter(|(_, portal)| portal.touching())
+                .map(|(entity, mut portal)| {
+                    portal.tick_dismounting();
+                    entity
+                })
+                .collect();
+            for &rider in &dismounting {
+                crate::entity::mount::release_now(world, rider);
+            }
             let mut players = world.query_filtered::<(Entity, &mut PortalTravel), With<Player>>();
             for (entity, mut portal) in players.iter_mut(world) {
+                if dismounting.contains(&entity) {
+                    continue;
+                }
                 // Physics reports contact once for the frame's ticks.
                 let touching = portal.touching();
                 for _ in 0..ticks {

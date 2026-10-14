@@ -31,7 +31,8 @@ use crate::inventory::Hotbar;
 use crate::item::Item;
 use crate::item::ItemStack;
 use crate::physics::Aabb;
-use crate::physics::move_entity;
+use crate::physics::SolidEntities;
+use crate::physics::move_entity_among;
 use crate::physics::raycast_blocks;
 use crate::physics::water_within;
 use crate::player::Player;
@@ -229,6 +230,7 @@ pub(crate) fn tick_bobbers(
     mut commands: Commands,
     tick: Res<WorldTick>,
     chunks: Res<WorldChunks>,
+    solids: Option<Res<SolidEntities>>,
     environment: Environment,
     anglers: Query<(&Transform, &Hotbar, Option<&PlayerHealth>, Option<&Fishing>), With<Player>>,
     mut bobbers: Query<
@@ -328,12 +330,14 @@ pub(crate) fn tick_bobbers(
                     continue;
                 }
 
-                let movement = move_entity(
+                let movement = move_entity_among(
                     BOBBER_SIZE.aabb(position),
                     bobber.motion,
                     0.0,
                     bobber.collision.on_ground,
+                    false,
                     &chunks,
+                    SolidEntities::boxes_of(solids.as_deref()),
                 );
                 position = BOBBER_SIZE.position_from_aabb(movement.aabb);
                 bobber.collision = movement.collision;

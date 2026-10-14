@@ -19,11 +19,12 @@ use crate::inventory::Inventory;
 use crate::item::ItemStack;
 use crate::physics::Aabb;
 use crate::physics::PhysicsSet;
+use crate::physics::SolidEntities;
 use crate::physics::WATER_CURRENT_PER_TICK;
 use crate::physics::burning_in;
 use crate::physics::eye_in_water;
 use crate::physics::lava_contains;
-use crate::physics::move_entity;
+use crate::physics::move_entity_among;
 use crate::physics::touches_cactus;
 use crate::physics::water_current;
 use crate::player::Player;
@@ -595,6 +596,7 @@ pub fn hotbar_icon_scale(pop: u8, partial: f32) -> Vec2 {
 fn tick_dropped_items(
     tick: Res<WorldTick>,
     chunks: Res<WorldChunks>,
+    solids: Option<Res<SolidEntities>>,
     settings: Option<Res<GameSettings>>,
     mut persistence: Option<ResMut<WorldPersistence>>,
     mut sounds: Option<ResMut<Sounds>>,
@@ -692,12 +694,14 @@ fn tick_dropped_items(
                 }
             }
             push_out_of_blocks(&chunks, &mut transform.translation, &mut motion.0);
-            let movement = move_entity(
+            let movement = move_entity_among(
                 size.aabb(transform.translation),
                 motion.0,
                 0.0,
                 collision.on_ground,
+                false,
                 &chunks,
+                SolidEntities::boxes_of(solids.as_deref()),
             );
             transform.translation = size.position_from_aabb(movement.aabb);
             *collision = movement.collision;

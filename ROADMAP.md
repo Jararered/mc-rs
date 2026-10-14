@@ -87,14 +87,15 @@ any player but this client's). Files are read from the player's `resources/` fol
 
 Beta's classes for these are already transcribed, so this phase finishes them.
 
-- [ ] **Boat collision box.** Make a boat solid to other entities through `getCollisionBox`, so a body can stand on one.
-      `bump_boats` already covers the push.
-- [ ] **Fast-boat splash.** Spawn `FxKind::Splash` where Beta's `EntityBoat` spawns `"splash"`. The kind exists; the
-      boat does not call it yet.
-- [ ] **Portals while riding.** A rider in a portal is dismounted, so the player can charge it
+- [x] **Boat collision box.** A boat is solid both ways: its box joins every body's colliders
+      (`physics::SolidEntities`, Beta's `getBoundingBox`), and the bodies around it block its own sweep
+      (`getCollisionBox`), all but its rider. `bump_boats` covers the push.
+- [x] **Fast-boat splash.** `FxKind::Splash` where Beta's `EntityBoat` spawns `"splash"`
+      (`EffectParticles::boat_wake`).
+- [x] **Portals while riding.** A rider in a portal is dismounted, so the player can charge it
       (`EntityPlayerSP.onLivingUpdate`). The work is in `player/portal.rs` and `entity/mount.rs`.
-- [ ] **Rider yaw drift.** `Entity.updateRidden` for carts, boats and pigs.
-- [ ] **Stray Nether portal.** The portal Beta can leave when a player who died in the Nether is sent back through the
+- [x] **Rider yaw drift.** `Entity.updateRidden` for carts, boats and pigs.
+- [x] **Stray Nether portal.** The portal Beta can leave when a player who died in the Nether is sent back through the
       teleporter (`world::portal`).
 - [ ] **Rider pose.** The lying and sitting third-person pose. It needs the third-person camera from Phase 7.
 

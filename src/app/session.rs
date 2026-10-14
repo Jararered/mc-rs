@@ -136,8 +136,10 @@ pub enum Travel {
     /// out of the nearest portal there or a new one.
     Portal,
     /// `Minecraft.respawn` where `canRespawnHere` is false: back to the
-    /// Overworld's spawn point. Beta sends the player through the teleporter
-    /// first and can leave a stray portal behind; that is not copied.
+    /// Overworld's spawn point or bed. From the Nether, Beta first sends the
+    /// dead player through the teleporter (`usePortal`), which builds a
+    /// stray portal near the death point scaled by eight when none is within
+    /// reach; that portal is left behind.
     Respawn,
 }
 
@@ -501,6 +503,9 @@ fn drive_session(
                 persistence.set_dimension(target);
             }
             let mut entity = None;
+            // `Minecraft.respawn` from the Nether runs `usePortal` first,
+            // which runs the teleporter for the dead player.
+            let mut stray = None;
             // `Minecraft.respawn`: back to the bed the player woke up in.
             let bed = (travel == Travel::Respawn)
                 .then(|| state.sleep.single().ok().and_then(|sleep| sleep.spawn))
@@ -526,6 +531,18 @@ fn drive_session(
                     // The spawn chunk is built around here; the height is
                     // settled once it exists.
                     Travel::Respawn => {
+                        if source != target {
+                            let (x, z) = source.scale_position_to(
+                                target,
+                                f64::from(transform.translation.x),
+                                f64::from(transform.translation.z),
+                            );
+                            stray = Some(DVec3::new(
+                                x,
+                                f64::from(transform.translation.y) + PORTAL_Y_DRIFT,
+                                z,
+                            ));
+                        }
                         let (x, z) =
                             bed.map_or((8.5, 8.5), |bed| (bed.x as f32 + 0.5, bed.z as f32 + 0.5));
                         transform.translation.x = x;
@@ -548,17 +565,18 @@ fn drive_session(
             // unseeded random.
             let rotation = time.elapsed().subsec_nanos();
             session.arrival = Some(AsyncComputeTaskPool::get().spawn(async move {
-                match (entity, bed) {
-                    (Some(entity), _) => {
+                match entity {
+                    Some(entity) => {
                         teleport(storage.as_deref(), &*generator, target, entity, rotation)
                     }
-                    (None, Some(bed)) => respawn_at_bed(storage.as_deref(), target, bed),
-                    (None, None) => Arrival {
-                        chunks: Vec::new(),
-                        changes: Vec::new(),
-                        feet: None,
-                        bed_missing: false,
-                    },
+                    None => respawn(
+                        storage.as_deref(),
+                        &*generator,
+                        target,
+                        stray,
+                        bed,
+                        rotation,
+                    ),
                 }
             }));
             session.phase = Phase::Arriving;
@@ -738,24 +756,67 @@ fn teleport(
     }
 }
 
+/// `Minecraft.respawn` into `dimension`, which is not loaded. `stray` is the
+/// dead player's position there when `usePortal` runs the teleporter first:
+/// the portal it finds or builds is kept, and the player is not put in it.
+/// Then the player goes to `bed`, or to the world spawn when `feet` is
+/// `None`.
+fn respawn(
+    storage: Option<&WorldStorage>,
+    generator: &dyn ChunkGenerator,
+    dimension: Dimension,
+    stray: Option<DVec3>,
+    bed: Option<IVec3>,
+    rotation: u32,
+) -> Arrival {
+    let mut arrival = stray.map_or_else(
+        || Arrival {
+            chunks: Vec::new(),
+            changes: Vec::new(),
+            feet: None,
+            bed_missing: false,
+        },
+        |entity| teleport(storage, generator, dimension, entity, rotation),
+    );
+    arrival.feet = None;
+    if let Some(bed) = bed {
+        let feet = respawn_at_bed(storage, dimension, bed, &mut arrival.chunks);
+        arrival.feet = feet.map(|feet| feet.as_dvec3());
+        arrival.bed_missing = feet.is_none();
+    }
+    arrival
+}
+
 /// `EntityPlayer.func_25060_a` in `dimension`, which is not loaded: the final
 /// save before this put the bed's chunks on disk, so they are read from
-/// there. The world then streams in around wherever the player ends up.
-fn respawn_at_bed(storage: Option<&WorldStorage>, dimension: Dimension, bed: IVec3) -> Arrival {
+/// there, unless the teleporter just built in one (`built`, lent and handed
+/// back). The world then streams in around wherever the player ends up.
+fn respawn_at_bed(
+    storage: Option<&WorldStorage>,
+    dimension: Dimension,
+    bed: IVec3,
+    built: &mut Vec<(ChunkPosition, GeneratedChunk, bool)>,
+) -> Option<Vec3> {
     let mut chunks = WorldChunks::default();
+    let mut lent = Vec::new();
     for position in bed_chunks(bed) {
-        if let Some(chunk) = storage.and_then(|storage| storage.load_chunk_in(dimension, position))
+        if let Some(index) = built.iter().position(|(at, ..)| *at == position) {
+            let (_, chunk, unsaved) = built.swap_remove(index);
+            chunks.insert(position, chunk);
+            lent.push((position, unsaved));
+        } else if let Some(chunk) =
+            storage.and_then(|storage| storage.load_chunk_in(dimension, position))
         {
             chunks.insert(position, chunk);
         }
     }
     let feet = bed_respawn_feet(&chunks, bed);
-    Arrival {
-        chunks: Vec::new(),
-        changes: Vec::new(),
-        feet: feet.map(|feet| feet.as_dvec3()),
-        bed_missing: feet.is_none(),
+    for (position, unsaved) in lent {
+        if let Some(chunk) = chunks.remove(position) {
+            built.push((position, chunk, unsaved));
+        }
     }
+    feet
 }
 
 /// Put what the teleporter built into the empty world and stand the player

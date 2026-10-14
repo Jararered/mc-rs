@@ -1,9 +1,13 @@
+use bevy::camera::CameraOutputMode;
+use bevy::camera::RenderTarget;
 use bevy::light::DirectionalLightShadowMap;
 use bevy::light::PointLightShadowMap;
 use bevy::prelude::*;
+use bevy::render::render_resource::BlendState;
 use bevy::render::render_resource::WgpuFeatures;
 use bevy::render::renderer::RenderAdapterInfo;
 use bevy::render::renderer::RenderDevice;
+use bevy::window::WindowRef;
 
 use crate::app::settings::GameSettings;
 use crate::app::state::AppScreen;
@@ -16,6 +20,7 @@ use crate::world::block_ticks::BlockTickSet;
 use crate::world::chunk::ChunkPosition;
 use crate::world::streaming::ChunkCulling;
 use crate::world::streaming::StreamingDiagnostics;
+use crate::world::streaming::cull_section_layers;
 use crate::world::streaming::setup_streaming;
 use crate::world::streaming::stream_chunks;
 
@@ -39,6 +44,8 @@ impl Plugin for WorldRenderingPlugin {
         super::creatures::plugin(app);
         super::weather::plugin(app);
         super::clouds::plugin(app);
+        crate::world::streaming::regions_plugin(app);
+        crate::world::streaming::translucent_plugin(app);
         app.add_plugins(TerrainTexturePlugin)
             .insert_resource(ClearColor(Color::srgb(0.53, 0.73, 0.95)))
             .init_resource::<GameSettings>()
@@ -53,6 +60,7 @@ impl Plugin for WorldRenderingPlugin {
                 size: UNUSED_SHADOW_MAP_SIZE,
             })
             .init_resource::<StreamingDiagnostics>()
+            .init_resource::<super::occlusion::VisibleSections>()
             .add_systems(PreStartup, disable_gpu_light_clustering)
             .add_systems(
                 Startup,
@@ -60,7 +68,19 @@ impl Plugin for WorldRenderingPlugin {
             )
             .add_systems(
                 PostUpdate,
-                apply_world_camera_activity
+                (
+                    super::occlusion::cull_sections,
+                    cull_section_layers
+                        .run_if(resource_exists::<crate::world::streaming::WorldStreaming>),
+                )
+                    .chain()
+                    .after(TransformSystems::Propagate)
+                    .before(bevy::camera::visibility::VisibilitySystems::VisibilityPropagate),
+            )
+            .add_systems(
+                PostUpdate,
+                (apply_world_camera_activity, composite_window_cameras)
+                    .chain()
                     .before(bevy::camera::CameraUpdateSystems)
                     .before(bevy::camera::visibility::VisibilitySystems::VisibilityPropagate),
             )
@@ -144,6 +164,48 @@ fn apply_graphics_pipeline(
         if current != Some(&msaa) {
             commands.entity(entity).insert(msaa);
         }
+    }
+}
+
+/// Let only the last camera drawn on the window copy the frame to it.
+///
+/// Every window camera draws into one shared main texture (they all carry
+/// the same `Msaa`), and by default each one then blits that whole texture
+/// to the swapchain, the later ones alpha-blending over the earlier. Only the
+/// highest-order active camera's copy survives, so the others skip theirs,
+/// and that one replaces the swapchain outright.
+pub fn composite_window_cameras(mut cameras: Query<(Entity, &mut Camera, &RenderTarget)>) {
+    let on_window =
+        |target: &RenderTarget| matches!(target, RenderTarget::Window(WindowRef::Primary));
+    let last = cameras
+        .iter()
+        .filter(|(_, camera, target)| camera.is_active && on_window(target))
+        .max_by_key(|(_, camera, _)| camera.order)
+        .map(|(entity, ..)| entity);
+    for (entity, mut camera, target) in &mut cameras {
+        if !on_window(target) {
+            continue;
+        }
+        let writes = Some(entity) == last;
+        let current = match camera.output_mode {
+            CameraOutputMode::Skip => Some(false),
+            CameraOutputMode::Write {
+                blend_state: Some(BlendState::REPLACE),
+                clear_color: ClearColorConfig::Default,
+            } => Some(true),
+            CameraOutputMode::Write { .. } => None,
+        };
+        if current == Some(writes) {
+            continue;
+        }
+        camera.output_mode = if writes {
+            CameraOutputMode::Write {
+                blend_state: Some(BlendState::REPLACE),
+                clear_color: ClearColorConfig::Default,
+            }
+        } else {
+            CameraOutputMode::Skip
+        };
     }
 }
 

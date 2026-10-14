@@ -73,8 +73,11 @@ impl GraphicsQuality {
 pub struct GameSettings {
     pub render_distance: i32,
     pub difficulty: Difficulty,
-    /// Zero follows VSync without an additional application frame cap.
+    /// Zero is unlimited: no application frame cap.
     pub max_fps: u32,
+    /// Present frames on the display's refresh. Off presents immediately,
+    /// which can tear.
+    pub vsync: bool,
     pub fov: f32,
     pub cloud_height: f32,
     /// Beta's GUI scale: the 176×166 inventory and 182×22 hotbar are drawn
@@ -83,8 +86,9 @@ pub struct GameSettings {
     pub smooth_lighting: bool,
     pub wiggle_leaves: bool,
     pub graphics: GraphicsQuality,
-    /// 4x MSAA. Beta had none; off drops the window-sized multisampled
-    /// colour and depth targets, the largest textures the renderer holds.
+    /// 4x MSAA, off by default as in Beta. On adds window-sized multisampled
+    /// colour and depth targets, the largest textures the renderer holds, and
+    /// every pass over the window loads and stores four samples a pixel.
     pub anti_aliasing: bool,
     pub mouse_sensitivity: f32,
     pub view_bobbing: bool,
@@ -125,13 +129,14 @@ impl Default for GameSettings {
             render_distance: MIN_RENDER_DISTANCE,
             difficulty: Difficulty::Normal,
             max_fps: DEFAULT_MAX_FPS,
+            vsync: true,
             fov: DEFAULT_FOV,
             cloud_height: DEFAULT_CLOUD_HEIGHT,
             gui_scale: DEFAULT_GUI_SCALE,
             smooth_lighting: true,
             wiggle_leaves: DEFAULT_WIGGLE_LEAVES,
             graphics: GraphicsQuality::Fancy,
-            anti_aliasing: true,
+            anti_aliasing: false,
             mouse_sensitivity: 1.0,
             view_bobbing: true,
             fullscreen: false,
@@ -331,6 +336,7 @@ struct StoredSettings {
     render_distance: i32,
     difficulty: Difficulty,
     max_fps: u32,
+    vsync: bool,
     fov: f32,
     cloud_height: f32,
     gui_scale: f32,
@@ -370,6 +376,7 @@ impl From<&GameSettings> for StoredSettings {
             render_distance: settings.render_distance,
             difficulty: settings.difficulty,
             max_fps: settings.max_fps,
+            vsync: settings.vsync,
             fov: settings.fov,
             cloud_height: settings.cloud_height,
             gui_scale: settings.gui_scale,
@@ -404,6 +411,7 @@ impl From<StoredSettings> for GameSettings {
             render_distance: stored.render_distance,
             difficulty: stored.difficulty,
             max_fps: stored.max_fps,
+            vsync: stored.vsync,
             fov: stored.fov,
             cloud_height: stored.cloud_height,
             gui_scale: stored.gui_scale,

@@ -2,6 +2,7 @@
 
 pub mod appearance;
 pub mod chunk_quads;
+pub mod chunk_regions;
 pub mod clouds;
 pub mod creatures;
 pub mod dropped_items;
@@ -10,6 +11,7 @@ pub mod icons;
 mod item_tiles;
 pub mod meshing;
 mod mobs;
+pub mod occlusion;
 pub mod particles;
 mod plugin;
 pub mod shadow;

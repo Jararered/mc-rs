@@ -4,8 +4,12 @@ use game::rendering::meshing::BlockGeometry;
 use game::rendering::meshing::BlockLighting;
 use game::rendering::meshing::BlockVertex;
 use game::rendering::meshing::ChunkNeighbors;
+use game::rendering::meshing::FACINGS;
 use game::rendering::meshing::SectionMesher;
+use game::rendering::meshing::UNASSIGNED_FACING;
 use game::rendering::meshing::WATER_ALPHA;
+use game::rendering::meshing::group_by_facing;
+use game::rendering::meshing::layer_bytes;
 use game::rendering::meshing::mesh_chunk;
 use game::rendering::meshing::mesh_chunk_filtered;
 use game::rendering::meshing::mesh_chunk_with_neighbors;
@@ -596,7 +600,7 @@ fn complete_neighborhood_does_not_invent_light_at_cave_edges() {
             nw: Some(&northwest),
             ne: Some(&northeast),
             sw: Some(&southwest),
-            ne: Some(&southeast),
+            se: Some(&southeast),
         },
     );
     assert_eq!(light.sky(CHUNK_SIZE - 1, 64, 8), Some(0));
@@ -614,7 +618,7 @@ fn complete_neighborhood_does_not_invent_light_at_cave_edges() {
             nw: Some(&northwest),
             ne: Some(&northeast),
             sw: Some(&southwest),
-            ne: Some(&southeast),
+            se: Some(&southeast),
         },
     );
     assert_eq!(lit.sky(CHUNK_SIZE - 1, 64, 8), Some(15));
@@ -1336,4 +1340,75 @@ fn quad_records_hold_generated_terrain_light_exactly() {
         }
     }
     assert!(records > 500);
+}
+
+#[test]
+fn layer_records_group_by_facing_with_header_counts() {
+    let generated = OverworldGenerator::new(0).generate(ChunkPosition::ZERO);
+    let chunk = &generated.chunk;
+    let skylight = Skylight::from_chunk(chunk);
+    let neighbors = ChunkNeighbors::default();
+    let mesher = SectionMesher::new(
+        chunk,
+        &neighbors,
+        &skylight,
+        &generated.biomes,
+        &GrassColors::default(),
+        &FoliageColors::default(),
+        true,
+        ChunkPosition::ZERO,
+        None,
+    );
+    let mut seen = [0; FACINGS];
+    for section in 0..CHUNK_HEIGHT / 16 {
+        for layer in mesher.mesh(section).into_layers() {
+            let mut records = layer.into_quads();
+            let unsorted = records.clone();
+            let counts = group_by_facing(&mut records);
+            assert_eq!(counts.iter().sum::<u32>() as usize, records.len());
+            // The same records, only reordered.
+            let mut left = unsorted.iter().map(|record| record.0).collect::<Vec<_>>();
+            let mut right = records.iter().map(|record| record.0).collect::<Vec<_>>();
+            left.sort_unstable();
+            right.sort_unstable();
+            assert_eq!(left, right);
+            let mut start = 0;
+            for (facing, count) in counts.iter().enumerate() {
+                let group = &records[start..start + *count as usize];
+                start += *count as usize;
+                seen[facing] += group.len();
+                for record in group {
+                    assert_eq!(record.facing(), facing);
+                    if facing != UNASSIGNED_FACING {
+                        let normal = record.corners()[0].normal;
+                        let axis = facing_axis(facing);
+                        assert!(
+                            normal[axis.0] * axis.1 > 0.999,
+                            "facing {facing} has normal {normal:?}"
+                        );
+                    }
+                }
+            }
+            let bytes = layer_bytes(&records, &counts);
+            let header: Vec<u32> = bytes[..32]
+                .chunks_exact(4)
+                .map(|word| u32::from_le_bytes(word.try_into().unwrap()))
+                .collect();
+            assert_eq!(header[0] as usize, records.len());
+            assert_eq!(&header[1..], &counts);
+        }
+    }
+    assert!(seen[..UNASSIGNED_FACING].iter().all(|count| *count > 0));
+}
+
+/// `geometry::FACE_*` order: up, down, east, west, south, north.
+fn facing_axis(facing: usize) -> (usize, f32) {
+    [
+        (1, 1.0),
+        (1, -1.0),
+        (0, 1.0),
+        (0, -1.0),
+        (2, 1.0),
+        (2, -1.0),
+    ][facing]
 }

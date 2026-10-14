@@ -80,6 +80,48 @@ old lighting, one open-terrain view with 5,864 section layers:
 - Bevy's `RenderDiagnosticsPlugin` pass timings read about 0.02 ms per pass
   here and did not reflect draw cost, so they are not in the report.
 
+### Chunk regions, cave culling, and facing culling
+
+These follow Sodium's renderer, reimplemented from its ideas only (Sodium is
+under the PolyForm Shield license, so none of its code is used).
+
+- **Cave culling** (`rendering/occlusion.rs`): each mesh job flood-fills its
+  sections and records which faces see each other. When the camera enters
+  another section, a walk outward from it finds the sections reachable
+  through open space. A camera inside an opaque cube turns it off.
+- **Facing culling**: a layer's records are grouped by facing, and a region's
+  draw list leaves out the groups that face away from the camera.
+- **Chunk regions** (`rendering/chunk_regions.rs`,
+  `world/streaming/regions.rs`): one entity per layer for each 8×8 chunk
+  columns, drawing a list of record runs kept in the quad buffer. The vertex
+  shader binary-searches the list. Lists are rebuilt when the camera's
+  clip-from-world matrix or a section layer changes.
+- **Water** is sorted back to front per section, and regions list water
+  sections farthest first.
+
+Measured with `examples/chunk_render.rs` on an Apple M5 Pro (Metal), seed
+0, Fancy, 1920x1080, `MSAA=off`. "Old" is `MC_CHUNK_REGIONS=off
+MC_OCCLUSION=off`.
+
+| Distance, view               | Old draws | Region draws | Sections reached | Quads drawn | List rebuild (`fast`) |
+| ---------------------------- | --------- | ------------ | ---------------- | ----------- | --------------------- |
+| 8, `VIEW=0` (dev profile)    | ~2,780    | 18           | 1,278 of 2,312   | 130,814     |                       |
+| 16, `VIEW=0`                 | ~8,350    | 21           | 5,388            | ~178,000    | 0.26 ms               |
+| 24, `VIEW=0`                 | ~17,730   | 25           | 12,176           | ~201,000    | 0.70 ms (2.0 longest) |
+| 16 or 24, `VIEW=3` (a cave)  | ~8,350–17,800 | 1        | 12               | 1,217       | 0.01–0.03 ms          |
+
+- Screenshots against the old path differ in at most 0.024% of pixels,
+  the same as two runs of the old path differ from each other. The cave and
+  canyon views match exactly.
+- Frame time was not separable. Every run of both paths was paced to the
+  display (11.1 ms at 90 Hz). Unpaced runs, probably with the window covered,
+  showed about 1.9 ms at distance 24 with regions, but no old-path run went
+  unpaced to compare against.
+- The draw-list rebuild is main-thread work on frames where the camera moved.
+  Water sorting is capped at 64 sections a frame.
+- Before these changes, `VIEW=1` already sat inside stone, an x-ray view. It
+  is kept, and shows why culling is off inside an opaque cube.
+
 ## Memory
 
 The report's `process memory` line is resident memory from Bevy's
@@ -145,13 +187,87 @@ wgpu debug flags, the window size, or the number of cameras, and their owner
 was not identified.
 
 Each additional `Camera3d` added about 30 MB in that test (per-view buffers
-and heap). The game runs four on the window while playing (sky, celestial,
-world, arm) plus the UI camera, so folding the sky passes into the world
-camera is the next thing to measure.
+and heap). The game now runs two on the window while playing (world and arm)
+plus the UI camera; see [Camera stack](#camera-stack).
 
 A release build of the last two rows measured 586 MB with 4x MSAA (GPU 354
 MB) and 527 MB without (GPU 316 MB), so the dev profile is not what makes
 the footprint large, and the MSAA saving was smaller there, about 40 MB.
+
+### Camera stack
+
+Every camera on the window draws into one shared main texture, and each of
+its passes loads and stores that whole texture (four samples a pixel with
+anti-aliasing) and its own depth texture. Bevy begins a camera's opaque pass
+even when it has nothing to draw. By default each camera then also copied
+the main texture to the swapchain, the later ones alpha-blending over the
+earlier.
+
+The game used to run five cameras while playing: sky (which drew nothing and
+only cleared to the sky color), celestial (sun, moon, stars, sunrise fan),
+world, arm, and UI. Now:
+
+- The world camera clears to the sky color and draws the sky bodies itself
+  with `SkyMaterial` (`rendering/textures/sky_backdrop.rs`). Its vertex
+  shader puts them on the far plane, so terrain covers them at any distance,
+  and its `depth_bias` sorts them ahead of every other blended mesh.
+- `composite_window_cameras` (`rendering/plugin.rs`) lets only the
+  highest-order active window camera copy the frame to the swapchain, as a
+  plain replace. The others skip their copy.
+- Anti-aliasing is off by default, as in Beta.
+
+The arm camera remains: it needs its own depth. Merging it, and then drawing
+the HUD through the world camera, would leave one camera.
+
+#### Measuring frame time on macOS
+
+A visible window is paced by the compositor. On the Apple M5 Pro (120 Hz
+display) `examples/chunk_render.rs` averaged 12.2 ms a frame, alternating
+between refresh intervals, whatever it drew: a 320x180 window at render
+distance 2 took as long as 3024x1890 at 16, with or without anti-aliasing.
+Bevy's default `WinitSettings` also drops an unfocused window to 60 Hz; the
+harness now updates continuously. `HIDDEN=1` opens the window invisible,
+which removes the pacing; frame times then follow resolution and
+anti-aliasing, so the GPU work is still done, but the screenshot is black.
+Take screenshots from a visible window and timings from a hidden one.
+
+Medians of three interleaved runs of 600 frames each, `--profile fast`, seed 0,
+3024x1890, `HIDDEN=1`, anti-aliasing off unless noted. `TURN=1` turns the
+camera every frame, so the draw lists are filtered every frame. "Before" is
+commit `8b1d6d5` with the same harness.
+
+| View                          | Before   | After   | Draw lists before (avg / max) | After (avg / max) |
+| ----------------------------- | -------- | ------- | ----------------------------- | ----------------- |
+| `VIEW=0`, distance 16, 4x MSAA | 2.16 ms | 1.36 ms |                               |                   |
+| `VIEW=0`, distance 16          | 1.83 ms | 1.37 ms |                               |                   |
+| `VIEW=2`, distance 16          | 1.76 ms | 1.41 ms |                               |                   |
+| `VIEW=3` (a cave), distance 16 | 1.75 ms | 1.33 ms |                               |                   |
+| `VIEW=0`, distance 16, turning | 2.48 ms | 1.51 ms | 0.78 / 2.28 ms                | 0.05 / 0.09 ms    |
+| `VIEW=0`, distance 24, turning | 3.65 ms | 1.54 ms | 1.85 / 5.63 ms                | 0.07 / 0.14 ms    |
+
+- The after column sits at the harness's floor: a 320x180 window at distance
+  2 took 1.4 to 1.5 ms before these changes. Anti-aliasing no longer changes
+  its frame time at this size, so what is left is CPU work.
+- The harness has no arm or UI camera, so it shows three cameras becoming
+  one. The game goes from five to three, and from five swapchain copies to
+  one.
+- Draw lists used to be rebuilt from scratch whenever the view matrix
+  changed: every reached section sorted by distance, and two hash lookups
+  per section. Now the order is kept until a layer, cave culling, or the
+  camera's block changes, and turning only walks it. A column wholly outside
+  the frustum skips all its layers with one test. The longest rebuild left
+  is the reorder itself, about 1.2 ms at distance 24, when the camera enters
+  another block.
+- Screenshots of the two builds at distance 12 (1280x720, visible window)
+  matched exactly for views 2 and 4x MSAA view 0, rain over view 2, and the
+  sky at noon, at dusk to the west, and at midnight to the east and west
+  (`VIEW=5`/`6`, `TIME`; both look up through tree leaves). Views 1 and 4 and the
+  Nether differed in 0.015% to 0.9% of pixels, and view 0 without MSAA in
+  1.7%, where a tree canopy was present in one run and not the other; the
+  two builds draw the same lists for the same sections (a test checks the
+  column culling against testing each layer).
+- The harness sometimes captures a blank frame, in either build: rerunning
+  the same view gave the old build's image once and a blank one once.
 
 ### Permanent Beta lighting cleanup
 
@@ -182,6 +298,66 @@ scene exercised creature skin/hurt/flash, glow, charge, instance tint, and
 multiply blending without shader or render validation errors. The normal
 application also started without rendering errors; this did not include a
 full interactive gameplay session.
+
+### Movement caches (October 14, 2026)
+
+Moving across a block boundary used to recreate every reached layer's
+metadata, column bounds, and region slots before sorting it. Those only change
+when layers arrive or cave visibility changes. Movement now recalculates
+distances in the retained layer arrays and sorts those; turning still only
+filters them. Layer revisions and cave visibility invalidate the metadata.
+Opaque layers remain nearest first and water remains farthest first.
+
+Cave traversal now uses retained dense arrays for section connectivity,
+visited faces, its queue, and column masks. It publishes one hash-map entry
+per reached column instead of hashing for every visited section. Missing
+columns inside the graph bounds remain open.
+
+Measured on an Apple M5 Pro, Metal, **release** (fat LTO), Bevy 0.20,
+960×540, Fancy, MSAA off, `VIEW=0`, hidden window, no screenshots, and 1,800
+timed frames after settling. The baseline is `8723961` with the same added
+harness controls. Distance 24 movement is the median of three interleaved
+before/after pairs; the other rows are single pairs.
+
+| Case | Before frame time | After frame time | Before draw lists | After draw lists |
+| --- | --- | --- | --- | --- |
+| Distance 24, moving | 1.80 ms | 1.55 ms | 0.427 ms | 0.189 ms |
+| Distance 16, moving | 1.32 ms | 1.25 ms | 0.178 ms | 0.088 ms |
+| Distance 24, stationary | 1.07 ms | 1.07 ms | no rebuilds | no rebuilds |
+
+Distance 24 moving frame times were 1.69/1.80/1.80 ms before and
+1.44/1.55/1.56 ms after: about 14% less frame time at the medians. The moving
+view reached 12,189 sections and drew 30 regions in every run. Quads drawn
+varied by about 1% across runs because terrain population is not identical
+between runs. The longest draw-list rebuild still occurs when the visible
+set changes: 0.984–1.001 ms before and 0.897–0.916 ms after.
+
+An independent all-open, distance-24 CPU traversal benchmark (19,208 sections,
+20 warmup walks and 200 measured walks, `fast` profile) fell from
+0.751–0.757 ms median to 0.446–0.458 ms. This synthetic case measures
+traversal cost, not whole-game FPS.
+
+Reproduce the movement measurement from the checkout:
+
+```sh
+CARGO_TARGET_DIR="$PWD/target" BEVY_ASSET_ROOT="$PWD" \
+HIDDEN=1 NO_SCREENSHOT=1 MSAA=off \
+DISTANCE=24 MOVE=1 FRAMES=1800 \
+cargo run --release --features render_harness --example chunk_render
+```
+
+Omit `MOVE` for the stationary check; `TURN=1` continues to test turning.
+`MOVE` follows a closed path across section boundaries while the player stays
+at the loading origin, keeping streaming settled. `NO_SCREENSHOT` skips the
+capture request entirely. The CPU benchmark runs with
+`cargo test --profile fast --features render_harness benchmark_visibility_walk -- --ignored --nocapture`.
+
+Regression tests cover section-centre reconstruction across positive and
+negative regions, walls changing between walks, missing columns, and graph
+bounds growing, shrinking, and emptying. The GPU runs completed without
+render validation errors. No screenshots were taken. These results cover
+the terrain harness, which has no arm, HUD, or populated mobs; a full gameplay
+session can have other bottlenecks.
 
 ## Build times
 

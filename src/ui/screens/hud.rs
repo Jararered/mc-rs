@@ -90,6 +90,30 @@ struct DebugVisible(bool);
 #[derive(Component)]
 struct DebugOverlay;
 
+/// Frames counted over each real second, as Beta's `Minecraft.debugFPS` is.
+/// A smoothed per-frame value would redraw the overlay text every frame.
+#[derive(Default)]
+pub struct FpsCounter {
+    frames: u32,
+    elapsed: f32,
+    shown: u32,
+}
+
+impl FpsCounter {
+    /// Count one frame of `delta` seconds, and return the rate of the last
+    /// whole second.
+    pub fn frame(&mut self, delta: f32) -> u32 {
+        self.frames += 1;
+        self.elapsed += delta;
+        if self.elapsed >= 1.0 {
+            self.shown = (self.frames as f32 / self.elapsed).round() as u32;
+            self.frames = 0;
+            self.elapsed = 0.0;
+        }
+        self.shown
+    }
+}
+
 #[derive(Component)]
 struct HudHeart(usize);
 
@@ -210,7 +234,10 @@ fn update_debug_overlay(
     camera: Query<&GlobalTransform, With<PlayerCamera>>,
     chunks: Res<WorldChunks>,
     mut overlay: Query<(&mut Text, &mut Visibility), With<DebugOverlay>>,
+    time: Res<Time<Real>>,
+    mut fps: Local<FpsCounter>,
 ) {
+    let fps = fps.frame(time.delta_secs());
     if !chat.is_some_and(|chat| chat.suppress_controls)
         && keys.is_some_and(|keys| keys.just_pressed(KeyCode::F3))
     {
@@ -258,7 +285,7 @@ fn update_debug_overlay(
         );
     let flight = if flying.is_some() { "ON" } else { "OFF" };
     let next = format!(
-        "XYZ: {:.2} / {:.2} / {:.2}\nBlock: {} / {} / {}  Chunk: {} / {}\nFeet Y: {:.2}  Grounded: {}  Below: {}\nMode: {}  Flight: {}  Target: {}",
+        "{fps} fps\nXYZ: {:.2} / {:.2} / {:.2}\nBlock: {} / {} / {}  Chunk: {} / {}\nFeet Y: {:.2}  Grounded: {}  Below: {}\nMode: {}  Flight: {}  Target: {}",
         p.x,
         p.y,
         p.z,

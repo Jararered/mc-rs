@@ -250,21 +250,22 @@ fn anti_aliasing_and_shadow_map_sizes_follow_the_settings() {
         let mut cameras = app.world_mut().query_filtered::<&Msaa, With<Camera>>();
         cameras.iter(app.world()).copied().collect()
     }
-    assert_eq!(samples(&mut app), [Msaa::Sample4; 2]);
+    // Off by default, as in Beta, although Bevy's own default is 4x.
+    assert_eq!(samples(&mut app), [Msaa::Off; 2]);
     // Nothing is a directional or point light, so both maps stay unused.
     assert!(app.world().resource::<DirectionalLightShadowMap>().size < 64);
     assert!(app.world().resource::<PointLightShadowMap>().size < 64);
 
-    app.world_mut().resource_mut::<GameSettings>().anti_aliasing = false;
+    app.world_mut().resource_mut::<GameSettings>().anti_aliasing = true;
     app.update();
     app.update();
-    assert_eq!(samples(&mut app), [Msaa::Off; 2]);
+    assert_eq!(samples(&mut app), [Msaa::Sample4; 2]);
 
     // A camera that appears later, such as a loaded world's, follows too.
     app.world_mut().spawn(Camera3d::default());
     app.update();
     app.update();
-    assert_eq!(samples(&mut app), [Msaa::Off; 3]);
+    assert_eq!(samples(&mut app), [Msaa::Sample4; 3]);
     let mut cameras = app
         .world_mut()
         .query_filtered::<&bevy::light::cluster::ClusterConfig, With<Camera3d>>();
@@ -277,11 +278,11 @@ fn anti_aliasing_and_shadow_map_sizes_follow_the_settings() {
 
     {
         let mut settings = app.world_mut().resource_mut::<GameSettings>();
-        settings.anti_aliasing = true;
+        settings.anti_aliasing = false;
     }
     app.update();
     app.update();
-    assert_eq!(samples(&mut app), [Msaa::Sample4; 3]);
+    assert_eq!(samples(&mut app), [Msaa::Off; 3]);
     assert!(app.world().resource::<DirectionalLightShadowMap>().size < 64);
     assert!(app.world().resource::<PointLightShadowMap>().size < 64);
 }
@@ -388,6 +389,7 @@ fn settings_round_trip_through_json() {
     let settings = GameSettings {
         render_distance: 12,
         max_fps: 120,
+        vsync: false,
         fov: 90.0,
         cloud_height: 192.0,
         gui_scale: 3.0,
@@ -648,17 +650,51 @@ fn frame_pacing_changes_with_screen_and_selected_limit() {
 }
 
 #[test]
+fn vsync_toggle_sets_the_window_present_mode() {
+    use bevy::window::PresentMode;
+    use bevy::window::PrimaryWindow;
+    use game::app::frame_pacing::FramePacingPlugin;
+
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, StatesPlugin))
+        .init_state::<AppScreen>()
+        .init_resource::<GameSettings>()
+        .add_plugins(FramePacingPlugin);
+    let window = app
+        .world_mut()
+        .spawn((Window::default(), PrimaryWindow))
+        .id();
+    app.update();
+    assert_eq!(
+        app.world().get::<Window>(window).unwrap().present_mode,
+        PresentMode::Fifo
+    );
+    app.world_mut().resource_mut::<GameSettings>().vsync = false;
+    app.update();
+    assert_eq!(
+        app.world().get::<Window>(window).unwrap().present_mode,
+        PresentMode::AutoNoVsync
+    );
+    app.world_mut().resource_mut::<GameSettings>().vsync = true;
+    app.update();
+    assert_eq!(
+        app.world().get::<Window>(window).unwrap().present_mode,
+        PresentMode::Fifo
+    );
+}
+
+#[test]
 fn windowed_frames_are_paced_just_under_the_display() {
     use game::app::frame_pacing::frame_interval;
     use std::time::Duration;
 
-    // VSync alone, and a cap, when the display paces the game itself.
+    // Unpaced, and a cap, when the display paces the game itself.
     assert_eq!(frame_interval(0, None), None);
     assert_eq!(
         frame_interval(60, None),
         Some(Duration::from_secs_f64(1.0 / 60.0))
     );
-    // A slower cap is kept; VSync and faster caps stay under the display.
+    // A slower cap is kept; unlimited and faster caps stay under the display.
     assert_eq!(
         frame_interval(60, Some(144_000)),
         Some(Duration::from_secs_f64(1.0 / 60.0))
@@ -1048,8 +1084,9 @@ fn settings_tabs_buttons_and_live_labels() {
         "Graphics: Fancy",
         "Smooth lighting: ON",
         "Wiggle leaves: ON",
-        "Anti-aliasing: 4x",
+        "Anti-aliasing: OFF",
         "Max FPS: 60",
+        "VSync: ON",
         "Fullscreen: OFF",
         "View bobbing: ON",
     ] {
@@ -1288,7 +1325,7 @@ fn slider_snaps_clamps_and_suppresses_unchanged_values() {
 }
 
 #[test]
-fn setting_sliders_cover_ranges_and_fps_vsync_endpoint() {
+fn setting_sliders_cover_ranges_and_fps_unlimited_endpoint() {
     use game::ui::screens::menu::SettingsSlider;
     let mut settings = GameSettings::default();
     for binding in [
@@ -1317,6 +1354,9 @@ fn setting_sliders_cover_ranges_and_fps_vsync_endpoint() {
     slider.set_fraction(0.0);
     SettingsSlider::MaxFps.apply(&slider, &mut settings);
     assert_eq!(settings.max_fps, 30);
+    slider.set_fraction(1.0);
+    SettingsSlider::MaxFps.apply(&slider, &mut settings);
+    assert_eq!(settings.max_fps, 0, "the right end is unlimited");
 }
 
 #[test]

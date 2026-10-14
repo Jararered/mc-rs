@@ -66,8 +66,9 @@ The map of the other docs is `docs/README.md`.
   directory. A cold Bevy build is expensive.
 - Edition 2024 is in use, including let-chains (`if let ... && let ...`).
 - `examples/chunk_render.rs` (feature `render_harness`) streams terrain without the menus and can
-  diff screenshots. `MC_CHUNK_QUADS=off` compares the old vertex path. `WEATHER=rain` renders a
-  storm.
+  diff screenshots. `MC_CHUNK_QUADS=off` compares the old vertex path, `MC_CHUNK_REGIONS=off` one
+  entity per section layer, and `MC_OCCLUSION=off` no cave culling. `WEATHER=rain` renders a storm.
+  Run the built binary with `BEVY_ASSET_ROOT` set to the checkout, or it draws untextured.
 - On macOS, Bevy compiles each new render pipeline synchronously, so the first frame of a new
   material or mesh layout can hitch. `EntityDiagnostics` adds mob tick, pathfinding, spawning, and
   posing costs to the 10 s performance log.
@@ -233,16 +234,28 @@ simulation about the protocol. What clients are not told, and what is still sing
 - Do not mutate assets every frame. Animate with `globals.time` in shaders, pass per-entity values
   through `MeshTag`, and write animated atlas tiles from the render world
   (`rendering/textures/water.rs`).
-- Section layers stay on Bevy's mesh and material path: one entity per layer, with a shared proxy
-  mesh, a `BlockMaterial`, and an `Aabb`. Do not add a second chunk draw path without measurements.
-  On macOS the remaining cost is the number of section layers. `world::streaming::ChunkCulling` is
-  what decides GPU versus CPU culling. `MC_CHUNK_CULLING=gpu|cpu` forces it.
+- A layer's records are grouped by facing, and its header holds each group's count
+  (`meshing::quads`). Water is never grouped: its records are sorted back to front for the camera
+  (`world::streaming::translucent`).
+- Section layers stay on Bevy's mesh and material path, batched into chunk regions of 8×8 chunk
+  columns: one entity per region layer, with a shared proxy mesh, a `BlockMaterial`, and an
+  `Aabb` (`rendering/chunk_regions.rs`, `world/streaming/regions.rs`). Its `MeshTag` names a draw
+  list in the quad buffer, rebuilt on the CPU when the camera or a layer changes. Cave culling
+  (`rendering/occlusion.rs`), frustum culling per section, and facing culling decide what it lists.
+  The sorted section order is kept until a layer, cave culling, or the camera's block changes, so
+  turning only filters it (`fill_draw_lists`).
+  Do not add another chunk draw path without measurements. `MC_CHUNK_REGIONS=off` and the vertex
+  path keep one entity per section layer. `world::streaming::ChunkCulling` decides GPU versus CPU
+  culling of those entities. `MC_CHUNK_CULLING=gpu|cpu` forces it.
 - There is no directional or point light in the scene. `rendering/plugin.rs` keeps both shadow-map
   resources at 16 pixels. Materials are unlit. Do not turn clustering or custom-material shadow
   participation back on.
 - Every camera on the window carries the same `Msaa`, from `GameSettings::msaa`, set in
-  `apply_graphics_pipeline`. Do not set `Msaa` on a camera anywhere else. Do not add a camera
-  without reading the Memory section of `docs/PERFORMANCE.md`.
+  `apply_graphics_pipeline`. Do not set `Msaa` on a camera anywhere else. Only the highest-order
+  active window camera copies the frame to the swapchain (`composite_window_cameras`). The world
+  camera clears to the sky color and draws the sun, moon, stars, and sunrise fan with
+  `SkyMaterial`, on the far plane. Every camera on the window costs a full-screen pass, so do not
+  add one without reading the Camera stack and Memory sections of `docs/PERFORMANCE.md`.
 - Textures use nearest sampling and no mipmaps. `main` sets that on `ImagePlugin`. Loaders leave
   `ImageSampler::Default` unless they need a different address mode. The terrain atlas pins
   `lod_max_clamp` to 0.

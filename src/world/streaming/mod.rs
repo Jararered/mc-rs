@@ -22,23 +22,31 @@ use super::chunk::SECTIONS_PER_CHUNK;
 use super::generation::ChunkGenerator;
 use super::generation::population_footprint;
 use crate::rendering::chunk_quads::ChunkQuads;
+use crate::rendering::occlusion::SectionVisibility;
 use crate::rendering::textures::FoliageColors;
 use crate::rendering::textures::GrassColors;
 
 mod mesh_jobs;
+mod regions;
 mod render;
 mod systems;
+mod translucent;
 
 use mesh_jobs::MeshTask;
 use render::ChunkMaterials;
 use render::RenderedChunk;
 
+pub use regions::RegionStats;
+pub(crate) use regions::plugin as regions_plugin;
 pub use render::ChunkCulling;
 pub(crate) use systems::SpawnAreaTask;
 pub(crate) use systems::admit_chunk;
+pub(crate) use systems::cull_section_layers;
 pub(crate) use systems::setup_streaming;
 pub(crate) use systems::start_spawn_area;
 pub(crate) use systems::stream_chunks;
+pub use translucent::needs_sort;
+pub(crate) use translucent::plugin as translucent_plugin;
 
 pub const LOAD_RADIUS: i32 = 4;
 /// Chunks are generated two rings beyond the render distance. A chunk is
@@ -92,6 +100,10 @@ pub struct StreamingDiagnostics {
     pub sweep: TimingStats,
     pub apply: TimingStats,
     pub dispatch: TimingStats,
+    /// Rebuilding chunk region draw lists, on frames that did.
+    pub regions: TimingStats,
+    /// Sorting water for the camera, on frames that did.
+    pub sorting: TimingStats,
     /// Candidate-discovery passes; settled frames should leave this unchanged.
     pub discovery_passes: u64,
 }
@@ -148,6 +160,15 @@ pub struct WorldStreaming {
     /// Lighting and mesh jobs for already generated chunks inside the render distance.
     meshing: HashMap<ChunkPosition, MeshTask>,
     rendered: HashMap<ChunkPosition, RenderedChunk>,
+    /// Bumped whenever a rendered chunk comes or goes or a section's
+    /// visibility graph changes, so cave culling knows to walk again.
+    graph_revision: u64,
+    /// Bumped whenever a section layer is added, replaced, or removed, so
+    /// chunk regions know to list it again.
+    layer_revision: u64,
+    /// Chunk regions that draw quad layers, unless layers are entities of
+    /// their own (`MC_CHUNK_REGIONS=off`, or the vertex format).
+    regions: Option<regions::ChunkRegions>,
     materials: ChunkMaterials,
     culling: ChunkCulling,
     fancy_graphics: bool,
@@ -197,12 +218,37 @@ impl WorldStreaming {
         &mut self,
         commands: &mut Commands,
         meshes: &mut Assets<Mesh>,
-        quads: Option<&mut ChunkQuads>,
+        mut quads: Option<&mut ChunkQuads>,
     ) {
+        if let Some(regions) = &mut self.regions {
+            regions.clear(commands, quads.as_deref_mut());
+        }
         let mut store = render::LayerStore { meshes, quads };
         for (_, rendered) in self.rendered.drain() {
             render::despawn_rendered_chunk(commands, &mut store, rendered);
         }
+        self.graph_revision += 1;
+        self.layer_revision += 1;
+    }
+
+    /// What chunk regions drew last frame, or `None` when every section layer
+    /// is an entity of its own.
+    pub fn region_stats(&self) -> Option<RegionStats> {
+        self.regions.as_ref().map(regions::ChunkRegions::stats)
+    }
+
+    /// Each rendered chunk's section visibility graphs, for cave culling.
+    pub fn section_graph(
+        &self,
+    ) -> impl Iterator<Item = (ChunkPosition, &[SectionVisibility; SECTIONS_PER_CHUNK])> {
+        self.rendered
+            .iter()
+            .map(|(position, rendered)| (*position, &rendered.visibility))
+    }
+
+    /// Changes whenever [`Self::section_graph`] does.
+    pub fn graph_revision(&self) -> u64 {
+        self.graph_revision
     }
 
     pub fn rendered_mesh_count(&self) -> usize {

@@ -91,6 +91,7 @@ enum MenuAction {
     Difficulty,
     ViewBobbing,
     Fullscreen,
+    VSync,
     FloatingItems,
     BowCharging,
     PigSteering,
@@ -111,6 +112,7 @@ pub(super) enum SettingLabel {
     AntiAliasing,
     Difficulty,
     MaxFps,
+    VSync,
     MouseSensitivity,
     ViewBobbing,
     Volume(SoundCategory),
@@ -514,6 +516,13 @@ fn spawn_settings_menu(
                                 SettingLabel::MaxFps,
                                 max_fps_text(settings),
                                 settings,
+                            );
+                            spawn_setting_button(
+                                parent,
+                                textures,
+                                vsync_text(settings),
+                                MenuAction::VSync,
+                                SettingLabel::VSync,
                             );
                             spawn_setting_button(
                                 parent,
@@ -931,6 +940,7 @@ fn handle_buttons(
             MenuAction::Difficulty => settings.difficulty = settings.difficulty.cycle(),
             MenuAction::ViewBobbing => settings.view_bobbing = !settings.view_bobbing,
             MenuAction::Fullscreen => settings.fullscreen = !settings.fullscreen,
+            MenuAction::VSync => settings.vsync = !settings.vsync,
             MenuAction::FloatingItems => settings.floating_items = !settings.floating_items,
             MenuAction::BowCharging => settings.bow_charging = !settings.bow_charging,
             MenuAction::PigSteering => settings.pig_steering = !settings.pig_steering,
@@ -973,6 +983,7 @@ fn refresh_settings_labels(
             SettingLabel::AntiAliasing => anti_aliasing_text(&settings),
             SettingLabel::Difficulty => difficulty_text(&settings),
             SettingLabel::MaxFps => max_fps_text(&settings),
+            SettingLabel::VSync => vsync_text(&settings),
             SettingLabel::MouseSensitivity => sensitivity_text(&settings),
             SettingLabel::ViewBobbing => view_bobbing_text(&settings),
             SettingLabel::Volume(category) => volume_text(&settings, *category),
@@ -1106,10 +1117,14 @@ fn settings_escape(
 
 fn max_fps_text(settings: &GameSettings) -> String {
     if settings.max_fps == 0 {
-        "Max FPS: VSync".to_string()
+        "Max FPS: Unlimited".to_string()
     } else {
         format!("Max FPS: {}", settings.max_fps)
     }
+}
+
+fn vsync_text(settings: &GameSettings) -> String {
+    format!("VSync: {}", if settings.vsync { "ON" } else { "OFF" })
 }
 
 fn sensitivity_text(settings: &GameSettings) -> String {

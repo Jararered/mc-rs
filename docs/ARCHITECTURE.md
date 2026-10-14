@@ -48,6 +48,12 @@ then simulation, then the client. Simulation does not import `rendering` or
 `world::streaming` is the client boundary that is allowed to. It snapshots
 shared world data, schedules generation, storage, light, and mesh workers, and
 publishes meshes. Concrete dimension algorithms stay in `world::generation`.
+A mesh job also records each section's visibility graph for cave culling. With
+the quad buffer, streaming uploads a section layer's records and keeps where
+they are; chunk regions (`world::streaming::regions`) list them for the
+camera each frame and own one entity per region layer, so leaving a world or
+changing dimension despawns them with the chunk meshes in
+`WorldStreaming::despawn_rendered`.
 The server still lights through these mesh jobs, so a hosted dimension builds
 meshes nobody draws. Lighting without meshing is listed in
 [todo/MULTIPLAYER.md](todo/MULTIPLAYER.md).

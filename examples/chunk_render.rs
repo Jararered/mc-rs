@@ -8,14 +8,24 @@
 //! ```
 //!
 //! `DIMENSION=nether` renders the Nether instead of the Overworld.
-//! `VIEW=1` and up pick other camera positions, and `SMOOTH=off` turns smooth lighting off. `DISTANCE` sets the
+//! `VIEW=1` and up pick other camera positions (`VIEW=3` is underground,
+//! `VIEW=4` over a lake, `VIEW=5` and `VIEW=6` up at the eastern and western
+//! sky), and `SMOOTH=off` turns smooth lighting off. `DISTANCE` sets the
 //! render distance (8), `SIZE=2560x1440` the window's physical size, and
-//! `MSAA=off` turns anti-aliasing off, and
+//! `MSAA=off` turns anti-aliasing off, `TIME` the world time (`18000` is
+//! midnight, `12500` sunset), and
 //! `WEATHER=rain` or `WEATHER=thunder` renders under a full storm, and
 //! `HOLD=30` keeps the window open that many seconds after the timings so
-//! `footprint -p chunk_render` can read its memory. The window presents without
-//! VSync, but macOS can still pace it to the display, so treat the frame time
-//! printed before exit as a hint only.
+//! `footprint -p chunk_render` can read its memory. `HIDDEN=1` never shows the
+//! window, so the compositor cannot pace it and the frame time is the work
+//! (the screenshot of a hidden window is black). `TURN=1` turns the camera
+//! during the timed frames, so the draw lists are rebuilt every frame. The
+//! window presents without `VSync` and updates continuously even when
+//! unfocused, but macOS can still pace a visible window to the display, so
+//! treat the frame time printed before exit as a hint only.
+//! `NO_SCREENSHOT=1` skips capture entirely. `MOVE=1` moves the camera back
+//! and forth across section boundaries during timing, without streaming new
+//! terrain. `FRAMES` overrides the number of timed frames (600).
 
 use std::ops::Not;
 use std::path::PathBuf;
@@ -32,11 +42,16 @@ use bevy::render::view::window::screenshot::Screenshot;
 use bevy::render::view::window::screenshot::save_to_disk;
 use bevy::window::PresentMode;
 use bevy::window::WindowResolution;
+use bevy::winit::WinitSettings;
 use game::app::settings::GameSettings;
 use game::player::LocalPlayer;
+use game::player::PlayerCamera;
 use game::rendering::WorldRenderingPlugin;
 use game::rendering::chunk_quads::ChunkQuads;
+use game::rendering::occlusion::VisibleSections;
 use game::world::plugin::WorldPlugin;
+use game::world::streaming::StreamingDiagnostics;
+use game::world::streaming::TimingStats;
 use game::world::streaming::WorldStreaming;
 use game::world::weather::WorldWeather;
 
@@ -95,12 +110,16 @@ fn main() {
                         resolution: WindowResolution::new(width, height)
                             .with_scale_factor_override(1.0),
                         present_mode: PresentMode::AutoNoVsync,
+                        visible: std::env::var("HIDDEN").is_err(),
                         ..default()
                     }),
                     ..default()
                 }),
         )
         .add_plugins(FrameTimeDiagnosticsPlugin::default())
+        // Bevy's default drops an unfocused window to 60 Hz, and the window
+        // usually opens behind the terminal that started it.
+        .insert_resource(WinitSettings::continuous())
         .insert_resource(GameSettings {
             render_distance: env_number("DISTANCE").unwrap_or(8),
             max_fps: 0,
@@ -130,9 +149,9 @@ fn main() {
             },
         ))
         .add_plugins((WorldPlugin, WorldRenderingPlugin))
-        .add_systems(Startup, set_weather)
+        .add_systems(Startup, (set_weather, set_time))
         .add_systems(Startup, spawn_view)
-        .add_systems(Update, capture)
+        .add_systems(Update, (capture, turn_camera))
         .run();
 }
 
@@ -153,6 +172,12 @@ fn set_weather(mut weather: ResMut<WorldWeather>) {
     };
 }
 
+fn set_time(mut tick: ResMut<game::world::tick::WorldTick>) {
+    if let Some(time) = env_number("TIME") {
+        tick.set_world_time(time);
+    }
+}
+
 fn spawn_view(mut commands: Commands) {
     let view = std::env::var("VIEW")
         .ok()
@@ -163,13 +188,41 @@ fn spawn_view(mut commands: Commands) {
         0 => (Vec3::new(8.0, 110.0, 8.0), Vec3::new(60.0, 60.0, 50.0)),
         1 => (Vec3::new(8.0, 76.0, 8.0), Vec3::new(30.0, 64.0, 24.0)),
         2 => (Vec3::new(-20.0, 90.0, 30.0), Vec3::new(-70.0, 60.0, -20.0)),
+        // Underground, where cave culling hides most sections.
+        3 => (Vec3::new(44.5, 39.5, -6.5), Vec3::new(40.0, 36.0, -40.0)),
+        // Over a lake, to see water drawn back to front.
+        4 => (
+            Vec3::new(-30.0, 72.0, -70.0),
+            Vec3::new(-50.0, 62.0, -100.0),
+        ),
+        // Up at the sky over the terrain, east and west.
+        5 => (Vec3::new(8.0, 90.0, 8.0), Vec3::new(60.0, 110.0, 8.0)),
+        6 => (Vec3::new(8.0, 90.0, 8.0), Vec3::new(-44.0, 110.0, 8.0)),
         _ => (Vec3::new(8.0, 140.0, 8.0), Vec3::new(9.0, 60.0, 9.0)),
     };
     commands.spawn((LocalPlayer, Transform::from_translation(eye)));
     commands.spawn((
+        // Cave culling walks from this camera, as from the player's.
+        PlayerCamera,
         Camera3d::default(),
         Transform::from_translation(eye).looking_at(target, Vec3::Y),
     ));
+}
+
+/// Turn the camera a little each timed frame, when `TURN` is set.
+fn turn_camera(capture: Res<Capture>, mut cameras: Query<&mut Transform, With<PlayerCamera>>) {
+    if !capture.shot || capture.hold.is_some() {
+        return;
+    }
+    for mut camera in &mut cameras {
+        if std::env::var("TURN").is_ok() {
+            camera.rotate_y(0.01);
+        }
+        if std::env::var("MOVE").is_ok() {
+            // A closed path keeps the loaded world identical across runs.
+            camera.translation.x = 8.0 + (capture.timed as f32 * 0.03).sin() * 24.0;
+        }
+    }
 }
 
 fn capture(
@@ -177,6 +230,8 @@ fn capture(
     mut capture: ResMut<Capture>,
     streaming: Option<Res<WorldStreaming>>,
     quads: Option<Res<ChunkQuads>>,
+    visible: Res<VisibleSections>,
+    mut perf: ResMut<StreamingDiagnostics>,
     diagnostics: Res<DiagnosticsStore>,
     time: Res<Time<Real>>,
     mut exit: MessageWriter<AppExit>,
@@ -195,9 +250,13 @@ fn capture(
         };
         if capture.settled >= SETTLED_FRAMES {
             capture.shot = true;
-            commands
-                .spawn(Screenshot::primary_window())
-                .observe(save_to_disk(capture.path.clone()));
+            // Time only the rebuilds of the timed frames, not of streaming.
+            perf.regions = TimingStats::default();
+            if std::env::var("NO_SCREENSHOT").is_err() {
+                commands
+                    .spawn(Screenshot::primary_window())
+                    .observe(save_to_disk(capture.path.clone()));
+            }
         }
         return;
     }
@@ -210,7 +269,7 @@ fn capture(
     }
     capture.timed += 1;
     capture.seconds += time.delta_secs_f64();
-    if capture.timed < TIMED_FRAMES {
+    if capture.timed < env_number("FRAMES").unwrap_or(TIMED_FRAMES) {
         return;
     }
     let fps = diagnostics
@@ -236,6 +295,24 @@ fn capture(
             "chunk_render: quad buffer {:.2} MiB reserved, {:.2} MiB in use",
             mib(reserved),
             mib(used),
+        );
+    }
+    if visible.enabled() {
+        println!(
+            "chunk_render: cave culling reached {} sections",
+            visible.reached()
+        );
+    }
+    if let Some(regions) = streaming.region_stats() {
+        println!(
+            "chunk_render: {} region draws, {} runs, {} quads drawn",
+            regions.draws, regions.entries, regions.quads
+        );
+    }
+    if let (Some(average), Some(max)) = (perf.regions.average_ms(), perf.regions.max_ms()) {
+        println!(
+            "chunk_render: draw lists rebuilt {} times, {average:.3} ms average, {max:.3} ms longest",
+            perf.regions.count()
         );
     }
     println!(

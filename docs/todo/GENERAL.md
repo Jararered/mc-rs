@@ -170,5 +170,15 @@ Recorded so the next audit does not look again. Each was compared with the refer
 - Not in Beta 1.7.3, so nothing to copy: moon phases, `ColorizerWater` (no callers), `GuiSleepMP` (no callers), the Tab
   player list (`GuiIngame` has none), the chest lid animation, an eating animation, a player doll in the inventory,
   sheep grazing, and a wolf shake in the model (`RenderWolf` draws none; the shake is simulation and spray).
-- Advanced OpenGL only turns on occlusion queries in `RenderGlobal` (`advancedOpengl && !anaglyph`). The chunk culling
-  choice in AGENTS covers that, so the option is not copied.
+- Advanced OpenGL only turns on occlusion queries in `RenderGlobal` (`advancedOpengl && !anaglyph`). Cave culling and
+  the chunk culling choice in AGENTS cover that, so the option is not copied.
+- Chunk region draw lists keep their sorted order while the camera turns, which costs about 0.07 ms at render distance
+  24. Entering another block sorts again, about 1.2 ms there; sorting only regions near the camera, or on a worker,
+  would cut that.
+- Frame time with chunk regions and cave culling has not been measured against one entity per section layer.
+  `examples/chunk_render.rs` with `HIDDEN=1` now gives unpaced frame times (`docs/PERFORMANCE.md`, Camera stack).
+- The first-person arm still has its own camera, and so its own full-screen pass and depth texture. Drawing it
+  through the world camera (a depth range kept for the hand, as Beta clears depth before it) and the HUD after it
+  would leave one camera on the window.
+- A visible window on macOS is paced by the compositor: the render harness averaged 12.2 ms a frame with VSync off,
+  whatever it drew. Check what the game reaches windowed and fullscreen, with VSync on and off.

@@ -31,6 +31,7 @@ use bevy::render::storage::ShaderBuffer;
 use super::meshing::QUAD_WORDS;
 use super::meshing::proxy_capacity;
 use super::meshing::proxy_mesh;
+use super::meshing::region_proxy_mesh;
 
 /// Bytes in one record.
 pub const RECORD_BYTES: usize = QUAD_WORDS * 4;
@@ -115,6 +116,11 @@ impl QuadRange {
         self.start
     }
 
+    /// Records in the range, header included.
+    pub fn records(&self) -> u32 {
+        self.records
+    }
+
     pub fn bytes(&self) -> usize {
         self.records as usize * RECORD_BYTES
     }
@@ -137,8 +143,14 @@ pub struct ChunkQuads {
     limit: u32,
     pending: Vec<QuadWrite>,
     proxies: HashMap<u32, Handle<Mesh>>,
+    region_proxies: HashMap<u32, Handle<Mesh>>,
     rebind_frames: u8,
 }
+
+/// Systems that upload into [`ChunkQuads`] in `PostUpdate`. The buffer is
+/// grown for them after this set.
+#[derive(SystemSet, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct ChunkQuadWrites;
 
 impl ChunkQuads {
     fn new(buffers: &mut Assets<ShaderBuffer>) -> Self {
@@ -160,6 +172,7 @@ impl ChunkQuads {
             limit: INITIAL_RECORDS,
             pending: Vec::new(),
             proxies: HashMap::new(),
+            region_proxies: HashMap::new(),
             rebind_frames: 0,
         }
     }
@@ -172,7 +185,14 @@ impl ChunkQuads {
     /// Store one layer's bytes (`meshing::layer_bytes`). `None` when the
     /// device cannot hold a buffer large enough.
     pub fn upload(&mut self, bytes: Vec<u8>) -> Option<QuadRange> {
-        let records = u32::try_from(bytes.len() / RECORD_BYTES).ok()?;
+        let range = self.reserve(u32::try_from(bytes.len() / RECORD_BYTES).ok()?)?;
+        self.rewrite(&range, bytes);
+        Some(range)
+    }
+
+    /// Hand out `records` records without writing them. `None` when the
+    /// device cannot hold a buffer large enough.
+    pub fn reserve(&mut self, records: u32) -> Option<QuadRange> {
         let start = loop {
             if let Some(start) = self.free.allocate(records) {
                 break start;
@@ -187,12 +207,31 @@ impl ChunkQuads {
             self.free.release(self.capacity, grown - self.capacity);
             self.capacity = grown;
         };
-        self.pending.push(QuadWrite { start, bytes });
         Some(QuadRange { start, records })
     }
 
     pub fn free(&mut self, range: QuadRange) {
         self.free.release(range.start, range.records);
+    }
+
+    /// Overwrite the start of a range already handed out. `bytes` must fit.
+    pub fn rewrite(&mut self, range: &QuadRange, bytes: Vec<u8>) {
+        assert!(bytes.len() <= range.bytes(), "rewrite past its range");
+        self.pending.push(QuadWrite {
+            start: range.start,
+            bytes,
+        });
+    }
+
+    /// The shared mesh a chunk region drawing `quads` quads draws.
+    pub fn region_proxy(&mut self, meshes: &mut Assets<Mesh>, quads: u32) -> (Handle<Mesh>, u32) {
+        let capacity = proxy_capacity(quads);
+        let handle = self
+            .region_proxies
+            .entry(capacity)
+            .or_insert_with(|| meshes.add(region_proxy_mesh(capacity)))
+            .clone();
+        (handle, capacity)
     }
 
     /// The shared mesh a layer of `quads` quads draws.

@@ -1,9 +1,12 @@
 mod block_icons;
+mod cameras;
+mod chunk_regions;
 mod clouds;
 mod creatures;
 mod fire;
 mod icon_appearance;
 mod meshing;
+mod occlusion;
 mod particles;
 mod redstone;
 mod shadow;

@@ -25,7 +25,7 @@ struct Vertex {
     @location(0) quad_corner: u32,
 };
 
-@if(PULLED_QUADS)
+@if(PULLED_QUADS && !REGION_DRAWS)
 fn decode(vertex: Vertex) -> DecodedBlockVertex {
     let header = mesh_functions::get_tag(vertex.instance_index) * QUAD_WORDS;
     let quad = vertex.quad_corner >> 2u;
@@ -43,6 +43,52 @@ fn decode(vertex: Vertex) -> DecodedBlockVertex {
     );
 }
 
+// A chunk region: `MeshTag` is its draw list's header record, which holds
+// the entry count and the quads drawn. Each entry after it is a run of one
+// section layer's records: the quad count up to the run's end, its first
+// record, and the section's offset in the region (`chunk_regions.rs`).
+@if(REGION_DRAWS)
+fn decode(vertex: Vertex) -> DecodedBlockVertex {
+    let header = mesh_functions::get_tag(vertex.instance_index) * QUAD_WORDS;
+    let quad = vertex.quad_corner >> 2u;
+    if quad >= chunk_quads[header + 1u] {
+        var hidden: DecodedBlockVertex;
+        hidden.visible = false;
+        return hidden;
+    }
+    // The first entry whose run ends past this quad.
+    let entries = header + QUAD_WORDS;
+    var low = 0u;
+    var high = chunk_quads[header] - 1u;
+    while low < high {
+        let middle = (low + high) / 2u;
+        if chunk_quads[entries + middle * 4u] > quad {
+            high = middle;
+        } else {
+            low = middle + 1u;
+        }
+    }
+    let entry = entries + low * 4u;
+    var begin = 0u;
+    if low > 0u {
+        begin = chunk_quads[entry - 4u];
+    }
+    let at = (chunk_quads[entry + 1u] + quad - begin) * QUAD_WORDS;
+    let offset = chunk_quads[entry + 2u];
+    var decoded = decode_block_quad(
+        vec4(chunk_quads[at], chunk_quads[at + 1u], chunk_quads[at + 2u], chunk_quads[at + 3u]),
+        vec4(chunk_quads[at + 4u], chunk_quads[at + 5u], chunk_quads[at + 6u], chunk_quads[at + 7u]),
+        vertex.quad_corner & 3u,
+        block_shading,
+    );
+    decoded.position += vec3(
+        f32(offset & 7u),
+        f32((offset >> 3u) & 7u),
+        f32((offset >> 6u) & 7u),
+    ) * 16.0;
+    return decoded;
+}
+
 @if(!PULLED_QUADS)
 struct Vertex {
     @builtin(instance_index) instance_index: u32,
@@ -58,6 +104,13 @@ fn decode(vertex: Vertex) -> DecodedBlockVertex {
 fn vertex(vertex: Vertex) -> VertexOutput {
     var out: VertexOutput;
     let decoded = decode(vertex);
+    if !decoded.visible {
+        // Every vertex of an unused proxy quad lands on one point, so its
+        // triangles have no area. The rest of a proxy past the list's end is
+        // all such quads, so skip the transforms for them.
+        out.position = vec4(0.0, 0.0, 0.0, 1.0);
+        return out;
+    }
     let world_from_local = mesh_functions::get_world_from_local(vertex.instance_index);
     let world_position = mesh_functions::mesh_position_local_to_world(
         world_from_local,
@@ -70,11 +123,6 @@ fn vertex(vertex: Vertex) -> VertexOutput {
         world_position.w,
     );
     out.position = position_world_to_clip(out.world_position.xyz);
-    if !decoded.visible {
-        // Every vertex of an unused proxy quad lands on one point, so its
-        // triangles have no area.
-        out.position = vec4(0.0, 0.0, 0.0, 1.0);
-    }
     out.world_normal = mesh_functions::mesh_normal_local_to_world(
         decoded.normal,
         vertex.instance_index,

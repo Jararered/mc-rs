@@ -12,6 +12,7 @@ use super::WorldStreaming;
 use super::render::SectionMeshes;
 use crate::rendering::meshing::ChunkNeighbors;
 use crate::rendering::meshing::SectionMesher;
+use crate::rendering::occlusion::SectionVisibility;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::SECTIONS_PER_CHUNK;
 use crate::world::chunk::WorldChunks;
@@ -117,7 +118,14 @@ pub(super) fn spawn_mesh_job(
         );
         let sections = (0..SECTIONS_PER_CHUNK)
             .filter(|&section| rebuild & (1 << section) != 0)
-            .map(|section| SectionMeshes::build(section, mesher.mesh(section), quad_layers))
+            .map(|section| {
+                SectionMeshes::build(
+                    section,
+                    mesher.mesh(section),
+                    quad_layers,
+                    SectionVisibility::compute(&chunk, section),
+                )
+            })
             .collect();
         MeshJob {
             sections,

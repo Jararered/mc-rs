@@ -11,8 +11,6 @@ use super::PlayerCamera;
 use crate::app::session::Travel;
 use crate::app::session::WorldSession;
 use crate::inventory::session::InventorySession;
-use crate::rendering::sky::CelestialCamera;
-use crate::rendering::sky::SkyCamera;
 use crate::world::sound::Pitch;
 use crate::world::sound::Sounds;
 use crate::world::tick::WorldTick;
@@ -190,17 +188,14 @@ fn tick_portal_travel(
     }
 }
 
-/// Apply [`nausea_view`] to the cameras that draw the world and sky. The view
+/// Apply [`nausea_view`] to the camera that draws the world and sky. The view
 /// is the inverse of a camera's global transform, and the distortion is a
 /// shear a local `Transform` cannot hold, so it goes onto the propagated
 /// transform directly. The arm is drawn undistorted, as in Beta.
 fn distort_view(
     tick: Option<Res<WorldTick>>,
     players: Query<&PortalTravel, With<LocalPlayer>>,
-    mut cameras: Query<
-        &mut GlobalTransform,
-        Or<(With<PlayerCamera>, With<SkyCamera>, With<CelestialCamera>)>,
-    >,
+    mut cameras: Query<&mut GlobalTransform, With<PlayerCamera>>,
 ) {
     let (Some(tick), Ok(portal)) = (tick, players.single()) else {
         return;

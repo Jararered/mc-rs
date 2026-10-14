@@ -34,48 +34,48 @@ Sounds need the original game's `resources/` folder beside `assets/`. Without it
 - [ ] Walking is heard every block and two thirds, by what is underfoot: stone, wood, grass, gravel (dirt too),
       sand and wool each sound different. A snow layer muffles the block under it, sneaking is silent, and
       swimming makes no footsteps.
-      `pending`
+      `f813674 · 2026-10-12 05:55`
 - [ ] Holding the button on a block taps it five times a second. Breaking it plays its sound louder (glass
       shatters, sand breaks like gravel, iron and gold blocks ring higher), and so does placing one.
-      `pending`
+      `f813674 · 2026-10-12 05:55`
 - [ ] Levers, buttons and pressure plates click, higher going on than coming off. Pistons thump out and back. A
       door or trapdoor creaks open or shut, by hand or by redstone. A dispenser twangs when it shoots, clicks
       when it drops an item, and gives a higher click when empty.
-      `pending`
+      `f813674 · 2026-10-12 05:55`
 - [ ] A powered or right-clicked note block plays its note: harp on most blocks, bass on wood, snare on sand or
       gravel, hat on glass, bass drum on stone, an octave either side of the middle.
-      `pending`
+      `f813674 · 2026-10-12 05:55`
 - [ ] TNT hisses as its fuse is lit, and an explosion booms and is heard from as far as 64 blocks.
-      `pending`
+      `f813674 · 2026-10-12 05:55`
 - [ ] Fire crackles, flowing water runs, a portal hums, lava that meets water hisses, and a redstone torch that
       burns out fizzes.
-      `pending`
+      `f813674 · 2026-10-12 05:55`
 - [ ] Rain patters around you, quieter and duller under a roof, and thunder follows every lightning strike
       however far off.
-      `pending`
+      `f813674 · 2026-10-12 05:55`
 - [ ] Somewhere dark with no sky above (a cave, or the Nether), an eerie noise plays from nearby now and then,
       never within five minutes of the last.
-      `pending`
+      `f813674 · 2026-10-12 05:55`
 - [ ] A sound fades evenly with distance and is gone 16 blocks away, and it comes from the side it is on: turn
       around and it changes ears.
-      `pending`
+      `f813674 · 2026-10-12 05:55`
 
 ##### Jukebox
 
 - [ ] Right-click a jukebox with a music disc (13 or cat) to put it in: the disc leaves your hand, its track
       plays from the jukebox, and "Now playing: C418 - cat" shows over the hotbar for three seconds, changing
       color and fading out.
-      `pending`
+      `9959e9e · 2026-10-12 06:54`
 - [ ] Right-click a playing jukebox, with anything in hand, and the disc pops out of the top and the music
       stops. Breaking the jukebox does the same.
-      `pending`
+      `9959e9e · 2026-10-12 06:54`
 - [ ] A record is heard up to 64 blocks away, quieter with distance and from the side the jukebox is on. Starting
       one stops the background music, none starts while it plays, and a second jukebox takes over from the
       first. Its volume is the Jukebox and note blocks slider.
-      `pending`
+      `9959e9e · 2026-10-12 06:54`
 - [ ] A jukebox keeps its disc through a save and reload in either world format (it does not start playing
       again by itself), and a Beta client on the server hears discs that other players start.
-      `pending`
+      `9959e9e · 2026-10-12 06:54`
 
 #### Interactions
 
@@ -105,6 +105,12 @@ Sounds need the original game's `resources/` folder beside `assets/`. Without it
 - [ ] A slab, glass, a fence or any other block you would collide with cannot be placed where you are standing.
       A slab can still go under you when only its upper half would overlap.
       `48841f5 · 2026-10-11 08:39`
+- [ ] Looking through two or more water surfaces (a waterfall in front of a lake, or the surface from below while
+      swimming) shows the far one behind the near one, and the order holds as you walk around.
+      `2fc1df7 · 2026-10-14 14:06`
+- [ ] Chunks hidden behind terrain are no longer drawn: in a cave, or behind a hill, nothing that should be
+      visible goes missing, even turning quickly, walking through a tunnel, or breaking into a cave from above.
+      `2fc1df7 · 2026-10-14 14:06`
 
 ### Items
 
@@ -177,6 +183,19 @@ Sounds need the original game's `resources/` folder beside `assets/`. Without it
 
 ##### Settings
 
+- [ ] F3 shows the frame rate on its first line, as `N fps`, counted afresh each second.
+      `8b1d6d5 · 2026-10-14 14:17`
+- [ ] Video, Max FPS dragged all the way right reads Unlimited and no longer caps the frame rate. A new VSync
+      button (on by default) holds frames to the display; with it off and Max FPS at Unlimited, the frame rate
+      climbs past the refresh rate. Both survive a restart.
+      `8b1d6d5 · 2026-10-14 14:17`
+- [ ] Video, Anti-aliasing starts OFF in a new settings file, as Beta has none; a settings file that already has it
+      keeps its choice. With it off the frame rate is higher, most of all on a high-resolution display.
+      `pending`
+- [ ] The sky, sun, moon, stars and sunrise glow look as before, by day, at dusk, at night and in rain: terrain,
+      clouds and mobs cover them, water and rain are drawn over them, and the Nether shows its fog color. The frame
+      rate is higher, most of all while turning at a long render distance.
+      `pending`
 - [ ] Features, Pig steering (on by default): a ridden pig turns to where you look and walks while W is held,
       hopping up blocks in its way. Off, the pig wanders wherever it likes, as in Beta.
       `94d9f67 · 2026-10-09 08:53`
@@ -190,30 +209,30 @@ Sounds need the original game's `resources/` folder beside `assets/`. Without it
 - [ ] Settings has an Audio tab with a slider from OFF to 100% for Master volume, Music, Blocks, Weather, Hostile
       mobs, Passive mobs, Players, Ambient, and Jukebox and note blocks. Master scales everything, music included; each of
       the others scales its own kind under it. All are remembered.
-      `pending`
+      `ba41405 · 2026-10-12 06:13`
 - [ ] A slider changes what is already playing, and a kind at OFF starts no new sound: with Hostile mobs at OFF
       a zombie is silent while a pig beside it is not. Music or Master at OFF stops the track.
-      `pending`
+      `ba41405 · 2026-10-12 06:13`
 - [ ] Blocks covers footsteps, digging, placing, switches, pistons, doors, fuses and explosions; Players covers
       your hurt grunt, the bow, throws, pickups and splashes; Ambient covers cave noises, fire, running water
       and portals. A menu button's click follows Master alone.
-      `pending`
+      `f813674 · 2026-10-12 05:55`
 - [ ] Music plays in a world: the first track within ten minutes, then ten to twenty minutes of quiet after each,
       from the twelve in `resources/music` and `resources/newmusic`.
-      `pending`
+      `f813674 · 2026-10-12 05:55`
 - [ ] Every menu button clicks.
-      `pending`
+      `f813674 · 2026-10-12 05:55`
 - [ ] The bow twangs, and a snowball, egg or cast line leaves the hand with a softer, lower one. An arrow
       thunks into what it hits. With Bow Charging on, a fuller draw sounds higher.
-      `pending`
+      `f813674 · 2026-10-12 05:55`
 - [ ] Picking up an item or a spent arrow pops. An item that falls in lava fizzes as it is spat out.
-      `pending`
+      `f813674 · 2026-10-12 05:55`
 - [ ] Flint and steel strikes, a hoe sounds like the soil it turns, a water bucket emptied in the Nether hisses,
       and a bobber splashes when a fish bites.
-      `pending`
+      `f813674 · 2026-10-12 05:55`
 - [ ] Standing in a portal gives a rising rush as it starts to charge and another as it takes you, which plays
       on through the loading screen.
-      `pending`
+      `f813674 · 2026-10-12 05:55`
 
 #### Interactions
 
@@ -279,21 +298,21 @@ Sounds need the original game's `resources/` folder beside `assets/`. Without it
 - [ ] Mobs speak now and then: pigs, sheep, chickens, cows (quietly), zombies, skeletons, spiders and zombie
       pigmen, and a ghast's moan carries a long way. Creepers, slimes and squid have no idle sound, and animals
       speak less often than monsters.
-      `pending`
+      `f813674 · 2026-10-12 05:55`
 - [ ] A mob cries out when hit and makes its death sound with the blow that kills it. You grunt when hurt.
-      `pending`
+      `f813674 · 2026-10-12 05:55`
 - [ ] A creeper hisses as it starts to swell. A skeleton's bow twangs. A ghast shrieks as it charges and again
       as it fires. A zombie pigman snarls a moment after it turns on you.
-      `pending`
+      `f813674 · 2026-10-12 05:55`
 - [ ] A slime squelches as it hops (not the smallest) and as it lands (only the biggest), and slaps when it
       hurts you. A chicken plops out its egg.
-      `pending`
+      `f813674 · 2026-10-12 05:55`
 - [ ] A wolf barks, sometimes pants, whines when tame and badly hurt, growls when angry, and rattles as it
       shakes itself dry.
-      `pending`
+      `f813674 · 2026-10-12 05:55`
 - [ ] Anything that drops into water splashes, louder the faster it went in; a burning mob or player that
       reaches water or rain hisses out; and a fall that hurts lands with a thud of the block below.
-      `pending`
+      `f813674 · 2026-10-12 05:55`
 
 #### Interactions
 

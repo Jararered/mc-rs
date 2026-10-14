@@ -85,7 +85,11 @@ impl Plugin for BlockTicksPlugin {
             )
             .add_systems(
                 Update,
-                (mount::snap_riders, mount::release_orphans)
+                (
+                    mount::drift_riders,
+                    mount::snap_riders,
+                    mount::release_orphans,
+                )
                     .chain()
                     .after(BlockTickSet)
                     .after(minecart::tick_minecarts)

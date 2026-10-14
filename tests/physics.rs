@@ -12,9 +12,11 @@ use game::physics::Aabb;
 use game::physics::BLOCK_REACH;
 use game::physics::BlockFace;
 use game::physics::PhysicsPlugin;
+use game::physics::SolidEntities;
 use game::physics::block_hit_distance;
 use game::physics::colliding_aabbs;
 use game::physics::move_entity;
+use game::physics::move_entity_among;
 use game::physics::move_entity_with_sneak;
 use game::physics::raycast_blocks;
 use game::physics::water_current;
@@ -992,4 +994,172 @@ fn a_walking_player_is_heard_at_each_step() {
     // Stone, then grass, then the snow layer that muffles the grass under it.
     heard.dedup();
     assert_eq!(heard, ["step.stone", "step.grass", "step.cloth"]);
+}
+
+/// A boat's box as `Entity.getBoundingBox` gives it, resting on y = 61.
+fn boat_box() -> Aabb {
+    Aabb::new(Vec3::new(7.75, 61.0, 7.75), Vec3::new(9.25, 61.6, 9.25))
+}
+
+#[test]
+fn a_falling_body_lands_on_a_solid_entity_box() {
+    let chunks = floor_world(60);
+    let body = EntitySize::PLAYER.aabb(Vec3::new(8.5, 62.0 + EntitySize::PLAYER.y_offset, 8.5));
+    let movement = move_entity_among(
+        body,
+        Vec3::new(0.0, -1.0, 0.0),
+        0.5,
+        false,
+        false,
+        &chunks,
+        &[boat_box()],
+    );
+    assert!(movement.collision.on_ground);
+    assert!(
+        (movement.aabb.min.y - 61.6).abs() < 1e-4,
+        "{:?}",
+        movement.aabb
+    );
+    // Without the box it falls to the floor instead.
+    let plain = move_entity_among(
+        body,
+        Vec3::new(0.0, -1.0, 0.0),
+        0.5,
+        false,
+        false,
+        &chunks,
+        &[],
+    );
+    assert!((plain.aabb.min.y - 61.0).abs() < 1e-4);
+}
+
+#[test]
+fn a_solid_entity_box_blocks_a_sideways_move_and_far_boxes_do_not() {
+    let chunks = floor_world(60);
+    let body = EntitySize::PLAYER.aabb(Vec3::new(6.5, 61.0 + EntitySize::PLAYER.y_offset, 8.5));
+    let far = Aabb::new(Vec3::new(30.0, 61.0, 30.0), Vec3::new(31.5, 61.6, 31.5));
+    let movement = move_entity_among(
+        body,
+        Vec3::new(1.0, 0.0, 0.0),
+        0.0,
+        true,
+        false,
+        &chunks,
+        &[far, boat_box()],
+    );
+    assert!(movement.collision.collided_x);
+    assert!(
+        (movement.aabb.max.x - 7.75).abs() < 1e-4,
+        "{:?}",
+        movement.aabb
+    );
+    let clear = move_entity_among(
+        body,
+        Vec3::new(1.0, 0.0, 0.0),
+        0.0,
+        true,
+        false,
+        &chunks,
+        &[far],
+    );
+    assert!(!clear.collision.collided_x);
+}
+
+#[test]
+fn a_player_walking_into_a_boat_steps_up_onto_it() {
+    let chunks = floor_world(60);
+    let body = EntitySize::PLAYER.aabb(Vec3::new(6.5, 61.0 + EntitySize::PLAYER.y_offset, 8.5));
+    let movement = move_entity_among(
+        body,
+        Vec3::new(1.5, 0.0, 0.0),
+        0.5,
+        true,
+        false,
+        &chunks,
+        &[boat_box()],
+    );
+    // The hull is 0.6 high, above the half-block step.
+    assert!(movement.collision.collided_x);
+    let low = Aabb::new(Vec3::new(7.75, 61.0, 7.75), Vec3::new(9.25, 61.4, 9.25));
+    let stepped = move_entity_among(
+        body,
+        Vec3::new(1.5, 0.0, 0.0),
+        0.5,
+        true,
+        false,
+        &chunks,
+        &[low],
+    );
+    assert!(
+        (stepped.aabb.min.y - 61.4).abs() < 1e-4,
+        "{:?}",
+        stepped.aabb
+    );
+}
+
+#[test]
+fn a_player_comes_to_rest_standing_on_a_boat() {
+    use game::entity::boat::BOAT_SIZE;
+    use game::entity::boat::Boat;
+
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins)
+        .insert_resource(floor_world(60))
+        .add_plugins(PhysicsPlugin);
+    app.world_mut().spawn((
+        Boat::default(),
+        BOAT_SIZE,
+        Transform::from_xyz(8.5, 61.3, 8.5),
+    ));
+    let player = app
+        .world_mut()
+        .spawn((
+            Player,
+            Transform::from_xyz(8.5, 63.0 + EntitySize::PLAYER.y_offset, 8.5),
+            PlayerMovementInput::default(),
+        ))
+        .id();
+    for _ in 0..30 {
+        app.world_mut().resource_mut::<WorldTick>().advance(0.05);
+        app.update();
+    }
+    assert_eq!(app.world().resource::<SolidEntities>().boxes.len(), 1);
+    let feet =
+        app.world().get::<Transform>(player).unwrap().translation.y - EntitySize::PLAYER.y_offset;
+    assert!((feet - 61.6).abs() < 1e-3, "stands on the hull at {feet}");
+    assert!(app.world().get::<CollisionState>(player).unwrap().on_ground);
+}
+
+#[test]
+fn a_rider_touching_a_portal_charges_it() {
+    use game::entity::mount::Mounted;
+    use game::player::portal::PortalTravel;
+
+    let mut chunks = floor_world(60);
+    for y in 61..64 {
+        chunks.set_block(8, y, 8, Block::NetherPortal);
+    }
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins)
+        .insert_resource(chunks)
+        .add_plugins(PhysicsPlugin);
+    let vehicle = app.world_mut().spawn_empty().id();
+    let mut portal = PortalTravel::default();
+    while portal.cooldown() > 0 {
+        portal.tick();
+    }
+    let rider = app
+        .world_mut()
+        .spawn((
+            Player,
+            Transform::from_xyz(8.5, 61.2 + EntitySize::PLAYER.y_offset, 8.5),
+            PlayerMovementInput::default(),
+            portal,
+            Mounted { vehicle },
+        ))
+        .id();
+    app.world_mut().resource_mut::<WorldTick>().advance(0.05);
+    app.update();
+    let portal = app.world().get::<PortalTravel>(rider).unwrap();
+    assert!(portal.touching(), "a rider's box still touches blocks");
 }

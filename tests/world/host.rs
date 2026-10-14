@@ -258,3 +258,53 @@ fn standing_in_a_portal_sends_a_player_through() {
         "a player standing in a portal never travelled"
     );
 }
+
+#[test]
+fn a_remote_rider_in_a_portal_is_put_off_its_boat() {
+    use game::entity::boat::Boat;
+    use game::entity::boat::spawn_boat_at;
+    use game::entity::mount::Mounted;
+    use game::entity::mount::mount;
+
+    let mut host = host("ride-portal", SaveFormat::Binary);
+    let (dimension, dave) = host.join("dave");
+    // Past the cooldown a fresh arrival starts with, and the spawn chunk
+    // streamed in.
+    for _ in 0..30 {
+        host.update(0.05);
+    }
+    assert!(run_until(&mut host, Duration::from_secs(60), |host| {
+        host.world(dimension)
+            .unwrap()
+            .resource::<WorldChunks>()
+            .contains(ChunkPosition::ZERO)
+    }));
+    let feet = eye(&host, dimension, dave) - Vec3::Y * 1.62;
+    let world = host.world_mut(dimension).unwrap();
+    let boat = spawn_boat_at(&mut world.commands(), feet + Vec3::Y * 0.3, Boat::default());
+    world.flush();
+    mount(&mut world.commands(), dave, boat);
+    world.flush();
+    assert!(world.get::<Mounted>(dave).is_some());
+    // Portal blocks all round the seat, untouched by block updates.
+    {
+        let mut chunks = world.resource_mut::<WorldChunks>();
+        let cell = feet.floor().as_ivec3();
+        for x in -1..=1 {
+            for y in 0..=3 {
+                for z in -1..=1 {
+                    let placed =
+                        chunks.set_block(cell.x + x, cell.y + y, cell.z + z, Block::NetherPortal);
+                    assert!(placed.is_some(), "{cell} {feet}");
+                }
+            }
+        }
+    }
+    assert!(run_until(&mut host, Duration::from_secs(5), |host| {
+        host.world(dimension)
+            .unwrap()
+            .get::<Mounted>(dave)
+            .is_none()
+    }));
+    assert_eq!(host.find("dave"), Some((dimension, dave)));
+}

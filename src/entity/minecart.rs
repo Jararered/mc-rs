@@ -23,7 +23,8 @@ use crate::entity::mount::mount;
 use crate::item::Item;
 use crate::item::ItemStack;
 use crate::physics::Aabb;
-use crate::physics::move_entity;
+use crate::physics::SolidEntities;
+use crate::physics::move_entity_among;
 use crate::player::Player;
 use crate::random::ItemRng;
 use crate::random::JavaRandom;
@@ -318,9 +319,15 @@ pub fn get_pos_offset(chunks: &WorldChunks, p: Vec3, distance: f32) -> Option<Ve
 
 /// `Entity.moveEntity` for a cart: sweep the box, zero the motion on the axes
 /// that were blocked, and record whether it landed.
-fn move_cart(cart: &mut Minecart, center: &mut Vec3, delta: Vec3, chunks: &WorldChunks) {
+fn move_cart(
+    cart: &mut Minecart,
+    center: &mut Vec3,
+    delta: Vec3,
+    chunks: &WorldChunks,
+    others: &[Aabb],
+) {
     let aabb = CART_SIZE.aabb(*center);
-    let moved = move_entity(aabb, delta, 0.0, cart.on_ground, chunks);
+    let moved = move_entity_among(aabb, delta, 0.0, cart.on_ground, false, chunks, others);
     *center = CART_SIZE.position_from_aabb(moved.aabb);
     cart.on_ground = delta.y < 0.0 && moved.collision.collided_y;
     if moved.collision.collided_x {
@@ -341,6 +348,18 @@ pub fn step_minecart(
     center: &mut Vec3,
     chunks: &WorldChunks,
     rng: &mut JavaRandom,
+) -> bool {
+    step_minecart_among(cart, center, chunks, rng, &[])
+}
+
+/// [`step_minecart`] among solid entities (boats), which the cart's sweep
+/// collides with as with blocks.
+pub fn step_minecart_among(
+    cart: &mut Minecart,
+    center: &mut Vec3,
+    chunks: &WorldChunks,
+    rng: &mut JavaRandom,
+    others: &[Aabb],
 ) -> bool {
     if cart.time_since_hit > 0 {
         cart.time_since_hit -= 1;
@@ -417,7 +436,7 @@ pub fn step_minecart(
         }
         move_x = move_x.clamp(-max_speed, max_speed);
         move_z = move_z.clamp(-max_speed, max_speed);
-        move_cart(cart, center, Vec3::new(move_x, 0.0, move_z), chunks);
+        move_cart(cart, center, Vec3::new(move_x, 0.0, move_z), chunks, others);
         let reached = |end: [i32; 3]| {
             end[1] != 0
                 && center.x.floor() as i32 - cell.x == end[0]
@@ -517,7 +536,7 @@ pub fn step_minecart(
             cart.motion *= 0.5;
         }
         let motion = cart.motion;
-        move_cart(cart, center, motion, chunks);
+        move_cart(cart, center, motion, chunks, others);
         if !cart.on_ground {
             cart.motion *= 0.95;
         }
@@ -728,6 +747,7 @@ impl Default for CartRandom {
 pub(crate) fn tick_minecarts(
     tick: Res<WorldTick>,
     chunks: Res<WorldChunks>,
+    solids: Option<Res<SolidEntities>>,
     mut carts: Query<(Entity, &mut Minecart, &mut Transform, &mut PreviousTick)>,
     mut random: Local<CartRandom>,
     mut order: Local<Vec<Entity>>,
@@ -756,7 +776,13 @@ pub(crate) fn tick_minecarts(
                 }
                 previous.0 = transform.translation;
                 let mut center = transform.translation;
-                let smoked = step_minecart(&mut cart, &mut center, &chunks, &mut random.0);
+                let smoked = step_minecart_among(
+                    &mut cart,
+                    &mut center,
+                    &chunks,
+                    &mut random.0,
+                    SolidEntities::boxes_of(solids.as_deref()),
+                );
                 if smoked && let Some(particles) = particles.as_deref_mut() {
                     particles.spawn(FxKind::LargeSmoke, center + Vec3::Y * 0.8, Vec3::ZERO);
                 }

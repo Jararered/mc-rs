@@ -40,13 +40,12 @@ These are registered and craftable, but right-click does nothing, or only part o
 
 ## Riding
 
-- **Boat leftovers** (`EntityBoat`): a boat is not solid to other entities (`getCollisionBox`), so nothing can stand on
-  one. Its fast-boat splashes (`spawnParticle("splash")`) are not spawned, although `FxKind::Splash` exists.
 - **Pig leftovers**: the `flyPig` achievement (needs achievements). Steering is the Pig Steering feature, not Beta.
-- **Portals while riding**: a mounted player never touches blocks, so a rider cannot charge a portal. Beta dismounts
-  the player inside one (`EntityPlayerSP.onLivingUpdate`).
-- **Minecart leftovers** (both apply to boats and pigs too): no rider yaw drift
-  (`Entity.updateRidden`), and no lying or sitting third-person rider pose (needs the F5 camera).
+  A steered pig does not turn its rider's view (`Entity.updateRidden`), which would double every turn.
+- **Minecart leftovers** (both apply to boats and pigs too): no lying or sitting third-person rider pose (needs the F5
+  camera). A cart's own sweep collides with boats only, not with the pushable bodies Beta's
+  `EntityMinecart.getCollisionBox` returns; `bump_carts` pushes them instead.
+- **Falling blocks and boats**: falling sand lands on a boat, but a boat's sweep does not see falling blocks.
 
 ## Mobs and combat
 

@@ -99,6 +99,9 @@ Sounds need the original game's `resources/` folder beside `assets/`. Without it
 - [ ] An arrow, snowball, egg or fishing bobber resting on a wooden pressure plate presses it; a stone plate ignores
       them.
       `a22f8d3 · 2026-10-09 07:55`
+- [ ] Riding a minecart, boat or pig into a Nether portal puts you off it, and the portal starts to charge. On the
+      server, a Beta client is put off the same way.
+      `pending`
 
 #### Fixes
 
@@ -193,6 +196,15 @@ Sounds need the original game's `resources/` folder beside `assets/`. Without it
       `94d9f67 · 2026-10-09 08:53`
 - [ ] A boat is still there, with its heading, after saving and reloading, in both save formats.
       `94d9f67 · 2026-10-09 08:53`
+- [ ] A boat is solid: you can jump onto one and stand on it, and mobs, dropped items, carts and falling sand land
+      on it or bump into it like a block. It is too tall to walk straight up onto.
+      `pending`
+- [ ] A player, mob, cart or dropped item in a boat's way stops it, but its own rider does not. Scraping along
+      one at speed wrecks the boat, as a wall does.
+      `pending`
+- [ ] While you ride a boat, a minecart or a pig, your view slowly turns with it, up to ten degrees a tick, as in
+      Beta. A pig you steer with Pig Steering does not turn your view.
+      `pending`
 
 ##### Painting
 
@@ -200,18 +212,18 @@ Sounds need the original game's `resources/` folder beside `assets/`. Without it
       among those that fit: a lone block takes a one-block picture, and a wide wall can take the big ones, up to
       four blocks across. It will not go on the top or bottom of a block, on a non-solid block such as a torch,
       with a block in front of it, or over another painting.
-      `pending`
+      `fa2b7c9 · 2026-10-14 19:01`
 - [ ] Each motive shows its picture from `art/kz.png`, with a wooden back and frame, lit block by block. Without
       `assets/` a painting is a plain brown panel.
-      `pending`
+      `fa2b7c9 · 2026-10-14 19:01`
 - [ ] Take the wall away and within five seconds the painting drops as an item. Any hit, or an explosion nearby,
       knocks it off the wall the same way.
-      `pending`
+      `fa2b7c9 · 2026-10-14 19:01`
 - [ ] A painting stays on its wall with the same motive after saving and reloading, in both save formats, and one
       in a Beta world loads.
-      `pending`
+      `fa2b7c9 · 2026-10-14 19:01`
 - [ ] On the server, a Beta client sees paintings and can punch them down.
-      `pending`
+      `fa2b7c9 · 2026-10-14 19:01`
 
 ##### Settings
 
@@ -370,7 +382,10 @@ Sounds need the original game's `resources/` folder beside `assets/`. Without it
 
 #### Additions
 
-- Nothing this round.
+- [ ] Die in the Nether far from any portal and respawn: the Overworld now has a stray portal near where you died,
+      scaled by eight, as Beta's teleporter builds one for the dead player. You still wake at your bed or the
+      spawn. Near an existing portal, nothing is built.
+      `pending`
 
 #### Interactions
 

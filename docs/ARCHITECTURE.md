@@ -176,7 +176,14 @@ teardown as well as the full one.
 The player's portal state is `player::portal::PortalTravel` (Beta's
 `inPortal`, `timeInPortal`, `timeUntilPortal`). `physics::touch_blocks` is
 `onEntityCollidedWithBlock` for the player: a portal charges that state, and
-soul sand slows. Mobs and items do not use portals, as in Beta 1.7.3.
+soul sand slows. A rider's box still touches blocks, and a rider in a portal
+is put off its vehicle (`tick_portal_travel`, and `WorldHost::tick_portals`
+on the server). Mobs and items do not use portals, as in Beta 1.7.3.
+
+`Travel::Respawn` from the Nether runs the teleporter for the dead player
+first, as Beta's `respawn` runs `usePortal`: the portal it finds or builds
+near the death point, scaled by eight, is kept, and the player is then put at
+the bed or the spawn.
 
 `world::host::WorldHost` is the other way to run two dimensions, and it is
 what the dedicated server uses. One headless Bevy world per loaded dimension,

@@ -65,13 +65,13 @@ use crate::item::ItemStack;
 use crate::physics::Aabb;
 use crate::physics::WATER_CURRENT_PER_TICK;
 use crate::physics::burning_in;
-use crate::physics::collides;
+use crate::physics::collides_among;
 use crate::physics::eye_in_water;
 use crate::physics::inside_opaque_block;
 use crate::physics::intersects_liquid;
 use crate::physics::landing_sound;
 use crate::physics::lava_contains;
-use crate::physics::move_entity;
+use crate::physics::move_entity_among;
 use crate::physics::raycast_blocks;
 use crate::physics::step_on_block;
 use crate::physics::water_movement;
@@ -314,6 +314,8 @@ pub(crate) struct Surroundings<'a> {
     pig_steering: bool,
     /// Pushable bodies at the start of the frame, for `applyEntityCollision`.
     crowd: &'a [(Entity, Aabb)],
+    /// Boats, which a mob collides with as with blocks.
+    solids: &'a [Aabb],
 }
 
 impl Surroundings<'_> {
@@ -440,6 +442,7 @@ pub(crate) struct CreatureExtras<'w> {
     diagnostics: Option<ResMut<'w, EntityDiagnostics>>,
     particles: Option<ResMut<'w, EffectParticles>>,
     sounds: Option<ResMut<'w, Sounds>>,
+    solids: Option<Res<'w, crate::physics::SolidEntities>>,
 }
 
 /// Run each mob's Beta update once per world tick this frame.
@@ -531,6 +534,10 @@ pub(crate) fn tick_creatures(
             .as_ref()
             .is_none_or(|settings| settings.pig_steering),
         crowd: crowd.as_slice(),
+        solids: extras
+            .solids
+            .as_deref()
+            .map_or(&[], |solids| solids.boxes.as_slice()),
     };
     spare_armor.resize_with(players.len(), Default::default);
     let victims = players
@@ -1234,7 +1241,7 @@ impl Body<'_> {
             self.motion.y -= 0.02;
             if (self.collision.collided_x || self.collision.collided_z)
                 && self.offset_position_clear(
-                    chunks,
+                    world,
                     Vec3::new(
                         self.motion.x,
                         self.motion.y + 0.6 - self.feet.y + start_y,
@@ -1338,9 +1345,10 @@ impl Body<'_> {
 
     /// `Entity.isOffsetPositionInLiquid`, which despite its name is true when
     /// the moved box would touch neither a solid block nor any liquid.
-    fn offset_position_clear(&self, chunks: &WorldChunks, offset: Vec3) -> bool {
+    fn offset_position_clear(&self, world: &Surroundings, offset: Vec3) -> bool {
         let moved = self.aabb().offset(offset);
-        !collides(chunks, moved) && !intersects_liquid(moved, chunks)
+        !collides_among(world.chunks, world.solids, moved)
+            && !intersects_liquid(moved, world.chunks)
     }
 
     /// `Entity.moveFlying`: accelerate toward the head's yaw.
@@ -1366,12 +1374,14 @@ impl Body<'_> {
         fx: &mut Effects,
     ) {
         let step = web_slowed(self.aabb(), world.chunks, &mut self.motion);
-        let mut movement = move_entity(
+        let mut movement = move_entity_among(
             self.aabb(),
             step,
             self.step_height,
             self.collision.on_ground,
+            false,
             world.chunks,
+            world.solids,
         );
         // The edge of the loaded world is a wall. Unloaded chunks have no
         // collision, and a mob that walked into one would be dropped without
@@ -1381,12 +1391,14 @@ impl Body<'_> {
             .chunks
             .contains(ChunkPosition::from_world(moved.x, moved.z))
         {
-            movement = move_entity(
+            movement = move_entity_among(
                 self.aabb(),
                 Vec3::new(0.0, self.motion.y, 0.0),
                 self.step_height,
                 self.collision.on_ground,
+                false,
                 world.chunks,
+                world.solids,
             );
             movement.collision.collided_x = true;
             movement.collision.collided_z = true;

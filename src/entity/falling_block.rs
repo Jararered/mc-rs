@@ -13,8 +13,9 @@ use crate::entity::PreviousTick;
 use crate::entity::drops::items::spawn_block_drop;
 use crate::item::ItemStack;
 use crate::physics::Aabb;
+use crate::physics::SolidEntities;
 use crate::physics::WATER_CURRENT_PER_TICK;
-use crate::physics::move_entity;
+use crate::physics::move_entity_among;
 use crate::physics::water_current;
 use crate::random::ItemRng;
 use crate::world::block_ticks::BlockTicks;
@@ -90,6 +91,19 @@ pub fn step_falling_block(
     ticks: &mut BlockTicks,
     edits: &mut Vec<IVec3>,
 ) -> FallingStep {
+    step_falling_block_among(falling, center, chunks, ticks, edits, &[])
+}
+
+/// [`step_falling_block`] among solid entities (boats), which the block
+/// lands on as on blocks.
+pub fn step_falling_block_among(
+    falling: &mut FallingBlock,
+    center: &mut Vec3,
+    chunks: &mut WorldChunks,
+    ticks: &mut BlockTicks,
+    edits: &mut Vec<IVec3>,
+    others: &[Aabb],
+) -> FallingStep {
     falling.fall_ticks += 1;
     let aabb = Aabb::new(
         *center - Vec3::splat(HALF_EXTENT),
@@ -97,7 +111,15 @@ pub fn step_falling_block(
     );
     falling.motion += water_current(aabb, chunks).1 * WATER_CURRENT_PER_TICK;
     falling.motion.y -= GRAVITY_PER_TICK;
-    let movement = move_entity(aabb, falling.motion, 0.0, falling.on_ground, chunks);
+    let movement = move_entity_among(
+        aabb,
+        falling.motion,
+        0.0,
+        falling.on_ground,
+        false,
+        chunks,
+        others,
+    );
     *center = (movement.aabb.min + movement.aabb.max) * 0.5;
     falling.on_ground = movement.collision.on_ground;
     if movement.collision.collided_x {
@@ -163,6 +185,7 @@ pub(crate) fn tick_falling_blocks(
     mut commands: Commands,
     tick: Res<WorldTick>,
     mut edit: WorldEdit,
+    solids: Option<Res<SolidEntities>>,
     mut falling: Query<(Entity, &mut FallingBlock, &mut Transform, &mut PreviousTick)>,
     mut rng: Local<ItemRng>,
     mut edits: Local<Vec<IVec3>>,
@@ -185,7 +208,14 @@ pub(crate) fn tick_falling_blocks(
         let mut outcome = FallingStep::Falling;
         for _ in 0..count {
             previous.0 = center;
-            outcome = step_falling_block(&mut block, &mut center, chunks, ticks, &mut edits);
+            outcome = step_falling_block_among(
+                &mut block,
+                &mut center,
+                chunks,
+                ticks,
+                &mut edits,
+                SolidEntities::boxes_of(solids.as_deref()),
+            );
             if outcome != FallingStep::Falling {
                 break;
             }

@@ -73,8 +73,11 @@ impl GraphicsQuality {
 pub struct GameSettings {
     pub render_distance: i32,
     pub difficulty: Difficulty,
-    /// Zero follows VSync without an additional application frame cap.
+    /// Zero is unlimited: no application frame cap.
     pub max_fps: u32,
+    /// Present frames on the display's refresh. Off presents immediately,
+    /// which can tear.
+    pub vsync: bool,
     pub fov: f32,
     pub cloud_height: f32,
     /// Beta's GUI scale: the 176×166 inventory and 182×22 hotbar are drawn
@@ -125,6 +128,7 @@ impl Default for GameSettings {
             render_distance: MIN_RENDER_DISTANCE,
             difficulty: Difficulty::Normal,
             max_fps: DEFAULT_MAX_FPS,
+            vsync: true,
             fov: DEFAULT_FOV,
             cloud_height: DEFAULT_CLOUD_HEIGHT,
             gui_scale: DEFAULT_GUI_SCALE,
@@ -331,6 +335,7 @@ struct StoredSettings {
     render_distance: i32,
     difficulty: Difficulty,
     max_fps: u32,
+    vsync: bool,
     fov: f32,
     cloud_height: f32,
     gui_scale: f32,
@@ -370,6 +375,7 @@ impl From<&GameSettings> for StoredSettings {
             render_distance: settings.render_distance,
             difficulty: settings.difficulty,
             max_fps: settings.max_fps,
+            vsync: settings.vsync,
             fov: settings.fov,
             cloud_height: settings.cloud_height,
             gui_scale: settings.gui_scale,
@@ -404,6 +410,7 @@ impl From<StoredSettings> for GameSettings {
             render_distance: stored.render_distance,
             difficulty: stored.difficulty,
             max_fps: stored.max_fps,
+            vsync: stored.vsync,
             fov: stored.fov,
             cloud_height: stored.cloud_height,
             gui_scale: stored.gui_scale,

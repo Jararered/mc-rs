@@ -107,10 +107,10 @@ Sounds need the original game's `resources/` folder beside `assets/`. Without it
       `48841f5 · 2026-10-11 08:39`
 - [ ] Looking through two or more water surfaces (a waterfall in front of a lake, or the surface from below while
       swimming) shows the far one behind the near one, and the order holds as you walk around.
-      `pending`
+      `2fc1df7 · 2026-10-14 14:06`
 - [ ] Chunks hidden behind terrain are no longer drawn: in a cave, or behind a hill, nothing that should be
       visible goes missing, even turning quickly, walking through a tunnel, or breaking into a cave from above.
-      `pending`
+      `2fc1df7 · 2026-10-14 14:06`
 
 ### Items
 
@@ -183,6 +183,12 @@ Sounds need the original game's `resources/` folder beside `assets/`. Without it
 
 ##### Settings
 
+- [ ] F3 shows the frame rate on its first line, as `N fps`, counted afresh each second.
+      `pending`
+- [ ] Video, Max FPS dragged all the way right reads Unlimited and no longer caps the frame rate. A new VSync
+      button (on by default) holds frames to the display; with it off and Max FPS at Unlimited, the frame rate
+      climbs past the refresh rate. Both survive a restart.
+      `pending`
 - [ ] Features, Pig steering (on by default): a ridden pig turns to where you look and walks while W is held,
       hopping up blocks in its way. Off, the pig wanders wherever it likes, as in Beta.
       `94d9f67 · 2026-10-09 08:53`

@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use bevy::ecs::system::NonSendMarker;
 use bevy::prelude::*;
+use bevy::window::PresentMode;
 use bevy::window::PrimaryWindow;
 use bevy::window::WindowMode;
 use bevy::winit::UpdateMode;
@@ -22,11 +23,34 @@ pub struct FramePacingPlugin;
 impl Plugin for FramePacingPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<WinitSettings>()
-            .add_systems(Update, apply_frame_pacing);
+            .add_systems(Update, (apply_frame_pacing, apply_present_mode));
     }
 }
 
-/// Time between gameplay frames, or `None` to let VSync alone pace them.
+/// The swapchain mode for [`GameSettings::vsync`]. Without VSync, a zero
+/// `max_fps` renders as fast as the game can.
+pub fn present_mode(vsync: bool) -> PresentMode {
+    if vsync {
+        PresentMode::Fifo
+    } else {
+        PresentMode::AutoNoVsync
+    }
+}
+
+fn apply_present_mode(
+    settings: Res<GameSettings>,
+    mut windows: Query<&mut Window, With<PrimaryWindow>>,
+) {
+    let mode = present_mode(settings.vsync);
+    for mut window in &mut windows {
+        if window.present_mode != mode {
+            window.present_mode = mode;
+        }
+    }
+}
+
+/// Time between gameplay frames, or `None` to leave them unpaced (VSync, when
+/// it is on, still holds them to the display).
 ///
 /// `display_millihertz` is the refresh rate to stay under, when the display
 /// cannot be trusted to pace the game itself.
@@ -77,7 +101,8 @@ fn apply_frame_pacing(
     _main_thread: NonSendMarker,
 ) {
     let playing = screen.is_none_or(|screen| *screen.get() == AppScreen::Playing);
-    let display = playing
+    // Pacing under the display only evens out VSync's judder.
+    let display = (playing && settings.vsync)
         .then(|| windowed_refresh_millihertz(&windows))
         .flatten();
     let desired = (settings.max_fps, playing, display);

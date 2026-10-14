@@ -78,7 +78,9 @@ impl Plugin for TerrainTexturePlugin {
             // changes are sent to the renderer.
             .add_systems(
                 PostUpdate,
-                sync_quad_buffer.before(bevy::asset::AssetEventSystems),
+                sync_quad_buffer
+                    .after(crate::rendering::chunk_quads::ChunkQuadWrites)
+                    .before(bevy::asset::AssetEventSystems),
             );
     }
 

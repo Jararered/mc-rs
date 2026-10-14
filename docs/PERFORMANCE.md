@@ -80,6 +80,48 @@ old lighting, one open-terrain view with 5,864 section layers:
 - Bevy's `RenderDiagnosticsPlugin` pass timings read about 0.02 ms per pass
   here and did not reflect draw cost, so they are not in the report.
 
+### Chunk regions, cave culling, and facing culling
+
+These follow Sodium's renderer, reimplemented from its ideas only (Sodium is
+under the PolyForm Shield license, so none of its code is used).
+
+- **Cave culling** (`rendering/occlusion.rs`): each mesh job flood-fills its
+  sections and records which faces see each other. When the camera enters
+  another section, a walk outward from it finds the sections reachable
+  through open space. A camera inside an opaque cube turns it off.
+- **Facing culling**: a layer's records are grouped by facing, and a region's
+  draw list leaves out the groups that face away from the camera.
+- **Chunk regions** (`rendering/chunk_regions.rs`,
+  `world/streaming/regions.rs`): one entity per layer for each 8×8 chunk
+  columns, drawing a list of record runs kept in the quad buffer. The vertex
+  shader binary-searches the list. Lists are rebuilt when the camera's
+  clip-from-world matrix or a section layer changes.
+- **Water** is sorted back to front per section, and regions list water
+  sections farthest first.
+
+Measured with `examples/chunk_render.rs` on an Apple M5 Pro (Metal), seed
+0, Fancy, 1920x1080, `MSAA=off`. "Old" is `MC_CHUNK_REGIONS=off
+MC_OCCLUSION=off`.
+
+| Distance, view               | Old draws | Region draws | Sections reached | Quads drawn | List rebuild (`fast`) |
+| ---------------------------- | --------- | ------------ | ---------------- | ----------- | --------------------- |
+| 8, `VIEW=0` (dev profile)    | ~2,780    | 18           | 1,278 of 2,312   | 130,814     |                       |
+| 16, `VIEW=0`                 | ~8,350    | 21           | 5,388            | ~178,000    | 0.26 ms               |
+| 24, `VIEW=0`                 | ~17,730   | 25           | 12,176           | ~201,000    | 0.70 ms (2.0 longest) |
+| 16 or 24, `VIEW=3` (a cave)  | ~8,350–17,800 | 1        | 12               | 1,217       | 0.01–0.03 ms          |
+
+- Screenshots against the old path differ in at most 0.024% of pixels,
+  the same as two runs of the old path differ from each other. The cave and
+  canyon views match exactly.
+- Frame time was not separable. Every run of both paths was paced to the
+  display (11.1 ms at 90 Hz). Unpaced runs, probably with the window covered,
+  showed about 1.9 ms at distance 24 with regions, but no old-path run went
+  unpaced to compare against.
+- The draw-list rebuild is main-thread work on frames where the camera moved.
+  Water sorting is capped at 64 sections a frame.
+- Before these changes, `VIEW=1` already sat inside stone, an x-ray view. It
+  is kept, and shows why culling is off inside an opaque cube.
+
 ## Memory
 
 The report's `process memory` line is resident memory from Bevy's

@@ -49,6 +49,7 @@ use super::render::apply_sections;
 use super::render::despawn_rendered_chunk;
 use super::render::spawn_chunk;
 use crate::rendering::chunk_quads::ChunkQuads;
+use crate::rendering::occlusion::VisibleSections;
 use crate::rendering::textures::AlphaMaskMaterial;
 use crate::rendering::textures::CutoutMaterial;
 use crate::rendering::textures::FoliageColors;
@@ -316,6 +317,10 @@ pub(crate) fn setup_streaming(
         // The spawn chunk has block data for the player's heightmap, but its
         // first mesh waits for all eight neighboring chunks below.
         rendered: HashMap::new(),
+        graph_revision: 0,
+        layer_revision: 0,
+        regions: (quad_layers && crate::rendering::chunk_regions::regions_enabled())
+            .then(super::regions::ChunkRegions::default),
         materials,
         // The renderer picks this from the GPU's features. A headless app
         // has no renderer and keeps the default.
@@ -463,6 +468,8 @@ pub(crate) fn stream_chunks(
                     quads: quads.as_deref_mut(),
                 };
                 despawn_rendered_chunk(&mut commands, &mut store, rendered);
+                streaming.graph_revision += 1;
+                streaming.layer_revision += 1;
             }
         }
         {
@@ -704,6 +711,8 @@ pub(crate) fn stream_chunks(
         }
         let materials = streaming.materials.clone();
         let culling = streaming.culling;
+        let regions = streaming.regions.is_some();
+        let mut graph_changed = !streaming.rendered.contains_key(&position);
         let rendered = streaming
             .rendered
             .entry(position)
@@ -723,7 +732,13 @@ pub(crate) fn stream_chunks(
             job.sections,
             &materials,
             culling,
+            regions,
+            &mut graph_changed,
         );
+        if graph_changed {
+            streaming.graph_revision += 1;
+        }
+        streaming.layer_revision += 1;
         if !stored {
             // The device cannot hold a larger quad buffer. Mesh this chunk
             // again, and every later one, in the vertex format.
@@ -962,5 +977,28 @@ pub(crate) fn admit_chunk(
     }
     for body in saved_bodies {
         body.spawn(commands);
+    }
+}
+
+/// Hide the layer entities of sections cave culling did not reach, and show
+/// them again once it does.
+pub(crate) fn cull_section_layers(
+    mut streaming: ResMut<WorldStreaming>,
+    visible: Res<VisibleSections>,
+    mut layers: Query<&mut Visibility>,
+) {
+    if !visible.is_changed() && !streaming.is_changed() {
+        return;
+    }
+    for (position, rendered) in streaming.bypass_change_detection().rendered.iter_mut() {
+        for (entity, shown) in rendered.cull(visible.mask(*position)) {
+            if let Ok(mut visibility) = layers.get_mut(entity) {
+                *visibility = if shown {
+                    Visibility::Inherited
+                } else {
+                    Visibility::Hidden
+                };
+            }
+        }
     }
 }

@@ -35,6 +35,11 @@
 //! Normal mode 0 takes the normal from `e1 × e2`; modes 1..=6 are the axis
 //! faces in `geometry::FACE_*` order, and also the face a repeated tile is
 //! laid out on.
+//!
+//! A layer's records are grouped by [facing](QuadRecord::facing): the six
+//! axis faces in `FACE_*` order, then every quad without an axis normal. Its
+//! header record holds the quad count and then the count of each facing, so a
+//! renderer can skip the groups that face away from the camera.
 
 use bevy::asset::RenderAssetUsages;
 use bevy::mesh::Indices;
@@ -56,11 +61,22 @@ use super::vertex::face_normal;
 /// The only vertex attribute of a proxy mesh: `quad << 2 | corner`.
 pub const ATTRIBUTE_QUAD_CORNER: MeshVertexAttribute =
     MeshVertexAttribute::new("Quad_Corner", 1_985_470_022, VertexFormat::Uint32);
+/// The same numbering for a chunk region's proxy mesh, whose quads are found
+/// through the region's draw list (`rendering::chunk_regions`). A separate
+/// attribute gives the region pipeline its own specialization.
+pub const ATTRIBUTE_REGION_QUAD_CORNER: MeshVertexAttribute =
+    MeshVertexAttribute::new("Region_Quad_Corner", 1_985_470_023, VertexFormat::Uint32);
 
 /// `u32` words in one record.
 pub const QUAD_WORDS: usize = 8;
 /// Position steps per block on every axis.
 pub const QUAD_STEPS: f32 = 64.0;
+/// Groups a layer's records are sorted into: the six axis faces in
+/// `geometry::FACE_*` order, then [`UNASSIGNED_FACING`].
+pub const FACINGS: usize = 7;
+/// Quads whose normal is not an axis (crossed plants, sloped fluid tops,
+/// rotated shapes). Always drawn.
+pub const UNASSIGNED_FACING: usize = 6;
 
 const SHADE_BIT: u32 = 1 << 25;
 const REPEAT_BIT: u32 = 1 << 26;
@@ -279,6 +295,30 @@ fn signed(value: u32, bits: u32) -> i32 {
 }
 
 impl QuadRecord {
+    /// The axis face this quad points along, or [`UNASSIGNED_FACING`].
+    pub fn facing(&self) -> usize {
+        match self.0[3] >> 24 & 7 {
+            0 => UNASSIGNED_FACING,
+            mode => mode as usize - 1,
+        }
+    }
+
+    /// The middle of the quad, in blocks from its section's corner.
+    pub fn centre(&self) -> [f32; 3] {
+        let words = self.0;
+        let origin = [
+            words[0] & 0x7ff,
+            words[0] >> 11 & 0x7ff,
+            words[0] >> 22 | (words[1] & 1) << 10,
+        ];
+        let edge1 = [words[1] >> 1, words[1] >> 13, words[2]].map(|value| signed(value, 12));
+        let edge2 = [words[2] >> 12, words[3], words[3] >> 12].map(|value| signed(value, 12));
+        std::array::from_fn(|axis| {
+            (origin[axis] as f32 + (edge1[axis] + edge2[axis]) as f32 / 2.0) / QUAD_STEPS
+                + POSITION_MIN
+        })
+    }
+
     /// A record that draws only corners 0, 1, and 2.
     pub fn is_triangle(&self) -> bool {
         self.0[1] & TRIANGLE_BIT != 0
@@ -360,6 +400,15 @@ pub fn proxy_capacity(quads: u32) -> u32 {
 /// corner of which quad they are. Every layer that fits shares it, and the
 /// vertex shader reads the layer's records for the rest.
 pub fn proxy_mesh(capacity: u32) -> Mesh {
+    numbered_quads(capacity, ATTRIBUTE_QUAD_CORNER)
+}
+
+/// [`proxy_mesh`] for a chunk region.
+pub fn region_proxy_mesh(capacity: u32) -> Mesh {
+    numbered_quads(capacity, ATTRIBUTE_REGION_QUAD_CORNER)
+}
+
+fn numbered_quads(capacity: u32, attribute: MeshVertexAttribute) -> Mesh {
     let corners: Vec<u32> = (0..capacity * 4).collect();
     let triangles = |quad: u32| {
         let start = quad * 4;
@@ -379,20 +428,41 @@ pub fn proxy_mesh(capacity: u32) -> Mesh {
         PrimitiveTopology::TriangleList,
         RenderAssetUsages::RENDER_WORLD,
     )
-    .with_inserted_attribute(
-        ATTRIBUTE_QUAD_CORNER,
-        VertexAttributeValues::Uint32(corners),
-    )
+    .with_inserted_attribute(attribute, VertexAttributeValues::Uint32(corners))
     .with_inserted_indices(indices)
 }
 
+/// Order a translucent layer's records farthest from `eye` first, `eye` in
+/// blocks from the section's corner, so each blends over what is behind it.
+pub fn sort_back_to_front(records: &mut [QuadRecord], eye: [f32; 3]) {
+    records.sort_by_cached_key(|record| {
+        let centre = record.centre();
+        let distance: f32 = (0..3).map(|axis| (centre[axis] - eye[axis]).powi(2)).sum();
+        std::cmp::Reverse(distance.to_bits())
+    });
+}
+
+/// Sort a layer's records into facing groups, keeping their order within
+/// each group, and return how many each group holds.
+pub fn group_by_facing(records: &mut [QuadRecord]) -> [u32; FACINGS] {
+    records.sort_by_key(QuadRecord::facing);
+    let mut counts = [0; FACINGS];
+    for record in records.iter() {
+        counts[record.facing()] += 1;
+    }
+    counts
+}
+
 /// A layer's bytes for the quad buffer: a header record holding the quad
-/// count, then the records.
-pub fn layer_bytes(records: &[QuadRecord]) -> Vec<u8> {
+/// count and the count of each facing group, then the records. `facings`
+/// sums to the record count; a layer whose order must not change (sorted
+/// water) counts every record as [`UNASSIGNED_FACING`].
+pub fn layer_bytes(records: &[QuadRecord], facings: &[u32; FACINGS]) -> Vec<u8> {
     let count = u32::try_from(records.len()).expect("layer quad count");
+    debug_assert_eq!(facings.iter().sum::<u32>(), count);
     let mut bytes = Vec::with_capacity((records.len() + 1) * QUAD_WORDS * 4);
     bytes.extend_from_slice(&count.to_le_bytes());
-    bytes.resize(QUAD_WORDS * 4, 0);
+    bytes.extend(facings.iter().flat_map(|count| count.to_le_bytes()));
     bytes.extend(
         records
             .iter()

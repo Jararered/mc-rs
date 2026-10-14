@@ -170,5 +170,9 @@ Recorded so the next audit does not look again. Each was compared with the refer
 - Not in Beta 1.7.3, so nothing to copy: moon phases, `ColorizerWater` (no callers), `GuiSleepMP` (no callers), the Tab
   player list (`GuiIngame` has none), the chest lid animation, an eating animation, a player doll in the inventory,
   sheep grazing, and a wolf shake in the model (`RenderWolf` draws none; the shake is simulation and spray).
-- Advanced OpenGL only turns on occlusion queries in `RenderGlobal` (`advancedOpengl && !anaglyph`). The chunk culling
-  choice in AGENTS covers that, so the option is not copied.
+- Advanced OpenGL only turns on occlusion queries in `RenderGlobal` (`advancedOpengl && !anaglyph`). Cave culling and
+  the chunk culling choice in AGENTS cover that, so the option is not copied.
+- Chunk region draw lists are rebuilt on the main thread whenever the camera moves, about 0.7 ms at render distance
+  24. Rebuilding only regions whose sections changed visibility, or doing it on a worker, would cut that.
+- Frame time with chunk regions and cave culling has not been measured against one entity per section layer: every
+  run on the Apple M5 Pro was paced to the display. Measure on a slower GPU or with an unpaced present.

@@ -11,6 +11,7 @@ use bevy::render::diagnostic::MeshAllocatorDiagnosticPlugin;
 
 use crate::entity::EntityDiagnostics;
 use crate::rendering::chunk_quads::ChunkQuads;
+use crate::rendering::occlusion::VisibleSections;
 use crate::world::chunk::WorldChunks;
 use crate::world::streaming::StreamingDiagnostics;
 use crate::world::streaming::TimingStats;
@@ -75,6 +76,7 @@ fn print_perf_stats(
     perf: Option<ResMut<StreamingDiagnostics>>,
     entity_perf: Option<ResMut<EntityDiagnostics>>,
     quads: Option<Res<ChunkQuads>>,
+    visible: Option<Res<VisibleSections>>,
     mut spikes: ResMut<FrameSpikes>,
 ) {
     timer.0.tick(time.delta());
@@ -129,6 +131,22 @@ fn print_perf_stats(
             )
         },
     );
+    let caves = match visible.as_deref() {
+        Some(visible) if visible.enabled() => {
+            format!("cave culling reached {} sections", visible.reached())
+        }
+        _ => "cave culling off".into(),
+    };
+    let draws = match streaming
+        .as_ref()
+        .and_then(|streaming| streaming.region_stats())
+    {
+        Some(regions) => format!(
+            "{} region draws, {} runs, {} quads; {caves}",
+            regions.draws, regions.entries, regions.quads
+        ),
+        None => format!("one entity per section layer; {caves}"),
+    };
     let slabs = fmt_latest(
         &diagnostics,
         MeshAllocatorDiagnosticPlugin::slabs_diagnostic_path(),
@@ -156,6 +174,8 @@ fn print_perf_stats(
         sweep,
         apply,
         dispatch,
+        regions,
+        sorting,
         discovery_passes,
     } = perf
         .map(|mut perf| std::mem::take(&mut *perf))
@@ -180,6 +200,7 @@ fn print_perf_stats(
          meshes          {rendered} chunks, {layers} section layers, {meshing} meshing\n  \
          mesh memory     {mesh_mib:.1} MiB {layer_format}\n  \
          quad buffer     {quad_buffer}\n  \
+         chunk draws     {draws}\n  \
          mesh slabs      {slabs} slabs, {slab_mib} MiB reserved, {allocations} allocations\n  \
          streaming scans {discovery_passes} candidate-discovery passes\n  \
          chunk generate  {}\n  \
@@ -189,6 +210,8 @@ fn print_perf_stats(
          main: unload    {}\n  \
          main: apply     {}\n  \
          main: dispatch  {}\n  \
+         main: regions   {}\n  \
+         main: sorting   {}\n  \
          mobs            {} ({} model boxes)\n  \
          mob ticks       {} over {} ticks\n  \
          pathfinding     {} searches, {} nodes ({per_search} per search), {} repeats reused\n  \
@@ -201,6 +224,8 @@ fn print_perf_stats(
         fmt_timing(&sweep),
         fmt_timing(&apply),
         fmt_timing(&dispatch),
+        fmt_timing(&regions),
+        fmt_timing(&sorting),
         entity.mobs,
         entity.parts,
         fmt_timing(&entity.creatures),

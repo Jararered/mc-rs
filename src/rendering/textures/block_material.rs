@@ -35,6 +35,7 @@ use super::ATLAS_PAD_TEXELS;
 use super::ATLAS_TILE_PX;
 use crate::rendering::meshing::ATTRIBUTE_BLOCK_VERTEX;
 use crate::rendering::meshing::ATTRIBUTE_QUAD_CORNER;
+use crate::rendering::meshing::ATTRIBUTE_REGION_QUAD_CORNER;
 use crate::rendering::meshing::BlockLighting;
 
 pub const LEAF_WIGGLE_AMPLITUDE: f32 = 0.06;
@@ -139,7 +140,8 @@ impl MaterialExtension for BlockShading {
     /// none of the standard ones. Bind the packed buffer and declare the UV
     /// and color outputs the vertex shaders fill for `StandardMaterial`. A
     /// chunk layer's proxy mesh carries a quad and corner number instead, and
-    /// its shaders read the rest from the quad buffer.
+    /// its shaders read the rest from the quad buffer; a chunk region's proxy
+    /// finds its quads through a draw list there too.
     fn specialize(
         _pipeline: &MaterialExtensionPipeline,
         descriptor: &mut RenderPipelineDescriptor,
@@ -160,8 +162,11 @@ impl MaterialExtension for BlockShading {
         } else {
             descriptor.primitive.polygon_mode = PolygonMode::Fill;
         }
-        let pulled = layout.0.contains(ATTRIBUTE_QUAD_CORNER);
-        let attribute = if pulled {
+        let region = layout.0.contains(ATTRIBUTE_REGION_QUAD_CORNER);
+        let pulled = region || layout.0.contains(ATTRIBUTE_QUAD_CORNER);
+        let attribute = if region {
+            ATTRIBUTE_REGION_QUAD_CORNER
+        } else if pulled {
             ATTRIBUTE_QUAD_CORNER
         } else {
             ATTRIBUTE_BLOCK_VERTEX
@@ -169,6 +174,9 @@ impl MaterialExtension for BlockShading {
         descriptor.vertex.buffers = vec![layout.0.get_layout(&[attribute.at_shader_location(0)])?];
         if pulled {
             descriptor.vertex.shader_defs.push("PULLED_QUADS".into());
+        }
+        if region {
+            descriptor.vertex.shader_defs.push("REGION_DRAWS".into());
         }
         let defs: [ShaderDefVal; 6] = [
             "VERTEX_UVS".into(),

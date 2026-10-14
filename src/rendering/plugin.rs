@@ -16,6 +16,7 @@ use crate::world::block_ticks::BlockTickSet;
 use crate::world::chunk::ChunkPosition;
 use crate::world::streaming::ChunkCulling;
 use crate::world::streaming::StreamingDiagnostics;
+use crate::world::streaming::cull_section_layers;
 use crate::world::streaming::setup_streaming;
 use crate::world::streaming::stream_chunks;
 
@@ -39,6 +40,8 @@ impl Plugin for WorldRenderingPlugin {
         super::creatures::plugin(app);
         super::weather::plugin(app);
         super::clouds::plugin(app);
+        crate::world::streaming::regions_plugin(app);
+        crate::world::streaming::translucent_plugin(app);
         app.add_plugins(TerrainTexturePlugin)
             .insert_resource(ClearColor(Color::srgb(0.53, 0.73, 0.95)))
             .init_resource::<GameSettings>()
@@ -53,10 +56,22 @@ impl Plugin for WorldRenderingPlugin {
                 size: UNUSED_SHADOW_MAP_SIZE,
             })
             .init_resource::<StreamingDiagnostics>()
+            .init_resource::<super::occlusion::VisibleSections>()
             .add_systems(PreStartup, disable_gpu_light_clustering)
             .add_systems(
                 Startup,
                 setup_streaming.run_if(crate::world::persistence::starts_with_world),
+            )
+            .add_systems(
+                PostUpdate,
+                (
+                    super::occlusion::cull_sections,
+                    cull_section_layers
+                        .run_if(resource_exists::<crate::world::streaming::WorldStreaming>),
+                )
+                    .chain()
+                    .after(TransformSystems::Propagate)
+                    .before(bevy::camera::visibility::VisibilitySystems::VisibilityPropagate),
             )
             .add_systems(
                 PostUpdate,

@@ -8,7 +8,7 @@
 //! ```
 //!
 //! `DIMENSION=nether` renders the Nether instead of the Overworld.
-//! `VIEW=1` and up pick other camera positions, and `SMOOTH=off` turns smooth lighting off. `DISTANCE` sets the
+//! `VIEW=1` and up pick other camera positions (`VIEW=3` is underground, `VIEW=4` over a lake), and `SMOOTH=off` turns smooth lighting off. `DISTANCE` sets the
 //! render distance (8), `SIZE=2560x1440` the window's physical size, and
 //! `MSAA=off` turns anti-aliasing off, and
 //! `WEATHER=rain` or `WEATHER=thunder` renders under a full storm, and
@@ -34,9 +34,12 @@ use bevy::window::PresentMode;
 use bevy::window::WindowResolution;
 use game::app::settings::GameSettings;
 use game::player::LocalPlayer;
+use game::player::PlayerCamera;
 use game::rendering::WorldRenderingPlugin;
 use game::rendering::chunk_quads::ChunkQuads;
+use game::rendering::occlusion::VisibleSections;
 use game::world::plugin::WorldPlugin;
+use game::world::streaming::StreamingDiagnostics;
 use game::world::streaming::WorldStreaming;
 use game::world::weather::WorldWeather;
 
@@ -163,10 +166,19 @@ fn spawn_view(mut commands: Commands) {
         0 => (Vec3::new(8.0, 110.0, 8.0), Vec3::new(60.0, 60.0, 50.0)),
         1 => (Vec3::new(8.0, 76.0, 8.0), Vec3::new(30.0, 64.0, 24.0)),
         2 => (Vec3::new(-20.0, 90.0, 30.0), Vec3::new(-70.0, 60.0, -20.0)),
+        // Underground, where cave culling hides most sections.
+        3 => (Vec3::new(44.5, 39.5, -6.5), Vec3::new(40.0, 36.0, -40.0)),
+        // Over a lake, to see water drawn back to front.
+        4 => (
+            Vec3::new(-30.0, 72.0, -70.0),
+            Vec3::new(-50.0, 62.0, -100.0),
+        ),
         _ => (Vec3::new(8.0, 140.0, 8.0), Vec3::new(9.0, 60.0, 9.0)),
     };
     commands.spawn((LocalPlayer, Transform::from_translation(eye)));
     commands.spawn((
+        // Cave culling walks from this camera, as from the player's.
+        PlayerCamera,
         Camera3d::default(),
         Transform::from_translation(eye).looking_at(target, Vec3::Y),
     ));
@@ -177,6 +189,8 @@ fn capture(
     mut capture: ResMut<Capture>,
     streaming: Option<Res<WorldStreaming>>,
     quads: Option<Res<ChunkQuads>>,
+    visible: Res<VisibleSections>,
+    perf: Res<StreamingDiagnostics>,
     diagnostics: Res<DiagnosticsStore>,
     time: Res<Time<Real>>,
     mut exit: MessageWriter<AppExit>,
@@ -236,6 +250,24 @@ fn capture(
             "chunk_render: quad buffer {:.2} MiB reserved, {:.2} MiB in use",
             mib(reserved),
             mib(used),
+        );
+    }
+    if visible.enabled() {
+        println!(
+            "chunk_render: cave culling reached {} sections",
+            visible.reached()
+        );
+    }
+    if let Some(regions) = streaming.region_stats() {
+        println!(
+            "chunk_render: {} region draws, {} runs, {} quads drawn",
+            regions.draws, regions.entries, regions.quads
+        );
+    }
+    if let (Some(average), Some(max)) = (perf.regions.average_ms(), perf.regions.max_ms()) {
+        println!(
+            "chunk_render: draw lists rebuilt {} times, {average:.3} ms average, {max:.3} ms longest",
+            perf.regions.count()
         );
     }
     println!(

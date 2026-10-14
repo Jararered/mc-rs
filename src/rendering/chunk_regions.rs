@@ -163,6 +163,18 @@ pub struct OrderedLayer {
 }
 
 impl OrderedLayer {
+    /// Centre used for distance ordering, reconstructed from the region and
+    /// packed section offset rather than the geometry's uneven bounds.
+    pub fn section_centre(&self, region: IVec2) -> Vec3 {
+        region_origin(region)
+            + Vec3::new(
+                (self.offset & 7) as f32,
+                ((self.offset >> 3) & 7) as f32,
+                ((self.offset >> 6) & 7) as f32,
+            ) * SECTION_HEIGHT as f32
+            + SECTION_HEIGHT as f32 / 2.0
+    }
+
     pub fn new(
         column: u32,
         list: u32,

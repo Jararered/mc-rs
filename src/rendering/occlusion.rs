@@ -160,6 +160,12 @@ pub struct VisibleSections {
     /// What the visible set was last computed for.
     walked_for: Option<Viewpoint>,
     reached: usize,
+    /// Dense scratch buffers, retained across walks. The traversal indexes
+    /// sections directly rather than hashing a chunk for every visit.
+    graph: Vec<SectionVisibility>,
+    entered: Vec<u8>,
+    queue: Vec<IVec3>,
+    masks: Vec<VisibleMask>,
 }
 
 /// Where the camera was when the visible set was last computed.
@@ -186,6 +192,10 @@ impl VisibleSections {
             walked: false,
             walked_for: None,
             reached: 0,
+            graph: Vec::new(),
+            entered: Vec::new(),
+            queue: Vec::new(),
+            masks: Vec::new(),
         }
     }
 
@@ -231,14 +241,24 @@ impl VisibleSections {
         self.columns.clear();
         self.reached = 0;
         self.walked = true;
-        let graph: HashMap<ChunkPosition, &[SectionVisibility; SECTIONS_PER_CHUNK]> =
-            graph.collect();
-        let Some(bounds) = Bounds::of(graph.keys().copied()) else {
+        let graph: Vec<_> = graph.collect();
+        let Some(bounds) = Bounds::of(graph.iter().map(|(position, _)| *position)) else {
             return;
         };
         let origin = camera_section(camera);
-        let mut entered = vec![0u8; bounds.cells()];
-        let mut queue: Vec<IVec3> = Vec::with_capacity(bounds.cells());
+        self.graph.clear();
+        self.graph.resize(bounds.cells(), SectionVisibility::ALL);
+        for (position, sections) in graph {
+            let start = bounds.index(IVec3::new(position.x, 0, position.z));
+            self.graph[start..start + SECTIONS_PER_CHUNK].copy_from_slice(sections);
+        }
+        self.entered.clear();
+        self.entered.resize(bounds.cells(), 0);
+        self.masks.clear();
+        self.masks.resize(bounds.cells() / SECTIONS_PER_CHUNK, 0);
+        self.queue.clear();
+        let entered = &mut self.entered;
+        let queue = &mut self.queue;
         let top = SECTIONS_PER_CHUNK as i32 - 1;
         if (0..=top).contains(&origin.y) {
             let column = IVec3::new(
@@ -263,20 +283,14 @@ impl VisibleSections {
         let mut next = 0;
         while let Some(&cell) = queue.get(next) {
             next += 1;
-            let position = ChunkPosition {
-                x: cell.x,
-                z: cell.z,
-            };
-            *self.columns.entry(position).or_default() |= 1 << cell.y;
+            let index = bounds.index(cell);
+            self.masks[index / SECTIONS_PER_CHUNK] |= 1 << cell.y;
             self.reached += 1;
-            let came_in = entered[bounds.index(cell)];
+            let came_in = entered[index];
             let exits = if came_in == ALL_DIRECTIONS {
                 ALL_DIRECTIONS
             } else {
-                graph
-                    .get(&position)
-                    .map_or(SectionVisibility::ALL, |sections| sections[cell.y as usize])
-                    .exits(came_in)
+                self.graph[index].exits(came_in)
             };
             for (direction, step) in STEPS.into_iter().enumerate() {
                 if exits >> direction & 1 == 0 || !outward(origin, cell, step) {
@@ -292,6 +306,17 @@ impl VisibleSections {
                 }
                 // Entered through the face opposite the step.
                 *slot |= 1 << (direction ^ 1);
+            }
+        }
+        for (column, &mask) in self.masks.iter().enumerate() {
+            if mask != 0 {
+                self.columns.insert(
+                    ChunkPosition {
+                        x: bounds.min.x + (column % bounds.width()) as i32,
+                        z: bounds.min.y + (column / bounds.width()) as i32,
+                    },
+                    mask,
+                );
             }
         }
     }

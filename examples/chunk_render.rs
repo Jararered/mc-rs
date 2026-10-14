@@ -23,6 +23,9 @@
 //! window presents without `VSync` and updates continuously even when
 //! unfocused, but macOS can still pace a visible window to the display, so
 //! treat the frame time printed before exit as a hint only.
+//! `NO_SCREENSHOT=1` skips capture entirely. `MOVE=1` moves the camera back
+//! and forth across section boundaries during timing, without streaming new
+//! terrain. `FRAMES` overrides the number of timed frames (600).
 
 use std::ops::Not;
 use std::path::PathBuf;
@@ -208,11 +211,17 @@ fn spawn_view(mut commands: Commands) {
 
 /// Turn the camera a little each timed frame, when `TURN` is set.
 fn turn_camera(capture: Res<Capture>, mut cameras: Query<&mut Transform, With<PlayerCamera>>) {
-    if !capture.shot || capture.hold.is_some() || std::env::var("TURN").is_err() {
+    if !capture.shot || capture.hold.is_some() {
         return;
     }
     for mut camera in &mut cameras {
-        camera.rotate_y(0.01);
+        if std::env::var("TURN").is_ok() {
+            camera.rotate_y(0.01);
+        }
+        if std::env::var("MOVE").is_ok() {
+            // A closed path keeps the loaded world identical across runs.
+            camera.translation.x = 8.0 + (capture.timed as f32 * 0.03).sin() * 24.0;
+        }
     }
 }
 
@@ -243,9 +252,11 @@ fn capture(
             capture.shot = true;
             // Time only the rebuilds of the timed frames, not of streaming.
             perf.regions = TimingStats::default();
-            commands
-                .spawn(Screenshot::primary_window())
-                .observe(save_to_disk(capture.path.clone()));
+            if std::env::var("NO_SCREENSHOT").is_err() {
+                commands
+                    .spawn(Screenshot::primary_window())
+                    .observe(save_to_disk(capture.path.clone()));
+            }
         }
         return;
     }
@@ -258,7 +269,7 @@ fn capture(
     }
     capture.timed += 1;
     capture.seconds += time.delta_secs_f64();
-    if capture.timed < TIMED_FRAMES {
+    if capture.timed < env_number("FRAMES").unwrap_or(TIMED_FRAMES) {
         return;
     }
     let fps = diagnostics

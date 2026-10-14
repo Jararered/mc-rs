@@ -245,3 +245,24 @@ fn column_culling_lists_the_same_layers_as_testing_each_one() {
     }
     assert!(skipped, "some column should be outside every frustum");
 }
+
+#[test]
+fn cached_section_centres_match_original_distances_across_regions() {
+    use game::rendering::chunk_regions::OrderedLayer;
+    use game::rendering::chunk_regions::section_origin;
+    use game::world::chunk::SECTION_HEIGHT;
+    use game::world::chunk::SECTIONS_PER_CHUNK;
+
+    for x in -17..=17 {
+        for z in -17..=17 {
+            let position = ChunkPosition { x, z };
+            for section in 0..SECTIONS_PER_CHUNK {
+                let entry = OrderedLayer::new(0, 0, position, section, layer(0, [1; 7]), false);
+                assert_eq!(
+                    entry.section_centre(region_of(position)),
+                    section_origin(position, section) + SECTION_HEIGHT as f32 / 2.0,
+                );
+            }
+        }
+    }
+}

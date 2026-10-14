@@ -171,3 +171,93 @@ fn culling_off_shows_everything() {
     let visible = VisibleSections::new(false);
     assert_eq!(visible.mask(ChunkPosition { x: 40, z: -3 }), u8::MAX);
 }
+
+/// Repeatable CPU measurement, independent of GPU presentation and frame caps.
+#[test]
+#[ignore = "manual performance measurement"]
+fn benchmark_visibility_walk() {
+    let radius = 24;
+    let graph: Vec<_> = (-radius..=radius)
+        .flat_map(|z| {
+            (-radius..=radius).map(move |x| {
+                (
+                    ChunkPosition { x, z },
+                    [SectionVisibility::ALL; SECTIONS_PER_CHUNK],
+                )
+            })
+        })
+        .collect();
+    let mut visible = VisibleSections::new(true);
+    let mut samples = Vec::new();
+    for iteration in 0..220 {
+        let start = std::time::Instant::now();
+        visible.walk(
+            Vec3::new((iteration % 2) as f32 * 16.0 + 8.0, 104.0, 8.0),
+            graph
+                .iter()
+                .map(|(position, sections)| (*position, sections)),
+        );
+        std::hint::black_box(visible.reached());
+        if iteration >= 20 {
+            samples.push(start.elapsed().as_secs_f64() * 1000.0);
+        }
+    }
+    samples.sort_by(f64::total_cmp);
+    println!(
+        "visibility walk: {:.3} ms median, {:.3} ms p95 ({} sections)",
+        samples[100],
+        samples[190],
+        visible.reached()
+    );
+}
+
+#[test]
+fn repeated_walks_clear_scratch_when_graph_bounds_and_walls_change() {
+    let mut visible = VisibleSections::new(true);
+    for open_at in [Some(4), None, Some(2), None] {
+        let graph = wall_graph(open_at);
+        visible.walk(
+            Vec3::new(8.0, 72.0, 8.0),
+            graph
+                .iter()
+                .map(|(position, sections)| (*position, sections)),
+        );
+        assert_eq!(
+            visible.is_visible(ChunkPosition { x: 6, z: 0 }, 4),
+            open_at == Some(4)
+        );
+    }
+    // Missing columns within the bounds are open, including negative coordinates.
+    let graph = [
+        (
+            ChunkPosition { x: -2, z: -3 },
+            [SectionVisibility::ALL; SECTIONS_PER_CHUNK],
+        ),
+        (
+            ChunkPosition { x: 2, z: -1 },
+            [SectionVisibility::ALL; SECTIONS_PER_CHUNK],
+        ),
+    ];
+    visible.walk(
+        Vec3::new(-24.0, 72.0, -40.0),
+        graph.iter().map(|(p, s)| (*p, s)),
+    );
+    for z in -3..=-1 {
+        for x in -2..=2 {
+            assert_eq!(visible.mask(ChunkPosition { x, z }), u8::MAX);
+        }
+    }
+    let small = [(
+        ChunkPosition { x: -1, z: -2 },
+        [SectionVisibility::NONE; SECTIONS_PER_CHUNK],
+    )];
+    visible.walk(
+        Vec3::new(-8.0, 300.0, -24.0),
+        small.iter().map(|(p, s)| (*p, s)),
+    );
+    assert_eq!(visible.mask(small[0].0), 1 << (SECTIONS_PER_CHUNK - 1));
+    assert_eq!(visible.mask(ChunkPosition { x: -2, z: -3 }), 0);
+    visible.walk(Vec3::ZERO, std::iter::empty());
+    assert_eq!(visible.reached(), 0);
+    assert_eq!(visible.mask(small[0].0), 0);
+}

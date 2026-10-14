@@ -299,6 +299,66 @@ multiply blending without shader or render validation errors. The normal
 application also started without rendering errors; this did not include a
 full interactive gameplay session.
 
+### Movement caches (October 14, 2026)
+
+Moving across a block boundary used to recreate every reached layer's
+metadata, column bounds, and region slots before sorting it. Those only change
+when layers arrive or cave visibility changes. Movement now recalculates
+distances in the retained layer arrays and sorts those; turning still only
+filters them. Layer revisions and cave visibility invalidate the metadata.
+Opaque layers remain nearest first and water remains farthest first.
+
+Cave traversal now uses retained dense arrays for section connectivity,
+visited faces, its queue, and column masks. It publishes one hash-map entry
+per reached column instead of hashing for every visited section. Missing
+columns inside the graph bounds remain open.
+
+Measured on an Apple M5 Pro, Metal, **release** (fat LTO), Bevy 0.20,
+960×540, Fancy, MSAA off, `VIEW=0`, hidden window, no screenshots, and 1,800
+timed frames after settling. The baseline is `8723961` with the same added
+harness controls. Distance 24 movement is the median of three interleaved
+before/after pairs; the other rows are single pairs.
+
+| Case | Before frame time | After frame time | Before draw lists | After draw lists |
+| --- | --- | --- | --- | --- |
+| Distance 24, moving | 1.80 ms | 1.55 ms | 0.427 ms | 0.189 ms |
+| Distance 16, moving | 1.32 ms | 1.25 ms | 0.178 ms | 0.088 ms |
+| Distance 24, stationary | 1.07 ms | 1.07 ms | no rebuilds | no rebuilds |
+
+Distance 24 moving frame times were 1.69/1.80/1.80 ms before and
+1.44/1.55/1.56 ms after: about 14% less frame time at the medians. The moving
+view reached 12,189 sections and drew 30 regions in every run. Quads drawn
+varied by about 1% across runs because terrain population is not identical
+between runs. The longest draw-list rebuild still occurs when the visible
+set changes: 0.984–1.001 ms before and 0.897–0.916 ms after.
+
+An independent all-open, distance-24 CPU traversal benchmark (19,208 sections,
+20 warmup walks and 200 measured walks, `fast` profile) fell from
+0.751–0.757 ms median to 0.446–0.458 ms. This synthetic case measures
+traversal cost, not whole-game FPS.
+
+Reproduce the movement measurement from the checkout:
+
+```sh
+CARGO_TARGET_DIR="$PWD/target" BEVY_ASSET_ROOT="$PWD" \
+HIDDEN=1 NO_SCREENSHOT=1 MSAA=off \
+DISTANCE=24 MOVE=1 FRAMES=1800 \
+cargo run --release --features render_harness --example chunk_render
+```
+
+Omit `MOVE` for the stationary check; `TURN=1` continues to test turning.
+`MOVE` follows a closed path across section boundaries while the player stays
+at the loading origin, keeping streaming settled. `NO_SCREENSHOT` skips the
+capture request entirely. The CPU benchmark runs with
+`cargo test --profile fast --features render_harness benchmark_visibility_walk -- --ignored --nocapture`.
+
+Regression tests cover section-centre reconstruction across positive and
+negative regions, walls changing between walks, missing columns, and graph
+bounds growing, shrinking, and emptying. The GPU runs completed without
+render validation errors. No screenshots were taken. These results cover
+the terrain harness, which has no arm, HUD, or populated mobs; a full gameplay
+session can have other bottlenecks.
+
 ## Build times
 
 Measured on an Apple M5 Pro (18 cores) with dependencies already built,

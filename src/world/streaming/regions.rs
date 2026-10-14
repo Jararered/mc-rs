@@ -165,6 +165,24 @@ impl ChunkRegions {
                 Aabb::from_min_max(Vec3::ZERO, Vec3::ZERO)
             });
         }
+        self.sort_layers();
+        self.lists
+            .resize_with(self.slots.len() * LAYER_COUNT, DrawList::default);
+    }
+
+    /// Movement changes distances, but not layer metadata, columns or slots.
+    /// Reuse those until streaming or cave culling changes the visible set.
+    fn reorder_layers(&mut self, eye: Vec3) {
+        for layers in &mut self.sorting {
+            for (distance, entry) in layers {
+                let centre = entry.section_centre(self.slots[entry.list as usize / LAYER_COUNT]);
+                *distance = centre.distance_squared(eye);
+            }
+        }
+        self.sort_layers();
+    }
+
+    fn sort_layers(&mut self) {
         // Opaque layers nearest first, so the depth test rejects more; water
         // farthest first, so it blends over what is behind it.
         let [opaque, water] = &mut self.sorting;
@@ -173,8 +191,6 @@ impl ChunkRegions {
         self.order.clear();
         self.order
             .extend(opaque.iter().chain(water.iter()).map(|(_, entry)| *entry));
-        self.lists
-            .resize_with(self.slots.len() * LAYER_COUNT, DrawList::default);
     }
 
     /// List what the camera sees into each region's draw lists.
@@ -245,8 +261,16 @@ pub(crate) fn draw_chunk_regions(
     // reuses the order and only filters it.
     let ordered_for = Some((*layer_revision, eye.floor().as_ivec3()));
     if regions.ordered_for != ordered_for || visible.is_changed() {
+        let changed_layers = regions
+            .ordered_for
+            .is_none_or(|(revision, _)| revision != *layer_revision)
+            || visible.is_changed();
         regions.ordered_for = ordered_for;
-        regions.order_layers(rendered, &visible, eye);
+        if changed_layers {
+            regions.order_layers(rendered, &visible, eye);
+        } else {
+            regions.reorder_layers(eye);
+        }
         regions.regions.retain(|_, region| {
             if region.occupied {
                 return true;

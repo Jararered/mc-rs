@@ -68,8 +68,8 @@ These are registered and craftable, but right-click does nothing, or only part o
 
 ## Audio
 
-Every sound Beta 1.7.3 plays for something the game simulates is played, with background music and the two volume
-options (`src/audio/`, AGENTS' Sound section). Left:
+Every sound Beta 1.7.3 plays for something the game simulates is played, with background music and the Audio tab
+volumes (`src/audio/`, AGENTS' Sound section). Left:
 
 - **Punching a fire out** (`World.onBlockHit`): the fire stays, so aux effect 1004's hiss is never sent.
 - **Other players**: one `Sounds` queue is heard from this client's camera. A server has to tell our own client
@@ -80,7 +80,7 @@ options (`src/audio/`, AGENTS' Sound section). Left:
 ## Particles and presentation hooks
 
 All of Beta's `Entity*FX` particles and `randomDisplayTick` effects are implemented (`rendering/particles/`), except the
-particles a player gives off while standing in a portal (AGENTS' Dimensions section).
+particles a player gives off while standing in a portal.
 
 - **Spawner cage mob** (`TileEntityMobSpawnerRenderer`): the spawner draws its mob (`mobID`) inside the cage, turning
   slowly, built with `EntityList.createEntityInWorld`. The repo draws the spawner block and its idle smoke and burst
@@ -139,7 +139,8 @@ already (`ui/screens/portal.rs`).
 - **3D anaglyph** (`EnumOptions.ANAGLYPH`): red and cyan stereo. `EntityRenderer` draws each eye from an offset
   (`anaglyphField`), and `FontRenderer`, `RenderEngine`, `RenderBlocks`, `RenderGlobal`, `MapItemRenderer` and the
   texture animations filter their colors while it is on.
-- **Texture packs** (`GuiTexturePacks`): no pack screen or ZIP loading. AGENTS plans for players to supply a ZIP.
+- **Texture packs** (`GuiTexturePacks`): no pack screen or ZIP loading. The pack loader is Phase 2 of
+  [ROADMAP.md](../../ROADMAP.md).
 - **Statistics and achievements** (`GuiStats`, `GuiAchievements`, the `GuiAchievement` popup, `StatList`,
   `AchievementList`): no tracking, screens or popup. Beta saves each player's stats as `stats_<name>.dat` beside the
   world, so both formats need them.

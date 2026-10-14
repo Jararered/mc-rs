@@ -1,3 +1,9 @@
+//! Loading, unloading, and the client boundary around a world.
+//!
+//! Streaming schedules generation, lighting, and mesh jobs and publishes the
+//! meshes. Dimension algorithms stay in [`super::generation`]. This module is
+//! the simulation's allowed import of `rendering`.
+
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::sync::Arc;

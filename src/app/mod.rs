@@ -1,3 +1,8 @@
+//! Client assembly: screens, settings, and the world session.
+//!
+//! [`GamePlugin`] composes the client. World simulation runs without this
+//! module. See `docs/ARCHITECTURE.md`.
+
 mod diagnostics;
 pub mod frame_pacing;
 pub mod fullscreen;

@@ -1,3 +1,9 @@
+//! Chunk coordinates, compact block and metadata storage, heightmaps, and
+//! the loaded [`WorldChunks`] collection.
+//!
+//! Column climate lives in [`crate::world::biome`], independent of which
+//! generator filled the chunk.
+
 mod chunk;
 mod neighbors;
 mod position;

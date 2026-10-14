@@ -259,36 +259,43 @@ streaming attaches its dropped items and pending ticks at unload time.
 Overworld `WorldGenLiquids` attempts run after cactus and before snow, with
 Beta's population RNG. They place flowing water or lava, notify neighbors,
 then directly update the source with immediate scheduled updates. Later pending
-ticks travel with their chunks. Immediate spread only sees population's four loaded chunks; nested fluid draws use a reproducibly seeded world RNG
-instead of Java's runtime-seeded `World.rand`.
+ticks travel with their chunks. Immediate spread only sees population's four
+loaded chunks. Nested fluid draws use a reproducibly seeded world RNG instead
+of Java's runtime-seeded `World.rand`.
 
-## Not implemented yet
+## Power and moving blocks
 
-- **Redstone details.** Dust, torches (with Beta's burnout), repeaters,
-  levers, buttons, pressure plates, doors, trapdoors, pistons, rails, note
-  blocks, TNT, and dispensers have update behaviors
-  (`behaviors/{redstone,controls,piston,rail,note,tnt,dispenser,fixtures}.rs`).
-  Power is queried through `BlockBehavior::{can_provide_power, weak_power,
-  strong_power}` and the `TickWorld::block_*_powered` helpers, which mirror
-  `World.isBlockIndirectlyGettingPowered` and friends. What relays power
-  and holds dust, torches, and rails is `Block::is_normal_cube`, which is
-  not the mesher's opaque-cube flag: pistons and TNT are excluded and mob
-  spawners included. Pistons move blocks
-  immediately and push bodies out of the new head with
-  `TickEffect::PistonPush`, rather than animating `TileEntityPiston`. A
-  piston notified while any piston is mid-move schedules itself for the
-  next tick instead of acting, standing in for `ignoreUpdates`. Rails take
-  their shape from `RailLogic` when placed and keep it afterward, as in
-  Beta; only a three-way junction beside a power source switches.
-  Dispensers persist nine slots and fire arrows (as `entity::projectiles`
-  arrows, which can be picked up), launch eggs and snowballs
-  (`entity::thrown`), or eject items. Note
-  blocks report each note as `NotePlayed`, which the client plays.
-  Plates and detector rails read a per-tick snapshot of nearby bodies
-  (`BlockTicks::set_occupants`); arrows, thrown items and bobbers are in it
-  through `entity::projectiles::Projectile`, so they press wooden plates.
-  Minecarts (`entity::minecart`) are a transcription of `EntityMinecart.onUpdate`
-  (empty, chest, and furnace carts), are saved with their chunk, and can be
-  ridden by the player or a creature (`entity::mount`).
-- A redstone torch that burns out hisses but gives off none of Beta's five
-  puffs of smoke.
+Dust, torches (with Beta's burnout), repeaters, levers, buttons, pressure
+plates, doors, trapdoors, pistons, rails, note blocks, TNT, and dispensers
+have update behaviors in
+`behaviors/{redstone,controls,piston,rail,note,tnt,dispenser,fixtures}.rs`.
+Power is queried through `BlockBehavior::can_provide_power`, `weak_power`, and
+`strong_power`, and through the `TickWorld::block_*_powered` helpers, which
+mirror `World.isBlockIndirectlyGettingPowered` and its siblings. What relays power
+and holds dust, torches, and rails is `Block::is_normal_cube`, which is not
+the mesher's opaque-cube flag: pistons and TNT are excluded, and mob spawners
+are included.
+
+Pistons move blocks immediately and push bodies out of the new head with
+`TickEffect::PistonPush`, rather than animating `TileEntityPiston`. A piston
+notified while any piston is mid-move schedules itself for the next tick
+instead of acting, standing in for `ignoreUpdates`. Dust, repeaters, rails,
+levers, and pistons are drawn by `rendering/meshing/{redstone,piston}.rs`.
+Buttons and plates are box shapes.
+
+Rails take their shape from `RailLogic` when placed and keep it afterward, as
+in Beta. Only a three-way junction beside a power source switches. Dispensers
+persist nine slots and fire arrows (as `entity::projectiles` arrows, which can
+be picked up), launch eggs and snowballs (`entity::thrown`), or eject items.
+Note blocks report each note as `NotePlayed`, which the client plays. Plates
+and detector rails read a per-tick snapshot of nearby bodies
+(`BlockTicks::set_occupants`). Arrows, thrown items, and bobbers are in it
+through `entity::projectiles::Projectile`, so they press wooden plates.
+Minecarts are `entity::minecart` (empty, chest, and furnace carts), not a
+block behavior. They are saved with their chunk and ridden through
+`entity::mount`, and the occupant snapshot is how a plate sees one.
+
+## Gaps
+
+A redstone torch that burns out hisses, and gives off none of Beta's five
+puffs of smoke.

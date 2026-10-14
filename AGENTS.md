@@ -1,201 +1,276 @@
 # Project direction
 
-Build a Minecraft Beta-inspired game in Rust with Bevy. The first priority is a playable, performant recreation of the Beta experience: terrain, blocks, movement, interaction, lighting, inventory, mobs, and the other systems needed for the game to feel right. Prefer idiomatic Rust and Bevy implementations, and measure performance in the paths that matter most.
+Build a Minecraft Beta-inspired game in Rust with Bevy. The first priority is a playable, performant
+recreation of the Beta experience: terrain, blocks, movement, interaction, lighting, inventory,
+mobs, and the other systems needed for the game to feel right. Prefer idiomatic Rust and Bevy
+implementations, and measure performance in the paths that matter most.
 
-Compatibility with original Minecraft Beta 1.7.3 worlds and servers is a **second, much later priority**. Keep core game data and rendering reasonably separate so adapters can be added later, but do not delay gameplay work or shape every internal API around the old file format, block IDs, or network protocol. When compatibility work begins, put format and protocol translation at explicit boundaries.
+Compatibility with original Minecraft Beta 1.7.3 worlds and servers comes later. Keep core game data
+and rendering separate so adapters can be added at explicit boundaries. Do not delay gameplay work,
+or shape every internal API around the old file format, block IDs, or network protocol.
+
+The map of the other docs is `docs/README.md`.
 
 # Reference sources
 
-- The decompiled Beta 1.7.3 Java source is checked in under `refs/mc_b1.7.3_release/1.7.3-LTS/src/minecraft/net/minecraft/{src,client}/` (client) and `.../minecraft_server/net/minecraft/src/` (server). Treat it as the behavioral source of truth for generation, block/item behavior, recipes, and options rather than guessing from memory. The Java source files are large; do not read them in their entirety. Use `grep`/`sed`/`rg` to find and inspect only the relevant methods and fields.
-- `refs/mc_b1.7.3_release` is a nested git repo recorded as a gitlink with no `.gitmodules`, so it may be missing in a fresh clone; `refs/` is otherwise not ignored.
-- `.../1.7.3-LTS/jars/world` (server, seed `-5779659068535663308`) and `.../jars/saves/New World` (client) are worlds the real game generated, in McRegion format. They are the ground truth for generation output; `tests/world/generation/beta_reference.rs` pins chunks from the server world. Both ran briefly after generating, so gravel has fallen and springs have flowed.
-- `docs/PLAN.md` is an aspirational layout sketch; this file and the code are authoritative.
-- `CHANGELOG.md` tracks player-visible changes as a checklist to test in game, under Blocks, Items, Mobs and Generation, each split into Additions, Interactions and Fixes. Additions are grouped under a heading per item, block or mob (Bow, Fishing rod, Chicken). Add to its Unreleased entry with every gameplay change. Each entry ends with a `hash · date time` line for the commit that made the change; write `pending` for work not yet committed, and replace earlier `pending` lines with the real hash and commit time (`git log -1 --format='%h · %ad' --date=format:'%Y-%m-%d %H:%M'`) whenever the file is next edited.
-- `docs/todo/MULTIPLAYER.md` lists what multiplayer still needs and what is done. Tick an item when it lands and add what you find missing.
-- `docs/BLOCK_TICKS.md` explains the block tick system and how to give a block update behavior. Read it before adding or changing any block that flows, falls, grows, decays, or reacts to its neighbors.
-- The feature/settings workflow lives in `.grok/skills/implement-feature/SKILL.md` (when a `GameSettings` toggle is warranted, menu wiring, when to remesh, and tests). Read it before adding a graphics option.
+- The decompiled Beta 1.7.3 Java source is checked in under
+  `refs/mc_b1.7.3_release/1.7.3-LTS/src/minecraft/net/minecraft/{src,client}/` (client) and
+  `.../minecraft_server/net/minecraft/src/` (server). It is the behavioral source of truth for
+  generation, block and item behavior, recipes, and options. The Java files are large. Grep for the
+  methods and fields involved, and do not read a file whole.
+- `refs/mc_b1.7.3_release` is a nested git repo recorded as a gitlink with no `.gitmodules`, so it
+  may be missing in a fresh clone. `refs/` is otherwise not ignored.
+- `.../1.7.3-LTS/jars/world` (server, seed `-5779659068535663308`) and `.../jars/saves/New World`
+  (client) are worlds the real game generated, in McRegion format.
+  `tests/world/generation/beta_reference.rs` pins chunks from the server world. Both worlds ran
+  briefly after generating, so gravel has fallen and springs have flowed. Tests copy a world out of
+  `refs/` before opening it. Opening a world writes `session.lock`.
+- `CHANGELOG.md` is the player-visible checklist to test in game, under Blocks, Items, Mobs, and
+  Generation, each split into Additions, Interactions, and Fixes. Additions are grouped under a
+  heading per item, block, or mob. Add a line to the Unreleased entry with every gameplay change.
+  Each entry ends with `hash · date time` for the commit that made it. Take both from
+  `git log -1 --format='%h · %ad' --date=format:'%Y-%m-%d %H:%M'`.
+  Write `pending` until that commit exists, and replace earlier `pending` lines with the real hash
+  and time whenever the file is next edited.
+- What is left to build is `docs/todo/` and `ROADMAP.md`. Tick a todo when it lands, and add what
+  you find missing.
+- Read `docs/BLOCK_TICKS.md` before adding or changing a block that flows, falls, grows, decays, or
+  reacts to its neighbors.
+- Read `docs/ARCHITECTURE.md` before changing plugin composition, the world session, dimensions, or
+  streaming.
+- Read `docs/PERFORMANCE.md` before changing meshing, streaming, cameras, or the build profiles. The
+  rules those measurements produced are below.
 
 # Commands
 
-- `cargo run` — start the game, unoptimized game code for debugging; use `cargo run --release` (fat LTO) to judge performance, or `cargo run --profile fast` (release without LTO, incremental, in `target/fast/`) while iterating: an edit rebuilds in about 10 s instead of about 6 minutes, at some cost in frame time, so confirm final numbers on `--release`. `--features dev_dynamic_linking` exists but measured no faster here (the static link is about 3 s on an M5 Pro), and it builds a second copy of Bevy.
-- `cargo run --bin server` — the dedicated server for Beta 1.7.3 clients (`src/bin/server.rs`; `--help` lists `--port`, `--world`, `--saves`, `--seed`, `--beta-format`, `--view`, `--peaceful`). Its flags are a `clap` derive `Parser` (`Options`); add a flag as a field there. Enter on its standard input saves and stops it. Plain `cargo run` is still the game (`default-run`). Both binaries link the one `game` library (`src/lib.rs`), which is the shared core: put code there, never in a binary.
-- `cargo test` — all tests, in one binary rooted at `tests/main.rs` (`autotests = false`; the lib and bin unit-test and doctest harnesses are off too). Focus a subsystem or one test with a path filter: `cargo test world::block_ticks::` or `cargo test <filter>`. Every extra test target would statically link all of Bevy again, so add a module under `tests/` instead of a target. `[profile.dev]` builds game code unoptimized with full debug info (dependencies at `opt-level = 3`) and `test` inherits it unchanged, so `cargo run` and `cargo test` share one set of dependency and library artifacts; do not give `[profile.test]` its own settings. See "Build times" in `docs/PERFORMANCE.md`.
-- Bevy is built with `default-features = false` and an explicit feature list in `Cargo.toml`: no gamepads, glTF, animation, scenes, sprites, post-processing, or anti-aliasing passes. Audio is `bevy_audio` with `vorbis` alone (rodio, for `src/audio/`). Add a feature there when a system needs it rather than restoring the defaults; each one costs link time and runtime memory.
-- `cargo check` / `cargo fmt` for a quick pass. `cargo fmt` must run on nightly: `rust-toolchain.toml` pins a dated nightly (`nightly-YYYY-MM-DD`) with the `rustfmt` and `clippy` components, and `rustfmt.toml` enables unstable `imports_granularity = "Item"`. Bump the pin deliberately; do not float on latest nightly. `cargo deny check` uses `deny.toml` (also run in CI).
-- Only build the repo into the main repo's cached `target/` directory (for example by setting `CARGO_TARGET_DIR` to the main checkout's `target/` when working in a worktree), never into a fresh per-worktree `target/`. A cold Bevy build uses a huge amount of CPU, memory, and disk.
-- Edition 2024 is in use (let-chains appear in the code, e.g. `if let ... && let ...`).
+- `cargo run` starts the game with unoptimized game code. Use `cargo run --release` (fat LTO) to
+  judge performance, or `cargo run --profile fast` (release without LTO, incremental, output in
+  `target/fast/`) while iterating. Confirm final frame times on `--release`. The feature
+  `dev_dynamic_linking` builds a second copy of Bevy and was not faster here.
+- `cargo run --bin server` is the dedicated server for Beta 1.7.3 clients (`src/bin/server.rs`). Add
+  a flag as a field of its `clap` `Options`. Enter on stdin saves and stops it. Plain `cargo run` is
+  the game (`default-run`). Both binaries link the `game` library (`src/lib.rs`). Put code there,
+  never in a binary.
+- `cargo test` runs every test in one binary rooted at `tests/main.rs` (`autotests = false`; the lib
+  and bin harnesses are off). Filter with a path such as `world::block_ticks::`. Another test target
+  would statically link Bevy again, so add a module under `tests/`
+  instead. `[profile.dev]` builds game code unoptimized, dependencies at `opt-level = 3`, and `test`
+  inherits that, so `cargo run` and `cargo test` share artifacts. Do not give `[profile.test]` its
+  own settings.
+- Bevy is built with `default-features = false` and an explicit feature list in `Cargo.toml`. Add a
+  feature when a system needs it. Audio is `bevy_audio` with `vorbis` alone.
+- `cargo fmt` runs on the nightly pinned in `rust-toolchain.toml` (`rustfmt` and `clippy` are
+  components; `rustfmt.toml` sets `imports_granularity = "Item"`). Bump the pin deliberately.
+  `cargo deny check` uses `deny.toml`.
+- Build only into this checkout's `target/`. In a worktree, set `CARGO_TARGET_DIR` to that
+  directory. A cold Bevy build is expensive.
+- Edition 2024 is in use, including let-chains (`if let ... && let ...`).
+- `examples/chunk_render.rs` (feature `render_harness`) streams terrain without the menus and can
+  diff screenshots. `MC_CHUNK_QUADS=off` compares the old vertex path. `WEATHER=rain` renders a
+  storm.
+- On macOS, Bevy compiles each new render pipeline synchronously, so the first frame of a new
+  material or mesh layout can hitch. `EntityDiagnostics` adds mob tick, pathfinding, spawning, and
+  posing costs to the 10 s performance log.
 
-# Architecture
+# Where code goes
 
-Organize code by gameplay and engine subsystem, not broad `components/` and `systems/` directories. Add modules as their behavior is implemented; the planned layout below is a guide, not a request to create empty files.
+Organize by gameplay and engine subsystem, not by `components/` and `systems/`. Add a module when a
+feature needs it. Do not create empty ones.
 
-- `src/app/`: application assembly, game states, and loading. The top-level plugin should compose subsystem plugins.
-- `src/block/`: compact block values (Beta ids `0..=96` only), the per-id property table, and the metadata codecs for orientation (`direction.rs`) and species (`blocks::species`). The table is read from `data/blocks.ron` (`definition.rs`), which also holds burn rates, explosion resistance, `Material.isSolid`, which tool digs and harvests a block, and its `StepSound` (`sound:`, what it sounds like underfoot and when dug, broken or placed); change a block's static properties there.
-- `src/world/chunk/`: chunk coordinates, compact block storage, shared `GeneratedChunk`/dropped-item records and heightmaps, management, and lifecycle. Stored column climate lives in `src/world/biome.rs`, independent of its generator.
-- `src/world/dimension.rs`: `Dimension` (Overworld, Nether) with Beta's `WorldProvider` rules, the `ActiveDimension` resource, and the `Environment` system parameter that lighting, sky, weather and mob code read. See "Dimensions" below.
-- `src/world/edit.rs`: `WorldEdit`, the one system parameter for writing blocks from outside the tick pass. See "Block ticks".
-- `src/world/host.rs`: `WorldHost`, both dimensions of one world running at once for the future server: one headless Bevy world per loaded dimension (each with the single-dimension `WorldChunks`, `LightCache`, `BlockTicks`, `ActiveDimension` every system reads), a shared clock, weather and `WorldStorage`, and players moved between them as `StoredPlayer` records through the teleporter. A dimension with no player settles, saves and unloads. The game itself does not use it yet; see "Players and multiplayer".
-- `src/world/portal.rs`: Beta's `Teleporter` (find the nearest portal within 128 blocks, or build one within 16) over a `PortalArea` of chunks held outside the live world.
-- `src/world/generation/`: the shared `ChunkGenerator` contract, population footprint, noise utilities, and population-world access. The existing Beta terrain, biome sampling, caves, and decoration live under `overworld/` as `OverworldGenerator`; `nether/` is `ChunkProviderHell` as `NetherGenerator`. Streaming accepts a `WorldGeneration` backend override before startup. As in Beta, a base chunk (terrain, surface, caves) is built alone, and population then decorates a chunk once its `+x`, `+z`, and `+x+z` neighbors exist, writing into all four. Streaming runs those passes as chunks arrive and meshes a chunk only once its neighborhood is finished.
-- `src/rendering/meshing/`: visible faces, mesh construction, lighting data for meshes, and background mesh jobs. `mod.rs` holds the entry points and `SectionMesher`; `mesher.rs` is the per-section block walk, `faces.rs` the culling, corner light and texel helpers, `planes.rs` the greedy merge, `shapes.rs` the non-cube quads, and `dropped.rs` the single-block mesh for dropped and falling blocks.
-- `src/world/streaming/`: chunk loading, unloading, view distance, and work priorities.
-- `src/rendering/textures/`: the terrain atlas plugin, block-face tile mappings, and climate-based grass colors.
-- `src/world/lighting/`: sunlight, block light, and propagation in world data.
-- `src/world/tick.rs`: the shared 20 Hz `WorldTick` clock. Tick-counted simulation reads this instead of keeping a private accumulator.
-- `src/world/sound.rs`: `Sounds`, the queue the simulation asks for sounds through (Beta's `World.playSoundEffect`). See "Sound" below.
-- `src/world/block_ticks/`: Beta's block updates — scheduled ticks, random ticks, and neighbor notifications — with one behavior module per block family under `behaviors/`. See `docs/BLOCK_TICKS.md`.
-- `src/world/persistence/`: saving and loading. `mod.rs` holds the format-agnostic parts (`WorldStorage`, `WorldPersistence`'s autosave drain, manifests, world listing) and dispatches on `SaveFormat`; `binary.rs` is the native JSON format; `original.rs` (with `original/nbt.rs` and `original/region.rs`) reads and writes Beta 1.7.3 worlds (`level.dat`, McRegion `.mcr` files) so a world can move between this game and the original client or server. The format is chosen on the new world form and detected from the folder (`level.json` vs `level.dat`) when a world opens, so a real Beta save dropped into `saves/` is playable. The format-agnostic parts are split by job: `storage.rs` (`WorldStorage`, manifests, the world list), `player.rs` (`StoredPlayer`), `systems.rs` (opening a world and the per-frame flush), with `WorldPersistence` and the plugin in `mod.rs`; everything is re-exported from `world::persistence`.
-- `src/player/`: controller, movement, camera, interaction, mining, and placement. `Player` is any player in the world and `LocalPlayer` the one this client controls; see "Players and multiplayer". `GameMode` (Survival, Creative, Spectator; `/gamemode`, saved in both formats) is a component on the player. `entity::Flying` means "flying right now": never in survival, toggled in creative (F or a double tap of jump, ended by landing) where `integrate_player` still sweeps it against blocks, and always on for a spectator, whose `GameMode::noclip` skips collision and whose scroll wheel changes `FlySpeed` instead of the hotbar slot. `survival::apply_game_mode` keeps `Flying` and `PlayerCombat::invulnerable` in step with the mode; `hurt_player` and mob targeting read that flag, so check it rather than the mode when adding a new source of damage. `state.rs` holds the components other subsystems read (`Player`, `GameMode`, `PlayerHealth`, `FlySpeed`, `PlayerMovementInput`), `camera.rs` the field of view, view bob and hurt roll, and `controls.rs` mouse capture, look, movement input, flight and hotbar keys; `interaction/editing/` is `interact_blocks` (the client half: input, the crosshair, dig timing) and `apply.rs` (`apply_player_actions`, the world's half), with `breaking.rs`, `placement.rs` and `tools.rs` beside them; see "Players and multiplayer". Items that launch something (bow, snowball, egg, fishing rod; `use_item::launches`) are not handled there: `apply_player_actions` writes an `ItemUse` message naming the player and `interaction/use_item.rs` shoots, throws, casts or reels in. With `GameSettings::bow_charging` the bow instead starts a `BowDraw` on the player, counted on `WorldTick` and shot on release (`draw_bow`).
-  - Beds are `player/sleep.rs` (`SleepPlugin`): `interact_blocks` reports a right-click as a `BedUse` message, since `BlockBed.blockActivated` needs the player and so is not a block behavior. `PlayerSleep` holds Beta's `sleeping`, `sleepTimer`, bed and spawn point (only the spawn point is saved, in both formats). Sleeping needs night, lies the player down (`integrate_player` and block interaction skip a sleeper), skips to morning after 100 ticks, and waking sets the spawn point; where `Dimension::can_respawn` is false the bed explodes instead. A death returns to the bed through `bed_respawn_feet`: directly when its chunks are loaded, otherwise through `WorldSession::request_travel(Travel::Respawn)`, which reloads the world around it. Bed metadata helpers are in `block/bed.rs`. Not copied: `performSleepSpawning` (the monster that wakes a sleeper), the lying third-person pose, and the bed-relative camera turn.
-- `src/physics/`: voxel collision, raycasting, and gravity.
-- `src/entity/`: non-block entities, health, spawning, mobs, and dropped items. Shared body components (`EntitySize`, `Velocity`, `Gravity`, `CollisionState`, `StepHeight`, `StepDistance`) live here. Dropped items, falling blocks, and Beta creature simulation live here; drawing them is `rendering/`'s job (`dropped_items.rs`, `falling_block.rs`, `shadow.rs`, `creatures/`), and an entity that casts a blob shadow says so with the `entity::Shadow` component.
-  - Every mob carries a `creature::Living` component and runs a transcription of Beta's `EntityLiving`/`EntityCreature` update each world tick in `entity/creature/` (shared tick and movement in `mod.rs`, `EntityAnimal`/chicken/squid/wolf in `animals.rs`, `EntityMob`/slime/ghast in `monsters.rs`), walking paths from the Beta A* port in `entity/pathfinding.rs`. Beta re-paths a chasing mob every tick while it has no path, so `path_to_feet_reusing` returns the mob's previous result when nothing that search reads has changed (`Chunk::revision` counts edits). `integrate_bodies` skips `Living` bodies. Mobs only ever target players, the nearest as Beta's `getClosestPlayerToEntity` picks (`Living::target` is the one being chased); Beta's mob-on-mob retaliation and wolves hunting sheep are not simulated.
-  - All damage goes through `entity/combat.rs` (`EntityLiving.attackEntityFrom`: the 20-tick invulnerability window, knockback, the player's difficulty scaling and armor, loot on death, the 20-tick death animation). Player melee picking and mob `interact` live in `player/interaction/attack.rs`. Arrows and fireballs are in `entity/projectiles.rs`, thrown snowballs and eggs in `entity/thrown.rs` (`EntitySnowball`, `EntityEgg`), and the fishing bobber in `entity/fishing.rs` (`EntityFish`, with `Fishing` on the player as `fishEntity`); the last two reuse `projectiles`' helpers (`first_struck`, `scattered_heading`, `hand_origin`). An arrow with `pickup` set (the player's and a dispenser's) returns to the inventory once stuck (`pickup_arrows`). All three carry `projectiles::Projectile` and an `EntitySize`, which is how wooden plates see them; none is saved. Creepers, TNT, and fireballs blow up through Beta's ray-cast `Explosion` in `entity/explosion.rs`, which uses `block::properties::explosion_resistance`.
-  - The player's own hazards are `player/survival.rs` (`SurvivalPlugin`): each world tick it runs Beta's `onEntityUpdate` checks (burning, lava, the void, suffocation, drowning) and the tail of `moveEntity` (fall damage, cactus, fire contact) through `hurt_player`, then death and respawning. `PlayerSurvival` holds `air`, `fire`, and `fall_distance` (saved in both formats); `integrate_player` measures the fall and the HUD reads it for the bubble row. The probes it shares with mobs (`eye_in_water`, `inside_opaque_block`, `burning_in`, `touches_cactus`) live in `physics`. Mobs do not take cactus damage yet. Dropped items do: `DroppedItemState` carries `EntityItem`'s `health` (5) and `fire`, worn down each tick by fire, lava, and cactus contact (`update_hazards`, `contact_hazards`) and saved in both formats.
-  - Minecarts are `entity/minecart.rs`: `step_minecart` is `EntityMinecart.onUpdate` for one tick (empty, chest, and furnace carts; `Cargo` holds a chest cart's 27 slots), `bump_carts` is the `applyEntityCollision` push and boarding between carts and bodies, and `break_cart` is `attackEntityFrom`'s break. Riding is general: `entity/mount.rs` has `Mounted` on the rider, `Seat` (`riddenByEntity`) on every vehicle (carts, boats, pigs), `mount`/`dismount`, and `snap_riders`, which puts every rider where its vehicle holds it (`seat_offset`) after the vehicle and creature ticks (`integrate_player` skips a mounted player). `Minecart::rider` mirrors the cart's `Seat` for `step_minecart`; write riders through `mount`, not the field. A chest cart's screen edits a copy in `WorldChunks::open_cart`, written back to the cart each frame (`ChestGroup::cart`). Carts are saved as `SavedBody::Minecart` and as Beta's `Minecart` entity; riding is saved in neither, as in Beta. `rendering/creatures/cart.rs` is `RenderMinecart`.
-  - Boats are `entity/boat.rs`: `step_boat` is `EntityBoat.onUpdate` for one tick (buoyancy from five hull slices, the rider's push from `rider_motion`, the wreck when it scrapes something at speed, the 20° a tick turn), `BoatRules` carries the `steady_boats` and `boat_crashes` features into it (`BoatRules::BETA` is Beta's boat), `tick_boats` runs it and clears snow layers, `bump_boats` is the push from bodies, and `break_boat` leaves three planks and two sticks. `ItemBoat` and the boat's clicks are in `interact_blocks`. Boats are saved as `SavedBody::Boat` and as Beta's `Boat` entity. `rendering/creatures/boat.rs` is `RenderBoat`. A boat is not solid to other entities.
-  - A saddled pig is ridden through `player/interaction/attack.rs` (`EntityPig.interact`). Beta's pig ignores its rider; with `GameSettings::pig_steering` `Body::steered_action` replaces its wander with the rider's look and forward key (`creature::Rider`). A ridden pig does not push its rider, and passes its fall on to them (`Entity.fall`).
-  - Beta's `EntityFX` particles are `rendering/particles/effects.rs`: `EffectParticles::spawn(FxKind, position, velocity)` is `World.spawnParticle` (drops anything beyond 16 blocks of the viewer) and `EffectParticlePlugin` draws one bounded mesh from `particles.png`. Producers in simulation code take `Option<ResMut<EffectParticles>>` so headless apps still run. `display.rs` is `World.randomDisplayUpdates` (torch, furnace, fire, lava, redstone, portal); entity and tile sources call `spawn` or the burst helpers (`blast_cell`, `water_entry`, `death_puffs`, `tame_burst`, `spawner_idle`, `boat_wake`, `slime_splat`, `wolf_spray`). Item-sheet drops (slime, snowball) draw on a second mesh from `gui/items.png`. Block debris stays in `block.rs`.
-  - Mob, arrow, and fireball models are Beta's `ModelRenderer` boxes, posed like `RenderLiving` and lit like Beta entities, in `rendering/creatures/`. A mob's boxes are listed in `data/creature_models.ron`; `models.rs` reads them, adds the squid's and ghast's computed tentacles, and poses them. `rendering/creatures/projectiles.rs` also draws thrown snowballs and eggs (`RenderSnowball`) and the bobber with its line (`RenderFish`: sixteen segment entities posed each frame, not a rebuilt mesh). Per-mob brightness, the red hurt pass, and the creeper flash ride in each box's `MeshTag` (`creature_tag`). `rendering/mobs.rs` only draws primed TNT.
-- `src/item/` and `src/inventory/`: item definitions (read from `data/items.ron`: stack size, durability, food, armor, tool kind and tier, crafting remainder), stacks, tools, slots, hotbar, inventory transfer, and active container/crafting session state. `inventory::session` owns returning inputs and carried items when a session closes; gameplay must not import UI widgets for this.
-- `src/crafting/`: crafting grids, shaped and shapeless recipes, and the Beta 1.7.3 recipe book, which is read from `data/recipes.ron` in `CraftingManager`'s order (the first match wins).
-- `src/gameplay/`: future game rules. Weather lives in `src/world/weather.rs`, player respawning in `src/player/`, and day time in `WorldTick::world_time`, not a second clock.
-- `src/rendering/`: meshes, materials, textures, shaders, fog, sky, clouds, shared block/item appearance, and the icon atlas used by both UI and dropped items. `rendering/weather.rs` draws Beta's rain and snow columns (one mesh per kind, rebuilt only when its columns change; scroll and fade run in `weather.wesl` from `globals.time` and `MeshTag`) and the lightning bolt, whose `SkyFlash` the sky reads; rain splashes are `EffectParticles::spawn_rain` in `rendering/particles/effects.rs`. Rain and thunder strength also gray the sky, fog, and clouds and go into `skylight_subtracted_in_weather`, so read skylight through `world::weather::skylight_subtracted` rather than adding a penalty. `WorldRenderingPlugin` wires client world rendering and streaming; `WorldPlugin` wires simulation without cameras or render assets. Daylight calculations belong to `src/world/environment.rs`. Client-only effects live here too: `particles/` (block break and hit particles, rain splashes), `shadow.rs`, `dropped_items.rs` (`RenderItem`), and `falling_block.rs`.
-- `src/chat/`: submissions, complete message history, command definitions/registry, and local execution. `ChatPlugin` works without UI; `ChatUiPlugin` handles keyboard editing, wrapping, fading, and the overlay. A command registered with `register_with_completions` supplies its next-argument candidates; `CommandRegistry::suggestions` filters them for the input's last word and the UI lists them above the input (Up/Down select, Tab accepts). Gameplay checks `chat::ChatFocus` rather than depending on a screen.
-- `src/audio/`: the client's half of sound (`SoundPlugin`). `library.rs` reads the player's `resources/` folder into Beta's sound pools on the IO pool, `playback.rs` starts what `Sounds` holds and sets each ear's gain, `music.rs` is `playRandomMusicIfReady`, `records.rs` is the jukebox's `playStreaming`, and `world.rs` is what Beta's client works out for itself (aux effects, note blocks, explosions, thunder, hurt and death cries, cave noises). See "Sound" below.
-- `src/ui/` and `src/input/`: presentation and controls. The inventory screen is `ui/screens/inventory/`: `screen.rs` builds and opens it, `clicks.rs` and `chest.rs` handle slots, `refresh.rs` redraws, `validation.rs` closes a screen whose block is gone. `src/ui/` currently holds the menu, settings screen, pause menu, HUD, inventory GUI, block icons, and stack overlays, composited by a dedicated UI camera. Escape in game opens the pause menu (`PauseMenu` in `app::state`, a flag inside `AppScreen::Playing` like the inventory, so the world keeps running); opening it also calls `WorldPersistence::request_save`. The settings screen returns to `SettingsReturn`. Play on the title screen opens the world list (`ui/screens/worlds.rs`: saved worlds, then a new world form for name, seed and difficulty); both screens have Back.
-- `src/networking/`: multiplayer transports, above everything else in the dependency order. `beta/` is Beta 1.7.3's protocol (version 14): `codec.rs` is the wire format, transcribed from the reference `Packet*` classes (`read_packet` returns `Incomplete` until a whole packet has arrived; a packet that is a flat run of fields is one entry of its `client_packets!` or `server_packets!` list, and the others are written by hand below), `server.rs` is `BetaServer`, `NetLoginHandler` and `NetServerHandler` over a `WorldHost`, `tracker.rs` is `EntityTracker` and `windows.rs` is `Container`. Do not introduce protocol constraints into the core simulation: a packet becomes a `PlayerAction`, a `ChatSubmission` or a component write, and what goes back is read from the world. See "Players and multiplayer".
-- `src/util/`: small shared utilities that do not belong to a specific subsystem.
-- `data/`: the game's own tables in RON (`blocks.ron`, `items.ron`, `recipes.ron`, `furnace.ron`, `creature_models.ron`, and `sounds.ron`: each mob's idle, hurt and death sounds, volume and talk interval, read by `entity/voice.rs`), compiled in with `include_str!` and parsed once on first use, so nothing is read from disk at runtime. A malformed file panics with the position of the error, and the block and item tables also panic unless every id has a row. Files that name items use `Item::named`'s syntax: `"Name"`, `"Name:data"`, and `"block.Name"` for a block's own item where an item shares its name. Put a new per-block or per-item fact in these tables rather than in a `match` in Rust.
-- `assets/`: local Minecraft Beta reference content. It is currently checked in (the introducing commit says it will be removed before release), but it is not distributable game content; players will supply their own texture ZIP later. Do not add more Minecraft files here.
-- `resources/`: Beta's own sounds and music (the old launcher's `.minecraft/resources`), supplied locally and gitignored. Only `sound/`, `newsound/`, `music/`, `newmusic/` and `streaming/` are read; the game runs silent without the folder, and tests never need it.
-- `tests/`: all tests for this repository, including tests for individual modules and integration behavior. Do not put test modules in `src/`.
-- `examples/chunk_render.rs` (feature `render_harness`) streams and renders terrain without the menus, saves a screenshot, and diffs two of them. Use it to check a chunk shader or format change against `MC_CHUNK_QUADS=off`; `WEATHER=rain` renders under a storm.
-- In game, `EntityDiagnostics` adds mob tick, pathfinding, spawning, and posing costs to the 10 s performance log, whose slowest-frame line shows stutters the smoothed frame time hides. On macOS, Bevy compiles each new render pipeline synchronously, so the first frame that shows a new material or mesh layout can hitch.
+- `src/app/` is client assembly: screens, settings, and the world session. `src/block/`,
+  `src/item/`, `src/inventory/`, and `src/crafting/` are the game's data and containers.
+  `src/world/` is simulation, generation, lighting, and persistence. `src/physics/`, `src/entity/`,
+  and `src/player/` are bodies and the player. `src/rendering/`, `src/ui/`, and `src/audio/` are the
+  client. `src/networking/` is transports. `src/chat/` is commands and history, and it runs without
+  UI.
+- Static per-block and per-item facts go in `data/*.ron` (`blocks`, `items`, `recipes`, `furnace`,
+  `creature_models`, `sounds`), compiled in with `include_str!`. A malformed file panics with its
+  position. Item names use `Item::named`: `"Name"`, `"Name:data"`, and `"block.Name"`.
+- `assets/` is local reference content (the terrain atlas, GUI textures, the font). It is not
+  distributable, and the game must start when it is absent. Do not add more Minecraft files there.
+- `resources/` is the player's copy of Beta's sounds and music, gitignored. The game runs silent
+  without it, and tests never need it.
+- `tests/` mirrors `src/`. Helpers shared across subsystems are `pub(crate)`. Engine tests build a
+  headless `App` with `MinimalPlugins` and `AssetPlugin` (and `MeshPlugin`), not `DefaultPlugins`.
+- `settings.json`, `saves/`, and `screenshots/` are gitignored. F2 writes a screenshot.
 
-The current game has a walking, sprinting, sneaking, and jumping player with voxel collision, step height, view bobbing, and a first-person arm; full-height Beta-style generated chunks; skylight and torch block light; chunk meshes with streaming around the player; and terrain atlas rendering with climate-sampled grass and foliage colors. Block interaction raycasts into world data, breaks blocks with per-block stages and tool speed and durability, and places blocks including torches; an empty bucket picks up a water or lava source with its own liquid-stopping raycast, and a filled bucket empties it back into a non-solid cell. Items, a nine-slot hotbar, a 27-slot main inventory, a 2×2 crafting grid, a workbench session, dropped item entities, block break and hit particles, a HUD, menus, and settings are implemented. A custom save format under `saves/` persists the world, player, inventory, dropped items, and the world's `world_time`. A shared 20 Hz `WorldTick` advances while a world is being played, and Beta's block ticks run on it: flowing water and lava, falling sand and gravel, grass spread, farmland moisture and trampling, crops planted from seeds, leaf decay, cactus and sugar cane growth, mushroom spread, redstone ore glow, ice and snow melting, freezing water, and torches, ladders, and plants breaking off lost supports, plus redstone circuits, pistons, and minecarts. `src/main.rs` is the executable entry point, and `src/lib.rs` exposes modules for reuse and tests. The remaining directories describe future responsibilities; add them only as working features require them.
+# Rules
 
-# Implemented conventions
+## Blocks, items, and block ticks
 
-- Item IDs: block items reuse their Beta block ID, and standalone items start at 256. Resolve raw IDs through the item registry before use.
-- `ItemStack` is a validated, nonempty stack. Its private fields enforce registry stack limits and per-item data rules, so an empty slot is `None`, never a zero-count stack.
-- Keep Beta behavior in simulation data (block states, item data, the recipe book) and keep presentation in `src/rendering/textures/` and `src/ui/`. Do not fold rendering concerns into world or item data.
-- Persistence has two formats behind `src/world/persistence/`: the native versioned format (default) and Beta's own. Beta stores no biomes, scheduled ticks or mob timers, so the Original loader rebuilds climate from the seed and uses defaults for the rest; blocks the game does not simulate load as air, and tile entities other than chests, furnaces, dispensers, note blocks, jukeboxes, signs and spawners are dropped. Data Beta has no field for (difficulty, flying) lives in a `mc-rs.json` sidecar that Beta ignores. A new world-scoped piece of state belongs in both formats, or is documented as lost in `original.rs`. Tests never open `refs/` worlds directly (opening writes `session.lock`); they copy them first.
-- Saving never blocks a frame on a whole batch. The autosave timer (60 s) or a `request_save` (the pause menu) starts a drain; each frame `WorldPersistence::pump` snapshots at most `MAX_SNAPSHOTS_PER_FRAME` chunks under `SNAPSHOT_BUDGET` (the `PAUSED_` limits, 128 chunks and 50 ms, while the pause menu is open or the game is on a menu screen), and the JSON encoding plus the file writes run on one `IoTaskPool` task. A chunk is in at most one of `dirty`, `saving`, and `pending`. A dirty chunk that unloads waits in `pending`, where the disk copy is stale or missing, so streaming reloads it with `take_pending` and holds off loading a chunk that `is_saving`. A failed write hands its snapshots back: loaded chunks become dirty again and unloaded ones wait in `retry` for the next drain. Each drain ends with one manifest write. Exiting waits for the in-flight write and then saves what is left synchronously, so never drop a `Task` you still need (`Task::drop` cancels it).
-- Deliberate departures from Beta 1.7.3 are `GameSettings` toggles on the settings screen's Features tab, each with Beta's behavior kept behind the off position: `floating_items` (dropped items rise in water, `drops::items::item_float_motion`; on by default) `bow_charging` (the Beta 1.8 draw; off by default), `pig_steering` (a ridden pig follows its rider's look; on by default), `steady_boats` (a floating boat comes to rest instead of hunting about the waterline; on by default), and `boat_crashes` (a square hit at speed wrecks a boat, not only a glancing one; on by default). Add a new one there rather than changing Beta behavior outright.
-- Client options live in `settings.json` and are owned by `src/app/settings.rs` (the `Difficulty` type itself is `world::difficulty`, since the world records it); gameplay reads them through `GameSettings` rather than reading the file directly. Changes are written once the options have been still for `SAVE_DELAY_SECONDS`, or at exit. Loading reads field by field, so a value this build cannot decode falls back to its default without resetting the rest.
-- Textures use nearest sampling and no mipmaps. `main` sets that on `ImagePlugin`, and loaders should leave `ImageSampler::Default` so they inherit it. An image sets its own sampler only for a different address mode, such as repeating clouds. The terrain atlas also pins `lod_max_clamp` to 0 so a mip cannot blend neighboring tiles.
+- Item IDs: a block's item reuses its Beta block ID. Standalone items start at 256. Resolve a raw ID
+  through the item registry.
+- `ItemStack` is a validated, nonempty stack. An empty slot is `None`.
+- Keep Beta behavior in simulation data (block states, item data, the recipe book). Keep
+  presentation in `src/rendering/` and `src/ui/`.
+- A block ID never encodes state. Chunks store Beta's 4-bit metadata separately, and only once a
+  chunk holds a nonzero value. Writing a different block resets metadata to 0, so an oriented or
+  species block is placed with `set_block_with_metadata`. Metadata that changes how a block is drawn
+  updates `Block::appearance_metadata` and the mesher. `Block::placed` stays `None` until the block
+  has tiles and a shape. A missing tile falls back to stone.
+- Block update behavior implements `BlockBehavior` under `src/world/block_ticks/behaviors/` and is
+  registered in `behaviors::table()`. Behaviors read and write the world only through `TickWorld`,
+  and they never touch the ECS. Drops and spawns are `TickEffect`s applied after the pass.
+  Transcribe the Java, including the order of random draws and which writes notify.
+- A system that writes blocks outside the tick pass takes `world::edit::WorldEdit` and calls
+  `edit.changed` after writing through `edit.chunks`. Player interactions use `edit.push_event` and
+  `edit.notify`. Code that holds a `World` (`WorldHost`) makes those calls itself. Writes inside the
+  tick pass are relit, remeshed, and saved on their own.
+- Read `docs/BLOCK_TICKS.md` before adding one.
 
-## Players and multiplayer
+## Saving
 
-Multiplayer is being built as our own client/server with Beta-shaped messages; so far the simulation has been made ready for several players and there is no transport.
+- Persistence has two formats, native JSON (the default) and Beta's own (`original`). Beta stores no
+  biomes, scheduled ticks, or mob timers, so the original loader rebuilds climate from the seed and
+  uses defaults. Blocks the game does not simulate load as air. Tile entities other than chests,
+  furnaces, dispensers, note blocks, jukeboxes, signs, and spawners are dropped. Fields Beta has no
+  tag for (difficulty, flying) live in a `mc-rs.json` sidecar that Beta ignores. A new world-scoped
+  piece of state goes in both formats, or `original.rs` documents that it is lost.
+- Saving never blocks a frame on a whole batch. The 60 s autosave, or `request_save`, starts a
+  drain. Each frame `WorldPersistence::pump` snapshots at most `MAX_SNAPSHOTS_PER_FRAME` chunks
+  under `SNAPSHOT_BUDGET` (the `PAUSED_` limits while the pause menu is open or the game is on a
+  menu). Encoding and the file writes run on one `IoTaskPool` task. A chunk is in at most one of
+  `dirty`, `saving`, and `pending`. A dirty chunk that unloads waits in `pending`, and streaming
+  reloads it with `take_pending` and will not load a chunk that `is_saving`. A failed write hands
+  its snapshots back: loaded chunks become dirty, and unloaded ones wait in `retry`. Each drain ends
+  with one manifest write. Exit waits for the in-flight write and then saves what is left
+  synchronously. `Task::drop` cancels the task, so never drop one you still need.
+- A world's difficulty is stored on its manifest and copied into `GameSettings` while that world is
+  loaded. The player's own option waits in `ClientDifficulty`, which is what `settings.json` keeps.
+  See `docs/ARCHITECTURE.md`.
 
-- `Player` marks every player; `LocalPlayer` (which requires `Player`) marks the one this client controls and is added by `spawn_player`. Simulation iterates `With<Player>`: mob targeting and despawning, spawners and natural spawning, random ticks and lightning (the union of chunks around every player), pickups, damage, hazards, and the night skip, which waits for every player to be asleep. Input, the camera, the HUD, rendering, chat commands, session travel and the saved `player.json` record ask for `With<LocalPlayer>`. A system that pairs a `LocalPlayer` query with other mutable queries excludes them with `Without<LocalPlayer>`, not `Without<Player>`.
-- `spawn_player_body` spawns the simulated half of a player from a `StoredPlayer`; `StoredPlayer::of` reads one back from an entity. A message a player causes carries its entity (`BedUse::player`).
-- Streaming loads around `streaming::Viewers`, the chunks every player stands in, and still meshes around all of them; splitting generation from meshing belongs to the client/server split.
-- `PlayerName` names a player other than the world's own. Their records are `players/<name>.json` natively and `players/<name>.dat` in Beta's format (`WorldStorage::load_named_player`); a named Beta record has no sidecar, so game mode and flight come back as defaults.
-- A player's hands go through messages shaped like Beta's packets (`player/actions.rs`). `interact_blocks` reads the mouse, picks what the crosshair is on, times a dig the way `PlayerControllerSP` does, and writes `PlayerAction { player, action }`: `Mine` and `Break` (`Packet14BlockDig`), `Use` (`Packet15Place`), `UseEntity` (`Packet7UseEntity`), `DropItem`. `apply_player_actions` (`PlayerActionsPlugin`, in `PlayerActionSet`) applies them to the named player and needs no window, camera or input, so tests and a hosted world drive it directly. Add a new thing a click does to `apply.rs`, and to `Action` if the client has to say something new. The world answers with `WindowOpen { player, window }` (`Packet100OpenWindow`) when a container is clicked; `open_windows` shows the screen for this client's player. `ItemUse`, `BedUse` and `ChatSubmission::sender` name their player too, and a command runs for its sender.
-- Our own client will be sent raw block data only: no light and no meshes. It lights and meshes what it is sent, as streaming's mesh jobs already do. The server still needs light for its own rules (mob spawning, plant growth, random ticks), and today gets it from streaming's mesh jobs, so a hosted dimension builds meshes nobody draws; lighting without meshing is not written yet. The Beta protocol is the exception to raw blocks: the original client never relights a chunk it is sent, so `Packet51MapChunk` carries the block and sky light arrays (`persistence::beta_chunk_bytes`).
-- `BetaServer` is single-threaded over non-blocking sockets. Each `tick` reads the clients, runs `WorldHost::update` for one world tick, and queues what each client should hear: chunks that are populated and lit (nearest first, a few a tick), block changes from `WorldStreaming::take_block_updates` (several in one chunk as one `Packet52MultiBlockChange`), the slots of its windows that differ from what was last sent, health, time, the rain starting and stopping, chat from `ChatHistory::pushed`, and the entities near it. Movement is the client's, as in Beta: a position packet sets the player's `Transform`, and when the world moves a player instead the client is sent the new position and what it says is ignored until it echoes it. The hosted worlds have no `PhysicsPlugin`, so nothing integrates a remote player; they add `physics::BodyPhysicsPlugin` (`integrate_bodies` alone, for primed TNT) and `DroppedItemPlugin`, neither of which `WorldPlugin` includes.
-- What a Beta client sees of entities is `networking/beta/tracker.rs`, Beta's `EntityTracker`: each tick `survey` reads every player, mob, item, vehicle and projectile out of a dimension, and `Tracker::update` spawns, moves (relative moves, with a teleport every 400 ticks), and destroys them for each client by distance and by the chunks that client holds, at Beta's per-kind rates. Entity ids are the tracker's own and a player's stays the same across dimensions; nothing is stored on the entities. Hurt and death go out as `Packet38EntityStatus` when `hurt_time` rises or health runs out, riding as `Packet39AttachEntity`, a pickup as `Packet22Collect` when an item gains `PickupAnimation`. A new kind of entity needs a query in `survey` and a row in `tracking`.
-- A Beta client's windows are `networking/beta/windows.rs`: `Windows` holds what one client has open and what it was last sent, and `Clicking::click` is `Container.slotClick` over the window's slots gathered into one list (player inventory, chest, furnace, dispenser, cart cargo, a workbench grid that belongs to the window). A click that picks up what the client said it would is accepted with `Packet106Transaction`; any other is refused and the window resent. This is separate from the game's own inventory screen (`ui/screens/inventory/`), which is not transcribed from `slotClick`.
-- Messages a hosted world writes that a client has to hear (`WindowOpen`, `explosion::Exploded`, `LightningStrike`, `block_ticks::NotePlayed`, and `block_ticks::AuxEffect` for Beta's `playAuxSFX` sounds: behaviors emit `TickEffect::Aux`) are collected by `server.rs`'s `Outbox` in `Last` and drained each server tick. A remote player's death holds until their client sends `Packet9Respawn` (`player::ClientRespawn`), and "Leave Bed" sets `PlayerSleep::leave`.
-- Not sent to Beta clients yet: fall damage and `Packet70Bed` 0 for a missing bed. There is no PvP switch: `Packet7UseEntity` on a player becomes `Pointed::Player` and lands in `attack::strike_players`. A riding client sends its own motion where a position would be, and `server.rs` turns it back into `PlayerMovementInput` for the boat or pig to read. A wolf's taming and shake reach clients through `Living::status`. Usernames are not checked with any session server. None of the entity or window packets has been tried against the original client yet; see `docs/todo/MULTIPLAYER.md`.
-- Still single-player: what happens inside an open container (the inventory screen's clicks edit `Inventory`, chests and furnaces directly, and `InventorySession`, `ActiveWorkbench` and `WorldChunks::open_cart` are one-per-world), movement, look and the selected slot (written straight to the local player's components), the Bow Charging draw, the Features toggles and difficulty (read from `GameSettings`), chat history and command feedback (one `ChatHistory`), a tamed wolf following the nearest player, a picked-up item flying to the local player, drawing another player, and sound (one `Sounds` queue, heard from the local player's camera; a Beta client makes its own).
+## Players
 
-## World session
-
-The game starts with no world: `GamePlugin` uses `PersistencePlugin::deferred()`, which skips the startup systems that used to load one (`setup_persistence`, `setup_streaming`, `spawn_player`; they are gated by `persistence::starts_with_world`, so headless tests that do not defer still load a world at startup). `app/session.rs` owns the lifecycle through `WorldSession`:
-
-- `request_load(WorldChoice)` (world list or new world form) opens or creates the `WorldStorage`, inserts `PendingWorld`, and a chained system set installs it (`activate_pending_world`: clock, weather, difficulty, `WorldPersistence`), starts the spawn area on the compute pool (`start_spawn_area`), and stays in `Phase::Loading` with a "Loading world..." notice until `setup_streaming` picks the result up; that frame spawns the player and switches to `AppScreen::Playing`. `activate_pending_world` must run once per load: a second pass finds the storage taken and installs `WorldPersistence::disabled()`. A world loaded at startup still builds its spawn area inline.
-- `request_travel(..)` moves the player between the Overworld and the Nether without unloading the world; see "Dimensions".
-- `request_leave()` (pause menu's Quit to title) unloads in two steps. Settling: `WorldStreaming::halt` stops new generation, population and first-mesh jobs and `WorldPersistence::begin_closing` stops `WorldTick`, then the session waits for the generation and population jobs in flight, which still hand chunks back. Saving: only then does it call `request_final_save`, so nothing changes behind a chunk's last snapshot, and it waits until `WorldPersistence::is_idle` with no `has_unsaved_chunks` and no `save_error`; a drain writes each chunk once and ends even when a write failed, so a leftover is saved again (a failure every `SAVE_RETRY_SECONDS`) instead of being dropped. `WorldSession::notice` carries the saving, save-failure, or could-not-open text to the world screens. It then despawns chunk meshes, mobs, items, projectiles, falling blocks, the player and sky rig, and resets world resources. Add any new world-scoped resource or entity kind to `drive_session`'s teardown. Do not hang teardown on `OnExit(Playing)`, which also fires for the pause menu's Settings round trip.
-- `stream_chunks` and `flush_persistence` only run while `WorldStreaming`/`WorldPersistence` exist.
-- A world's difficulty is stored in `level.json` (`WorldManifest::difficulty`, `None` for older worlds) and copied into `GameSettings` when it loads. While it stands in, the player's own option waits in `ClientDifficulty`, which is what `settings.json` keeps and what teardown restores; a change on the settings screen is written back to the world's manifest with each save.
-
-## Dimensions
-
-- One save holds both dimensions and, in the game, only `ActiveDimension` is loaded (`world::host::WorldHost` runs both, each in its own world): `WorldChunks`, `LightCache`, `BlockTicks`, mobs and items all belong to it. World time, weather and difficulty are shared, as Beta shares `WorldInfo`; weather does not advance in the Nether.
-- Read the sky through `Environment` (`skylight_subtracted`, `ambient_light`, `is_raining`, `celestial_angle`) rather than `world::environment` directly. The Nether has no sky light at all: mesh jobs clear the sky channel (`Skylight::without_sky`, from `LightCache::has_sky`), `Dimension::skylight_subtracted` is 15 so column estimates come out as block light alone, and `BlockShadingSettings::ambient` raises the darkest brightness to 0.1.
-- Nether chunks are saved under `DIM-1/` in both formats (`DIM-1/regions/` native, `DIM-1/region/*.mcr` Beta). Each `WorldPersistence` owns the dimension it loads and saves (`WorldPersistence::dimension`, `load_chunk`), so two can share one `WorldStorage`; the one a world was opened with also writes the manifest and the player. `WorldStorage::load_chunk_in` and `save_chunks_in` name a dimension, and the plain `load_chunk` and `save_chunks` mean the Overworld. `StoredPlayer::dimension` (Beta's `Dimension` tag) decides where a world reopens.
-- `WorldSession::request_travel(Travel::Portal | Travel::Respawn)` changes dimension (a `Respawn` from the Overworld to a bed whose chunks are not loaded goes the same way, Overworld to Overworld): settle and final save as for a leave, a partial teardown that keeps the player, `WorldPersistence` and the sky rig, then `Phase::Arriving` while a task runs the teleporter, and finally `admit_arrival → setup_streaming → finish_arrival`. `WorldPersistence::set_dimension` is only legal once it is idle with nothing unsaved. Add any new dimension-scoped state to that partial teardown as well as the full one.
-- The player's portal state is `player::portal::PortalTravel` (Beta's `inPortal`, `timeInPortal`, `timeUntilPortal`). `physics::touch_blocks` is `onEntityCollidedWithBlock` for the player: portals charge it and soul sand slows. Mobs and items do not use portals, as in Beta 1.7.3.
-- Nether population is seeded per chunk. Beta never reseeds `hellRNG` in `populate`, so its glowstone, fire and lava falls depend on chunk load order; terrain, surface and caves match Beta exactly and are checked against the server world's `DIM-1`.
-- Not implemented: portal particles, and the stray portal Beta can leave when a player who died in the Nether is sent back through the teleporter.
+- `Player` marks every player. `LocalPlayer` marks the one this client controls. Simulation iterates
+  `With<Player>`: mob targeting and despawning, spawning, random ticks and lightning, pickups,
+  damage, hazards, and the night skip. Input, the camera, the HUD, rendering, chat commands, session
+  travel, and the saved `player.json` ask for `With<LocalPlayer>`. A system that pairs a
+  `LocalPlayer` query with other mutable queries excludes them with `Without<LocalPlayer>`, not
+  `Without<Player>`.
+- `entity::Flying` means "flying right now". `survival::apply_game_mode` keeps it, and
+  `PlayerCombat::invulnerable`, in step with `GameMode`. Damage and mob targeting read that flag,
+  not the mode.
+- A player's hands are `PlayerAction`s (`player/actions.rs`). `interact_blocks` is the client half.
+  `apply_player_actions` applies them to the named player and needs no window, camera, or input. A
+  new thing a click does is added in `apply.rs`, and to `Action` when the client has to say
+  something new. The world answers a container with `WindowOpen`. `ItemUse`, `BedUse`, and
+  `ChatSubmission::sender` name their player too.
+- A departure from Beta is a `GameSettings` toggle on the Features tab, with Beta's behavior at the
+  off position. Wire it on the settings screen. An option that changes geometry remeshes. Time of
+  day, lighting settings, and fog do not. Add a test.
+- Client options live in `settings.json` (`src/app/settings.rs`). Gameplay reads `GameSettings`, not
+  the file. Changes are written after `SAVE_DELAY_SECONDS` of stillness, or at exit. Loading reads
+  field by field, so one unknown value falls back without resetting the rest.
 
 ## World tick
 
-`WorldTick` in `src/world/tick.rs` is the only 20 Hz clock, matching Beta's `Timer`. `WorldPlugin` advances it in `First` from virtual time while `AppScreen::Playing`. The menu does not accumulate ticks, so returning to the game does not replay a catch-up burst.
+`WorldTick` (`src/world/tick.rs`) is the only 20 Hz clock. `WorldPlugin` advances it in `First`
+while `AppScreen::Playing`. Do not add another accumulator, and do not use `FixedUpdate` for
+simulation. The menu does not accumulate ticks.
 
-- 20 ticks per second. A frame's delta is clamped to 1 second, and at most 10 ticks are emitted. Whole ticks beyond that are discarded. `partial()` is the leftover fraction in `0..1`, used to interpolate renders between the last tick and the next.
-- Step simulation with `ticks_this_frame()`. Sample `just_pressed` once per frame, then run held-button work inside the tick loop. Bevy keeps `just_pressed` true for the whole frame, so reading it inside the loop would repeat a click on every catch-up tick.
-- Keep this on `WorldTick` in `First`. A `FixedUpdate` schedule would repeat `just_pressed` the same way, and pausing Bevy's fixed clock would also freeze frame-time systems.
-- `world_time` counts ticks since the world started. `DAY_LENGTH` is 24000. The sky reads it, with `partial()`, for the sun and moon. It is stored on `WorldManifest` with `#[serde(default)]`, so an older `level.json` loads at time 0, and autosave writes it back.
-- Consumers today: block breaking and the place repeat, arm swing and equip, dropped items and the hotbar pop, block particles, the water atlas, block ticks, and falling blocks. Leaf wiggle and view bob stay on frame time.
-- New tick-driven work consumes this clock, as mobs and weather do. Do not add another 20 Hz accumulator.
-- Block ticks (`src/world/block_ticks/`) consume this clock: each world tick runs pending block events, due scheduled ticks, and random ticks. Details below and in `docs/BLOCK_TICKS.md`.
+- A frame's delta is clamped to 1 second, and at most 10 ticks are emitted. `partial()` is the
+  leftover fraction in `0..1`.
+- Step simulation with `ticks_this_frame()`. Sample `just_pressed` once per frame, then run
+  held-button work inside the tick loop. `just_pressed` stays true for the whole frame, so reading
+  it inside the loop repeats the click on every catch-up tick.
+- `world_time` counts ticks since the world started. `DAY_LENGTH` is 24000. It is stored on
+  `WorldManifest`.
 
 ## Sound
 
-- A sound is asked for by Beta's `SoundPool` name (`step.stone`, `mob.zombiehurt`: the file's path under `resources/newsound` without its extension or trailing digits, dots for slashes) through `world::sound::Sounds`: `play` is `playSoundEffect` and `playSoundAtEntity` (at the feet), `play_ui` is `SoundManager.playSoundFX`, and `play_block`, `splash`, `quench` and `pop` are the formulas several callers share. Transcribe Beta's volume and pitch expression at each call.
-- Producers take `Option<ResMut<Sounds>>`, as they do `EffectParticles`; only `SoundPlugin` inserts it, so a headless world or the server asks for nothing. A block behavior calls `TickWorld::play_sound` (`TickEffect::Sound`) instead.
-- Beta draws a sound's pitch, and a mob's roll to speak, from whatever `Random` is at hand. Here those come from `Sounds::random()` (or a `Pitch` range resolved when the sound is queued), never from a mob's `rng` or `World.rand`, so a world simulates the same with and without sound and seeded tests do not move.
-- `audio::playback` does not use Bevy's spatial audio, whose falloff is inverse-square and whose pan term turns over once that is flattened. Each sound is a `Positioned` asset whose `Stereo` source mixes the file to mono and plays it at two gains from `channel_gains`: Beta's linear fade to nothing at `16 × max(volume, 1)` blocks and an equal-power pan about the camera's level right. `update_emitters` rewrites the gains each frame; pitch is the sink's speed, clamped to `0.5..=2.0` as paulscode does.
-- The settings screen's Audio tab has a volume for each `world::sound::SoundCategory` (`GameSettings::volume`), and a sound plays at `GameSettings::gain`: its category's volume under the master's. `SoundCategory::of` sorts a sound by its name (`mob.zombie*` is hostile, `step.*` a block), so a footstep and a placed block share Blocks; Beta has only Music and Sound. A new category needs a variant, a `GameSettings` field (stored flat, so each loads on its own), and a row in `of`.
-- A sound with a position carries `WorldSound` and is despawned with the world (`drive_session`'s entity list); one without (a button's click, the portal's rush) plays on. Bevy starts nothing without an output device, so `drop_unstarted` removes players that were never started.
-- `tests/audio.rs` scans `src/` for every sound name and, when `resources/` is there, checks each has a file; a misspelt name would otherwise only be a sound that never plays. Its ignored `a_click_plays_in_each_ear` plays through the real device (`cargo test -- --ignored a_click_plays_in_each_ear`).
-- A jukebox is `behaviors/jukebox.rs` with the disc it holds in `Chunk::records` (`TileEntityRecordPlayer`, saved in both formats) and metadata 1 while it holds one. `ItemRecord.onItemUse` is in `apply_player_actions`; a click or the block's removal throws the disc out (`TickEffect::EjectRecord`). Both report aux effect 1005, whose data is the disc's item id or 0 to stop, so a server's clients hear it too. `audio::records` plays it: one record at a time from `resources/streaming` (`.mus` files unscrambled as `MusInputStream` does), at half volume out to 64 blocks, ending the background music, with `NowPlaying` for the HUD's line. A disc's track is `record:` in `data/items.ron`.
-- Not done: punching a fire out (aux 1004 is played but nothing sends it), and sound for any player but this client's.
+- The simulation asks for a sound by Beta's `SoundPool` name through `world::sound::Sounds`.
+  Producers take `Option<ResMut<Sounds>>`. Only `SoundPlugin` inserts it. A block behavior calls
+  `TickWorld::play_sound` (`TickEffect::Sound`) instead.
+- Pitch, and a mob's roll to speak, come from `Sounds::random()` or a `Pitch` range resolved when
+  the sound is queued. They do not come from a mob's RNG or from `World.rand`, so a world simulates
+  the same with and without sound.
+- `audio::playback` does not use Bevy's spatial audio. Falloff is Beta's linear fade, and the pan is
+  equal-power. A new `SoundCategory` needs a variant, a `GameSettings` field stored flat, and a row
+  in `SoundCategory::of`.
+- What is not played yet is listed in `docs/todo/GENERAL.md`.
 
-## Block ticks
+## Multiplayer
 
-- Block update behavior implements `BlockBehavior` (Beta's `Block` hooks: `updateTick`, `onNeighborBlockChange`, `onBlockAdded`, `onBlockRemoval`, `onEntityWalking`, ...) in a module under `src/world/block_ticks/behaviors/` and is registered by block value in `behaviors::table()`. Behaviors read and write the world only through `TickWorld`, whose methods mirror Beta's `World` (`set_block_notify` is `setBlockWithNotify`, `schedule` is `scheduleBlockUpdate`). Transcribe the reference Java, keeping its order of random draws and notify choices.
-- Code outside the tick pass that writes `WorldChunks` (player editing, falling blocks, furnaces) must report the write so the hooks and neighbor updates still run, the chunk is relit and remeshed, and it is saved. A system does that by taking `world::edit::WorldEdit` (a `SystemParam` over `WorldChunks`, `BlockTicks`, `WorldStreaming` and `WorldPersistence`) in place of the four and calling `edit.changed(position, previous, previous_metadata)` after writing through `edit.chunks`; player interactions use `edit.push_event(BlockEvent)` and `edit.notify`. Code that holds a `World` instead (`WorldHost`) still makes the three calls itself. Writes inside the tick pass are remeshed, relit, and saved automatically.
-- Behaviors never touch the ECS. Item drops and entity spawns are queued as `TickEffect`s and applied after the pass.
-- Slabs, stairs, fences, doors, and trapdoors are drawn as boxes (`meshing::geometry::block_boxes`, `Mesher::emit_boxes`), textured by position like a Beta block with custom bounds. Their picking and collision boxes come from `Block::selection_bounds_for` and `collision_boxes_for` (stairs have two). Doors and beds are placed by their items through `player::place_door` and `player::place_bed`; a bed is drawn by `rendering/meshing/bed.rs` (`renderBlockBed`). Signs are `Block::StandingSign` and `Block::WallSign` with a `SignText` tile entity per chunk (`WorldChunks::sign_at`, saved in both formats), placed by `player::place_sign` and held up by `behaviors/attached.rs`; they are drawn as boxes (a post's board follows the nearer axis) and their text is neither drawn nor editable in the game, only written once by a Beta client (`SignText::editable`). `Block::placed` returns `None` for a block whose shape is not drawn yet (cake) or that only an item places (doors, beds, repeaters and dust through their items); give a block its tiles in `block_tile` and a shape before making it placeable, since a missing tile falls back to stone.
-- Chunks store Beta's 4-bit block metadata (`Chunk::metadata`, `WorldChunks::metadata_at`). It holds simulation state such as fluid levels, crop stages, farmland moisture, and leaf decay flags; it also holds what Beta keeps there: wood/planks/leaf/fern species (`metadata & 3`) and torch, ladder, furnace, chest, and pumpkin facing (`Block::facing`, `Block::facing_metadata`). A block id never encodes state. Writing a different block resets metadata to 0, so edits that place a oriented or species block use `set_block_with_metadata`. If metadata changes how a block is drawn, update `Block::appearance_metadata` (used by `rendering::meshing::same_appearance`) along with the mesher.
-- Ticks read light from `LightCache`, which streaming fills from each chunk's mesh job. Random ticks only reach chunks that are finished and lit.
-- Pending scheduled ticks are saved with their chunk and resume with their remaining delay. Scheduled ticks near unloaded chunks wait rather than being dropped.
-- Nether portals are block behavior too: `behaviors/portal.rs` holds `tryToCreatePortal` (called from fire's `on_added` when the fire sits on obsidian) and the frame check that removes a portal block when a neighbor changes. `TickWorld::is_hell` makes lava spread as far as water.
-- Redstone is simulated: dust, torches, repeaters, levers, buttons, plates, pistons, rails and minecarts, note blocks, dispensers, TNT, and powered doors and trapdoors (see `docs/BLOCK_TICKS.md`). Dust, repeaters, rails, levers, and pistons are drawn by `rendering/meshing/{redstone,piston}.rs`; buttons and plates are box shapes. Note blocks sound through `NotePlayed`, which `audio::world` plays. Saplings grow (`behaviors/plants.rs`, through the `TreeWorld` trait the population tree generators share), wooden doors and trapdoors open by hand, and slabs stack (`behaviors/fixtures.rs`). Fire, weather (rain, snowfall, lightning), and TNT have tick behavior. Fire's burn rates live in `block::properties::burn_rates`, shared by `behaviors/fire.rs` and the mesher: `rendering/meshing/fire.rs` is `renderBlockFire`, whose sheets depend on which neighbors can burn but not on the fire's age. Overworld water and lava springs generate and immediately flow during population.
+The dedicated server speaks Beta 1.7.3 protocol 14 and runs both dimensions on
+`world::host::WorldHost`. The game client does not. A packet becomes a `PlayerAction`, a
+`ChatSubmission`, or a component write, and what goes back is read from the world. Do not teach the
+simulation about the protocol. What clients are not told, and what is still single-player, is
+`docs/todo/MULTIPLAYER.md`. How a session travels, and how the host runs two dimensions, is
+`docs/ARCHITECTURE.md`.
 
-# Data and performance rules
+## Data and performance
 
-- Store blocks as compact values inside chunks. Do not represent every world block as a Bevy entity. Use Bevy entities for rendered chunks and for independently simulated objects such as players, mobs, and dropped items.
-- Keep the world data path clear: generation produces chunk blocks, heightmaps, and per-column biome climate; lighting derives skylight; meshing reads blocks, light, and climate to build atlas UVs and grass vertex colors; Bevy renders the resulting chunk meshes.
-- Use generated temperature and humidity to sample `grasscolor.png` for grass tops. The discrete biome name alone is not enough for this color. Keep visual coloring in textures and meshing, separate from the local C++ terrain-generation reference.
-- Player interaction should raycast into world data, modify the relevant chunk, mark affected chunks dirty, and schedule remeshing. Handle chunk boundaries when a changed block affects neighboring meshes or light.
-- `stream_chunks` puts finished jobs into the world nearest first under `APPLY_BUDGET` of main-thread time per frame while playing (always at least one; no limit while unloading or on a menu). A result that waits keeps its in-flight slot, so workers back off. The 10 s performance log's `main:` lines time the pass's unload sweep, apply, and dispatch work. The async compute threads run at lowered priority (`lower_thread_priority` in `src/main.rs`).
-- Keep generation, lighting, meshing, and streaming distinct. Run expensive independent work off the main thread where practical, then apply results to Bevy assets and entities on the appropriate thread. Prioritize nearby or visible chunks.
-- `clippy.toml` caps a function at 16 parameters. Before a signature gets there, group what travels together: a `SystemParam` for resources and queries several systems share (`WorldEdit`, `Environment`, `block_ticks::systems::Bodies`), a plain struct for values (`SlotAccess` and `SlotView` for the inventory screen's slots, `entity::projectiles::Launch`, `entity::mobs::SpawnSite`, `world::chunk::ChunkNeighbors`, `ui::icons::overlay::LabelPlacement`), a `QueryData` for components always read together (`StackLabel`). Functions transcribed from Beta keep Beta's argument lists.
-- Prefer data-oriented storage, bounded allocations, and reusable buffers in hot paths. Profile before adding complex optimizations; measure generation, meshing, and streaming changes with meaningful performance risk.
-- Keep deterministic game rules and world representation separate from client rendering where practical. Consider a separate voxel crate or workspace only when the growing codebase or server work gives a concrete reason for that split.
-- Chunks store raw block bytes (`Chunk::raw_blocks`); `Id` itself is two bytes because of its `Unknown(u8)` catch-all. Block metadata is a separate nibble array allocated only for chunks that hold a nonzero value.
-- The mesher emits `BlockVertex` quads carrying raw sky and block light samples and tints; the `BlockMaterial` uniform applies `skylight_subtracted` and smooth lighting. Time of day and lighting settings must not rebuild meshes; only geometry changes (blocks, fancy leaves) do. Keep `BlockVertex::color` in step with the shader.
-- Chunk layers are stored as one 32-byte record per quad (`rendering/meshing/quads.rs`: origin and two edges in 1/64 block, the face's 3×3 light samples, tile, affine texels, tint, flags), not as vertices. All records live in one GPU storage buffer bound on the block materials (`rendering/chunk_quads.rs`, no main-world copy), and a layer entity draws a shared proxy mesh whose vertices only name a quad and corner, with its range's start in `MeshTag`. `decode_block_quad` in `block_vertex.wesl` rebuilds the vertex. A quad that is not a parallelogram (a sloped fluid top) is two triangle records. Keep `QuadRecord::corners` in step with the shader.
-- Dropped and falling blocks, and chunk layers in an app without a renderer, still use the packed 16-byte vertex (`rendering/meshing/vertex.rs`, `decode_block_vertex`) with 16-bit indices when they fit. `BlockShading::specialize` picks the path from the mesh's attribute. `MC_CHUNK_QUADS=off` keeps chunk layers on this path for comparison.
-- Chunks render as 16×16×16 sections. Streaming keeps a light fingerprint per section, so an edit (`WorldStreaming::request_block_update`) relights the chunks its light can reach and rebuilds only sections whose blocks or light changed.
-- Avoid mutating assets every frame. Animate with Bevy's `globals.time` in shaders, pass per-entity values through `MeshTag` (see `TintedMaterial`), move entities instead of UVs, and write animated atlas tiles (water, lava, the portal, and fire's two `TextureFlamesFX` tiles) from the render world (`rendering/textures/water.rs`) rather than modifying the atlas `Image`.
-- Section layers stay on Bevy's mesh and material path on purpose: each is an entity with a (shared proxy) `Mesh3d`, a `BlockMaterial`, and an `Aabb`, so Bevy still culls instances and builds the draws. A remesh frees the layer's record range and writes a new one; nothing creates a GPU buffer except the quad buffer growing, which copies it on the GPU and rebinds the block materials. Do not add a separate draw path for chunks without measurements that justify it. wgpu's Metal backend runs a multi-draw as one draw per layer and has no `MULTI_DRAW_INDIRECT_COUNT`, so on macOS the cost that remains is the number of section layers.
-- `world::streaming::ChunkCulling` decides whether section layers carry `NoCpuCulling`. The renderer picks `Gpu` only where `MULTI_DRAW_INDIRECT_COUNT` exists; elsewhere a GPU-culled layer would still be issued as a zero-instance draw in every view and shadow cascade. `MC_CHUNK_CULLING=gpu|cpu` forces a mode. Bevy's `OcclusionCulling` was tried on the forward modes and cost more than it saved in open terrain (`docs/PERFORMANCE.md`).
-- There is no directional or point light. Bevy's PBR renderer still allocates both shadow-map arrays at the resource size, so `rendering/plugin.rs` keeps `PointLightShadowMap` and `DirectionalLightShadowMap` at 16 pixels. Every material is unlit; Bevy PBR remains for mesh batching and drawing. Light clustering and custom-material shadow/prepass participation are disabled.
-- Every camera on the window carries the same `Msaa`, from `GameSettings::msaa` (the Anti-aliasing option). `apply_graphics_pipeline` sets it on all cameras, UI and title included, because one 4x camera keeps the window-sized multisampled targets allocated. Do not set `Msaa` on a camera elsewhere. Each extra camera also costs tens of MB of per-view buffers; see the Memory section of `docs/PERFORMANCE.md` before adding one.
-
-# Working in this repo
-
-- Implement as much of the requested behavior as is practical in each task. Prefer complete, usable features over scaffolding, speculative abstractions, or APIs with no working implementation. Add a module, trait, plugin, or configuration option when it serves an actual feature or a clear near-term need.
-- Follow the existing Rust style and use Bevy APIs supported by the version in `Cargo.toml`.
-- Put all tests under the repository root's `tests/` directory. Add tests for behavior and invariants that matter, especially chunk indexing, coordinates, generation determinism, lighting, and block interaction. A standalone Bevy mesh test may use one entity for a block; that does not set the production world representation.
-- Keep changes focused and avoid filling planned modules with placeholders. Run `cargo fmt` and relevant checks or tests for code changes, and report any verification limits.
-- Preserve the user's in-progress changes. The existing source files and tests may be mid-implementation.
-- Treat `assets/` as local, reference-only Minecraft Beta content (`terrain.png`, `misc/grasscolor.png`, `misc/foliagecolor.png`, the `gui/` textures, `font/minecraft.otf`). Do not add more files from the original game, and keep the game able to start when these reference files are absent. Prefer not to touch `assets/` in commits unless the task requires it.
-- `tests/` mirrors `src/`: `tests/main.rs` declares one module per subsystem (`tests/world/block_ticks/fluids.rs` tests `src/world/block_ticks/`), and a test goes where the code it exercises lives. Helpers shared across subsystems are `pub(crate)` and reached by path (`crate::world::block_ticks::generated`, `crate::entity::mobs::summon`). Engine tests build a headless `App` with `MinimalPlugins` + `AssetPlugin` (and `MeshPlugin`), not `DefaultPlugins`, so they run without a GPU or window.
-- `settings.json`, `saves/`, and `screenshots/` are gitignored runtime output. In-game F2 writes to `screenshots/`. `resources/` is gitignored too: it is the original game's sound, not ours to distribute.
+- Store blocks as compact values in chunks. A world block is not a Bevy entity. Entities are for
+  rendered chunks and for independently simulated objects (players, mobs, dropped items).
+- Generation produces blocks, heightmaps, and per-column climate. Lighting derives light. Meshing
+  reads blocks, light, and climate. Bevy renders the meshes. Grass tops sample `grasscolor.png` with
+  temperature and humidity, not the biome name alone.
+- An edit raycasts into world data, writes the chunk, marks it dirty, and schedules a remesh,
+  including the neighboring chunks a changed block affects.
+- `stream_chunks` applies finished jobs nearest first, under `APPLY_BUDGET` of main-thread time per
+  frame while playing (always at least one; unlimited while unloading or on a menu). A result that
+  waits keeps its in-flight slot. Compute threads run at lowered priority (`lower_thread_priority`
+  in `src/main.rs`).
+- Keep generation, lighting, meshing, and streaming distinct. Do the expensive independent work off
+  the main thread, and apply it on the main thread. Prioritize nearby chunks.
+- `clippy.toml` caps a function at 16 parameters. Group what travels together: a `SystemParam` for
+  shared resources and queries, a plain struct for values, a `QueryData` for components always read
+  together. Functions transcribed from Beta keep Beta's argument lists.
+- Prefer bounded allocations and reusable buffers on hot paths. Profile before a more complicated
+  optimization. Measure generation, meshing, and streaming changes that can cost frames.
+- Do not split a voxel crate out until the server work gives a concrete reason.
+- The mesher's `BlockVertex` carries raw sky and block light. The `BlockMaterial` uniform applies
+  `skylight_subtracted` and smooth lighting. Time of day and lighting settings must not rebuild
+  meshes. Only geometry changes do (blocks, fancy leaves). Keep `BlockVertex::color` in step with
+  the shader.
+- Chunk layers are 32-byte `QuadRecord`s in one GPU storage buffer (`rendering/meshing/quads.rs`,
+  `rendering/chunk_quads.rs`). A layer draws a shared proxy mesh. Keep `QuadRecord::corners` in step
+  with `decode_block_quad`. A quad that is not a parallelogram is two triangle records. Dropped and
+  falling blocks, and a headless app, still use the packed 16-byte vertex. `MC_CHUNK_QUADS=off`
+  keeps chunk layers on that path.
+- Chunks render as 16×16×16 sections. An edit relights the chunks its light can reach and rebuilds
+  only sections whose blocks or light changed.
+- Do not mutate assets every frame. Animate with `globals.time` in shaders, pass per-entity values
+  through `MeshTag`, and write animated atlas tiles from the render world
+  (`rendering/textures/water.rs`).
+- Section layers stay on Bevy's mesh and material path: one entity per layer, with a shared proxy
+  mesh, a `BlockMaterial`, and an `Aabb`. Do not add a second chunk draw path without measurements.
+  On macOS the remaining cost is the number of section layers. `world::streaming::ChunkCulling` is
+  what decides GPU versus CPU culling. `MC_CHUNK_CULLING=gpu|cpu` forces it.
+- There is no directional or point light in the scene. `rendering/plugin.rs` keeps both shadow-map
+  resources at 16 pixels. Materials are unlit. Do not turn clustering or custom-material shadow
+  participation back on.
+- Every camera on the window carries the same `Msaa`, from `GameSettings::msaa`, set in
+  `apply_graphics_pipeline`. Do not set `Msaa` on a camera anywhere else. Do not add a camera
+  without reading the Memory section of `docs/PERFORMANCE.md`.
+- Textures use nearest sampling and no mipmaps. `main` sets that on `ImagePlugin`. Loaders leave
+  `ImageSampler::Default` unless they need a different address mode. The terrain atlas pins
+  `lod_max_clamp` to 0.
 
 ## Module boundaries
 
-- Compose plugins in `src/app/plugin.rs`. World simulation and chat backends must remain usable in a headless app without UI or render asset plugins.
-- Dependencies point one way: `block`, `item`, `crafting`, `inventory` at the bottom; then the simulation (`world`, `physics`, `entity`, `player`, the `chat` backend); then the client (`rendering`, `ui`, `app`). Simulation code does not import `rendering` or `ui`. The exceptions are deliberate and should not grow: `world::streaming` (the client integration boundary, below), `GameSettings` reads for difficulty and render distance, the `AppScreen` check behind `world::tick::playing` (use that run condition rather than testing the state again), `player`'s own first-person arm, block overlay and particle requests, and the wireframe chat command.
-- Shared world data lives in `world::chunk` and `world::biome`; generators, storage, lighting, and meshes consume it. A generator backend owns base generation and a four-chunk population pass, while streaming owns job scheduling and chunk lifecycle.
-- `world::streaming` is the client integration boundary: it coordinates reusable generation/storage with rendering jobs. Keep concrete dimension algorithms out of its scheduler.
-- See `docs/ARCHITECTURE.md` for composition and the remaining dimension-specific work.
+- Compose plugins in `src/app/plugin.rs`. World simulation and the chat backend must run in a
+  headless app with no UI and no render assets.
+- Dependencies point one way: `block`, `item`, `crafting`, `inventory`; then the simulation
+  (`world`, `physics`, `entity`, `player`, the `chat` backend); then the client (`rendering`, `ui`,
+  `audio`, `app`). Simulation code does not import `rendering` or `ui`. The exceptions are
+  deliberate and should not grow: `world::streaming` (the client boundary), `GameSettings` reads for
+  difficulty and render distance, the `AppScreen` check behind `world::tick::playing` (use that run
+  condition), the player's first-person arm, block overlay and particle requests, and the wireframe
+  chat command.
+- `world::streaming` schedules generation, storage, light, and mesh jobs. Dimension algorithms stay
+  in `world::generation`.
+- New world-scoped resources and entity kinds are added to both teardowns in `drive_session`
+  (leaving a world, and changing dimension). Do not hang teardown on `OnExit(Playing)`. That also
+  fires when the pause menu opens Settings.
+- `settings.json` is not a design document. `docs/ARCHITECTURE.md` is the composition guide.
+
+# Working in this repo
+
+- Implement the requested behavior completely enough to use. Prefer that over scaffolding or an API
+  with no caller.
+- Follow the surrounding Rust style and the Bevy version in `Cargo.toml`.
+- Keep changes focused. Preserve in-progress work. Run `cargo fmt` and the tests that cover the
+  change, and say what you did not run.
+- A standalone mesh test may use one entity for a block. That does not set the production world
+  representation.

@@ -1,3 +1,8 @@
+//! Hotbar, main storage, armor, and moving stacks between slots.
+//!
+//! [`session`] owns the open container and returns inputs and carried items
+//! when it closes. Gameplay uses that state and does not import UI widgets.
+
 mod sorting;
 mod transfer;
 

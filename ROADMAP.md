@@ -20,17 +20,9 @@ Tick a step when it lands, as the TODO files do. Each step names the Beta class 
 
 ## Phase 0: Housekeeping
 
-Documentation and tree fixes. They touch no game code, so do them first.
-
-- [ ] **AGENTS.md references.** It names `MULTIPLAYER_TODO.md`, which is now `docs/todo/MULTIPLAYER.md`, and
-      `docs/PLAN.md` and `.grok/skills/implement-feature/SKILL.md`, which do not exist. Retarget or restore each one.
-      The skill is the feature workflow AGENTS says to read before adding a graphics option.
-- [ ] **CHANGELOG `pending` lines.** Four are for committed work: three sign lines (`de86ed1`) and the shift-click
-      line (`6c8444b`). Replace each with its hash and commit time.
-- [ ] **BLOCK_TICKS "Not implemented yet".** It lists `randomDisplayTick` and redstone-ore sparkles as missing, but
-      `rendering/particles/display.rs` has both. Fluid sounds are still open there, and they belong to Phase 3.
-- [ ] **Nested reference repo.** `refs/mc_b1.7.3_release` shows as modified in the working tree. Check it before the
-      next commit.
+- [x] **Documentation.** Each doc has one job, mapped in [docs/README.md](docs/README.md). `AGENTS.md` keeps the rules.
+      Subsystem guides live in `docs/`. The dangling `docs/PLAN.md` and `.grok/skills/implement-feature/SKILL.md`
+      references are gone. The feature-toggle rule now lives in `AGENTS.md`.
 
 ## Phase 1: Finish the survival loop
 
@@ -45,8 +37,9 @@ Each step already has its data, block or item in place, and needs no audio.
       already work (`SignText`), so this is UI and mesh work.
 - [ ] **Bone meal.** `ItemDye` at damage 15 on a sapling (`growTree`, through the `TreeWorld` trait the tree generators
       share), on a crop (`fertilize`), and on grass (the 128-try spread of tall grass and flowers).
-- [ ] **Jukebox storage.** Right-click inserts a disc and right-click again ejects it. Breaking the block drops the
-      disc. The state is a `TileEntityRecordPlayer` holding `Record`, saved in both formats. Playback comes in Phase 3.
+- [x] **Jukebox storage.** Right-click inserts a disc and right-click again ejects it. Breaking the block drops the
+      disc. The state is a `TileEntityRecordPlayer` holding `Record`, saved in both formats. Playback is
+      `audio::records`.
 - [ ] **Projectiles in saves.** Save arrows (with their `player` flag), snowballs, eggs and bobbers in both formats, so
       a stuck arrow a player could pick up survives a reload.
 - [ ] **Painting entity.** `EntityPainting` and `EnumArt`: place on a wall that fits the art, drop the item when it
@@ -58,8 +51,9 @@ Each step already has its data, block or item in place, and needs no audio.
 
 ## Phase 2: Resource packs
 
-Paintings, sounds and textures all come from the player's own resources. `assets/` is reference-only and goes away
-before release (AGENTS). Build one loader before the audio, so both use it.
+Paintings and textures still come from `assets/`, which is reference-only and goes away before release (AGENTS).
+Sounds already play from the player's `resources/` folder. One loader should replace both, so textures and sounds
+are read the same way.
 
 - [ ] **Pack loader.** Read a Beta-layout pack from a ZIP or a folder: `terrain.png`, `misc/`, `gui/`, `font/`, `art/`,
       `sound/` and `music/`. The game must still start with no pack, as it does now.
@@ -70,24 +64,24 @@ before release (AGENTS). Build one loader before the audio, so both use it.
 
 ## Phase 3: Audio
 
-The largest missing system, and several items above need it. Audio is presentation: the simulation writes a sound
-message, and `src/audio/` plays it, so a headless server needs no audio plugin. The message type must sit where the
-simulation can import it, because simulation does not import `audio` (AGENTS' dependency rule).
+The sound path is in place. The simulation asks for a sound by name through `world::sound::Sounds`, and `src/audio/`
+plays it, so a headless server needs no audio plugin. What Beta plays for something the game already simulates is
+played, apart from the leftovers in [docs/todo/GENERAL.md](docs/todo/GENERAL.md) (punching a fire out, and sound for
+any player but this client's). Files are read from the player's `resources/` folder. A pack loader is Phase 2.
 
-- [ ] **Foundation.** Add Bevy's audio feature and an Ogg decoder to `Cargo.toml`, since AGENTS adds a feature only when
-      a system needs it. Add the sound message, the `src/audio/` plugin, and volume from `GameSettings`. With no sounds
-      in the pack the game plays silence and still runs.
-- [ ] **Volume options.** Sound and Music sliders on the options screen (`GuiOptions`).
-- [ ] **Block sounds.** Step, dig, place and break sounds from each block's `StepSound`. Steps play from
-      `onEntityWalking`.
-- [ ] **Mob, explosion and fire sounds.** Living and hurt sounds per mob, the player's hurt and death sounds, the bow's
-      shot, `random.fuse` for primed TNT, explosions, and `fire.ignite`.
-- [ ] **Ambient and weather.** Cave ambience (`updateBlocksAndPlayCaveSounds`), rain and thunder, fluid flow, and portal
-      sounds.
-- [ ] **Music.** Background music on the title screen and in game, from the pack's `music/`.
-- [ ] **Note blocks and jukebox.** Note pitch from the stored state (`behaviors/note.rs`), and the disc in a jukebox
-      plays (Phase 1 stores it).
-- [ ] **Vehicle sounds.** Cart, boat and pig sounds. Phase 4's riding work does not cover them.
+- [x] **Foundation.** Bevy's audio feature, an Ogg decoder, `Sounds`, and `src/audio/`. With no `resources/` folder the
+      game plays silence and still runs.
+- [x] **Volume options.** A master and a per-category volume on the Audio tab (`SoundCategory`). Beta had Sound and
+      Music only.
+- [x] **Block sounds.** Step, dig, place and break sounds from each block's `StepSound`.
+- [x] **Mob, explosion and fire sounds.** Living, hurt and death sounds per mob, the player's hurt and death sounds,
+      the bow's shot, `random.fuse` for primed TNT, explosions, and fire.
+- [x] **Ambient and weather.** Cave ambience, rain and thunder, fluid flow, and portal sounds.
+- [x] **Music.** Background music on the title screen and in game, from `resources/music/` and `newmusic/`.
+- [x] **Note blocks and jukebox.** Note pitch from the stored state (`behaviors/note.rs`), and the disc in a jukebox
+      (`audio::records`).
+- [x] **Vehicle sounds.** A pig's voice is in `data/sounds.ron`. Beta 1.7.3's `EntityMinecart` and `EntityBoat` never
+      call `playSound`. The boat's fast splash is the particle in Phase 4.
 
 ## Phase 4: Riding, vehicles and portals
 
@@ -101,7 +95,7 @@ Beta's classes for these are already transcribed, so this phase finishes them.
       (`EntityPlayerSP.onLivingUpdate`). The work is in `player/portal.rs` and `entity/mount.rs`.
 - [ ] **Rider yaw drift.** `Entity.updateRidden` for carts, boats and pigs.
 - [ ] **Stray Nether portal.** The portal Beta can leave when a player who died in the Nether is sent back through the
-      teleporter (AGENTS' Dimensions section).
+      teleporter (`world::portal`).
 - [ ] **Rider pose.** The lying and sitting third-person pose. It needs the third-person camera from Phase 7.
 
 ## Phase 5: Mobs and combat
@@ -169,7 +163,8 @@ Checked against the reference classes. These are later features and stay out of 
 ## Open questions
 
 1. **Resource pack format.** Read ZIPs first (which needs a crate) or folders first? This decides the Phase 2 dependency.
-2. **Art and sounds before a pack exists.** Draw placeholder paintings, or hold the painting entity until Phase 2?
+2. **Paintings before a pack exists.** Draw placeholder paintings, or hold the painting entity until Phase 2? Sounds
+   already play from the player's `resources/` folder.
 3. **Multiplayer pace.** Keep it running alongside Phases 1 to 7, or pause it until the singleplayer phases land? AGENTS
    puts Beta-world compatibility last, but the server is already built.
 4. **Death screen score.** Build the score counter with the death screen in Phase 1, or leave the score line out until
@@ -178,6 +173,6 @@ Checked against the reference classes. These are later features and stay out of 
 ## Checks at phase ends
 
 - `cargo test`, plus a `cargo run` pass over the phase's CHANGELOG items.
-- After Phase 3 (audio) and Phase 5 (mobs), measure with `EntityDiagnostics` in `cargo run --release`, as AGENTS asks
-  for performance-sensitive work.
+- After a change to audio or to mobs (Phase 5), measure with `EntityDiagnostics` in `cargo run --release`, as AGENTS
+  asks for performance-sensitive work.
 - Before Phase 9, re-audit [docs/todo/GENERAL.md](docs/todo/GENERAL.md) the same way it was done here.

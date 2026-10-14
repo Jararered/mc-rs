@@ -1,4 +1,9 @@
-# Idle performance checks
+# Performance
+
+The rules these measurements led to are in [AGENTS.md](../AGENTS.md), under
+"Data and performance".
+
+## Idle checks
 
 `Max FPS` in Settings defaults to 60. It cycles through 90, 120, 144, 240,
 VSync (no additional application cap), 30, and back to 60. Existing settings
@@ -32,7 +37,7 @@ counters, settled streaming and its wakeups, cloud material updates, camera
 projection changes, and pacing settings. They verify avoided work and gameplay
 behavior; they do not establish a measured power or GPU bandwidth reduction.
 
-# Render-side numbers
+## Render-side numbers
 
 Chunk section layers are quad records in one storage buffer
 (`rendering/chunk_quads.rs`). The report's `mesh memory` line is the bytes
@@ -75,7 +80,7 @@ old lighting, one open-terrain view with 5,864 section layers:
 - Bevy's `RenderDiagnosticsPlugin` pass timings read about 0.02 ms per pass
   here and did not reflect draw cost, so they are not in the report.
 
-# Memory
+## Memory
 
 The report's `process memory` line is resident memory from Bevy's
 `SystemInformationDiagnosticsPlugin`. On macOS that leaves out most GPU
@@ -148,7 +153,7 @@ A release build of the last two rows measured 586 MB with 4x MSAA (GPU 354
 MB) and 527 MB without (GPU 316 MB), so the dev profile is not what makes
 the footprint large, and the MSAA saving was smaller there, about 40 MB.
 
-## Permanent Beta lighting cleanup
+### Permanent Beta lighting cleanup
 
 Paired dev-profile runs on Metal at 960x540, MSAA off, seed 0, smooth lighting
 on, leaf wiggle off, measured after settling with `footprint`. Both builds used
@@ -178,7 +183,7 @@ multiply blending without shader or render validation errors. The normal
 application also started without rendering errors; this did not include a
 full interactive gameplay session.
 
-# Build times
+## Build times
 
 Measured on an Apple M5 Pro (18 cores) with dependencies already built,
 October 2026.

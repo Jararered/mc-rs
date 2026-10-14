@@ -1,3 +1,11 @@
+//! Players.
+//!
+//! [`Player`] is any player in the world. [`LocalPlayer`] is the one this
+//! client controls. Movement, the camera, mining, and survival live here.
+//! What a player asks of the world is a [`PlayerAction`](actions::PlayerAction),
+//! applied to the named player, so a hosted world drives the same code
+//! without a window.
+
 use bevy::prelude::*;
 
 use crate::app::settings::GameSettings;

@@ -1,3 +1,10 @@
+//! Sunlight and block light stored for simulation and for meshes.
+//!
+//! This is data, not a renderer. The time of day dims sunlight in the block
+//! shader, so an edit that only changes the time does not rewrite the light
+//! stored here. Block ticks and mesh jobs read [`Skylight`] through
+//! `LightCache`, which streaming fills from each chunk's mesh job.
+
 use std::collections::VecDeque;
 use std::hash::Hasher;
 use std::sync::Arc;

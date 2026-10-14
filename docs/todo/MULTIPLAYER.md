@@ -1,8 +1,9 @@
 # Multiplayer TODO
 
-What is left before multiplayer is finished, and what is already in place. The design and the rules for
-working on it are in `AGENTS.md` under "Players and multiplayer"; this file is only the list. Tick an item
-when it lands and add what you find missing.
+What is left before multiplayer is finished, and what is already in place. The rules for working on it are in
+[AGENTS.md](../../AGENTS.md). How the server runs both dimensions, and how the game's own session travels, is in
+[ARCHITECTURE.md](../ARCHITECTURE.md). This file is only the list. Tick an item when it lands and add what you find
+missing.
 
 ## Done
 
@@ -43,13 +44,14 @@ when it lands and add what you find missing.
       chests, furnaces, workbenches, dispensers
 - [ ] Signs (`Packet130UpdateSign`), note blocks (`Packet54`), doors and sounds (`Packet61DoorChange`)
 - [ ] Weather (`Packet71Weather`, `Packet70Bed`), sleeping (`Packet17Sleep`), explosions (`Packet60Explosion`)
-- [ ] Many block changes in one chunk as `Packet52MultiBlockChange`
+- [x] Many block changes in one chunk as `Packet52MultiBlockChange`
 - [ ] Respawn after death: check the flow against the real client
 - [ ] `Packet70Bed` 0 when a respawning player's bed is gone (they get the chat line only)
 - [ ] Sign text in the game's own client: nothing draws it, and there is no screen to write it. A Beta client
       writes a new sign once and every client reads it.
 - [ ] A PvP switch (`server.properties`' `pvp`): one player can always hit another
-- [ ] `Packet61DoorChange` for a jukebox, which is not a block the game simulates
+- [x] A jukebox disc starting and stopping (`Packet61DoorChange`, aux effect 1005), forwarded with the other
+      aux effects
 
 ## Beta server: trust and robustness
 

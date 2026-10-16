@@ -110,10 +110,10 @@ impl Body<'_> {
     /// `findPlayerToAttack`.
     pub(super) fn find_player_to_attack(&self, world: &Surroundings) -> Option<Entity> {
         let player = self.closest_prey(world)?;
-        let within = |range: f32| player.eye.distance_squared(self.feet) < range * range;
+        let within = |range: f32| player.pos.distance_squared(self.feet) < range * range;
         let found = match self.mob.kind {
             // `EntityMob`: the nearest player within 16 it can see.
-            MobType::Zombie | MobType::Skeleton | MobType::Creeper => {
+            MobType::Zombie | MobType::Skeleton | MobType::Creeper | MobType::Giant => {
                 within(16.0) && self.can_see(world, &player)
             }
             MobType::PigZombie => self.mob.angry && within(16.0) && self.can_see(world, &player),
@@ -137,6 +137,7 @@ impl Body<'_> {
     ) {
         match self.mob.kind {
             MobType::Zombie | MobType::PigZombie => self.melee(world, player, distance, 5, fx),
+            MobType::Giant => self.melee(world, player, distance, 50, fx),
             MobType::Spider => {
                 if self.brightness(world) > 0.5 && self.mob.rng.next_int(100) == 0 {
                     self.living.chasing = false;
@@ -180,6 +181,7 @@ impl Body<'_> {
                 amount: strength,
                 from: Some(self.feet),
                 source: Source::Monster,
+                attacker: Some(self.attacker()),
             };
             self.strike(world, player.entity, hit, fx);
         }
@@ -191,8 +193,8 @@ impl Body<'_> {
         if distance >= 10.0 {
             return;
         }
-        let dx = player.eye.x - self.feet.x;
-        let dz = player.eye.z - self.feet.z;
+        let dx = player.pos.x - self.feet.x;
+        let dz = player.pos.z - self.feet.z;
         if self.living.attack_time == 0 {
             // `new EntityArrow(world, this)` starts at the eyes, nudged
             // sideways, and the skeleton then raises it a further block.
@@ -202,7 +204,7 @@ impl Body<'_> {
                 self.feet.y + self.eye_height() - 0.1 + 1.0,
                 self.feet.z - sin * 0.16,
             );
-            let dy = player.eye.y + super::PLAYER_EYE_HEIGHT - 0.2 - start.y;
+            let dy = player.eye().y - 0.2 - start.y;
             let lift = (dx * dx + dz * dz).sqrt() * 0.2;
             if let Some(sounds) = fx.sounds.as_deref_mut() {
                 let pitch = 1.0 / (sounds.random().next_float() * 0.4 + 0.8);
@@ -219,6 +221,7 @@ impl Body<'_> {
                         entity: self.entity,
                         position: self.feet,
                         source: Source::Monster,
+                        kind: Some(self.mob.kind),
                     }),
                 },
                 &mut self.mob.rng,
@@ -271,7 +274,7 @@ impl Body<'_> {
         self.despawn(world);
         let near = self
             .closest_prey(world)
-            .filter(|player| player.eye.distance_squared(self.feet) < 256.0);
+            .filter(|player| player.pos.distance_squared(self.feet) < 256.0);
         if let Some(player) = near {
             self.face_player(player, 10.0, 20.0);
         }
@@ -325,7 +328,7 @@ impl Body<'_> {
         for player in world.players {
             if !player.alive
                 || !grow(player.aabb(), Vec3::new(1.0, 0.0, 1.0)).intersects(self.aabb())
-                || player.eye.distance(self.feet) >= 0.6 * f32::from(size)
+                || player.pos.distance(self.feet) >= 0.6 * f32::from(size)
                 || !self.can_see(world, player)
             {
                 continue;
@@ -334,6 +337,7 @@ impl Body<'_> {
                 amount: i16::from(size),
                 from: Some(self.feet),
                 source: Source::Creature,
+                attacker: Some(self.attacker()),
             };
             if self.strike(world, player.entity, hit, fx)
                 && let Some(sounds) = fx.sounds.as_deref_mut()
@@ -390,20 +394,20 @@ impl Body<'_> {
         };
         if refresh {
             hover.targeting =
-                player.is_some_and(|player| player.eye.distance_squared(self.feet) < 100.0 * 100.0);
+                player.is_some_and(|player| player.pos.distance_squared(self.feet) < 100.0 * 100.0);
             if hover.targeting {
                 hover.aggro_cooldown = 20;
             }
         }
         match player {
             Some(player)
-                if hover.targeting && player.eye.distance_squared(self.feet) < 64.0 * 64.0 =>
+                if hover.targeting && player.pos.distance_squared(self.feet) < 64.0 * 64.0 =>
             {
                 let half = self.size.height / 2.0;
                 let aim = Vec3::new(
-                    player.eye.x - self.feet.x,
+                    player.pos.x - self.feet.x,
                     player.feet.y + 0.9 - (self.feet.y + half),
-                    player.eye.z - self.feet.z,
+                    player.pos.z - self.feet.z,
                 );
                 self.living.yaw = -aim.x.atan2(aim.z).to_degrees();
                 self.living.body_yaw = self.living.yaw;

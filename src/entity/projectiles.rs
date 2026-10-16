@@ -18,6 +18,8 @@ use crate::block::blocks::Block;
 use crate::entity::EntitySize;
 use crate::entity::PreviousTick;
 use crate::entity::Velocity;
+use crate::entity::combat::Assailant;
+use crate::entity::combat::Attacker;
 use crate::entity::combat::Hit;
 use crate::entity::combat::PlayerCombat;
 use crate::entity::combat::Source;
@@ -27,8 +29,12 @@ use crate::entity::combat::hurt_creature;
 use crate::entity::combat::hurt_player;
 use crate::entity::creature::Living;
 use crate::entity::creature::PLAYER_EYE_HEIGHT;
+use crate::entity::creature::wolves::StruckMobs;
+use crate::entity::creature::wolves::after_projectile_hit;
+use crate::entity::creature::wolves::alert_from_projectile;
+use crate::entity::creature::wolves::alerted_by;
 use crate::entity::explosion::Explosion;
-use crate::entity::mobs::Mob;
+use crate::entity::mobs::MobType;
 use crate::inventory::Hotbar;
 use crate::inventory::Inventory;
 use crate::item::Item;
@@ -90,6 +96,8 @@ pub struct Shooter {
     pub position: Vec3,
     /// What kind of attacker it is: a skeleton is [`Source::Monster`].
     pub source: Source,
+    /// The creature kind that shot, or `None` for a player.
+    pub kind: Option<MobType>,
 }
 
 impl Shooter {
@@ -98,6 +106,15 @@ impl Shooter {
             entity,
             position,
             source: Source::Player,
+            kind: None,
+        }
+    }
+
+    /// The shooter as an attacker in its own right.
+    pub fn assailant(self) -> Assailant {
+        match self.kind {
+            Some(kind) => Assailant::Creature(self.entity, kind),
+            None => Assailant::Player(self.entity),
         }
     }
 }
@@ -430,17 +447,7 @@ pub(crate) fn tick_projectiles(
         (Entity, &mut Fireball, &mut Transform, &mut PreviousTick),
         (Without<Arrow>, Without<Living>, Without<Player>),
     >,
-    mut mobs: Query<
-        (
-            Entity,
-            &mut Mob,
-            &mut Living,
-            &mut Velocity,
-            &Transform,
-            &EntitySize,
-        ),
-        Without<Player>,
-    >,
+    mut mobs: StruckMobs,
     mut players: Query<
         (
             Entity,
@@ -560,27 +567,46 @@ pub(crate) fn tick_projectiles(
                 source: arrow
                     .shooter
                     .map_or(Source::Environment, |shooter| shooter.source),
+                attacker: Some(Attacker::Arrow {
+                    shooter: arrow.shooter.map(Shooter::assailant),
+                }),
             };
             if let Some(struck) = struck {
                 let landed = match struck {
-                    Struck::Player(target) => players
-                        .iter_mut()
-                        .find(|(entity, _)| *entity == target)
-                        .and_then(|(_, parts)| victim_of(parts, &mut spare_armor))
-                        .is_some_and(|mut victim| {
-                            hurt_player(&mut victim, hit, difficulty, &mut loot)
-                        }),
-                    Struck::Mob(target) => mobs.get_mut(target).is_ok_and(
-                        |(_, mut mob, mut living, mut velocity, transform, _)| {
-                            let feet = transform.translation;
-                            let wound =
-                                hurt_creature(&mut mob, &mut living, &mut velocity, feet, hit);
-                            if wound.died {
-                                drop_loot(&mut commands, &mut loot, &mut mob, feet);
-                            }
-                            wound.landed
-                        },
-                    ),
+                    Struck::Player(target) => {
+                        let mut alert = None;
+                        let landed = players
+                            .iter_mut()
+                            .find(|(entity, _)| *entity == target)
+                            .and_then(|(_, parts)| victim_of(parts, &mut spare_armor))
+                            .is_some_and(|mut victim| {
+                                if victim.health.current > 0 && !victim.combat.invulnerable {
+                                    alert = alerted_by(&hit, difficulty).map(|by| (victim.eye, by));
+                                }
+                                hurt_player(&mut victim, hit, difficulty, &mut loot)
+                            });
+                        if let Some((owner, attacker)) = alert {
+                            alert_from_projectile(&mut mobs, owner, Some(attacker));
+                        }
+                        landed
+                    }
+                    Struck::Mob(target) => {
+                        let wound = mobs.get_mut(target).ok().map(
+                            |(_, mut mob, mut living, mut velocity, transform, _)| {
+                                let feet = transform.translation;
+                                let wound =
+                                    hurt_creature(&mut mob, &mut living, &mut velocity, feet, hit);
+                                if wound.died {
+                                    drop_loot(&mut commands, &mut loot, &mut mob, feet);
+                                }
+                                (feet, wound)
+                            },
+                        );
+                        if let Some((feet, wound)) = wound {
+                            after_projectile_hit(&mut mobs, feet, wound.rally);
+                        }
+                        wound.is_some_and(|(_, wound)| wound.landed)
+                    }
                 };
                 if landed {
                     thud(sounds.as_deref_mut(), position);
@@ -662,6 +688,10 @@ pub(crate) fn tick_projectiles(
                         .owner
                         .and_then(|owner| mobs.get(owner).ok())
                         .map(|(.., transform, _)| transform.translation);
+                    let attacker = fireball
+                        .owner
+                        .filter(|owner| mobs.contains(*owner))
+                        .map(|owner| Attacker::creature(owner, MobType::Ghast));
                     if let Ok((_, mut mob, mut living, mut velocity, transform, _)) =
                         mobs.get_mut(target)
                     {
@@ -670,6 +700,7 @@ pub(crate) fn tick_projectiles(
                             amount: 0,
                             from,
                             source: Source::Creature,
+                            attacker,
                         };
                         hurt_creature(&mut mob, &mut living, &mut velocity, feet, hit);
                     }

@@ -2,15 +2,20 @@
 //! `EntityPlayer.sleepInBedAt` and `wakeUpPlayer`, the night skip in
 //! `World.tick`, and the bed spawn point `Minecraft.respawn` returns to.
 //!
-//! Not copied: `SpawnerAnimals.performSleepSpawning` (the monster that wakes
-//! a sleeper), the lying third-person pose, and the bed-relative turn of the
+//! When everyone is fully asleep, `SpawnerAnimals.performSleepSpawning` may
+//! send a monster to the bedside instead, which wakes its sleeper and keeps
+//! the night from passing.
+//!
+//! Not copied: the lying third-person pose, and the bed-relative turn of the
 //! camera; the player keeps looking where they looked.
 
+use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 
 use super::Player;
 use super::PlayerHealth;
 use super::PlayerInterpolation;
+use crate::app::settings::GameSettings;
 use crate::app::state::AppScreen;
 use crate::block::bed;
 use crate::block::blocks::Block;
@@ -19,14 +24,26 @@ use crate::entity::EntitySize;
 use crate::entity::Velocity;
 use crate::entity::combat::Source;
 use crate::entity::explosion::Explosion;
+use crate::entity::mobs;
+use crate::entity::mobs::Mob;
+use crate::entity::mobs::MobRandom;
+use crate::entity::mobs::Sleeper;
+use crate::entity::mobs::SpawnSite;
+use crate::entity::mobs::sleep_spawning;
+use crate::entity::pathfinding::Pathfinder;
+use crate::entity::voice::voice;
 use crate::physics::PhysicsSet;
 use crate::world::block_ticks::BlockTicks;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
+use crate::world::difficulty::Difficulty;
 use crate::world::dimension::ActiveDimension;
 use crate::world::dimension::Dimension;
 use crate::world::edit::WorldEdit;
+use crate::world::lighting::LightCache;
 use crate::world::persistence::WorldPersistence;
+use crate::world::sound::Pitch;
+use crate::world::sound::Sounds;
 use crate::world::tick::DAY_LENGTH;
 use crate::world::tick::WorldTick;
 use crate::world::weather::WorldWeather;
@@ -276,6 +293,97 @@ fn set_occupied(
     }
 }
 
+/// What `performSleepSpawning` needs beyond the night skip's own resources.
+#[derive(SystemParam)]
+struct SleepSpawner<'w, 's> {
+    commands: Commands<'w, 's>,
+    light: Option<Res<'w, LightCache>>,
+    random: Option<ResMut<'w, MobRandom>>,
+    settings: Option<Res<'w, GameSettings>>,
+    sounds: Option<ResMut<'w, Sounds>>,
+    pathfinder: Local<'s, Pathfinder>,
+}
+
+impl SleepSpawner<'_, '_> {
+    /// `World.tick`'s `performSleepSpawning` call, made while monsters may
+    /// spawn. Each monster it places is woken up to (`wakeUpPlayer(true,
+    /// false, false)`) and speaks. Returns whether any came.
+    fn wake_sleepers(
+        &mut self,
+        tick: &WorldTick,
+        weather: Option<&WorldWeather>,
+        chunks: &mut WorldChunks,
+        mut persistence: Option<&mut WorldPersistence>,
+        player: &mut Query<
+            (
+                &mut Transform,
+                &mut PlayerSleep,
+                &PlayerHealth,
+                &mut PlayerInterpolation,
+            ),
+            With<Player>,
+        >,
+    ) -> bool {
+        let difficulty = self
+            .settings
+            .as_ref()
+            .map_or(Difficulty::Normal, |settings| settings.difficulty);
+        let (Some(light), Some(random)) = (self.light.as_deref(), self.random.as_deref_mut())
+        else {
+            return false;
+        };
+        if difficulty == Difficulty::Peaceful {
+            return false;
+        }
+        // Which player, in query order, each sleeper is.
+        let mut entities = Vec::new();
+        let mut sleepers = Vec::new();
+        for (index, (transform, sleep, ..)) in player.iter().enumerate() {
+            if let Some(bed) = sleep.bed {
+                entities.push(index);
+                sleepers.push(Sleeper {
+                    pos: transform.translation,
+                    bed,
+                });
+            }
+        }
+        let site = SpawnSite {
+            chunks,
+            light,
+            tick: tick.world_time(),
+            weather,
+            seed: persistence
+                .as_ref()
+                .map_or(0, |persistence| persistence.seed()),
+        };
+        let spawns = sleep_spawning(site, &sleepers, &mut self.pathfinder, &mut random.0);
+        for spawn in &spawns {
+            let mob = Mob::new(spawn.kind, random.0.next_long() as u64);
+            mobs::spawn(&mut self.commands, mob, spawn.feet);
+            if let Some(name) = voice(spawn.kind).living
+                && let Some(sounds) = self.sounds.as_deref_mut()
+            {
+                sounds.play(name, spawn.feet, voice(spawn.kind).volume, Pitch::VOICE);
+            }
+            if let Some((mut transform, mut sleep, _, mut interpolation)) =
+                player.iter_mut().nth(entities[spawn.sleeper])
+            {
+                wake(
+                    &mut sleep,
+                    &mut transform,
+                    &mut interpolation,
+                    chunks,
+                    persistence.as_deref_mut(),
+                    None,
+                    true,
+                    false,
+                );
+            }
+        }
+        !spawns.is_empty()
+    }
+}
+
 /// `EntityPlayer.wakeUpPlayer(reset, _, set_spawn)`.
 fn wake(
     sleep: &mut PlayerSleep,
@@ -326,6 +434,7 @@ fn tick_sleep(
         ),
         With<Player>,
     >,
+    mut spawner: SleepSpawner,
 ) {
     let ticks = tick.ticks_this_frame();
     if ticks == 0
@@ -342,6 +451,13 @@ fn tick_sleep(
         if player
             .iter()
             .all(|(_, sleep, ..)| sleep.sleeping && sleep.timer >= FULLY_ASLEEP_TICKS)
+            && !spawner.wake_sleepers(
+                &tick,
+                weather.as_deref(),
+                &mut chunks,
+                persistence.as_deref_mut(),
+                &mut player,
+            )
         {
             let previous = tick.world_time();
             let morning = previous + DAY_LENGTH;

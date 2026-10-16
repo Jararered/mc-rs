@@ -101,13 +101,13 @@ Beta's classes for these are already transcribed, so this phase finishes them.
 
 ## Phase 5: Mobs and combat
 
-- [ ] **Cactus contact for mobs.** Mobs take cactus damage through the same contact check the player and dropped items
+- [x] **Cactus contact for mobs.** Mobs take cactus damage through the same contact check the player and dropped items
       use (`touches_cactus`), in `entity/combat.rs`.
-- [ ] **Mob targets beyond the player.** `Living::target` holds only players today. Let a mob hit by another mob turn on
+- [x] **Mob targets beyond the player.** `Living::target` holds only players today. Let a mob hit by another mob turn on
       its attacker (`EntityLiving`), and let wolves hunt sheep. This also covers the angered-mob item in
       MULTIPLAYER.md.
-- [ ] **`performSleepSpawning`.** A monster wakes a sleeping player, as in Beta.
-- [ ] **Giant zombie.** `EntityGiantZombie`, with its scaled model and stats. It is reachable only through a spawner or a
+- [x] **`performSleepSpawning`.** A monster wakes a sleeping player, as in Beta.
+- [x] **Giant zombie.** `EntityGiantZombie`, with its scaled model and stats. It is reachable only through a spawner or a
       spawn command, as in Beta, so it comes last.
 
 ## Phase 6: Statistics, achievements and maps

@@ -16,10 +16,13 @@ use crate::entity::CollisionState;
 use crate::entity::EntitySize;
 use crate::entity::PreviousTick;
 use crate::entity::Velocity;
+use crate::entity::combat::Attacker;
 use crate::entity::combat::Hit;
 use crate::entity::combat::Source;
 use crate::entity::combat::hurt_creature;
 use crate::entity::creature::Living;
+use crate::entity::creature::wolves::StruckMobs;
+use crate::entity::creature::wolves::after_projectile_hit;
 use crate::entity::drops::items::spawn_flung_item;
 use crate::entity::mobs::Mob;
 use crate::entity::projectiles::Projectile;
@@ -237,17 +240,7 @@ pub(crate) fn tick_bobbers(
         (Entity, &mut Bobber, &mut Transform, &mut PreviousTick),
         (Without<Living>, Without<Player>),
     >,
-    mut mobs: Query<
-        (
-            Entity,
-            &mut Mob,
-            &mut Living,
-            &mut Velocity,
-            &Transform,
-            &EntitySize,
-        ),
-        Without<Player>,
-    >,
+    mut mobs: StruckMobs,
     (mut particles, mut sounds): (Option<ResMut<EffectParticles>>, Option<ResMut<Sounds>>),
 ) {
     let ticks = tick.ticks_this_frame();
@@ -319,11 +312,14 @@ pub(crate) fn tick_bobbers(
                             amount: 0,
                             from: angler.map(|(at, ..)| at.translation),
                             source: Source::Player,
+                            attacker: Some(Attacker::player(bobber.angler)),
                         };
                         let feet = at.translation;
-                        if hurt_creature(&mut mob, &mut living, &mut velocity, feet, hit).landed {
+                        let wound = hurt_creature(&mut mob, &mut living, &mut velocity, feet, hit);
+                        if wound.landed {
                             bobber.hooked = Some(target);
                         }
+                        after_projectile_hit(&mut mobs, feet, wound.rally);
                     }
                 } else if block_hit {
                     bobber.in_ground = true;

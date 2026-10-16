@@ -11,12 +11,15 @@ use bevy::prelude::*;
 
 use crate::entity::EntitySize;
 use crate::entity::Velocity;
+use crate::entity::combat::Assailant;
+use crate::entity::combat::Attacker;
 use crate::entity::combat::Hit;
 use crate::entity::combat::Source;
 use crate::entity::combat::bordered;
 use crate::entity::combat::drop_loot;
 use crate::entity::combat::hurt_creature;
 use crate::entity::creature::Living;
+use crate::entity::creature::wolves;
 use crate::entity::drops::items::spawn_block_drop;
 use crate::entity::mobs::Mob;
 use crate::entity::mobs::MobType;
@@ -30,7 +33,6 @@ use crate::item::Item;
 use crate::item::ItemStack;
 use crate::item::tools::damage_vs_entity;
 use crate::item::tools::hit_durability;
-use crate::physics::Aabb;
 use crate::random::ItemRng;
 use crate::rendering::particles::effects::EffectParticles;
 
@@ -56,10 +58,12 @@ pub(crate) struct MobTarget {
 /// `attackTargetEntityWithCurrentItem`. Falling adds a point, as any
 /// downward motion does in Beta (so does standing, which pulls the player
 /// down by a hair each tick). Swords wear by 1 a swing and tools by 2.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn attack<F: bevy::ecs::query::QueryFilter>(
     commands: &mut Commands,
     loot: &mut ItemRng,
     mobs: &mut Query<MobTarget, F>,
+    player: Entity,
     target: Entity,
     eye: Vec3,
     falling: bool,
@@ -72,17 +76,17 @@ pub(crate) fn attack<F: bevy::ecs::query::QueryFilter>(
     };
     let kind = struck.mob.kind;
     let reach = struck.size.aabb(struck.transform.translation);
-    let was_wild_and_calm = kind == MobType::Wolf && !struck.mob.tamed && !struck.mob.angry;
     if kind == MobType::PigZombie {
         // `EntityPigZombie.attackEntityFrom`: every zombie pigman within 32
-        // blocks turns on the player, whether or not the blow lands.
+        // blocks turns on the player (`becomeAngryAt`), whether or not the
+        // blow lands.
         let near = bordered(reach, 32.0);
         for mut other in mobs.iter_mut() {
             if other.mob.kind == MobType::PigZombie
                 && near.intersects(other.size.aabb(other.transform.translation))
             {
                 other.mob.angry = true;
-                other.living.chasing = true;
+                other.living.set_target(Some(player));
             }
         }
     }
@@ -94,6 +98,7 @@ pub(crate) fn attack<F: bevy::ecs::query::QueryFilter>(
         amount,
         from: Some(eye),
         source: Source::Player,
+        attacker: Some(Attacker::player(player)),
     };
     let wound = hurt_creature(
         &mut struck.mob,
@@ -105,34 +110,42 @@ pub(crate) fn attack<F: bevy::ecs::query::QueryFilter>(
     if wound.died {
         drop_loot(commands, loot, &mut struck.mob, feet);
     }
-    if wound.landed && kind == MobType::Wolf {
-        // `EntityWolf.attackEntityFrom`: a wild wolf turns on the player and
-        // calls the pack within 16 blocks. A tamed wolf forgives its owner.
-        if was_wild_and_calm {
-            let pack = Aabb::new(
-                reach.min - Vec3::new(16.0, 4.0, 16.0),
-                reach.max + Vec3::new(16.0, 4.0, 16.0),
-            );
-            for mut other in mobs.iter_mut() {
-                let joins = other.entity == target
-                    || other.mob.kind == MobType::Wolf
-                        && !other.mob.tamed
-                        && !other.living.chasing
-                        && pack.intersects(other.size.aabb(other.transform.translation));
-                if joins {
-                    other.mob.angry = true;
-                    other.living.chasing = true;
-                }
-            }
-        } else if let Ok(mut struck) = mobs.get_mut(target)
-            && !struck.mob.tamed
-        {
-            struck.living.chasing = true;
-        }
+    let alive = struck.mob.health > 0;
+    let tamed = struck.mob.tamed;
+    // `EntityWolf.attackEntityFrom`: a wild wolf calls the pack within 16
+    // blocks.
+    if let Some(attacker) = wound.rally {
+        wolves::rally_pack(pack(mobs), feet, attacker);
+    }
+    // `alertWolves(target, true)`: the player's tamed wolves join in.
+    if alive {
+        wolves::alert_wolves(
+            pack(mobs),
+            eye,
+            Assailant::Creature(target, kind),
+            kind == MobType::Wolf && tamed,
+            true,
+        );
     }
     if let Some(stack) = held {
         hotbar.damage_selected(hit_durability(stack));
     }
+}
+
+/// Every wolf among `mobs`, for a pack call.
+fn pack<'a, F: bevy::ecs::query::QueryFilter>(
+    mobs: &'a mut Query<MobTarget, F>,
+) -> impl Iterator<Item = wolves::PackWolf<'a>> {
+    mobs.iter_mut()
+        .filter(|other| other.mob.kind == MobType::Wolf)
+        .map(|other| {
+            let aabb = other.size.aabb(other.transform.translation);
+            wolves::PackWolf {
+                mob: other.mob.into_inner(),
+                living: other.living.into_inner(),
+                aabb,
+            }
+        })
 }
 
 /// Each mob's `interact`: shear a sheep, saddle or ride a pig, milk a cow, or
@@ -278,6 +291,7 @@ pub(crate) fn strike_players(
             amount: damage_vs_entity(held) + i16::from(falling),
             from: Some(from),
             source: Source::Player,
+            attacker: Some(Attacker::player(strike.attacker)),
         };
         crate::entity::combat::hurt_player(&mut victim, hit, difficulty, &mut rng);
         if let Some(stack) = held {

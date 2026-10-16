@@ -133,6 +133,7 @@ fn mob_id(kind: MobType) -> i8 {
         MobType::Creeper => 50,
         MobType::Skeleton => 51,
         MobType::Spider => 52,
+        MobType::Giant => 53,
         MobType::Zombie => 54,
         MobType::Slime => 55,
         MobType::Ghast => 56,

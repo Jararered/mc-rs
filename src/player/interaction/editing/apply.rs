@@ -177,18 +177,12 @@ pub(crate) fn apply_player_actions(
                             &mut commands,
                             &mut item_rng,
                             &mut mobs,
+                            player_entity,
                             target,
                             transform.translation,
                             velocity.0.y < 0.0,
                             &mut hotbar,
                         );
-                        // `EntityMob.attackEntityFrom`: whoever hit it is
-                        // the one it turns on.
-                        if let Ok(mut struck) = mobs.get_mut(target)
-                            && struck.living.chasing
-                        {
-                            struck.living.target = Some(player_entity);
-                        }
                     }
                     Pointed::Mob(target) => {
                         interact(

@@ -49,6 +49,64 @@ pub enum Source {
     Creature,
 }
 
+/// A living attacker: a player, or a creature of some kind.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Assailant {
+    Player(Entity),
+    Creature(Entity, MobType),
+}
+
+impl Assailant {
+    pub fn entity(self) -> Entity {
+        match self {
+            Self::Player(entity) | Self::Creature(entity, _) => entity,
+        }
+    }
+
+    pub fn is_player(self) -> bool {
+        matches!(self, Self::Player(_))
+    }
+
+    pub fn kind(self) -> Option<MobType> {
+        match self {
+            Self::Player(_) => None,
+            Self::Creature(_, kind) => Some(kind),
+        }
+    }
+}
+
+/// The `Entity` Beta passes to `attackEntityFrom`. `None` on a [`Hit`] is
+/// Beta's `null`: cactus, fire, falling, lightning and the like.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Attacker {
+    /// A player or creature that struck in person, or threw what struck:
+    /// snowballs, eggs and fishing bobbers name their thrower.
+    Living(Assailant),
+    /// `EntityArrow`, which Beta passes itself. `shooter` is its `owner`.
+    Arrow { shooter: Option<Assailant> },
+    /// A creeper's own blast, which names the creeper as it dies.
+    Exploder,
+}
+
+impl Attacker {
+    pub fn player(entity: Entity) -> Self {
+        Self::Living(Assailant::Player(entity))
+    }
+
+    pub fn creature(entity: Entity, kind: MobType) -> Self {
+        Self::Living(Assailant::Creature(entity, kind))
+    }
+
+    /// Who is behind the hit: the attacker, or an arrow's owner.
+    pub fn assailant(self) -> Option<Assailant> {
+        match self {
+            Self::Living(assailant) => Some(assailant),
+            Self::Arrow { shooter } => shooter,
+            Self::Exploder => None,
+        }
+    }
+}
+
 /// One `attackEntityFrom` call.
 #[derive(Clone, Copy, Debug)]
 pub struct Hit {
@@ -56,6 +114,7 @@ pub struct Hit {
     /// Where the attacker stands. The target is knocked away from it.
     pub from: Option<Vec3>,
     pub source: Source,
+    pub attacker: Option<Attacker>,
 }
 
 impl Hit {
@@ -64,6 +123,7 @@ impl Hit {
             amount,
             from: None,
             source: Source::Environment,
+            attacker: None,
         }
     }
 }
@@ -75,6 +135,9 @@ pub struct Wound {
     pub landed: bool,
     /// This hit took the last of its health. Drop its loot now.
     pub died: bool,
+    /// A wild wolf was struck by something living: the caller sends the
+    /// pack after it with [`rally_pack`](crate::entity::creature::wolves::rally_pack).
+    pub rally: Option<Assailant>,
 }
 
 /// The player's side of `EntityLiving`'s damage state.
@@ -148,8 +211,8 @@ pub fn hurt_player(
     true
 }
 
-/// `EntityLiving.attackEntityFrom` for a creature. Being struck by the
-/// player turns a monster on them.
+/// `EntityLiving.attackEntityFrom` for a creature. A landed blow turns a
+/// monster or wolf on its attacker (see `provoke`).
 pub fn hurt_creature(
     mob: &mut Mob,
     living: &mut Living,
@@ -159,10 +222,12 @@ pub fn hurt_creature(
 ) -> Wound {
     if mob.kind == MobType::Wolf {
         // `EntityWolf.attackEntityFrom` stands the wolf up and halves blows
-        // from any attacker but a player. An arrow names its shooter as the
-        // attacker, so it is halved too.
+        // from any attacker but a player or an arrow.
         mob.sitting = false;
-        if matches!(hit.source, Source::Monster | Source::Creature) {
+        if matches!(
+            hit.attacker,
+            Some(Attacker::Living(Assailant::Creature(..)) | Attacker::Exploder)
+        ) {
             hit.amount = (hit.amount + 1) / 2;
         }
     }
@@ -186,14 +251,53 @@ pub fn hurt_creature(
             knock_from(&mut motion, feet, hit, living.yaw, || rng.next_float());
         velocity.0 = motion / TICK_SECONDS;
     }
-    // `EntityMob.attackEntityFrom` targets whoever hit it.
-    if hit.source == Source::Player && mob.kind.hostile() && mob.kind != MobType::Slime {
-        living.chasing = true;
-    }
+    let rally = provoke(mob, living, hit.attacker);
     Wound {
         landed: true,
         died: mob.health <= 0,
+        rally,
     }
+}
+
+/// What a landed hit makes a creature do about its attacker: the tails of
+/// `EntityMob.attackEntityFrom` and `EntityWolf.attackEntityFrom`. A wild
+/// wolf returns who its pack should go after.
+fn provoke(mob: &mut Mob, living: &mut Living, attacker: Option<Attacker>) -> Option<Assailant> {
+    if mob.kind == MobType::Wolf {
+        let attacker = attacker?;
+        if !mob.tamed && !mob.angry {
+            if let Attacker::Living(Assailant::Player(player)) = attacker {
+                mob.angry = true;
+                living.set_target(Some(player));
+            }
+            return attacker.assailant();
+        }
+        let target = match attacker {
+            Attacker::Living(assailant) => assailant,
+            // The arrow itself, gone a moment later.
+            Attacker::Arrow { .. } | Attacker::Exploder => {
+                living.set_target(None);
+                return None;
+            }
+        };
+        // `owner` is the same name for every player, so a tamed wolf
+        // forgives any player's blow.
+        if !(mob.tamed && target.is_player()) {
+            living.set_target(Some(target.entity()));
+        }
+        return None;
+    }
+    if !mob.kind.is_monster() {
+        return None;
+    }
+    // `EntityMob.attackEntityFrom` turns on whatever hit it. An arrow or an
+    // exploding creeper is gone a tick later, so the target lapses.
+    match attacker {
+        None => {}
+        Some(Attacker::Living(assailant)) => living.set_target(Some(assailant.entity())),
+        Some(Attacker::Arrow { .. } | Attacker::Exploder) => living.set_target(None),
+    }
+    None
 }
 
 /// The entity under the crosshair: the nearest box the ray from `eye` along
@@ -362,7 +466,8 @@ pub fn drop_loot(commands: &mut Commands, rng: &mut ItemRng, mob: &mut Mob, feet
         MobType::Creeper | MobType::Ghast => Item::Gunpowder,
         MobType::PigZombie => Item::CookedPorkchop,
         MobType::Slime if mob.variant <= 1 => Item::Slimeball,
-        MobType::Slime | MobType::Wolf => return,
+        // `EntityGiantZombie` keeps `EntityLiving`'s `getDropItemId` of 0.
+        MobType::Slime | MobType::Wolf | MobType::Giant => return,
     };
     for _ in 0..mob.rng.next_int(3) {
         drop(commands, common, 0);

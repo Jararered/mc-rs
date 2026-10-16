@@ -124,7 +124,7 @@ const PIGMAN_ANGER: i16 = 400;
 /// Where a new world's spawn point goes; the player appears over this column.
 const DEFAULT_SPAWN: [i32; 3] = [8, 64, 8];
 
-const MOB_IDS: [(&str, MobType); 13] = [
+const MOB_IDS: [(&str, MobType); 14] = [
     ("Spider", MobType::Spider),
     ("Zombie", MobType::Zombie),
     ("Skeleton", MobType::Skeleton),
@@ -138,6 +138,7 @@ const MOB_IDS: [(&str, MobType); 13] = [
     ("Squid", MobType::Squid),
     ("Ghast", MobType::Ghast),
     ("PigZombie", MobType::PigZombie),
+    ("Giant", MobType::Giant),
 ];
 
 fn mob_id(kind: MobType) -> &'static str {

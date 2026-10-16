@@ -491,6 +491,8 @@ fn pose_creatures(
                 let wide = (8.0 + 1.0 / pulse) / 2.0;
                 Vec3::new(wide, tall, wide)
             }
+            // `RenderGiantZombie.preRenderCallback`.
+            MobType::Giant => Vec3::splat(6.0),
             _ => Vec3::ONE,
         };
         let death = f32::from(living.death_time) + partial;

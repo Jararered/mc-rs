@@ -209,7 +209,7 @@ fn listed() -> &'static HashMap<MobType, Vec<Part>> {
 /// that are placed by arithmetic.
 pub fn model(kind: MobType) -> Vec<Part> {
     let listed_as = match kind {
-        MobType::PigZombie => MobType::Zombie,
+        MobType::PigZombie | MobType::Giant => MobType::Zombie,
         kind => kind,
     };
     let mut parts = listed()[&listed_as].clone();

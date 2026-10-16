@@ -69,7 +69,6 @@ These are registered and craftable, but right-click does nothing, or only part o
 Every sound Beta 1.7.3 plays for something the game simulates is played, with background music and the Audio tab
 volumes (`src/audio/`, AGENTS' Sound section). Left:
 
-- **Punching a fire out** (`World.onBlockHit`): the fire stays, so aux effect 1004's hiss is never sent.
 - **Other players**: one `Sounds` queue is heard from this client's camera. A server has to tell our own client
   what to play; a Beta client makes its own sounds.
 - **A resource pack**: the files are read from `resources/` beside `assets/`, in the old launcher's layout. Later

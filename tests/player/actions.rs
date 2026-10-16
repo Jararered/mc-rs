@@ -87,6 +87,79 @@ fn dropped(app: &mut App) -> usize {
 }
 
 #[test]
+fn punching_each_face_extinguishes_only_the_adjacent_fire() {
+    use game::world::block_ticks::AuxEffect;
+
+    for face in [
+        BlockFace::Down,
+        BlockFace::Up,
+        BlockFace::North,
+        BlockFace::South,
+        BlockFace::West,
+        BlockFace::East,
+    ] {
+        let (mut app, player, _) = two_players();
+        app.world_mut().get_mut::<Hotbar>(player).unwrap().slots[0] =
+            ItemStack::with_data(Item::FlintAndSteel, 1, 12).ok();
+        let hit = BlockHit {
+            x: 2,
+            y: 8,
+            z: 2,
+            face,
+            block: Block::Stone,
+        };
+        let (x, y, z) = face.neighbor(hit.x, hit.y, hit.z);
+        {
+            let mut chunks = app.world_mut().resource_mut::<WorldChunks>();
+            chunks.set_block(hit.x, hit.y, hit.z, hit.block);
+            chunks.set_block_with_metadata(x, y, z, Block::Fire, 7);
+        }
+        let (dx, dy, dz) = face.offset();
+        let outward = Vec3::new(dx as f32, dy as f32, dz as f32);
+        let center = Vec3::new(hit.x as f32, hit.y as f32, hit.z as f32) + Vec3::splat(0.5);
+        let pointed = game::physics::raycast_blocks(
+            app.world().resource::<WorldChunks>(),
+            center + outward * 2.0,
+            -outward,
+            5.0,
+        )
+        .expect("the ray passes through fire to its supporting face");
+        assert_eq!(
+            (pointed.x, pointed.y, pointed.z, pointed.face),
+            (hit.x, hit.y, hit.z, face)
+        );
+        let before = app.world().get::<Hotbar>(player).unwrap().slots;
+        act(&mut app, player, Action::Mine { hit });
+        assert_eq!(block(&app, x, y, z), Block::Air, "{face:?}");
+        assert_eq!(block(&app, hit.x, hit.y, hit.z), Block::Stone);
+        assert_eq!(app.world().get::<Hotbar>(player).unwrap().slots, before);
+        assert_eq!(dropped(&mut app), 0);
+        let effects: Vec<_> = app
+            .world_mut()
+            .resource_mut::<Messages<AuxEffect>>()
+            .drain()
+            .collect();
+        assert_eq!(
+            effects,
+            [AuxEffect {
+                position: IVec3::new(x, y, z),
+                effect: 1004,
+                data: 0,
+            }]
+        );
+
+        // Clicking again, or against another block, must not hiss.
+        act(&mut app, player, Action::Mine { hit });
+        app.world_mut()
+            .resource_mut::<WorldChunks>()
+            .set_block(x, y, z, Block::Stone);
+        act(&mut app, player, Action::Mine { hit });
+        assert_eq!(block(&app, x, y, z), Block::Stone);
+        assert!(app.world().resource::<Messages<AuxEffect>>().is_empty());
+    }
+}
+
+#[test]
 fn a_player_digs_and_builds_with_their_own_hands() {
     let (mut app, first, second) = two_players();
     let hit = top_of(&app, 9, 4, 0);

@@ -325,6 +325,19 @@ pub(crate) fn apply_player_actions(
                 }
             }
             Action::Mine { hit } => {
+                // `World.onBlockHit`: punch out fire against the clicked face.
+                let (x, y, z) = hit.face.neighbor(hit.x, hit.y, hit.z);
+                if edit.chunks.block_at(x, y, z) == Some(Block::Fire) {
+                    let metadata = edit.chunks.metadata_at(x, y, z);
+                    let position = IVec3::new(x, y, z);
+                    edit.chunks.set_block(x, y, z, Block::Air);
+                    edit.changed(position, Block::Fire, metadata);
+                    aux.write(AuxEffect {
+                        position,
+                        effect: 1004,
+                        data: 0,
+                    });
+                }
                 // `BlockCake.onBlockClicked`: the same bite as a right-click,
                 // and mining continues on whatever is left. Off by default
                 // (`GameSettings::cake_right_click_only`).

@@ -92,6 +92,9 @@ Sounds need the original game's `resources/` folder beside `assets/`. Without it
 
 #### Interactions
 
+- [ ] Left-clicking a block face with fire against it extinguishes the fire with a hiss.
+      `pending`
+
 - [ ] A powered dispenser launches eggs and snowballs as projectiles instead of dropping them as items.
       `a22f8d3 · 2026-10-09 07:55`
 - [ ] An arrow fired by a dispenser can be picked up once it has stuck in a block.
@@ -101,7 +104,7 @@ Sounds need the original game's `resources/` folder beside `assets/`. Without it
       `a22f8d3 · 2026-10-09 07:55`
 - [ ] Riding a minecart, boat or pig into a Nether portal puts you off it, and the portal starts to charge. On the
       server, a Beta client is put off the same way.
-      `pending`
+      `2c5bf02 · 2026-10-14 19:46`
 
 #### Fixes
 
@@ -198,13 +201,13 @@ Sounds need the original game's `resources/` folder beside `assets/`. Without it
       `94d9f67 · 2026-10-09 08:53`
 - [ ] A boat is solid: you can jump onto one and stand on it, and mobs, dropped items, carts and falling sand land
       on it or bump into it like a block. It is too tall to walk straight up onto.
-      `pending`
+      `2c5bf02 · 2026-10-14 19:46`
 - [ ] A player, mob, cart or dropped item in a boat's way stops it, but its own rider does not. Scraping along
       one at speed wrecks the boat, as a wall does.
-      `pending`
+      `2c5bf02 · 2026-10-14 19:46`
 - [ ] While you ride a boat, a minecart or a pig, your view slowly turns with it, up to ten degrees a tick, as in
       Beta. A pig you steer with Pig Steering does not turn your view.
-      `pending`
+      `2c5bf02 · 2026-10-14 19:46`
 
 ##### Painting
 
@@ -385,7 +388,7 @@ Sounds need the original game's `resources/` folder beside `assets/`. Without it
 - [ ] Die in the Nether far from any portal and respawn: the Overworld now has a stray portal near where you died,
       scaled by eight, as Beta's teleporter builds one for the dead player. You still wake at your bed or the
       spawn. Near an existing portal, nothing is built.
-      `pending`
+      `2c5bf02 · 2026-10-14 19:46`
 
 #### Interactions
 

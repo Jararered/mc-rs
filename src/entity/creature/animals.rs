@@ -11,6 +11,8 @@ use super::Effects;
 use super::Surroundings;
 use super::Target;
 use super::grow;
+use super::wolves::alerted_by;
+use crate::entity::combat::Attacker;
 use crate::entity::combat::Hit;
 use crate::entity::combat::Source;
 use crate::entity::combat::hurt_player;
@@ -204,8 +206,9 @@ impl Body<'_> {
         }
     }
 
-    /// `EntityWolf.updatePlayerActionState` after its `super` call. Hunting
-    /// sheep is not simulated: mobs only target the player.
+    /// `EntityWolf.updatePlayerActionState` after its `super` call: a tamed
+    /// wolf follows its owner, and a wild one now and then picks a sheep to
+    /// hunt.
     pub(super) fn wolf_action(
         &mut self,
         world: &Surroundings,
@@ -219,13 +222,37 @@ impl Body<'_> {
             && self.mob.tamed
             && let Some(owner) = self.closest_player(world)
         {
-            let distance = owner.eye.distance(self.feet);
+            let distance = owner.pos.distance(self.feet);
             if distance > 5.0 {
                 self.follow_owner(world, pathfinder, owner, distance);
             }
+        } else if !self.living.chasing
+            && self.living.path.is_none()
+            && !self.mob.tamed
+            && self.mob.rng.next_int(100) == 0
+        {
+            self.hunt_sheep(world);
         }
         if self.living.in_water {
             self.mob.sitting = false;
+        }
+    }
+
+    /// A random sheep within 16 blocks across and 4 up or down. Beta draws on
+    /// `World.rand`, which creatures have no handle on; the wolf's own
+    /// `Random` stands in.
+    fn hunt_sheep(&mut self, world: &Surroundings) {
+        let grow = Vec3::new(16.0, 4.0, 16.0);
+        let area = crate::physics::Aabb::new(self.feet - grow, self.feet + Vec3::ONE + grow);
+        let sheep = world
+            .creatures
+            .iter()
+            .filter(|other| other.kind == Some(MobType::Sheep) && area.intersects(other.aabb()));
+        let count = sheep.clone().count();
+        if count > 0 {
+            let pick = self.mob.rng.next_int(count as u32) as usize;
+            let target = sheep.clone().nth(pick).map(|sheep| sheep.entity);
+            self.living.set_target(target);
         }
     }
 
@@ -305,8 +332,8 @@ impl Body<'_> {
                 .block_at(x, y, z)
                 .is_some_and(|block| block.is_opaque_cube())
         };
-        let x = owner.eye.x.floor() as i32 - 2;
-        let z = owner.eye.z.floor() as i32 - 2;
+        let x = owner.pos.x.floor() as i32 - 2;
+        let z = owner.pos.z.floor() as i32 - 2;
         let y = owner.feet.y.floor() as i32;
         for i in 0..=4 {
             for j in 0..=4 {
@@ -342,6 +369,7 @@ impl Body<'_> {
                 amount,
                 from: Some(self.feet),
                 source: Source::Creature,
+                attacker: Some(self.attacker()),
             };
             self.strike(world, player.entity, hit, fx);
         }
@@ -355,7 +383,7 @@ impl Body<'_> {
         // Beta divides by the distance, which is NaN from directly below the
         // target; leap straight up instead.
         let toward =
-            Vec2::new(player.eye.x - self.feet.x, player.eye.z - self.feet.z).normalize_or_zero();
+            Vec2::new(player.pos.x - self.feet.x, player.pos.z - self.feet.z).normalize_or_zero();
         self.motion.x = toward.x * 0.5 * 0.8 + self.motion.x * 0.2;
         self.motion.z = toward.y * 0.5 * 0.8 + self.motion.z * 0.2;
         self.motion.y = 0.4;
@@ -368,17 +396,34 @@ impl Body<'_> {
         theirs.max.y > aabb.min.y && theirs.min.y < aabb.max.y
     }
 
-    /// `player.attackEntityFrom(this, amount)`.
+    /// `target.attackEntityFrom(this, amount)`. A player is hurt at once,
+    /// and calls their tamed wolves; a creature's blow lands once every
+    /// creature has ticked, so this reports it as landed.
     pub(super) fn strike(
         &self,
         world: &Surroundings,
-        player: Entity,
+        target: Entity,
         hit: Hit,
         fx: &mut Effects,
     ) -> bool {
-        match fx.victims.iter_mut().find(|(entity, _)| *entity == player) {
-            Some((_, victim)) => hurt_player(victim, hit, world.difficulty, fx.loot),
+        match fx.victims.iter_mut().find(|(entity, _)| *entity == target) {
+            Some((_, victim)) => {
+                let alive = victim.health.current > 0 && !victim.combat.invulnerable;
+                if alive && let Some(attacker) = alerted_by(&hit, world.difficulty) {
+                    fx.alerts.push((victim.eye, attacker));
+                }
+                hurt_player(victim, hit, world.difficulty, fx.loot)
+            }
+            None if world.creatures.iter().any(|other| other.entity == target) => {
+                fx.creature_hits.push((target, hit));
+                true
+            }
             None => false,
         }
+    }
+
+    /// This creature as the attacker of a blow it deals.
+    pub(super) fn attacker(&self) -> Attacker {
+        Attacker::creature(self.entity, self.mob.kind)
     }
 }

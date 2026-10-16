@@ -136,7 +136,7 @@ fn bad_arguments_are_rejected_without_running_a_command() {
         "/wireframe set 255",
         "/wireframe on extra",
         "/wireframe set 9 extra",
-        "/summon giant",
+        "/summon herobrine",
         "/weather sandstorm",
     ] {
         assert!(parse_command(line).is_err(), "accepted {line}");

@@ -21,6 +21,7 @@ use crate::entity::EntitySize;
 use crate::entity::Gravity;
 use crate::entity::StepHeight;
 use crate::entity::Velocity;
+use crate::entity::combat::Attacker;
 use crate::entity::combat::Hit;
 use crate::entity::combat::PlayerCombat;
 use crate::entity::combat::Source;
@@ -288,6 +289,8 @@ pub(crate) fn apply_explosions(
             amount: damage,
             from: (blast.source != Source::Environment).then_some(center),
             source: blast.source,
+            // Only a creeper's blast names an exploder, and it dies with it.
+            attacker: (blast.source == Source::Monster).then_some(Attacker::Exploder),
         };
         let within = Aabb::new(
             (center - Vec3::splat(reach + 1.0)).floor(),

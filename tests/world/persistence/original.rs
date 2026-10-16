@@ -459,6 +459,38 @@ fn chunks_round_trip_through_region_files_across_regions() {
 }
 
 #[test]
+fn a_giant_and_its_spawner_keep_beta_s_giant_id() {
+    let (_saves, storage) = original_world("original-giant");
+    let position = ChunkPosition { x: 0, z: 0 };
+    let mut generated = OverworldGenerator::new(SEED).generate(position);
+    generated.chunk.set(8, 72, 8, Block::MobSpawner);
+    generated.chunk.insert_spawner(
+        Chunk::index(8, 72, 8),
+        MobSpawner {
+            kind: MobType::Giant,
+            ..MobSpawner::default()
+        },
+    );
+    let mut giant = Mob::new(MobType::Giant, 3);
+    giant.health = 150;
+    generated.chunk.set_mob_records(vec![MobRecord {
+        mob: giant,
+        feet: [4.5, 80.0, 4.5],
+        velocity: [0.0; 3],
+        yaw: 0.0,
+    }]);
+    storage.save_chunks([(position, &generated)]).unwrap();
+
+    let loaded = storage.load_chunk(position).expect("chunk should load");
+    let (_, spawner) = loaded.chunk.spawners().next().expect("spawner");
+    assert_eq!(spawner.kind, MobType::Giant);
+    let mobs = loaded.chunk.mob_records();
+    assert_eq!(mobs.len(), 1);
+    assert_eq!(mobs[0].mob.kind, MobType::Giant);
+    assert_eq!(mobs[0].mob.health, 150);
+}
+
+#[test]
 fn region_files_follow_beta_s_layout() {
     let (_saves, storage) = original_world("original-layout");
     let position = ChunkPosition { x: 3, z: 1 };

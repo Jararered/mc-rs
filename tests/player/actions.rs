@@ -231,6 +231,70 @@ fn a_struck_zombie_turns_on_the_player_who_hit_it() {
 }
 
 #[test]
+fn zombie_pigmen_turn_on_the_player_who_struck_one_of_them() {
+    let (mut app, first, second) = two_players();
+    // Both beside the first player, who did nothing.
+    let struck = summon(
+        &mut app,
+        Mob::new(MobType::PigZombie, 6),
+        Vec3::new(2.5, 5.0, 0.5),
+    );
+    let bystander = summon(
+        &mut app,
+        Mob::new(MobType::PigZombie, 7),
+        Vec3::new(1.5, 5.0, 2.5),
+    );
+    act(
+        &mut app,
+        second,
+        Action::UseEntity {
+            target: Pointed::Mob(struck),
+            attack: true,
+            look: Vec3::NEG_X,
+        },
+    );
+    for pigman in [struck, bystander] {
+        assert!(app.world().get::<Mob>(pigman).unwrap().angry);
+        assert_eq!(
+            app.world().get::<Living>(pigman).unwrap().target(),
+            Some(second),
+            "not the nearer {first}"
+        );
+    }
+}
+
+#[test]
+fn a_tamed_wolf_joins_its_owner_s_attack() {
+    let (mut app, _, second) = two_players();
+    let cow = summon(
+        &mut app,
+        Mob::new(MobType::Cow, 8),
+        Vec3::new(6.5, 5.0, 0.5),
+    );
+    let mut pet = Mob::new(MobType::Wolf, 9);
+    pet.tamed = true;
+    pet.owner = Some("Player".to_owned());
+    let standing = summon(&mut app, pet.clone(), Vec3::new(10.5, 5.0, 0.5));
+    pet.sitting = true;
+    let sitting = summon(&mut app, pet, Vec3::new(10.5, 5.0, 2.5));
+    act(
+        &mut app,
+        second,
+        Action::UseEntity {
+            target: Pointed::Mob(cow),
+            attack: true,
+            look: Vec3::NEG_X,
+        },
+    );
+    assert_eq!(
+        app.world().get::<Living>(standing).unwrap().target(),
+        Some(cow)
+    );
+    // `alertWolves(target, true)` leaves a sitting wolf where it sits.
+    assert_eq!(app.world().get::<Living>(sitting).unwrap().target(), None);
+}
+
+#[test]
 fn a_chest_opens_for_the_player_who_clicked_it() {
     let (mut app, _, second) = two_players();
     app.world_mut()

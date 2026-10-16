@@ -25,4 +25,7 @@
     Squid: (volume: 0.4, talk_interval: 120),
     Ghast: (living: "mob.ghast.moan", hurt: "mob.ghast.scream", death: "mob.ghast.death", volume: 10),
     PigZombie: (living: "mob.zombiepig.zpig", hurt: "mob.zombiepig.zpighurt", death: "mob.zombiepig.zpigdeath"),
+    // `EntityGiantZombie` extends `EntityMob`, not `EntityZombie`, so it keeps
+    // `EntityLiving`'s silence and its `random.hurt`.
+    Giant: (hurt: "random.hurt", death: "random.hurt"),
 }

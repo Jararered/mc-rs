@@ -2,19 +2,24 @@
 //! point it sets, and the explosion where a player cannot respawn.
 
 use bevy::prelude::*;
+use game::app::settings::GameSettings;
 use game::block::blocks::Block;
 use game::chat::ChatHistory;
 use game::entity::EntitySize;
+use game::entity::mobs::Mob;
+use game::entity::mobs::MobType;
 use game::player::Player;
 use game::player::PlayerHealth;
 use game::player::SurvivalPlugin;
 use game::player::sleep::BED_MISSING_MESSAGE;
 use game::player::sleep::BedUse;
+use game::player::sleep::FULLY_ASLEEP_TICKS;
 use game::player::sleep::NO_SLEEP_MESSAGE;
 use game::player::sleep::PlayerSleep;
 use game::player::sleep::SPAWN_SET_MESSAGE;
 use game::player::sleep::SleepPlugin;
 use game::world::chunk::WorldChunks;
+use game::world::difficulty::Difficulty;
 use game::world::dimension::ActiveDimension;
 use game::world::dimension::Dimension;
 use game::world::tick::DAY_LENGTH;
@@ -45,6 +50,14 @@ fn bedroom(time: u64) -> App {
         .resource_mut::<WorldTick>()
         .set_world_time(time);
     app
+}
+
+/// No monster comes to a bed on Peaceful, so the night always passes.
+fn peaceful(app: &mut App) {
+    app.world_mut().insert_resource(GameSettings {
+        difficulty: Difficulty::Peaceful,
+        ..default()
+    });
 }
 
 fn use_bed(app: &mut App, position: IVec3) {
@@ -112,6 +125,7 @@ fn a_bed_refuses_sleep_by_day() {
 #[test]
 fn sleeping_skips_the_night_and_sets_the_spawn_point() {
     let mut app = bedroom(MIDNIGHT);
+    peaceful(&mut app);
     // Either half works; both resolve to the second.
     use_bed(&mut app, HEAD);
     run_ticks(&mut app, 1);
@@ -230,6 +244,7 @@ fn death_returns_the_player_to_their_bed_while_it_stands() {
 #[test]
 fn the_night_is_skipped_only_once_every_player_is_asleep() {
     let mut app = bedroom(MIDNIGHT);
+    peaceful(&mut app);
     let first = app
         .world_mut()
         .query_filtered::<Entity, With<Player>>()
@@ -256,4 +271,30 @@ fn the_night_is_skipped_only_once_every_player_is_asleep() {
     );
     assert!(!asleep(&app, first));
     assert!(!asleep(&app, second));
+}
+
+#[test]
+fn a_monster_at_the_bedside_wakes_the_sleeper_and_the_night_goes_on() {
+    // Out in the open at midnight, where Beta's monsters can reach a bed.
+    let mut app = bedroom(MIDNIGHT);
+    use_bed(&mut app, HEAD);
+    run_ticks(&mut app, u32::from(FULLY_ASLEEP_TICKS) + 2);
+    let state = sleep(&mut app);
+    assert!(!state.sleeping, "a monster should have come");
+    // `wakeUpPlayer(true, false, false)`: no new spawn point, no message.
+    assert_eq!(state.spawn, None);
+    assert!(!said(&app, SPAWN_SET_MESSAGE));
+    assert!(app.world().resource::<WorldTick>().world_time() < DAY_LENGTH);
+    let visitors: Vec<(MobType, Vec3)> = app
+        .world_mut()
+        .query::<(&Mob, &Transform)>()
+        .iter(app.world())
+        .map(|(mob, transform)| (mob.kind, transform.translation))
+        .filter(|(_, feet)| feet.distance(FOOT.as_vec3()) < 3.0)
+        .collect();
+    assert_eq!(visitors.len(), 1, "{visitors:?}");
+    assert!(matches!(
+        visitors[0].0,
+        MobType::Spider | MobType::Zombie | MobType::Skeleton
+    ));
 }

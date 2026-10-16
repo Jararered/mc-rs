@@ -65,10 +65,13 @@ pub enum MobType {
     Squid,
     Ghast,
     PigZombie,
+    /// `EntityGiantZombie`: a zombie six times the size. It never spawns
+    /// naturally; only a spawner or `/summon` makes one.
+    Giant,
 }
 
 impl MobType {
-    pub const ALL: [Self; 13] = [
+    pub const ALL: [Self; 14] = [
         Self::Spider,
         Self::Zombie,
         Self::Skeleton,
@@ -82,6 +85,7 @@ impl MobType {
         Self::Squid,
         Self::Ghast,
         Self::PigZombie,
+        Self::Giant,
     ];
 
     pub fn name(self) -> &'static str {
@@ -99,6 +103,7 @@ impl MobType {
             Self::Squid => "squid",
             Self::Ghast => "ghast",
             Self::PigZombie => "pig_zombie",
+            Self::Giant => "giant",
         }
     }
 
@@ -106,6 +111,7 @@ impl MobType {
         Self::ALL.into_iter().find(|kind| {
             kind.name() == name
                 || (*kind == Self::PigZombie && matches!(name, "pigzombie" | "zombie_pigman"))
+                || (*kind == Self::Giant && matches!(name, "giant_zombie" | "giantzombie"))
         })
     }
 
@@ -118,6 +124,8 @@ impl MobType {
             Self::Wolf => (0.8, 0.8),
             Self::Squid => (0.95, 0.95),
             Self::Ghast => (4.0, 4.0),
+            // `setSize(width * 6, height * 6)` on a zombie's 0.6 by 1.8.
+            Self::Giant => (3.6, 10.8),
             Self::Slime => {
                 let side = f32::from(variant.max(1)) * 0.6;
                 (side, side)
@@ -137,6 +145,8 @@ impl MobType {
             Self::Wolf => 8,
             Self::Slime => i16::from(variant.max(1)).pow(2),
             Self::Sheep | Self::Pig | Self::Cow | Self::Squid | Self::Ghast => 10,
+            // `health *= 10`.
+            Self::Giant => 200,
             _ => 20,
         }
     }
@@ -151,6 +161,7 @@ impl MobType {
                 | Self::Slime
                 | Self::Ghast
                 | Self::PigZombie
+                | Self::Giant
         )
     }
 
@@ -159,7 +170,12 @@ impl MobType {
     pub fn is_monster(self) -> bool {
         matches!(
             self,
-            Self::Spider | Self::Zombie | Self::Skeleton | Self::Creeper | Self::PigZombie
+            Self::Spider
+                | Self::Zombie
+                | Self::Skeleton
+                | Self::Creeper
+                | Self::PigZombie
+                | Self::Giant
         )
     }
 
@@ -168,7 +184,7 @@ impl MobType {
             Self::Wolf if state.tamed => "mob/wolf_tame.png",
             Self::Wolf if state.angry => "mob/wolf_angry.png",
             Self::Spider => "mob/spider.png",
-            Self::Zombie => "mob/zombie.png",
+            Self::Zombie | Self::Giant => "mob/zombie.png",
             Self::Skeleton => "mob/skeleton.png",
             Self::Creeper => "mob/creeper.png",
             Self::Slime => "mob/slime.png",
@@ -311,8 +327,9 @@ pub struct SpawnMob {
     pub variant: u8,
 }
 
+/// The `World.rand` that spawning draws on.
 #[derive(Resource)]
-struct MobRandom(JavaRandom);
+pub(crate) struct MobRandom(pub(crate) JavaRandom);
 impl Default for MobRandom {
     fn default() -> Self {
         Self(JavaRandom::new(0x4d4f_4253))
@@ -900,6 +917,110 @@ fn spawn_naturally(
             }
         }
     }
+}
+
+/// `SpawnerAnimals.nightSpawnEntities`.
+const NIGHT_SPAWNS: [MobType; 3] = [MobType::Spider, MobType::Zombie, MobType::Skeleton];
+
+/// A sleeping player, as `performSleepSpawning` sees them.
+#[derive(Clone, Copy, Debug)]
+pub struct Sleeper {
+    /// Beta's `pos`, which for a sleeper is the bed's floor plus 0.9375.
+    pub pos: Vec3,
+    /// The bed's foot half, the cell `pos` floors to.
+    pub bed: IVec3,
+}
+
+/// A monster `performSleepSpawning` sends to wake a sleeper.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SleepSpawn {
+    /// Which of the sleepers it wakes.
+    pub sleeper: usize,
+    pub kind: MobType,
+    pub feet: Vec3,
+}
+
+/// `SpawnerAnimals.canCreatureTypeSpawnAtLocation` for monsters.
+fn monster_can_stand(chunks: &WorldChunks, x: i32, y: i32, z: i32) -> bool {
+    let normal = |y| chunks.block_at(x, y, z).is_some_and(Block::is_normal_cube);
+    let liquid = chunks.block_at(x, y, z).is_some_and(|block| {
+        matches!(
+            block,
+            Block::Water | Block::WaterFlowing | Block::Lava | Block::LavaFlowing
+        )
+    });
+    normal(y - 1) && !normal(y) && !liquid && !normal(y + 1)
+}
+
+/// `SpawnerAnimals.performSleepSpawning`: for each sleeper, up to 20 tries
+/// at a spider, zombie or skeleton within 32 blocks that could walk to the
+/// bed. One that can is placed beside the bed and wakes them. The skeleton
+/// that rides one spider in a hundred (`creatureSpecificInit`) is left out,
+/// as natural spawning leaves it out.
+pub fn sleep_spawning(
+    site: SpawnSite,
+    sleepers: &[Sleeper],
+    pathfinder: &mut crate::entity::pathfinding::Pathfinder,
+    rng: &mut JavaRandom,
+) -> Vec<SleepSpawn> {
+    let chunks = site.chunks;
+    let mut spawns = Vec::new();
+    for (index, sleeper) in sleepers.iter().enumerate() {
+        let player = sleeper.pos.floor().as_ivec3();
+        for _ in 0..20 {
+            let x = player.x + rng.next_int(32) as i32 - rng.next_int(32) as i32;
+            let z = player.z + rng.next_int(32) as i32 - rng.next_int(32) as i32;
+            let y = (player.y + rng.next_int(16) as i32 - rng.next_int(16) as i32).clamp(1, 128);
+            let kind = NIGHT_SPAWNS[rng.next_int(NIGHT_SPAWNS.len() as u32) as usize];
+            let mut floor = y;
+            while floor > 2
+                && !chunks
+                    .block_at(x, floor - 1, z)
+                    .is_some_and(Block::is_normal_cube)
+            {
+                floor -= 1;
+            }
+            while !monster_can_stand(chunks, x, floor, z) && floor < y + 16 && floor < 128 {
+                floor += 1;
+            }
+            if floor >= y + 16 || floor >= 128 {
+                continue;
+            }
+            let feet = Vec3::new(x as f32 + 0.5, floor as f32, z as f32 + 0.5);
+            // `setLocationAndAngles` rolls the yaw.
+            rng.next_float();
+            if !site.can_spawn(kind, 0, feet, rng) {
+                continue;
+            }
+            // `createEntityPathTo(mob, player, 32)` heads for the floor of
+            // the sleeper's box, which lying shrinks to 0.2 high.
+            let Some(path) = pathfinder.path_to_feet(
+                chunks,
+                feet,
+                kind.size(0),
+                sleeper.pos - Vec3::Y * 0.2,
+                32.0,
+            ) else {
+                continue;
+            };
+            let Some(&end) = path.points().last() else {
+                continue;
+            };
+            let near = (end.as_vec3() - sleeper.pos).abs();
+            if path.points().len() <= 1 || near.x >= 1.5 || near.y >= 1.5 || near.z >= 1.5 {
+                continue;
+            }
+            let cell = crate::block::bed::nearest_empty(chunks, sleeper.bed, 1)
+                .unwrap_or(IVec3::new(x, floor + 1, z));
+            spawns.push(SleepSpawn {
+                sleeper: index,
+                kind,
+                feet: Vec3::new(cell.x as f32 + 0.5, cell.y as f32, cell.z as f32 + 0.5),
+            });
+            break;
+        }
+    }
+    spawns
 }
 
 /// `EntityLiving.entityDropItem`: one item at a mob's feet.

@@ -4,6 +4,7 @@ use bevy::prelude::*;
 use game::block::blocks::Block;
 use game::entity::DroppedItem;
 use game::entity::Velocity;
+use game::entity::combat::Attacker;
 use game::entity::combat::HURT_TICKS;
 use game::entity::combat::Hit;
 use game::entity::combat::PlayerCombat;
@@ -67,6 +68,7 @@ fn a_second_hit_lands_only_for_what_exceeds_the_first() {
         amount,
         from: Some(Vec3::new(-2.0, 0.0, 0.0)),
         source: Source::Player,
+        attacker: Some(Attacker::player(Entity::PLACEHOLDER)),
     };
     let first = hurt_creature(&mut mob, &mut living, &mut velocity, Vec3::ZERO, hit(4));
     assert!(first.landed && !first.died);
@@ -75,7 +77,7 @@ fn a_second_hit_lands_only_for_what_exceeds_the_first() {
     // Knocked away from the attacker and up.
     assert!(velocity.0.x > 0.0 && velocity.0.y > 0.0, "{}", velocity.0);
     // A zombie struck by the player turns on them.
-    assert!(living.chasing());
+    assert_eq!(living.target(), Some(Entity::PLACEHOLDER));
 
     // Inside the window a blow no harder than the first is absorbed...
     assert!(!hurt_creature(&mut mob, &mut living, &mut velocity, Vec3::ZERO, hit(4)).landed);
@@ -97,6 +99,7 @@ fn wolves_halve_blows_from_anything_but_the_player() {
         amount: 5,
         from: None,
         source: Source::Creature,
+        attacker: Some(Attacker::creature(Entity::PLACEHOLDER, MobType::Zombie)),
     };
     hurt_creature(&mut wolf, &mut living, &mut velocity, Vec3::ZERO, bite);
     assert_eq!(wolf.health, 8 - 3);
@@ -114,6 +117,7 @@ fn difficulty_and_armor_soften_monster_blows() {
         amount: 5,
         from: Some(Vec3::new(1.0, 1.62, 0.0)),
         source: Source::Monster,
+        attacker: None,
     };
     let mut strike = |health: &mut PlayerHealth,
                       combat: &mut PlayerCombat,
@@ -480,6 +484,7 @@ fn an_arrow_stays_a_monster_s_after_its_skeleton_is_gone() {
                 entity: skeleton,
                 position: Vec3::new(-8.5, 5.0, 8.5),
                 source: Source::Monster,
+                kind: Some(MobType::Skeleton),
             }),
         },
         &mut JavaRandom::new(1),

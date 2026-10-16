@@ -79,9 +79,10 @@ missing.
 - [ ] The Bow Charging draw for a player other than the local one
 - [ ] World rules out of `GameSettings`: difficulty and the Features toggles (floating items, pig steering,
       steady boats, boat crashes, bow charging) belong to the world, not a client's settings file
-- [ ] A tamed wolf follows its owner, not the nearest player; `Mob::owner` is a fixed string
+- [ ] A tamed wolf follows its owner, not the nearest player, and defends only its owner; `Mob::owner` is a fixed
+      string, so every player counts as every tamed wolf's owner
 - [ ] A picked-up item and a collected arrow fly to the player who took them
-- [ ] Mob attacks set their target to the attacker everywhere a mob is angered, not only on a direct hit
+- [x] Mob attacks set their target to the attacker everywhere a mob is angered, not only on a direct hit
 - [ ] A remote player who dies where they cannot respawn (Nether, bed in unloaded chunks) is sent to the
       Overworld by the host, as the local player is by the session
 

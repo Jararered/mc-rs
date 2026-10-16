@@ -7,6 +7,7 @@ mod mount;
 mod painting;
 pub(crate) mod pathfinding;
 mod projectiles;
+mod targets;
 mod voice;
 
 use bevy::prelude::*;

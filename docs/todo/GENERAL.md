@@ -49,12 +49,10 @@ These are registered and craftable, but right-click does nothing, or only part o
 
 ## Mobs and combat
 
-- **Giant zombie** (`EntityGiantZombie`): not implemented. It never spawns naturally in Beta, so it is only reachable
-  through spawn commands or a spawner.
-- **Mob-on-mob behavior**: mobs only target the player. Wolves do not hunt sheep, and retaliation between mobs is not
-  simulated.
-- **Cactus damage to mobs**: only the player and dropped items take it.
-- **`performSleepSpawning`** (the monster that wakes a sleeper) is not copied.
+- **Spider jockeys** (`creatureSpecificInit`): no skeleton rides a spider, from natural spawning or sleep spawning,
+  because one mob cannot ride another yet.
+- **`World.rand`**: a wild wolf's sheep hunt draws on the wolf's own `Random`, since creatures have no handle on the
+  world's.
 
 ## Player rules
 

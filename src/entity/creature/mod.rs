@@ -23,6 +23,7 @@
 
 mod animals;
 mod monsters;
+pub(crate) mod wolves;
 
 pub use animals::Swim;
 pub use animals::Wings;
@@ -44,6 +45,7 @@ use crate::entity::PreviousTick;
 use crate::entity::StepDistance;
 use crate::entity::StepHeight;
 use crate::entity::Velocity;
+use crate::entity::combat::Assailant;
 use crate::entity::combat::DEATH_TICKS;
 use crate::entity::combat::Hit;
 use crate::entity::combat::PlayerCombat;
@@ -74,6 +76,7 @@ use crate::physics::lava_contains;
 use crate::physics::move_entity_among;
 use crate::physics::raycast_blocks;
 use crate::physics::step_on_block;
+use crate::physics::touches_cactus;
 use crate::physics::water_movement;
 use crate::physics::web_slowed;
 use crate::player::Player;
@@ -134,10 +137,10 @@ pub struct Living {
     /// `heartsLife` and `field_9346_af`: the invulnerability window.
     pub(crate) hearts_life: i16,
     pub(crate) last_damage: i16,
-    /// `playerToAttack`: a player is this creature's target.
+    /// `playerToAttack`: this creature has a target.
     pub(crate) chasing: bool,
-    /// Which player that is. `None` while chasing means whoever is nearest,
-    /// which is what code that only sets `chasing` gets.
+    /// Which player or creature that is. `None` while chasing means the
+    /// nearest player, which is what code that only sets `chasing` gets.
     pub(crate) target: Option<Entity>,
     move_forward: f32,
     move_strafing: f32,
@@ -243,14 +246,20 @@ impl Living {
         self.entity_age
     }
 
-    /// Whether the creature has a player as its target.
+    /// Whether the creature has a target.
     pub fn chasing(&self) -> bool {
         self.chasing
     }
 
-    /// The player it is chasing, once it has picked one out.
+    /// The player or creature it is chasing, once it has picked one out.
     pub fn target(&self) -> Option<Entity> {
         self.target.filter(|_| self.chasing)
+    }
+
+    /// `setTarget`: chase `target`, or nothing.
+    pub fn set_target(&mut self, target: Option<Entity>) {
+        self.chasing = target.is_some();
+        self.target = target;
     }
 
     /// Whether the creature is still within its post-hit invulnerability.
@@ -269,19 +278,30 @@ enum Fate {
     Removed,
 }
 
-/// A player, as creatures see it this frame.
+/// A player or creature, as creatures see it this frame.
 #[derive(Clone, Copy)]
 pub(crate) struct Target {
     pub entity: Entity,
-    /// Beta's player `posY` sits at the eyes, so this is the player's `pos`.
-    pub eye: Vec3,
+    /// Beta's `pos`. A player's `posY` sits at the eyes; a creature's at its
+    /// feet.
+    pub pos: Vec3,
     pub feet: Vec3,
+    pub size: EntitySize,
+    /// `getEyeHeight`, above `pos`.
+    pub eye_height: f32,
+    /// `None` for a player.
+    pub kind: Option<MobType>,
     pub alive: bool,
 }
 
 impl Target {
     fn aabb(&self) -> Aabb {
-        EntitySize::PLAYER.aabb(self.eye)
+        self.size.aabb(self.pos)
+    }
+
+    /// `posY + getEyeHeight()`.
+    fn eye(&self) -> Vec3 {
+        self.pos + Vec3::Y * self.eye_height
     }
 }
 
@@ -308,6 +328,9 @@ pub(crate) struct Surroundings<'a> {
     difficulty: Difficulty,
     /// `World.playerEntities`.
     players: &'a [Target],
+    /// Every creature, at the start of the frame, for targets other than
+    /// players.
+    creatures: &'a [Target],
     /// Players' mounts (`riddenByEntity`, from the creature's side).
     riders: &'a [Rider],
     /// `GameSettings::pig_steering`.
@@ -385,6 +408,12 @@ pub(crate) struct Effects<'a, 'w, 's> {
     pub victims: Vec<(Entity, Victim<'a>)>,
     pub particles: Option<&'a mut EffectParticles>,
     pub sounds: Option<&'a mut Sounds>,
+    /// Blows one creature dealt another, landed once every creature has
+    /// ticked, since only one is borrowed at a time.
+    pub creature_hits: &'a mut Vec<(Entity, Hit)>,
+    /// Players a creature hurt (their `pos`), and who hurt them, for
+    /// `alertWolves`.
+    pub alerts: &'a mut Vec<(Vec3, Assailant)>,
 }
 
 /// The optional, kind-specific components a creature carries.
@@ -436,13 +465,28 @@ pub(crate) struct CreatureItem {
     steps: Option<&'static mut StepDistance>,
 }
 
-/// The client-side resources a creature tick feeds when they exist.
+/// The client-side resources a creature tick feeds when they exist, and its
+/// reused buffers.
 #[derive(bevy::ecs::system::SystemParam)]
-pub(crate) struct CreatureExtras<'w> {
+pub(crate) struct CreatureExtras<'w, 's> {
     diagnostics: Option<ResMut<'w, EntityDiagnostics>>,
     particles: Option<ResMut<'w, EffectParticles>>,
     sounds: Option<ResMut<'w, Sounds>>,
     solids: Option<Res<'w, crate::physics::SolidEntities>>,
+    scratch: Local<'s, CreatureScratch>,
+}
+
+/// Buffers a creature tick reuses from frame to frame.
+#[derive(Default)]
+pub(crate) struct CreatureScratch {
+    kin: Vec<Target>,
+    creature_hits: Vec<(Entity, Hit)>,
+    alerts: Vec<(Vec3, Assailant)>,
+}
+
+/// `getEyeHeight` for a creature: `height * 0.85`, or `0.8` for a wolf.
+fn creature_eye_height(kind: MobType, size: EntitySize) -> f32 {
+    size.height * if kind == MobType::Wolf { 0.8 } else { 0.85 }
 }
 
 /// Run each mob's Beta update once per world tick this frame.
@@ -492,8 +536,11 @@ pub(crate) fn tick_creatures(
         .iter()
         .map(|(entity, (transform, health, combat, ..))| Target {
             entity: *entity,
-            eye: transform.translation,
+            pos: transform.translation,
             feet: transform.translation - Vec3::Y * EntitySize::PLAYER.y_offset,
+            size: EntitySize::PLAYER,
+            eye_height: PLAYER_EYE_HEIGHT,
+            kind: None,
             // Mobs leave a creative or spectating player alone, as they do a
             // dead one.
             alive: health.as_ref().is_none_or(|health| health.current > 0)
@@ -514,12 +561,23 @@ pub(crate) fn tick_creatures(
             }
         })
         .collect();
+    let CreatureScratch {
+        kin,
+        creature_hits,
+        alerts,
+    } = &mut *extras.scratch;
+    kin.clear();
+    kin.extend(creatures.iter().map(|item| Target {
+        entity: item.entity,
+        pos: item.transform.translation,
+        feet: item.transform.translation,
+        size: *item.size,
+        eye_height: creature_eye_height(item.mob.kind, *item.size),
+        kind: Some(item.mob.kind),
+        alive: item.mob.health > 0,
+    }));
     crowd.clear();
-    crowd.extend(
-        creatures
-            .iter()
-            .map(|item| (item.entity, item.size.aabb(item.transform.translation))),
-    );
+    crowd.extend(kin.iter().map(|target| (target.entity, target.aabb())));
     crowd.extend(targets.iter().map(|target| (target.entity, target.aabb())));
     let world = Surroundings {
         chunks: &chunks,
@@ -529,6 +587,7 @@ pub(crate) fn tick_creatures(
         ambient: environment.ambient_light(),
         difficulty,
         players: &targets,
+        creatures: kin,
         riders: &riders,
         pig_steering: settings
             .as_ref()
@@ -554,6 +613,8 @@ pub(crate) fn tick_creatures(
         victims,
         particles: extras.particles.as_deref_mut(),
         sounds: extras.sounds.as_deref_mut(),
+        creature_hits,
+        alerts,
     };
 
     for mut item in &mut creatures {
@@ -612,6 +673,13 @@ pub(crate) fn tick_creatures(
             Fate::Removed => remove_dead(fx.commands, entity, &mut item.mob, feet),
         }
     }
+    land_creature_hits(fx.commands, fx.loot, &mut creatures, fx.creature_hits);
+    for (owner, attacker) in fx.alerts.drain(..) {
+        let attacker_tamed = creatures
+            .get(attacker.entity())
+            .is_ok_and(|item| item.mob.tamed);
+        wolves::alert_wolves(pack(&mut creatures), owner, attacker, attacker_tamed, false);
+    }
     explosion_writer.write_batch(explosions.drain(..));
     if let Some(diagnostics) = extras.diagnostics.as_deref_mut() {
         diagnostics.creatures.record(start.elapsed());
@@ -619,6 +687,52 @@ pub(crate) fn tick_creatures(
         diagnostics.searches.add(pathfinder.take_stats());
         diagnostics.mobs = crowd.len() - targets.len();
     }
+}
+
+/// The blows creatures dealt one another this frame, each with what
+/// `attackEntityFrom` does after it lands.
+fn land_creature_hits(
+    commands: &mut Commands,
+    loot: &mut ItemRng,
+    creatures: &mut Query<CreatureItem, Without<Player>>,
+    hits: &mut Vec<(Entity, Hit)>,
+) {
+    for (victim, hit) in hits.drain(..) {
+        let Ok(mut item) = creatures.get_mut(victim) else {
+            continue;
+        };
+        let feet = item.transform.translation;
+        let wound = hurt_creature(
+            &mut item.mob,
+            &mut item.living,
+            &mut item.velocity,
+            feet,
+            hit,
+        );
+        if wound.died {
+            drop_loot(commands, loot, &mut item.mob, feet);
+        }
+        if let Some(attacker) = wound.rally {
+            wolves::rally_pack(pack(creatures), feet, attacker);
+        }
+    }
+}
+
+/// Every wolf, for a pack call.
+fn pack<'a>(
+    creatures: &'a mut Query<CreatureItem, Without<Player>>,
+) -> impl Iterator<Item = wolves::PackWolf<'a>> {
+    creatures
+        .iter_mut()
+        .filter(|item| item.mob.kind == MobType::Wolf)
+        .map(|item| {
+            let aabb = item.size.aabb(item.transform.translation);
+            wolves::PackWolf {
+                mob: item.mob.into_inner(),
+                living: item.living.into_inner(),
+                aabb,
+            }
+        })
 }
 
 impl Body<'_> {
@@ -636,7 +750,7 @@ impl Body<'_> {
 
     /// `getEyeHeight`, which `EntityWolf` lowers.
     fn eye_height(&self) -> f32 {
-        self.size.height * if self.is(MobType::Wolf) { 0.8 } else { 0.85 }
+        creature_eye_height(self.mob.kind, self.size)
     }
 
     fn eye(&self) -> Vec3 {
@@ -654,7 +768,7 @@ impl Body<'_> {
 
     /// `EntityLiving.canEntityBeSeen`, eye to eye.
     fn can_see(&self, world: &Surroundings, player: &Target) -> bool {
-        world.clear_line(self.eye(), player.eye + Vec3::Y * PLAYER_EYE_HEIGHT)
+        world.clear_line(self.eye(), player.eye())
     }
 
     /// `Entity.isImmuneToFire`.
@@ -891,7 +1005,7 @@ impl Body<'_> {
 
     /// `World.getClosestPlayerToEntity(this, -1)`.
     fn closest_player(&self, world: &Surroundings) -> Option<Target> {
-        let distance = |player: &Target| player.eye.distance_squared(self.feet);
+        let distance = |player: &Target| player.pos.distance_squared(self.feet);
         world
             .players
             .iter()
@@ -902,7 +1016,7 @@ impl Body<'_> {
     /// The closest player a mob would go for: one that can be hurt. A dead,
     /// creative or spectating player is nobody's prey.
     fn closest_prey(&self, world: &Surroundings) -> Option<Target> {
-        let distance = |player: &Target| player.eye.distance_squared(self.feet);
+        let distance = |player: &Target| player.pos.distance_squared(self.feet);
         world
             .players
             .iter()
@@ -912,13 +1026,17 @@ impl Body<'_> {
     }
 
     /// `playerToAttack` while chasing, and otherwise the player this creature
-    /// would turn on.
+    /// would turn on. A target that has left the world is nobody.
     fn quarry(&self, world: &Surroundings) -> Option<Target> {
-        self.living
-            .target
-            .filter(|_| self.living.chasing)
-            .and_then(|target| world.players.iter().copied().find(|p| p.entity == target))
-            .or_else(|| self.closest_prey(world))
+        match self.living.target.filter(|_| self.living.chasing) {
+            Some(target) => world
+                .players
+                .iter()
+                .chain(world.creatures)
+                .copied()
+                .find(|other| other.entity == target),
+            None => self.closest_prey(world),
+        }
     }
 
     /// The Pig Steering feature, in place of `updatePlayerActionState`: a
@@ -978,7 +1096,7 @@ impl Body<'_> {
             self.living.chasing = false;
             self.living.target = None;
         } else if let Some(player) = self.quarry(world) {
-            let distance = player.eye.distance(self.feet);
+            let distance = player.pos.distance(self.feet);
             if self.can_see(world, &player) {
                 self.attack_player(world, &player, distance, traits, fx);
             } else {
@@ -1049,8 +1167,8 @@ impl Body<'_> {
                 && let Some(player) = self.quarry(world)
             {
                 let previous = self.living.yaw;
-                self.living.yaw = (player.eye.z - feet.z)
-                    .atan2(player.eye.x - feet.x)
+                self.living.yaw = (player.pos.z - feet.z)
+                    .atan2(player.pos.x - feet.x)
                     .to_degrees()
                     - 90.0;
                 let angle = (previous - self.living.yaw + 90.0).to_radians();
@@ -1083,7 +1201,7 @@ impl Body<'_> {
         self.living.move_strafing = 0.0;
         self.living.move_forward = 0.0;
         let feet = self.feet;
-        let near = |player: &Target| player.eye.distance_squared(feet) < 64.0;
+        let near = |player: &Target| player.pos.distance_squared(feet) < 64.0;
         if self.mob.rng.next_float() < 0.02 {
             if self
                 .closest_player(world)
@@ -1136,8 +1254,11 @@ impl Body<'_> {
     }
 
     /// `getBlockPathWeight`: monsters seek the dark, animals grass and light.
+    /// A giant, alone among monsters, seeks the light.
     fn path_weight(&self, world: &Surroundings, x: i32, y: i32, z: i32) -> f32 {
-        if self.mob.kind.is_monster() {
+        if self.is(MobType::Giant) {
+            world.brightness(x, y, z) - 0.5
+        } else if self.mob.kind.is_monster() {
             0.5 - world.brightness(x, y, z)
         } else if world.chunks.block_at(x, y - 1, z) == Some(Block::Grass) {
             10.0
@@ -1155,7 +1276,7 @@ impl Body<'_> {
         if self.is(MobType::Wolf) && self.mob.tamed {
             return;
         }
-        let distance = player.eye.distance_squared(self.feet);
+        let distance = player.pos.distance_squared(self.feet);
         if distance > 16384.0 {
             self.dead = true;
         }
@@ -1191,7 +1312,7 @@ impl Body<'_> {
     fn move_speed(&self) -> f32 {
         match self.mob.kind {
             MobType::Wolf => 1.1,
-            MobType::Zombie => 0.5,
+            MobType::Zombie | MobType::Giant => 0.5,
             // `EntityPigZombie.onUpdate` quickens once it has a target.
             MobType::PigZombie if self.living.chasing => 0.95,
             MobType::PigZombie => 0.5,
@@ -1211,9 +1332,9 @@ impl Body<'_> {
 
     /// `EntityLiving.faceEntity`, with the player as the target.
     fn face_player(&mut self, player: Target, max_yaw: f32, max_pitch: f32) {
-        let dx = player.eye.x - self.feet.x;
-        let dz = player.eye.z - self.feet.z;
-        let dy = self.feet.y + self.eye_height() - (player.eye.y + PLAYER_EYE_HEIGHT);
+        let dx = player.pos.x - self.feet.x;
+        let dz = player.pos.z - self.feet.z;
+        let dy = self.feet.y + self.eye_height() - player.eye().y;
         let horizontal = (dx * dx + dz * dz).sqrt();
         let yaw = dz.atan2(dx).to_degrees() - 90.0;
         let pitch = -dy.atan2(horizontal).to_degrees();
@@ -1430,6 +1551,11 @@ impl Body<'_> {
             movement,
             false,
         );
+        // `BlockCactus.onEntityCollidedWithBlock`, from the block scan that
+        // runs before the fire check.
+        if touches_cactus(self.aabb(), world.chunks) {
+            self.hurt(Hit::environment(1), fx);
+        }
 
         let foot = self.feet.floor().as_ivec3();
         let wet = self.living.in_water || world.rained_on(foot);

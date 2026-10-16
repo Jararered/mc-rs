@@ -13,6 +13,7 @@ use crate::app::settings::GameSettings;
 use crate::entity::EntitySize;
 use crate::entity::PreviousTick;
 use crate::entity::Velocity;
+use crate::entity::combat::Attacker;
 use crate::entity::combat::Hit;
 use crate::entity::combat::PlayerCombat;
 use crate::entity::combat::Source;
@@ -20,6 +21,8 @@ use crate::entity::combat::hurt_creature;
 use crate::entity::combat::hurt_player;
 use crate::entity::creature::Living;
 use crate::entity::creature::PLAYER_EYE_HEIGHT;
+use crate::entity::creature::wolves::StruckMobs;
+use crate::entity::creature::wolves::after_projectile_hit;
 use crate::entity::mobs::Mob;
 use crate::entity::mobs::MobType;
 use crate::entity::mobs::spawn_facing;
@@ -173,17 +176,7 @@ pub(crate) fn tick_thrown(
         (Entity, &mut Thrown, &mut Transform, &mut PreviousTick),
         (Without<Living>, Without<Player>),
     >,
-    mut mobs: Query<
-        (
-            Entity,
-            &mut Mob,
-            &mut Living,
-            &mut Velocity,
-            &Transform,
-            &EntitySize,
-        ),
-        Without<Player>,
-    >,
+    mut mobs: StruckMobs,
     mut players: Query<
         (
             Entity,
@@ -260,6 +253,9 @@ pub(crate) fn tick_thrown(
                     source: ball
                         .thrower
                         .map_or(Source::Environment, |thrower| thrower.source),
+                    attacker: ball
+                        .thrower
+                        .map(|thrower| Attacker::Living(thrower.assailant())),
                 };
                 match struck {
                     Some(Struck::Player(target)) => {
@@ -276,7 +272,9 @@ pub(crate) fn tick_thrown(
                             mobs.get_mut(target)
                         {
                             let feet = transform.translation;
-                            hurt_creature(&mut mob, &mut living, &mut velocity, feet, hit);
+                            let wound =
+                                hurt_creature(&mut mob, &mut living, &mut velocity, feet, hit);
+                            after_projectile_hit(&mut mobs, feet, wound.rally);
                         }
                     }
                     None => {}

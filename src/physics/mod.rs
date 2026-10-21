@@ -17,6 +17,7 @@ pub use raycast::segment_entry;
 
 use bevy::prelude::*;
 
+use crate::block::blocks::Block;
 use crate::block::fluids::Fluid;
 use crate::block::fluids::flow_vector;
 use crate::block::fluids::is_lava;
@@ -545,7 +546,8 @@ fn visit_colliders(chunks: &WorldChunks, area: Aabb, mut visit: impl FnMut(Aabb)
 
 /// `Block.getCollisionBoundingBoxFromPool` for a world cell, in world space.
 /// Deep snow layers collide as a half slab.
-/// Stairs collide as two boxes; every other block has at most one.
+/// Stairs collide as two boxes; every other block has at most one. A block
+/// a piston is moving collides where it has slid to.
 pub(crate) fn block_collision_boxes(
     chunks: &WorldChunks,
     x: i32,
@@ -555,6 +557,13 @@ pub(crate) fn block_collision_boxes(
     let Some(block) = chunks.block_at(x, y, z) else {
         return [None; 2];
     };
+    if block == Block::MovingPiston {
+        // `BlockPistonMoving.getCollisionBoundingBoxFromPool`.
+        let moving = chunks.moving_piston_at(x, y, z).and_then(|moving| {
+            moving.shifted_bounds(IVec3::new(x, y, z), moving.collision_shift())
+        });
+        return [moving.map(|(min, max)| Aabb::new(min, max)), None];
+    }
     let origin = Vec3::new(x as f32, y as f32, z as f32);
     block
         .collision_boxes_for(chunks.metadata_at(x, y, z))

@@ -15,6 +15,8 @@ use crate::world::chunk::WorldChunks;
 use crate::world::lighting::LightCache;
 use crate::world::lighting::column_channels;
 use crate::world::lighting::combined_light;
+use crate::world::moving_piston::MovingPiston;
+use crate::world::moving_piston::PROGRESS_PER_TICK;
 use crate::world::sound::Pitch;
 
 use super::BlockChange;
@@ -68,10 +70,9 @@ pub struct TickWorld<'a> {
     /// Beta `World.editingBlocks`: suppresses neighbor notifications.
     editing: bool,
     wire_power_enabled: bool,
-    /// How many pistons are in the middle of moving their blocks. Pistons
-    /// put off neighbor changes meanwhile, like Beta's
-    /// `BlockPistonBase.ignoreUpdates`.
-    piston_moves: u32,
+    /// Beta `BlockPistonBase.ignoreUpdates` of the normal and the sticky
+    /// piston, each a single `Block` in Beta: set while one starts a move.
+    ignore_piston_updates: [bool; 2],
     /// Beta `World.scheduledUpdatesAreImmediate`.
     immediate: bool,
     depth: u32,
@@ -95,7 +96,7 @@ impl<'a> TickWorld<'a> {
             skylight_subtracted,
             editing: false,
             wire_power_enabled: true,
-            piston_moves: 0,
+            ignore_piston_updates: [false; 2],
             immediate: false,
             depth: 0,
         }
@@ -284,15 +285,110 @@ impl<'a> TickWorld<'a> {
             >= 8
     }
 
-    /// A piston starts moving its blocks; pair with [`Self::end_piston_move`].
-    pub fn begin_piston_move(&mut self) {
-        self.piston_moves += 1;
+    /// `BlockPistonBase.ignoreUpdates` of the normal or the sticky piston.
+    pub fn set_ignore_piston_updates(&mut self, sticky: bool, ignore: bool) {
+        self.ignore_piston_updates[usize::from(sticky)] = ignore;
     }
-    pub fn end_piston_move(&mut self) {
-        self.piston_moves = self.piston_moves.saturating_sub(1);
+    pub fn ignores_piston_updates(&self, sticky: bool) -> bool {
+        self.ignore_piston_updates[usize::from(sticky)]
     }
-    pub fn piston_moving(&self) -> bool {
-        self.piston_moves > 0
+
+    /// The `TileEntityPiston` at a cell.
+    pub fn moving_piston(&self, position: IVec3) -> Option<MovingPiston> {
+        self.chunks
+            .moving_piston_at(position.x, position.y, position.z)
+            .copied()
+    }
+
+    /// `setBlockAndMetadata(pistonMoving)` and then `setBlockTileEntity`:
+    /// the cell starts moving `moving.block` in, without notifying.
+    pub fn place_moving_piston(&mut self, position: IVec3, mut moving: MovingPiston) {
+        if !self.is_loaded(position) {
+            return;
+        }
+        self.set_block_and_metadata(position, Block::MovingPiston, moving.metadata);
+        self.ticks.moving_sequence += 1;
+        moving.sequence = self.ticks.moving_sequence;
+        self.chunks
+            .set_moving_piston(position.x, position.y, position.z, moving);
+    }
+
+    /// `TileEntityPiston.clearPistonTileEntity`: end a move at once, putting
+    /// the stored block in place.
+    pub fn clear_moving_piston(&mut self, position: IVec3) {
+        let Some(moving) = self.moving_piston(position) else {
+            return;
+        };
+        if moving.last_progress >= 1.0 {
+            return;
+        }
+        self.chunks
+            .take_moving_piston(position.x, position.y, position.z);
+        if self.block(position) == Block::MovingPiston {
+            self.set_block_and_metadata_notify(position, moving.block, moving.metadata);
+        }
+    }
+
+    /// `TileEntityPiston.updateEntity` for every moving block, after the
+    /// block updates as in Beta's `updateEntities`. Moves started during
+    /// the pass wait for the next one (`World.field_30900_E`).
+    pub fn tick_moving_pistons(&mut self) {
+        for (position, snapshot) in self.chunks.moving_pistons() {
+            let Some(mut moving) = self.moving_piston(position) else {
+                continue;
+            };
+            if moving.sequence != snapshot.sequence {
+                continue;
+            }
+            moving.last_progress = moving.progress;
+            if moving.last_progress >= 1.0 {
+                self.carry_on_piston(position, &moving, 1.0, 0.25);
+                self.chunks
+                    .take_moving_piston(position.x, position.y, position.z);
+                if self.block(position) == Block::MovingPiston {
+                    self.set_block_and_metadata_notify(position, moving.block, moving.metadata);
+                }
+            } else {
+                moving.progress = (moving.progress + PROGRESS_PER_TICK).min(1.0);
+                if let Some(stored) = self
+                    .chunks
+                    .moving_piston_at_mut(position.x, position.y, position.z)
+                {
+                    *stored = moving;
+                }
+                if moving.extending {
+                    self.carry_on_piston(
+                        position,
+                        &moving,
+                        moving.progress,
+                        moving.progress - moving.last_progress + 0.0625,
+                    );
+                }
+            }
+        }
+    }
+
+    /// `TileEntityPiston.func_31010_a`: move what overlaps the block at
+    /// `progress` along the facing by `distance`.
+    fn carry_on_piston(
+        &mut self,
+        position: IVec3,
+        moving: &MovingPiston,
+        progress: f32,
+        distance: f32,
+    ) {
+        let shift = if moving.extending {
+            1.0 - progress
+        } else {
+            progress - 1.0
+        };
+        if let Some((min, max)) = moving.shifted_bounds(position, shift) {
+            self.ticks.effects.push(TickEffect::PistonCarry {
+                min,
+                max,
+                motion: moving.direction().as_vec3() * distance,
+            });
+        }
     }
 
     /// Beta's inset plate/detector bounding box against current entities.
@@ -821,13 +917,6 @@ impl<'a> TickWorld<'a> {
         self.ticks
             .effects
             .push(TickEffect::PrimedTnt { position, fuse });
-    }
-
-    pub fn piston_push(&mut self, position: IVec3, direction: IVec3) {
-        self.ticks.effects.push(TickEffect::PistonPush {
-            position,
-            direction,
-        });
     }
 
     /// Queue an ECS effect after the block tick pass.

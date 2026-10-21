@@ -80,9 +80,6 @@ particles a player gives off while standing in a portal.
 - **Spawner cage mob** (`TileEntityMobSpawnerRenderer`): the spawner draws its mob (`mobID`) inside the cage, turning
   slowly, built with `EntityList.createEntityInWorld`. The repo draws the spawner block and its idle smoke and burst
   (`spawner_idle`, `spawner_burst`) only, though `MobSpawner.kind` (`entity/mobs.rs`) already holds the mob.
-- **Piston slide** (`TileEntityPiston`, `TileEntityRendererPiston`): pushed blocks slide over a few ticks, and the moving
-  piston is drawn in between. `behaviors/piston.rs` moves blocks at once, and the mesher skips `Block::MovingPiston`
-  (`rendering/meshing/mesher.rs`), so nothing is drawn mid-move.
 - **Title splash text** (`GuiMainMenu`): a random line from `/title/splashes.txt` on the logo, plus the dated greetings.
   The file is a resource, so it waits for the resource pack loader.
 

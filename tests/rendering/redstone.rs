@@ -549,3 +549,22 @@ fn rail_curves_keep_the_shape_of_their_texture_seen_from_above() {
     assert_eq!(rail_top_texel(9, (1.0, 0.0)), [16, 16]);
     assert_eq!(rail_top_texel(9, (0.0, 1.0)), [0, 0]);
 }
+
+#[test]
+fn a_sliding_piston_head_has_a_half_length_rod() {
+    use game::rendering::meshing::MOVING_CELL;
+    use game::rendering::meshing::moving_block_meshes;
+    // Facing east: the rod reaches back west, out of the plate.
+    let rod_end = |short_arm| {
+        let meshes = moving_block_meshes(Block::PistonHead, 5, (15, 0), false, short_arm);
+        let quads: Vec<_> = meshes.opaque.vertices().chunks_exact(4).collect();
+        assert_eq!(quads.len(), 10, "every face of the head is drawn");
+        quads[6..]
+            .iter()
+            .flat_map(|quad| quad.iter().map(|v| v.position[0]))
+            .fold(f32::INFINITY, f32::min)
+            - MOVING_CELL[0] as f32
+    };
+    assert_eq!(rod_end(false), -0.25);
+    assert_eq!(rod_end(true), 0.25);
+}

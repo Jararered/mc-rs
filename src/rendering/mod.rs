@@ -11,6 +11,7 @@ pub mod icons;
 mod item_tiles;
 pub mod meshing;
 mod mobs;
+pub(crate) mod moving_pistons;
 pub mod occlusion;
 pub mod particles;
 mod plugin;

@@ -54,6 +54,7 @@ use self::geometry::FACE_TOP;
 mod dropped;
 mod faces;
 mod mesher;
+mod moving;
 mod planes;
 mod shapes;
 
@@ -66,6 +67,8 @@ use faces::face_texels;
 use faces::neighbor_hides_face_at;
 use faces::torch_texels;
 use mesher::Mesher;
+pub use moving::MOVING_CELL;
+pub use moving::moving_block_meshes;
 
 struct Face {
     neighbor: [i32; 3],

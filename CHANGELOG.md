@@ -93,6 +93,14 @@ Sounds need the original game's `resources/` folder beside `assets/`. Without it
 #### Interactions
 
 - [ ] Left-clicking a block face with fire against it extinguishes the fire with a hiss.
+      `069fea1 · 2026-10-15 20:12`
+- [ ] A piston slides what it pushes out over a tenth of a second, and a sticky piston slides its block back in,
+      instead of moving it at once. The head grows out of the base as it goes. Anything standing in the way, or
+      on top of a block pushed upward, is carried along, and you can stand on a block while it moves.
+      `pending`
+- [ ] A piston works on Beta's timing: a pushed block arrives on the third tick, and a sticky piston switched
+      off before its push has landed leaves the block where it got to. A world saved mid-move, in either
+      format, finishes the move when it loads.
       `pending`
 
 - [ ] A powered dispenser launches eggs and snowballs as projectiles instead of dropping them as items.
@@ -348,17 +356,17 @@ Sounds need the original game's `resources/` folder beside `assets/`. Without it
 - [ ] `/summon giant` brings a zombie six times the size, with 200 health, that hits for 50: one blow kills an
       unarmored player. It never spawns on its own, only from the command or a spawner, and it neither burns
       in daylight nor drops anything. It is drawn as a zombie scaled six times.
-      `pending`
+      `17c6cc8 · 2026-10-15 21:13`
 - [ ] A giant, or a giant spawner, keeps its kind through a save in either format, and a Beta client on the
       server sees it as a giant.
-      `pending`
+      `17c6cc8 · 2026-10-15 21:13`
 
 ##### Sleep spawning
 
 - [ ] Sleep where monsters can walk to the bed (out in the open, say) on any difficulty but Peaceful, and when the
       night would end a spider, zombie or skeleton can appear beside the bed instead. It wakes you, the night
       goes on, and the bed does not become your spawn point. On Peaceful the night always passes.
-      `pending`
+      `17c6cc8 · 2026-10-15 21:13`
 
 ##### Voices
 
@@ -392,17 +400,17 @@ Sounds need the original game's `resources/` folder beside `assets/`. Without it
 - [ ] A monster struck by another mob turns on it: a zombie bitten by a wolf fights the wolf, and a creeper
       it bites hisses at it. An arrow, from you or a skeleton, only breaks a monster's chase; it then goes for
       whichever player it can see.
-      `pending`
+      `17c6cc8 · 2026-10-15 21:13`
 - [ ] Strike a zombie pigman and every pigman within 32 blocks comes for you, not for whoever stands nearest.
-      `pending`
+      `17c6cc8 · 2026-10-15 21:13`
 - [ ] A wild wolf now and then picks out a sheep within 16 blocks and hunts it down. It does not turn angry.
-      `pending`
+      `17c6cc8 · 2026-10-15 21:13`
 - [ ] Hit a wild wolf, even with an arrow or a snowball, and every wild wolf near it comes for you. A wolf hit by
       another mob calls its pack after that mob.
-      `pending`
+      `17c6cc8 · 2026-10-15 21:13`
 - [ ] Your tamed wolves go for whatever hurts you, except creepers and ghasts, and for what you hit, unless they
       are sitting. A tamed wolf hit by a mob fights back; one you hit forgives you.
-      `pending`
+      `17c6cc8 · 2026-10-15 21:13`
 
 #### Fixes
 
@@ -412,7 +420,7 @@ Sounds need the original game's `resources/` folder beside `assets/`. Without it
 - [ ] The hearts and air bubbles are hidden in creative and spectator mode and return with `/gamemode survival`.
       `2316921 · 2026-10-11 03:26`
 - [ ] A mob walking into a cactus takes a point of damage, as you do, and keeps after what it was chasing.
-      `pending`
+      `17c6cc8 · 2026-10-15 21:13`
 
 ### Generation
 

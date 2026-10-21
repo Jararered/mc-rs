@@ -1,7 +1,13 @@
 //! Normal and sticky pistons. Face ordering follows PistonBlockTextures.
+//!
+//! A move is Beta's: the cells it touches become `MovingPiston` blocks whose
+//! [`MovingPiston`] state slides the blocks in over two ticks
+//! (`TileEntityPiston`, ticked by `TickWorld::tick_moving_pistons`).
 use crate::block::blocks::Block;
 use crate::world::block_ticks::BlockBehavior;
+use crate::world::block_ticks::TickEffect;
 use crate::world::block_ticks::TickWorld;
+use crate::world::moving_piston::MovingPiston;
 use crate::world::sound::Pitch;
 use bevy::math::IVec3;
 use bevy::math::Vec3;
@@ -130,8 +136,6 @@ fn can_push(world: &TickWorld, pos: IVec3, block: Block) -> bool {
 
 /// What an extension moves, from `BlockPistonBase.canExtend`.
 struct Push {
-    /// Pushed blocks, nearest the piston first.
-    blocks: Vec<(IVec3, Block, u8)>,
     /// A block the push breaks at the far end.
     broken: Option<(IVec3, Block, u8)>,
     /// The cell past the last pushed block.
@@ -139,7 +143,7 @@ struct Push {
 }
 
 fn plan_push(world: &TickWorld, pos: IVec3, dir: IVec3) -> Option<Push> {
-    let mut blocks = Vec::new();
+    let mut pushed = 0;
     let mut next = pos + dir;
     loop {
         if !(1..127).contains(&next.y) || !world.is_loaded(next) {
@@ -148,7 +152,6 @@ fn plan_push(world: &TickWorld, pos: IVec3, dir: IVec3) -> Option<Push> {
         let block = world.block(next);
         if block == Block::Air {
             return Some(Push {
-                blocks,
                 broken: None,
                 end: next,
             });
@@ -158,47 +161,97 @@ fn plan_push(world: &TickWorld, pos: IVec3, dir: IVec3) -> Option<Push> {
         }
         if mobility(block) == 1 {
             return Some(Push {
-                blocks,
                 broken: Some((next, block, world.metadata(next))),
                 end: next,
             });
         }
-        if blocks.len() == MAX_PUSHED {
+        if pushed == MAX_PUSHED {
             return None;
         }
-        blocks.push((next, block, world.metadata(next)));
+        pushed += 1;
         next += dir;
     }
 }
 
-fn extend(world: &mut TickWorld, pos: IVec3, dir: IVec3, head: u8, push: Push) {
+/// `BlockPistonBase.tryExtend`: break the end block, then turn every cell
+/// from the end back to the piston into a block on its way out.
+fn try_extend(world: &mut TickWorld, pos: IVec3, dir: IVec3, face: usize, sticky: bool) -> bool {
+    let Some(push) = plan_push(world, pos, dir) else {
+        return false;
+    };
     if let Some((cell, block, metadata)) = push.broken {
         world.drop_block_as_item(cell, block, metadata);
         world.set_block_notify(cell, Block::Air);
     }
-    for &(from, block, metadata) in push.blocks.iter().rev() {
-        world.set_block_and_metadata_notify(from + dir, block, metadata);
-        world.set_block_notify(from, Block::Air);
+    let facing = face as u8;
+    let mut cell = push.end;
+    while cell != pos {
+        let behind = cell - dir;
+        let moving = if behind == pos {
+            let head = facing | if sticky { EXTENDED } else { 0 };
+            MovingPiston::new(Block::PistonHead, head, facing, true, false)
+        } else {
+            MovingPiston::new(
+                world.block(behind),
+                world.metadata(behind),
+                facing,
+                true,
+                false,
+            )
+        };
+        world.place_moving_piston(cell, moving);
+        cell = behind;
     }
-    world.set_block_and_metadata_notify(pos + dir, Block::PistonHead, head);
-    // The farthest newly occupied cell was air (or was destroyed). Bodies
-    // standing in it must be displaced rather than embedded in the block.
-    world.piston_push(push.end, dir);
+    true
 }
 
-fn retract(world: &mut TickWorld, pos: IVec3, dir: IVec3, sticky: bool) {
+/// `BlockPistonBase.playBlock`'s retraction: the base and a sticky
+/// piston's block slide back, and the head goes.
+fn retract(world: &mut TickWorld, pos: IVec3, block: Block, dir: IVec3, face: usize) {
+    let sticky = block == Block::StickyPiston;
+    let facing = face as u8;
     let head = pos + dir;
-    if world.block(head) == Block::PistonHead {
+    world.clear_moving_piston(head);
+    world.place_moving_piston(pos, MovingPiston::new(block, facing, facing, false, true));
+    if !sticky {
+        world.set_ignore_piston_updates(sticky, false);
         world.set_block_notify(head, Block::Air);
+        world.set_ignore_piston_updates(sticky, true);
+        return;
     }
-    if sticky {
-        let pulled = head + dir;
-        let block = world.block(pulled);
-        if block != Block::Air && can_push(world, pulled, block) && mobility(block) == 0 {
-            let metadata = world.metadata(pulled);
-            world.set_block_and_metadata_notify(head, block, metadata);
-            world.set_block_notify(pulled, Block::Air);
+    let pulled = head + dir;
+    let mut stored = world.block(pulled);
+    let mut metadata = world.metadata(pulled);
+    // A block this piston is still pushing out lands where it is.
+    let mut landed = false;
+    if stored == Block::MovingPiston
+        && let Some(moving) = world.moving_piston(pulled)
+        && moving.facing == facing
+        && moving.extending
+    {
+        world.clear_moving_piston(pulled);
+        stored = moving.block;
+        metadata = moving.metadata;
+        landed = true;
+    }
+    if landed
+        || stored == Block::Air
+        || !can_push(world, pulled, stored)
+        || (mobility(stored) != 0 && !is_base(stored))
+    {
+        if !landed {
+            world.set_ignore_piston_updates(sticky, false);
+            world.set_block_notify(head, Block::Air);
+            world.set_ignore_piston_updates(sticky, true);
         }
+    } else {
+        world.set_ignore_piston_updates(sticky, false);
+        world.set_block_notify(pulled, Block::Air);
+        world.set_ignore_piston_updates(sticky, true);
+        world.place_moving_piston(
+            head,
+            MovingPiston::new(stored, metadata, facing, false, false),
+        );
     }
 }
 
@@ -212,54 +265,58 @@ fn thump(world: &mut TickWorld, pos: IVec3, name: &'static str, span: f32) {
     );
 }
 
-/// `BlockPistonBase.updatePistonState`. Beta marks the base first and then
-/// moves the blocks over a few ticks, ignoring neighbor changes while it
-/// starts the move. The move is immediate here, so a change that arrives in
-/// the middle of any piston's move is looked at on the next tick instead.
+/// `World.playNoteAt` and `BlockPistonBase.playBlock`: 0 extends, 1
+/// retracts.
+fn play_block(world: &mut TickWorld, pos: IVec3, block: Block, action: u8, face: usize) {
+    let sticky = block == Block::StickyPiston;
+    let dir = OFFSETS[face];
+    world.emit(TickEffect::PistonPlayed {
+        position: pos,
+        action,
+        facing: face as u8,
+    });
+    world.set_ignore_piston_updates(sticky, true);
+    if action == 0 {
+        if try_extend(world, pos, dir, face, sticky) {
+            world.set_metadata_notify(pos, face as u8 | EXTENDED);
+            thump(world, pos, "tile.piston.out", 0.25);
+        }
+    } else {
+        retract(world, pos, block, dir, face);
+        thump(world, pos, "tile.piston.in", 0.15);
+    }
+    world.set_ignore_piston_updates(sticky, false);
+}
+
+/// `BlockPistonBase.updatePistonState`.
 fn update_state(world: &mut TickWorld, pos: IVec3) {
     let block = world.block(pos);
-    if world.piston_moving() {
-        world.schedule(pos, block, 1);
-        return;
-    }
     let meta = world.metadata(pos);
     let Some(face) = facing(meta) else {
         return;
     };
-    let dir = OFFSETS[face];
-    let sticky = block == Block::StickyPiston;
     let powered = is_powered(world, pos, face);
     if powered && meta & EXTENDED == 0 {
-        let Some(push) = plan_push(world, pos, dir) else {
-            return;
-        };
-        world.set_metadata(pos, meta | EXTENDED);
-        world.begin_piston_move();
-        let head = face as u8 | if sticky { EXTENDED } else { 0 };
-        extend(world, pos, dir, head, push);
-        world.end_piston_move();
-        world.set_metadata_notify(pos, meta | EXTENDED);
-        thump(world, pos, "tile.piston.out", 0.25);
+        if plan_push(world, pos, OFFSETS[face]).is_some() {
+            world.set_metadata(pos, face as u8 | EXTENDED);
+            play_block(world, pos, block, 0, face);
+        }
     } else if !powered && meta & EXTENDED != 0 {
-        world.set_metadata(pos, meta & 7);
-        world.begin_piston_move();
-        retract(world, pos, dir, sticky);
-        world.end_piston_move();
-        world.set_metadata_notify(pos, meta & 7);
-        thump(world, pos, "tile.piston.in", 0.15);
+        world.set_metadata(pos, face as u8);
+        play_block(world, pos, block, 1, face);
     }
 }
 
 impl BlockBehavior for Piston {
     fn on_added(&self, world: &mut TickWorld, pos: IVec3) {
-        update_state(world, pos);
+        if world.moving_piston(pos).is_none() {
+            update_state(world, pos);
+        }
     }
     fn neighbor_changed(&self, world: &mut TickWorld, pos: IVec3, _: Block) {
-        update_state(world, pos);
-    }
-    /// Only scheduled by [`update_state`], for a change put off during a move.
-    fn update_tick(&self, world: &mut TickWorld, pos: IVec3) {
-        update_state(world, pos);
+        if !world.ignores_piston_updates(world.block(pos) == Block::StickyPiston) {
+            update_state(world, pos);
+        }
     }
     fn on_removed(&self, world: &mut TickWorld, pos: IVec3, _: Block, metadata: u8) {
         if metadata & EXTENDED != 0

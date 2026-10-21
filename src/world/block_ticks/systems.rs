@@ -31,6 +31,7 @@ use crate::item::Item;
 use crate::item::ItemStack;
 use crate::physics::Aabb;
 use crate::physics::PhysicsSet;
+use crate::physics::move_entity;
 use crate::player::Player;
 use crate::random::ItemRng;
 use crate::random::JavaRandom;
@@ -65,6 +66,7 @@ impl Plugin for BlockTicksPlugin {
             .init_resource::<LightCache>()
             .init_resource::<WorldTick>()
             .add_message::<super::NotePlayed>()
+            .add_message::<super::PistonPlayed>()
             .add_message::<super::AuxEffect>()
             .configure_sets(Update, BlockTickSet.after(PhysicsSet::Integrate))
             .add_systems(
@@ -251,7 +253,9 @@ fn apply_tick_effects(
     mut particles: Option<ResMut<EffectParticles>>,
     mut sounds: Option<ResMut<Sounds>>,
     mut notes: MessageWriter<super::NotePlayed>,
+    mut pistons: MessageWriter<super::PistonPlayed>,
     mut aux: MessageWriter<super::AuxEffect>,
+    chunks: Res<WorldChunks>,
 ) {
     for effect in ticks.take_effects() {
         match effect {
@@ -325,31 +329,27 @@ fn apply_tick_effects(
             TickEffect::DropStack { position, stack } => {
                 spawn_chest_drops(&mut commands, &mut rng, position, [stack]);
             }
-            TickEffect::PistonPush {
-                position,
-                direction,
-            } => {
-                let block = Aabb::from_block(position.x, position.y, position.z);
+            TickEffect::PistonCarry { min, max, motion } => {
+                let block = Aabb::new(min, max);
                 for (mut transform, size) in &mut bodies {
                     let bounds = size.aabb(transform.translation);
                     if !bounds.intersects(block) {
                         continue;
                     }
-                    let distance = if direction.x > 0 {
-                        block.max.x - bounds.min.x
-                    } else if direction.x < 0 {
-                        bounds.max.x - block.min.x
-                    } else if direction.y > 0 {
-                        block.max.y - bounds.min.y
-                    } else if direction.y < 0 {
-                        bounds.max.y - block.min.y
-                    } else if direction.z > 0 {
-                        block.max.z - bounds.min.z
-                    } else {
-                        bounds.max.z - block.min.z
-                    };
-                    transform.translation += direction.as_vec3() * (distance + 0.001);
+                    let moved = move_entity(bounds, motion, 0.0, false, &chunks);
+                    transform.translation += moved.displacement;
                 }
+            }
+            TickEffect::PistonPlayed {
+                position,
+                action,
+                facing,
+            } => {
+                pistons.write(super::PistonPlayed {
+                    position,
+                    action,
+                    facing,
+                });
             }
             TickEffect::Aux {
                 position,

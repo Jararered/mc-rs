@@ -114,11 +114,12 @@ impl Mesher<'_> {
         let axis = AXIS[facing];
         let mut rod_min = [0.375; 3];
         let mut rod_max = [0.625; 3];
+        let rod_length = if self.short_arm { 0.5 } else { 1.0 };
         if direction % 2 == 0 {
             rod_min[axis] = max[axis];
-            rod_max[axis] = 1.25;
+            rod_max[axis] = max[axis] + rod_length;
         } else {
-            rod_min[axis] = -0.25;
+            rod_min[axis] = min[axis] - rod_length;
             rod_max[axis] = min[axis];
         }
         let rod = BlockFaceGeometry::from_bounds([
@@ -133,7 +134,9 @@ impl Mesher<'_> {
                 .find(|&index| index != axis && face.normal[index] == 0.0)
                 .unwrap();
             let texels = face_geometry.corners.map(|corner| {
-                let u = (corner[axis] - rod_min[axis]) / (rod_max[axis] - rod_min[axis]);
+                // A texel per sixteenth of a block, so the short rod shows
+                // half the texture.
+                let u = corner[axis] - rod_min[axis];
                 let v = corner[cross_axis] - rod_min[cross_axis];
                 AtlasTexel::new(12, 6, (u * 16.0).round() as u8, (v * 16.0).round() as u8)
             });

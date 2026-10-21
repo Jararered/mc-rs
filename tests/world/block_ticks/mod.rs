@@ -223,7 +223,8 @@ impl TestWorld {
                 | TickEffect::Dispense { .. }
                 | TickEffect::DropStack { .. }
                 | TickEffect::LavaMix { .. }
-                | TickEffect::PistonPush { .. }
+                | TickEffect::PistonCarry { .. }
+                | TickEffect::PistonPlayed { .. }
                 | TickEffect::EjectRecord { .. }
                 | TickEffect::Sound { .. } => None,
             })

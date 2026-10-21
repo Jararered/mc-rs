@@ -336,6 +336,7 @@ struct WorldState<'w, 's> {
             Or<(
                 With<crate::entity::boat::Boat>,
                 With<crate::entity::painting::Painting>,
+                With<crate::rendering::moving_pistons::MovingPistonVisual>,
             )>,
             With<Arrow>,
             With<Fireball>,

@@ -388,6 +388,14 @@ pub(crate) fn apply_explosions(
                 let stacks: Vec<_> = dispenser.slots.into_iter().flatten().collect();
                 spawn_chest_drops(&mut commands, &mut loot, cell, stacks);
             }
+            // `BlockPistonMoving.dropBlockAsItemWithChance` drops the block
+            // it was moving, every time.
+            if let Some(moving) = edit.chunks.moving_piston_at(cell.x, cell.y, cell.z) {
+                let (stored, stored_metadata) = (moving.block, moving.metadata);
+                for stack in natural_drops_with_metadata(stored, stored_metadata, &mut *loot) {
+                    spawn_block_drop(&mut commands, &mut loot, cell, stack);
+                }
+            }
             for stack in natural_drops_with_metadata(block, metadata, &mut *loot) {
                 if rng.0.next_float() <= 0.3 {
                     spawn_block_drop(&mut commands, &mut loot, cell, stack);

@@ -65,7 +65,7 @@
     Piston: (base: Solid, hardness: 0.5),
     PistonHead: (base: Solid, hardness: 0.5),
     Wool: (base: Solid, hardness: 0.8, burn: (30, 60), sound: Cloth),
-    MovingPiston: (base: Solid, hardness: -1, targetable: false),
+    MovingPiston: (base: Solid, hardness: -1, opaque_cube: false, light_opacity: 0, targetable: false),
     Dandelion: (base: CrossedPlant, selection: ((0.3, 0, 0.3), (0.7, 0.6, 0.7)), sound: Grass),
     Rose: (base: CrossedPlant, selection: ((0.3, 0, 0.3), (0.7, 0.6, 0.7)), sound: Grass),
     BrownMushroom: (base: CrossedPlant, light_emission: 1, selection: ((0.3, 0, 0.3), (0.7, 0.4, 0.7)), sound: Grass),

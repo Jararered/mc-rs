@@ -277,11 +277,20 @@ and holds dust, torches, and rails is `Block::is_normal_cube`, which is not
 the mesher's opaque-cube flag: pistons and TNT are excluded, and mob spawners
 are included.
 
-Pistons move blocks immediately and push bodies out of the new head with
-`TickEffect::PistonPush`, rather than animating `TileEntityPiston`. A piston
-notified while any piston is mid-move schedules itself for the next tick
-instead of acting, standing in for `ignoreUpdates`. Dust, repeaters, rails,
-levers, and pistons are drawn by `rendering/meshing/{redstone,piston}.rs`.
+Pistons move blocks as Beta does. `playBlock` turns every cell of the move
+into a `MovingPiston` block holding a `world::moving_piston::MovingPiston`
+(`TileEntityPiston`), stored on the chunk beside the other tile entities.
+`TickWorld::tick_moving_pistons` runs their `updateEntity` after each tick's
+block updates: progress goes up by a half each tick, carrying bodies with
+`TickEffect::PistonCarry`, and on the third tick the stored block is placed
+with notify. `physics::block_collision_boxes` gives a moving cell its stored
+block's box where it has slid to. `ignoreUpdates` is a flag per piston kind on
+`TickWorld`, and a piston that hears a change while it is set ignores it.
+`TickEffect::PistonPlayed` is `playNoteAt`, which the server sends to Beta
+clients so they run the move themselves. `rendering/moving_pistons.rs` draws
+the sliding blocks (`TileEntityRendererPiston`); the chunk mesher leaves
+moving cells empty. Dust, repeaters, rails, levers, and pistons are drawn by
+`rendering/meshing/{redstone,piston}.rs`.
 Buttons and plates are box shapes.
 
 Rails take their shape from `RailLogic` when placed and keep it afterward, as

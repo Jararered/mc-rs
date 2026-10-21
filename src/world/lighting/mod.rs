@@ -456,6 +456,14 @@ impl Skylight {
         }
     }
 
+    /// The same light everywhere, for a block meshed on its own.
+    pub fn uniform(sky: u8, block: u8) -> Self {
+        Self {
+            cells: vec![pack(sky, block); PADDED_CELLS].into_boxed_slice(),
+            has_sky: sky > 0,
+        }
+    }
+
     /// Combined Beta light value at a block, after taking the brighter channel.
     pub fn get(&self, x: usize, y: usize, z: usize) -> Option<u8> {
         self.light(x, y, z)

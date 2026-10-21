@@ -112,13 +112,72 @@ fn piston_pushes_and_sticky_piston_pulls_without_duplication() {
     w.set(lever - IVec3::Y, Block::Stone);
     place_meta(&mut w, lever, Block::Lever, 5);
     w.event(BlockEvent::Activated { position: lever });
+    // `TileEntityPiston` lands each block on the third tick.
+    assert_eq!(w.block(first), Block::MovingPiston);
+    w.run(2);
+    assert_eq!(w.block(first + IVec3::X), Block::MovingPiston);
+    w.run(1);
     assert_eq!(w.block(first), Block::PistonHead);
     assert_eq!(w.block(first + IVec3::X), Block::Cobblestone);
     assert_eq!(w.block(first + IVec3::X * 2), Block::Stone);
     w.event(BlockEvent::Activated { position: lever });
+    assert_eq!(w.block(piston), Block::MovingPiston);
+    assert_eq!(w.block(first), Block::MovingPiston);
+    assert_eq!(w.block(first + IVec3::X), Block::Air);
+    w.run(3);
+    assert_eq!(w.block(piston), Block::StickyPiston);
+    assert_eq!(w.metadata(piston), 5);
     assert_eq!(w.block(first), Block::Cobblestone);
     assert_eq!(w.block(first + IVec3::X), Block::Air);
     assert_eq!(w.block(first + IVec3::X * 2), Block::Stone);
+}
+
+#[test]
+fn a_sticky_piston_pulsed_mid_move_leaves_its_block_behind() {
+    let mut w = TestWorld::new(1);
+    let piston = at(8, 64, 8);
+    let lever = piston + IVec3::NEG_Z;
+    let first = piston + IVec3::X;
+    place_meta(&mut w, piston, Block::StickyPiston, 5);
+    w.set(first, Block::Cobblestone);
+    w.set(lever - IVec3::Y, Block::Stone);
+    place_meta(&mut w, lever, Block::Lever, 5);
+    w.event(BlockEvent::Activated { position: lever });
+    w.run(1);
+    // Off before the push lands: the head and the block are cut short where
+    // they are, and the block is not pulled back (`playBlock`'s `var14`).
+    w.event(BlockEvent::Activated { position: lever });
+    assert_eq!(w.block(first + IVec3::X), Block::Cobblestone);
+    assert_eq!(w.block(first), Block::Air);
+    w.run(3);
+    assert_eq!(w.block(piston), Block::StickyPiston);
+    assert_eq!(w.metadata(piston), 5);
+    assert_eq!(w.block(first), Block::Air);
+    assert_eq!(w.block(first + IVec3::X), Block::Cobblestone);
+}
+
+#[test]
+fn a_moving_block_collides_where_it_has_slid_to() {
+    use game::world::moving_piston::MovingPiston;
+    let mut extending = MovingPiston::new(Block::Stone, 0, 5, true, false);
+    let cell = at(8, 64, 8);
+    // Fresh, it is still in the cell behind; half way, half way.
+    let (min, _) = extending
+        .shifted_bounds(cell, extending.collision_shift())
+        .unwrap();
+    assert_eq!(min.x, 7.0);
+    extending.last_progress = 0.5;
+    let (min, _) = extending
+        .shifted_bounds(cell, extending.collision_shift())
+        .unwrap();
+    assert_eq!(min.x, 7.5);
+    // Drawn sliding in from behind.
+    assert_eq!(extending.offset(0.0).x, -0.5);
+    assert!(
+        MovingPiston::new(Block::Air, 0, 5, true, false)
+            .shifted_bounds(cell, 0.0)
+            .is_none()
+    );
 }
 
 #[test]
@@ -138,6 +197,7 @@ fn torch_below_stone_powers_and_releases_a_downward_piston_beside_it() {
     place_meta(&mut w, torch, Block::RedstoneTorchActive, 5);
     assert_eq!(w.block(torch), Block::RedstoneTorchActive);
     assert_eq!(w.metadata(piston), 8, "piston should extend downward");
+    w.run(3);
     assert_eq!(w.block(piston + IVec3::NEG_Y), Block::PistonHead);
     assert_eq!(w.block(piston + IVec3::NEG_Y * 2), Block::Stone);
 
@@ -149,12 +209,15 @@ fn torch_below_stone_powers_and_releases_a_downward_piston_beside_it() {
     w.run(2);
     assert_eq!(w.block(torch), Block::RedstoneTorchInactive);
     assert_eq!(w.metadata(piston), 0);
+    w.run(3);
     w.event(BlockEvent::Activated { position: lever });
     w.run(2);
     assert_eq!(w.block(torch), Block::RedstoneTorchActive);
     assert_eq!(w.metadata(piston), 8);
+    w.run(3);
 
     w.place(torch, Block::Air);
+    w.run(3);
     assert_eq!(
         w.metadata(piston),
         0,
@@ -470,8 +533,9 @@ fn dust_broken_by_a_piston_during_a_wire_update_darkens_its_neighbors() {
     w.place(doomed, Block::Redstone);
     assert_eq!(w.metadata(tail), 14);
     w.event(BlockEvent::Activated { position: lever });
-    assert_eq!(w.block(doomed), Block::PistonHead);
     assert_eq!(w.metadata(tail), 0);
+    w.run(3);
+    assert_eq!(w.block(doomed), Block::PistonHead);
 }
 
 #[test]
@@ -537,6 +601,7 @@ fn piston_breaks_liquids_and_circuit_parts_instead_of_pushing_them() {
         w.set_with_metadata(front, block, metadata);
         w.drops();
         w.event(BlockEvent::Activated { position: lever });
+        w.run(3);
         assert_eq!(w.block(front), Block::PistonHead, "{block:?}");
         assert_eq!(w.block(front + IVec3::X), Block::Air, "{block:?}");
         // The block is broken as a natural drop (which is nothing for water).
@@ -557,6 +622,7 @@ fn piston_pushes_a_trapdoor_but_not_a_spawner() {
     w.set(front + IVec3::X + IVec3::Z, Block::Stone);
     w.set_with_metadata(front, Block::Trapdoor, 0);
     w.event(BlockEvent::Activated { position: lever });
+    w.run(3);
     assert_eq!(w.block(front + IVec3::X), Block::Trapdoor);
 
     let mut w = TestWorld::new(1);
@@ -568,19 +634,46 @@ fn piston_pushes_a_trapdoor_but_not_a_spawner() {
 }
 
 #[test]
-fn piston_extension_pushes_bodies_once() {
+fn piston_extension_carries_bodies_each_tick_then_lands() {
     use game::world::block_ticks::TickEffect;
     let mut w = TestWorld::new(1);
     let (piston, lever) = piston_facing_east(&mut w);
     w.set(piston + IVec3::X, Block::Cobblestone);
     w.effects();
     w.event(BlockEvent::Activated { position: lever });
-    let pushes = w
-        .effects()
-        .into_iter()
-        .filter(|effect| matches!(effect, TickEffect::PistonPush { .. }))
-        .count();
-    assert_eq!(pushes, 1);
+    let carries = |w: &mut TestWorld| {
+        w.effects()
+            .into_iter()
+            .filter_map(|effect| match effect {
+                TickEffect::PistonCarry { min, motion, .. } => Some((min, motion)),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+    assert!(carries(&mut w).is_empty(), "nothing moves before a tick");
+    // `updateEntity`: progress 0.5, then 1.0, each carrying by the step
+    // plus a sixteenth, and the landing tick pushes a quarter more.
+    w.run(1);
+    let first = carries(&mut w);
+    assert_eq!(first.len(), 2, "the head and the cobblestone");
+    for (_, motion) in &first {
+        assert!((motion.x - 0.5625).abs() < 1e-5, "{motion:?}");
+    }
+    // The cobblestone's box is half way into its new cell.
+    assert!(
+        first
+            .iter()
+            .any(|(min, _)| (min.x - (piston.x as f32 + 1.5)).abs() < 1e-5)
+    );
+    w.run(1);
+    assert_eq!(carries(&mut w).len(), 2);
+    assert_eq!(w.block(piston + IVec3::X * 2), Block::MovingPiston);
+    w.run(1);
+    let landing = carries(&mut w);
+    assert_eq!(landing.len(), 2);
+    assert!((landing[0].1.x - 0.25).abs() < 1e-5);
+    assert_eq!(w.block(piston + IVec3::X), Block::PistonHead);
+    assert_eq!(w.block(piston + IVec3::X * 2), Block::Cobblestone);
 }
 
 #[test]
@@ -588,6 +681,7 @@ fn breaking_a_piston_head_drops_the_piston() {
     let mut w = TestWorld::new(1);
     let (piston, lever) = piston_facing_east(&mut w);
     w.event(BlockEvent::Activated { position: lever });
+    w.run(3);
     let head = piston + IVec3::X;
     assert_eq!(w.block(head), Block::PistonHead);
     w.drops();
@@ -747,11 +841,12 @@ fn a_piston_thumps_out_and_back() {
     w.effects();
     let middle = piston.as_vec3() + 0.5;
     w.event(BlockEvent::Activated { position: lever });
-    assert_eq!(w.block(piston + IVec3::X), Block::PistonHead);
     assert!(
         w.sounds()
             .contains(&("tile.piston.out", middle, 0.5, Pitch::Up(0.6, 0.25)))
     );
+    w.run(3);
+    assert_eq!(w.block(piston + IVec3::X), Block::PistonHead);
     w.event(BlockEvent::Activated { position: lever });
     assert_eq!(w.block(piston + IVec3::X), Block::Air);
     assert!(

@@ -305,7 +305,7 @@ fn powered_tnt_becomes_a_primed_entity() {
 }
 
 #[test]
-fn extending_piston_pushes_a_player_out_of_the_new_head() {
+fn extending_piston_carries_a_player_along_with_its_head() {
     let mut app = app();
     let player = app
         .world_mut()
@@ -325,8 +325,15 @@ fn extending_piston_pushes_a_player_out_of_the_new_head() {
         .set_metadata(7, 61, 8, 5);
     flick(&mut app, 7, 61, 8);
     step(&mut app);
+    // The head slides half way and shoves the player by that and a
+    // sixteenth (`TileEntityPiston.func_31010_a`).
+    assert_eq!(block(&app, 9, 61, 8), Some(Block::MovingPiston));
+    let x = |app: &App| app.world().get::<Transform>(player).unwrap().translation.x;
+    assert!((x(&app) - 10.0625).abs() < 1e-3, "{}", x(&app));
+    step(&mut app);
+    step(&mut app);
     assert_eq!(block(&app, 9, 61, 8), Some(Block::PistonHead));
-    assert!(app.world().get::<Transform>(player).unwrap().translation.x > 10.3);
+    assert!(x(&app) > 10.3);
 }
 
 /// A straight track along z = 8 over the floor, and a cart on it.

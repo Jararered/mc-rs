@@ -314,6 +314,12 @@ impl WorldStreaming {
         mesh_jobs::mesh_neighborhood_ready(chunks, &self.held, position)
     }
 
+    /// Whether `position` has a remesh queued or in flight, so its rendered
+    /// sections may not show the latest blocks yet.
+    pub fn remesh_pending(&self, position: ChunkPosition) -> bool {
+        self.meshing.contains_key(&position) || self.remesh_queue.contains(&position)
+    }
+
     /// Chunks waiting to be remeshed, in dispatch order.
     pub fn queued_remesh_positions(&self) -> impl Iterator<Item = ChunkPosition> + '_ {
         self.remesh_queue.iter().copied()

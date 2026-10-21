@@ -15,7 +15,9 @@
 //! simulation state of mobs, so those are rebuilt on load: climate from the seed,
 //! ticks from the world, and mob timers from defaults. Every Beta block id loads.
 //! Tile entities other than chests, furnaces, dispensers,
-//! note blocks, signs and spawners are dropped, which is also what Beta does with ids it does not know. Falling
+//! note blocks, signs, spawners and moving pistons are dropped, which is also what Beta does with ids it does not know.
+//! A retracting piston's own base loads as a plain moving block, since Beta's `Piston` tile does not say it is
+//! one; it lands the same, but slides in from the head's cell for the rest of the move. Falling
 //! blocks and primed TNT in flight are not written, so one caught mid-fall or
 //! mid-fuse by a save is lost with its block; the native format keeps them.
 //! Minecarts are written as Beta's `Minecart` entity (type, a furnace cart's
@@ -30,6 +32,7 @@
 mod nbt;
 mod region;
 
+use crate::world::moving_piston::MovingPiston;
 use std::collections::HashMap;
 use std::fs;
 use std::io;
@@ -734,6 +737,15 @@ impl ChunkSnapshot {
             tile.put_int("Record", i32::from(record.as_u16()));
             tiles.push(Tag::Compound(tile));
         }
+        for (index, moving) in chunk.moving_pistons() {
+            let mut tile = tile_entity("Piston", index);
+            tile.put_int("blockId", i32::from(moving.block.as_u8()));
+            tile.put_int("blockData", i32::from(moving.metadata));
+            tile.put_int("facing", i32::from(moving.facing));
+            tile.put_float("progress", moving.last_progress);
+            tile.put_bool("extending", moving.extending);
+            tiles.push(Tag::Compound(tile));
+        }
         for (index, note) in chunk.notes() {
             let mut tile = tile_entity("Music", index);
             tile.put_byte("note", note.pitch as i8);
@@ -855,6 +867,24 @@ fn decode_chunk(
                     .ok()
                     .and_then(crate::item::Item::from_u16);
                 chunk.set_record(index, record);
+            }
+            "Piston" if block == Some(Block::MovingPiston) => {
+                if let Some(stored) = u8::try_from(tile.int("blockId"))
+                    .ok()
+                    .and_then(Block::from_u8)
+                {
+                    let progress = tile.float("progress").clamp(0.0, 1.0);
+                    let mut moving = MovingPiston::new(
+                        stored,
+                        (tile.int("blockData") & 15) as u8,
+                        tile.int("facing").clamp(0, 5) as u8,
+                        tile.boolean("extending"),
+                        false,
+                    );
+                    moving.progress = progress;
+                    moving.last_progress = progress;
+                    chunk.insert_moving_piston(index, moving);
+                }
             }
             "Music" if block == Some(Block::NoteBlock) => {
                 chunk.insert_note(

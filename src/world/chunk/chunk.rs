@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use bevy::math::IVec3;
 use bevy::platform::collections::HashMap as FastHashMap;
 use bevy::prelude::Resource;
 
@@ -12,6 +13,7 @@ use crate::world::chest::Chest;
 use crate::world::chunk::GeneratedChunk;
 use crate::world::dispenser::Dispenser;
 use crate::world::furnace::Furnace;
+use crate::world::moving_piston::MovingPiston;
 
 use super::ChunkPosition;
 
@@ -109,6 +111,8 @@ pub struct Chunk {
     /// holds one.
     records: HashMap<usize, Item>,
     signs: HashMap<usize, SignText>,
+    /// Beta `TileEntityPiston`: what each `MovingPiston` cell is sliding in.
+    moving_pistons: HashMap<usize, MovingPiston>,
     /// Scheduled ticks saved with the chunk. Empty while the chunk is live.
     pending_ticks: Vec<PendingTick>,
     mob_records: Vec<crate::entity::mobs::MobRecord>,
@@ -131,6 +135,7 @@ impl Chunk {
             notes: HashMap::new(),
             records: HashMap::new(),
             signs: HashMap::new(),
+            moving_pistons: HashMap::new(),
             pending_ticks: Vec::new(),
             mob_records: Vec::new(),
             saved_bodies: Vec::new(),
@@ -185,6 +190,7 @@ impl Chunk {
             notes,
             records: HashMap::new(),
             signs: HashMap::new(),
+            moving_pistons: HashMap::new(),
             pending_ticks: Vec::new(),
             mob_records: Vec::new(),
             saved_bodies: Vec::new(),
@@ -231,6 +237,7 @@ impl Chunk {
             notes,
             records: HashMap::new(),
             signs: HashMap::new(),
+            moving_pistons: HashMap::new(),
             pending_ticks: Vec::new(),
             mob_records: Vec::new(),
             saved_bodies: Vec::new(),
@@ -430,6 +437,11 @@ impl Chunk {
         } else if !previous.is_chest() && block.is_chest() {
             self.chests.entry(index).or_default();
         }
+        // `BlockContainer.onBlockRemoval`. Beta sets a moving block's tile
+        // entity after the block, so a new one starts with none.
+        if block != Block::MovingPiston || previous != Block::MovingPiston {
+            self.moving_pistons.remove(&index);
+        }
         if previous == Block::Dispenser && block != Block::Dispenser {
             self.dispensers.remove(&index);
         } else if previous != Block::Dispenser && block == Block::Dispenser {
@@ -467,6 +479,30 @@ impl Chunk {
     }
     pub fn insert_sign(&mut self, index: usize, sign: SignText) {
         self.signs.insert(index, sign);
+    }
+
+    pub fn moving_pistons(&self) -> impl Iterator<Item = (usize, &MovingPiston)> {
+        self.moving_pistons
+            .iter()
+            .map(|(index, moving)| (*index, moving))
+    }
+    pub fn has_moving_pistons(&self) -> bool {
+        !self.moving_pistons.is_empty()
+    }
+    pub fn moving_piston(&self, index: usize) -> Option<&MovingPiston> {
+        self.moving_pistons.get(&index)
+    }
+    pub fn moving_piston_mut(&mut self, index: usize) -> Option<&mut MovingPiston> {
+        self.moving_pistons.get_mut(&index)
+    }
+    /// Set the cell's moving block. It holds only on a `MovingPiston` cell.
+    pub fn insert_moving_piston(&mut self, index: usize, moving: MovingPiston) {
+        if Block::from(self.blocks[index]) == Block::MovingPiston {
+            self.moving_pistons.insert(index, moving);
+        }
+    }
+    pub fn remove_moving_piston(&mut self, index: usize) -> Option<MovingPiston> {
+        self.moving_pistons.remove(&index)
     }
 
     pub fn notes(&self) -> impl Iterator<Item = (usize, &NoteState)> {
@@ -737,6 +773,67 @@ impl WorldChunks {
             }
         }
         positions
+    }
+
+    /// The `TileEntityPiston` at a cell.
+    pub fn moving_piston_at(&self, x: i32, y: i32, z: i32) -> Option<&MovingPiston> {
+        let index = local_index(x, y, z)?;
+        self.get(ChunkPosition::from_block(x, z))?
+            .chunk
+            .moving_piston(index)
+    }
+
+    pub fn moving_piston_at_mut(&mut self, x: i32, y: i32, z: i32) -> Option<&mut MovingPiston> {
+        let index = local_index(x, y, z)?;
+        self.get_mut(ChunkPosition::from_block(x, z))?
+            .chunk
+            .moving_piston_mut(index)
+    }
+
+    /// `World.setBlockTileEntity` for a `MovingPiston` cell.
+    pub fn set_moving_piston(&mut self, x: i32, y: i32, z: i32, moving: MovingPiston) -> bool {
+        let Some(index) = local_index(x, y, z) else {
+            return false;
+        };
+        let Some(generated) = self.get_mut(ChunkPosition::from_block(x, z)) else {
+            return false;
+        };
+        generated.chunk.insert_moving_piston(index, moving);
+        generated.chunk.moving_piston(index).is_some()
+    }
+
+    /// `World.removeBlockTileEntity` for a `MovingPiston` cell.
+    pub fn take_moving_piston(&mut self, x: i32, y: i32, z: i32) -> Option<MovingPiston> {
+        let index = local_index(x, y, z)?;
+        self.get_mut(ChunkPosition::from_block(x, z))?
+            .chunk
+            .remove_moving_piston(index)
+    }
+
+    /// Every moving block, in the order Beta's `loadedTileEntityList`
+    /// would tick them.
+    pub fn moving_pistons(&self) -> Vec<(IVec3, MovingPiston)> {
+        let mut moving = Vec::new();
+        for (chunk_pos, generated) in &self.chunks {
+            if !generated.chunk.has_moving_pistons() {
+                continue;
+            }
+            for (index, piston) in generated.chunk.moving_pistons() {
+                let x = index % CHUNK_SIZE;
+                let z = index / CHUNK_SIZE % CHUNK_SIZE;
+                let y = index / (CHUNK_SIZE * CHUNK_SIZE);
+                moving.push((
+                    IVec3::new(
+                        chunk_pos.x * CHUNK_SIZE as i32 + x as i32,
+                        y as i32,
+                        chunk_pos.z * CHUNK_SIZE as i32 + z as i32,
+                    ),
+                    *piston,
+                ));
+            }
+        }
+        moving.sort_by_key(|(_, piston)| piston.sequence);
+        moving
     }
 
     pub fn sign_at(&self, x: i32, y: i32, z: i32) -> Option<&SignText> {

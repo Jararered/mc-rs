@@ -17,6 +17,7 @@
 //! simulates (biome climate, pending block ticks, mob state), which the Beta
 //! format in [`super::original`] has no room for.
 
+use crate::world::moving_piston::MovingPiston;
 use std::collections::HashMap;
 use std::fs;
 use std::io;
@@ -137,6 +138,8 @@ pub(super) struct StoredChunk {
     dispensers: Vec<StoredDispenser>,
     #[serde(default)]
     notes: Vec<StoredNote>,
+    #[serde(default)]
+    moving_pistons: Vec<StoredMovingPiston>,
     /// The disc in each jukebox that holds one, by raw item id.
     #[serde(default)]
     records: Vec<StoredRecord>,
@@ -201,6 +204,19 @@ struct StoredSign {
 struct StoredRecord {
     index: u16,
     record: u16,
+}
+
+/// A `TileEntityPiston`. `progress` is the progress at the start of the
+/// tick, as Beta saves it.
+#[derive(Serialize, Deserialize)]
+struct StoredMovingPiston {
+    index: u16,
+    block: u8,
+    metadata: u8,
+    facing: u8,
+    progress: f32,
+    extending: bool,
+    source: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -328,6 +344,19 @@ impl StoredChunk {
                     index: index as u16,
                     pitch: note.pitch,
                     previous_powered: note.previous_powered,
+                })
+                .collect(),
+            moving_pistons: generated
+                .chunk
+                .moving_pistons()
+                .map(|(index, moving)| StoredMovingPiston {
+                    index: index as u16,
+                    block: moving.block.as_u8(),
+                    metadata: moving.metadata,
+                    facing: moving.facing,
+                    progress: moving.last_progress,
+                    extending: moving.extending,
+                    source: moving.source,
                 })
                 .collect(),
             records: generated
@@ -499,6 +528,26 @@ impl StoredChunk {
             {
                 chunk.set_record(index, Some(record));
             }
+        }
+        for stored in self.moving_pistons {
+            let index = usize::from(stored.index);
+            if index >= BLOCKS_PER_CHUNK {
+                continue;
+            }
+            let Some(block) = Block::from_u8(stored.block) else {
+                continue;
+            };
+            let progress = stored.progress.clamp(0.0, 1.0);
+            let mut moving = MovingPiston::new(
+                block,
+                stored.metadata & 15,
+                stored.facing.min(5),
+                stored.extending,
+                stored.source,
+            );
+            moving.progress = progress;
+            moving.last_progress = progress;
+            chunk.insert_moving_piston(index, moving);
         }
         for note in self.notes {
             let index = usize::from(note.index);

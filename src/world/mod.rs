@@ -13,6 +13,7 @@ pub mod furnace;
 pub mod generation;
 pub mod host;
 pub mod lighting;
+pub mod moving_piston;
 pub mod persistence;
 pub mod plugin;
 pub mod portal;

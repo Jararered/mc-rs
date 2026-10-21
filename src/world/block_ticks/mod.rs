@@ -13,6 +13,7 @@
 //! 2. Up to 1000 due scheduled ticks run in due order, as `TickUpdates` does.
 //! 3. Every chunk within [`RANDOM_TICK_RADIUS`] of the player gets 80 random
 //!    ticks at positions from Beta's LCG, plus the ice-freezing roll.
+//! 4. Blocks a piston is moving advance (`TileEntityPiston.updateEntity`).
 //!
 //! Block behavior lives in [`behaviors`], one module per family. Each
 //! implements [`BlockBehavior`] and is registered by block value in
@@ -172,8 +173,15 @@ pub enum TickEffect {
         effect: i32,
         data: i32,
     },
-    /// Move an entity out of the cell newly occupied by a piston extension.
-    PistonPush { position: IVec3, direction: IVec3 },
+    /// `TileEntityPiston.func_31010_a`: `moveEntity` everything overlapping
+    /// the box by `motion`.
+    PistonCarry { min: Vec3, max: Vec3, motion: Vec3 },
+    /// `World.playNoteAt` from a piston: 0 extends and 1 retracts.
+    PistonPlayed {
+        position: IVec3,
+        action: u8,
+        facing: u8,
+    },
     /// `BlockJukeBox` throws its disc out of the top.
     EjectRecord { position: IVec3, record: Item },
     /// `World.playSoundEffect` from a block: a switch's click, a piston's
@@ -196,6 +204,16 @@ pub struct NotePlayed {
     pub instrument: u8,
     /// 0..24.
     pub pitch: u8,
+}
+
+/// `World.playNoteAt` from a piston, which Beta's server sends as
+/// `Packet54PlayNoteBlock` so its clients start the same move.
+#[derive(Message, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PistonPlayed {
+    pub position: IVec3,
+    /// 0 extends, 1 retracts.
+    pub action: u8,
+    pub facing: u8,
 }
 
 /// `World.playAuxSFX` from a block: see [`TickEffect::Aux`]. The client
@@ -229,6 +247,8 @@ pub struct BlockTicks {
     occupants: Vec<RedstoneOccupant>,
     /// Reused random tick candidates.
     candidates: Vec<IVec3>,
+    /// The last `MovingPiston::sequence` handed out.
+    moving_sequence: u64,
 }
 
 impl Default for BlockTicks {
@@ -258,6 +278,7 @@ impl BlockTicks {
             torch_updates: VecDeque::new(),
             occupants: Vec::new(),
             candidates: Vec::with_capacity(RANDOM_TICKS_PER_CHUNK),
+            moving_sequence: 0,
         }
     }
 
@@ -373,6 +394,8 @@ impl BlockTicks {
         for &chunk in random_chunks {
             world.random_tick_chunk(chunk);
         }
+        world.flush_deferred();
+        world.tick_moving_pistons();
         world.flush_deferred();
     }
 

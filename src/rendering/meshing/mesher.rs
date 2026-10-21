@@ -75,6 +75,9 @@ pub(super) struct Mesher<'a> {
     pub(super) origin_z: i32,
     /// Omit every other block. Face culling still reads the real neighbors.
     pub(super) only: Option<Block>,
+    /// Draw piston heads with the half-length rod a head has while it slides
+    /// out of or into its base (`RenderBlocks.func_31080_c`).
+    pub(super) short_arm: bool,
 }
 
 impl<'a> Mesher<'a> {
@@ -97,6 +100,7 @@ impl<'a> Mesher<'a> {
             origin_x,
             origin_z,
             only,
+            short_arm: false,
         }
     }
 

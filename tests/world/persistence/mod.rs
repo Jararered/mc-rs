@@ -1358,6 +1358,51 @@ fn what_is_written_on_a_sign_is_saved_in_both_formats() {
 }
 
 #[test]
+fn a_moving_piston_block_is_saved_in_both_formats() {
+    use game::world::moving_piston::MovingPiston;
+    use game::world::persistence::SaveFormat;
+    for format in [SaveFormat::Binary, SaveFormat::Original] {
+        let saves = temp_saves("moving-pistons");
+        let storage = WorldStorage::create_in_format(&saves, 0, "Pistons", None, format).unwrap();
+        let position = ChunkPosition::ZERO;
+        let mut generated = OverworldGenerator::new(0).generate(position);
+        generated
+            .chunk
+            .set_with_metadata(4, 90, 5, Block::MovingPiston, 3);
+        let index = Chunk::index(4, 90, 5);
+        let mut moving = MovingPiston::new(Block::Cobblestone, 3, 5, true, true);
+        moving.last_progress = 0.5;
+        moving.progress = 1.0;
+        generated.chunk.insert_moving_piston(index, moving);
+        // Nothing stays on a cell that is not moving.
+        generated
+            .chunk
+            .insert_moving_piston(Chunk::index(5, 90, 5), moving);
+        storage.save_chunk(position, &generated).unwrap();
+
+        let loaded = storage.load_chunk(position).unwrap();
+        let stored = loaded.chunk.moving_piston(index).copied();
+        let stored = stored.expect("the move was saved");
+        assert_eq!(
+            (
+                stored.block,
+                stored.metadata,
+                stored.facing,
+                stored.extending
+            ),
+            (Block::Cobblestone, 3, 5, true),
+            "{format:?}"
+        );
+        // Beta saves the progress the tick started with.
+        assert_eq!((stored.progress, stored.last_progress), (0.5, 0.5));
+        // Beta's tile does not say whether it was a retracting base.
+        assert_eq!(stored.source, format == SaveFormat::Binary);
+        assert_eq!(loaded.chunk.moving_pistons().count(), 1);
+        fs::remove_dir_all(saves).unwrap();
+    }
+}
+
+#[test]
 fn dispenser_inventory_and_note_state_round_trip_with_their_blocks() {
     let saves = temp_saves("redstone-tiles");
     let storage = WorldStorage::create(&saves, 0, "Redstone").unwrap();

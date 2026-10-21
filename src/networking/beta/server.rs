@@ -66,6 +66,7 @@ use crate::player::sleep::SleepPlugin;
 use crate::random::ItemRng;
 use crate::world::block_ticks::AuxEffect;
 use crate::world::block_ticks::NotePlayed;
+use crate::world::block_ticks::PistonPlayed;
 use crate::world::chunk::ChunkPosition;
 use crate::world::chunk::WorldChunks;
 use crate::world::dimension::Dimension;
@@ -242,6 +243,7 @@ fn fill_outbox(
     mut blasts: MessageReader<Exploded>,
     mut strikes: MessageReader<LightningStrike>,
     mut notes: MessageReader<NotePlayed>,
+    mut pistons: MessageReader<PistonPlayed>,
     mut aux: MessageReader<AuxEffect>,
 ) {
     outbox.aux.extend(aux.read().copied());
@@ -249,6 +251,13 @@ fn fill_outbox(
     outbox.blasts.extend(blasts.read().cloned());
     outbox.strikes.extend(strikes.read().map(|strike| strike.0));
     outbox.notes.extend(notes.read().copied());
+    // A piston's `playNoteAt` goes out as the same packet, and the client
+    // runs the move itself.
+    outbox.notes.extend(pistons.read().map(|piston| NotePlayed {
+        position: piston.position,
+        instrument: piston.action,
+        pitch: piston.facing,
+    }));
 }
 
 /// A world Beta 1.7.3 clients can join.
@@ -291,6 +300,7 @@ fn build_world(app: &mut App, view_distance: i32) {
         .add_message::<Exploded>()
         .add_message::<LightningStrike>()
         .add_message::<NotePlayed>()
+        .add_message::<PistonPlayed>()
         .add_message::<AuxEffect>()
         .add_systems(Last, fill_outbox);
     app.world_mut()

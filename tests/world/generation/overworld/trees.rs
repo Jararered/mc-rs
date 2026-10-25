@@ -401,35 +401,54 @@ fn terrain_top(chunk: &Chunk, x: usize, z: usize) -> (usize, Block) {
     (y, chunk.get(x, y, z).unwrap())
 }
 
+/// Seed 2's chunks with both beach sand and trunks in them: the only ones,
+/// out to 4 chunks in seeds 0 to 3, where a trunk could stand on sand.
+/// Pinned, so the test does not generate the rest every run.
+const BEACH_WOODS: [(i32, i32); 14] = [
+    (0, -3),
+    (2, 0),
+    (0, 1),
+    (1, 1),
+    (3, 1),
+    (-3, 2),
+    (-2, 2),
+    (-1, 2),
+    (1, 2),
+    (3, 2),
+    (-3, 3),
+    (-1, 3),
+    (0, 3),
+    (1, 3),
+];
+
 #[test]
 fn trees_do_not_plant_on_sand() {
+    let generator = OverworldGenerator::new(2);
     let mut sand_columns = 0;
-    for seed in 0..4 {
-        let area = OverworldGenerator::new(seed).generate_area(ChunkPosition::ZERO, 4);
-        for z in -4..4 {
-            for x in -4..4 {
-                let generated = &area[&ChunkPosition { x, z }];
-                for lz in 0..CHUNK_SIZE {
-                    for lx in 0..CHUNK_SIZE {
-                        let (top, block) = terrain_top(&generated.chunk, lx, lz);
-                        if block != Block::Sand {
-                            continue;
-                        }
-                        sand_columns += 1;
-                        // Big oak branches may overhang a beach; only a trunk
-                        // stands directly on the ground.
-                        let placed = generated.chunk.get(lx, top + 1, lz).unwrap();
-                        assert!(
-                            !is_wood(placed),
-                            "seed {seed}: trunk on sand at chunk ({x},{z}) column ({lx}, {}, {lz})",
-                            top + 1
-                        );
-                    }
+    let mut trunks = 0;
+    for (x, z) in BEACH_WOODS {
+        let generated = generator.generate(ChunkPosition { x, z });
+        trunks += count(&generated.chunk, Block::Wood);
+        for lz in 0..CHUNK_SIZE {
+            for lx in 0..CHUNK_SIZE {
+                let (top, block) = terrain_top(&generated.chunk, lx, lz);
+                if block != Block::Sand {
+                    continue;
                 }
+                sand_columns += 1;
+                // Big oak branches may overhang a beach; only a trunk stands
+                // directly on the ground.
+                let placed = generated.chunk.get(lx, top + 1, lz).unwrap();
+                assert!(
+                    !is_wood(placed),
+                    "trunk on sand at chunk ({x},{z}) column ({lx}, {}, {lz})",
+                    top + 1
+                );
             }
         }
     }
     assert!(sand_columns > 0, "expected to sample some beach columns");
+    assert!(trunks > 0, "expected trees beside the beaches");
 }
 
 /// Leaves may hang over sand, but they belong to a tree whose trunk is on

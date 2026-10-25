@@ -350,7 +350,7 @@ Omit `MOVE` for the stationary check; `TURN=1` continues to test turning.
 `MOVE` follows a closed path across section boundaries while the player stays
 at the loading origin, keeping streaming settled. `NO_SCREENSHOT` skips the
 capture request entirely. The CPU benchmark runs with
-`cargo test --profile fast --features render_harness benchmark_visibility_walk -- --ignored --nocapture`.
+`cargo test --profile fast --features render_harness -- --ignored benchmark_visibility_walk --nocapture`.
 
 Regression tests cover section-centre reconstruction across positive and
 negative regions, walls changing between walks, missing columns, and graph
@@ -366,7 +366,9 @@ October 2026.
 
 - `cargo test` used to build 31 test binaries plus two empty unit-test
   harnesses, each statically linking Bevy. It is now one binary: 794 tests
-  build and run in about 8 s warm.
+  build and run in about 8 s warm. A name filter goes after `--`: given
+  before it (`cargo test name`), Cargo builds the lib's empty harness again,
+  `test = false` or not.
 - Development builds compile game code at `opt-level = 0` with full debug info
   (dependencies stay at 3 with line tables only). A one-line edit rebuilds in
   about 2.6 s, the game crate from scratch in about 12 s, and a cold build with

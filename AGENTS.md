@@ -52,11 +52,14 @@ The map of the other docs is `docs/README.md`.
   the game (`default-run`). Both binaries link the `game` library (`src/lib.rs`). Put code there,
   never in a binary.
 - `cargo test` runs every test in one binary rooted at `tests/main.rs` (`autotests = false`; the lib
-  and bin harnesses are off). Filter with a path such as `world::block_ticks::`. Another test target
-  would statically link Bevy again, so add a module under `tests/`
-  instead. `[profile.dev]` builds game code unoptimized, dependencies at `opt-level = 3`, and `test`
-  inherits that, so `cargo run` and `cargo test` share artifacts. Do not give `[profile.test]` its
-  own settings.
+  and bin harnesses are off). Filter after `--` with a path, as in
+  `cargo test -- world::block_ticks::`. A filter before `--` makes Cargo build the lib's unit-test
+  harness despite `test = false`, which compiles the game crate and links Bevy a second time.
+  Another test target would statically link Bevy again, so add a module under `tests/` instead.
+  Tests that write files take a `crate::temp::TempDir` (under `CARGO_TARGET_TMPDIR`), not
+  `std::env::temp_dir()`. `[profile.dev]` builds game code unoptimized, dependencies at
+  `opt-level = 3`, and `test` inherits that, so `cargo run` and `cargo test` share artifacts. Do
+  not give `[profile.test]` its own settings.
 - Bevy is built with `default-features = false` and an explicit feature list in `Cargo.toml`. Add a
   feature when a system needs it. Audio is `bevy_audio` with `vorbis` alone.
 - `cargo fmt` runs on the nightly pinned in `rust-toolchain.toml` (`rustfmt` and `clippy` are

@@ -9,29 +9,27 @@ use game::world::generation::overworld::OverworldGenerator;
 #[test]
 fn underwater_surface_is_dirt_not_grass() {
     let mut water_over_dirt = 0;
-    for seed in 0..4 {
-        let generator = OverworldGenerator::new(seed);
-        for z in -3..3 {
-            for x in -3..3 {
-                let generated = generator.generate(ChunkPosition { x, z });
-                for lz in 0..CHUNK_SIZE {
-                    for lx in 0..CHUNK_SIZE {
-                        for y in 1..CHUNK_HEIGHT {
-                            let above = generated.chunk.get(lx, y, lz).unwrap();
-                            let below = generated.chunk.get(lx, y - 1, lz).unwrap();
-                            if !matches!(above, Block::Water | Block::Ice) {
-                                continue;
-                            }
-                            assert_ne!(
-                                below,
-                                Block::Grass,
-                                "seed {seed} chunk ({x},{z}) column ({lx},{lz}): grass under water at y={}",
-                                y - 1
-                            );
-                            if below == Block::Dirt {
-                                water_over_dirt += 1;
-                            }
-                        }
+    // The chunk with the most underwater dirt in each of seeds 0 to 3, out to
+    // 3 chunks: from a few dozen beds to a whole sea floor. Pinned, so the
+    // test does not generate the rest every run.
+    for (seed, x, z) in [(0, 2, 0), (1, 1, 2), (2, -1, -1), (3, -2, -3)] {
+        let generated = OverworldGenerator::new(seed).generate(ChunkPosition { x, z });
+        for lz in 0..CHUNK_SIZE {
+            for lx in 0..CHUNK_SIZE {
+                for y in 1..CHUNK_HEIGHT {
+                    let above = generated.chunk.get(lx, y, lz).unwrap();
+                    let below = generated.chunk.get(lx, y - 1, lz).unwrap();
+                    if !matches!(above, Block::Water | Block::Ice) {
+                        continue;
+                    }
+                    assert_ne!(
+                        below,
+                        Block::Grass,
+                        "seed {seed} chunk ({x},{z}) column ({lx},{lz}): grass under water at y={}",
+                        y - 1
+                    );
+                    if below == Block::Dirt {
+                        water_over_dirt += 1;
                     }
                 }
             }

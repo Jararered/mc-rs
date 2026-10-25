@@ -3,8 +3,9 @@
 //!
 //! To give a block update behavior, implement
 //! [`BlockBehavior`](super::BlockBehavior) for a unit struct in the module for
-//! its family (or a new one), declare a `static` of it, and list the block's
-//! values in [`table`]. See `docs/BLOCK_TICKS.md`.
+//! its family (or a new one), and list the block's values with a reference to
+//! the struct in [`table`]. `&Foo` is a constant, so it is already `'static`.
+//! See `docs/BLOCK_TICKS.md`.
 
 use crate::block::blocks::Block;
 
@@ -52,14 +53,14 @@ pub(super) fn table() -> [&'static dyn BlockBehavior; 256] {
     register(
         &mut table,
         &[Block::WaterFlowing, Block::LavaFlowing],
-        &fluid::FLOWING,
+        &fluid::Flowing,
     );
-    register(&mut table, &[Block::Water, Block::Lava], &fluid::STATIONARY);
-    register(&mut table, &[Block::Sand, Block::Gravel], &falling::FALLING);
-    register(&mut table, &[Block::Grass], &soil::GRASS);
-    register(&mut table, &[Block::Fire], &fire::FIRE);
-    register(&mut table, &[Block::Farmland], &soil::FARMLAND);
-    register(&mut table, &[Block::Crops], &crops::CROPS);
+    register(&mut table, &[Block::Water, Block::Lava], &fluid::Stationary);
+    register(&mut table, &[Block::Sand, Block::Gravel], &falling::Falling);
+    register(&mut table, &[Block::Grass], &soil::Grass);
+    register(&mut table, &[Block::Fire], &fire::Fire);
+    register(&mut table, &[Block::Farmland], &soil::Farmland);
+    register(&mut table, &[Block::Crops], &crops::Crops);
     register(
         &mut table,
         &[
@@ -68,73 +69,73 @@ pub(super) fn table() -> [&'static dyn BlockBehavior; 256] {
             Block::TallGrass,
             Block::DeadBush,
         ],
-        &plants::FLOWER,
+        &plants::Flower,
     );
     register(
         &mut table,
         &[Block::BrownMushroom, Block::RedMushroom],
-        &plants::MUSHROOM,
+        &plants::Mushroom,
     );
-    register(&mut table, &[Block::Cactus], &plants::CACTUS);
-    register(&mut table, &[Block::SugarCane], &plants::REED);
-    register(&mut table, &[Block::Leaves], &leaves::LEAVES);
-    register(&mut table, &[Block::Wood], &leaves::LOG);
+    register(&mut table, &[Block::Cactus], &plants::Cactus);
+    register(&mut table, &[Block::SugarCane], &plants::Reed);
+    register(&mut table, &[Block::Leaves], &leaves::Leaves);
+    register(&mut table, &[Block::Wood], &leaves::Log);
     register(
         &mut table,
         &[Block::RedstoneOreInactive, Block::RedstoneOreActive],
-        &ore::REDSTONE_ORE,
+        &ore::RedstoneOre,
     );
-    register(&mut table, &[Block::Ice], &snow::ICE);
-    register(&mut table, &[Block::SnowLayer], &snow::SNOW_LAYER);
-    register(&mut table, &[Block::Snow], &snow::SNOW_BLOCK);
-    register(&mut table, &[Block::Torch], &attached::TORCH);
-    register(&mut table, &[Block::Ladder], &attached::LADDER);
-    register(&mut table, &[Block::Sign, Block::WallSign], &attached::SIGN);
-    register(&mut table, &[Block::Sponge], &sponge::SPONGE);
-    register(&mut table, &[Block::Sapling], &plants::SAPLING);
+    register(&mut table, &[Block::Ice], &snow::Ice);
+    register(&mut table, &[Block::SnowLayer], &snow::SnowLayer);
+    register(&mut table, &[Block::Snow], &snow::SnowBlock);
+    register(&mut table, &[Block::Torch], &attached::Torch);
+    register(&mut table, &[Block::Ladder], &attached::Ladder);
+    register(&mut table, &[Block::Sign, Block::WallSign], &attached::Sign);
+    register(&mut table, &[Block::Sponge], &sponge::Sponge);
+    register(&mut table, &[Block::Sapling], &plants::Sapling);
     register(
         &mut table,
         &[Block::WoodenDoor, Block::IronDoor],
-        &fixtures::DOOR,
+        &fixtures::Door,
     );
-    register(&mut table, &[Block::Trapdoor], &fixtures::TRAPDOOR);
+    register(&mut table, &[Block::Trapdoor], &fixtures::Trapdoor);
     register(
         &mut table,
         &[Block::StoneSlab, Block::DoubleStoneSlab],
-        &fixtures::SLAB,
+        &fixtures::Slab,
     );
-    register(&mut table, &[Block::Bed], &bed::BED);
-    register(&mut table, &[Block::Cake], &cake::CAKE);
-    register(&mut table, &[Block::NetherPortal], &portal::PORTAL);
-    register(&mut table, &[Block::Redstone], &redstone::WIRE);
+    register(&mut table, &[Block::Bed], &bed::Bed);
+    register(&mut table, &[Block::Cake], &cake::Cake);
+    register(&mut table, &[Block::NetherPortal], &portal::Portal);
+    register(&mut table, &[Block::Redstone], &redstone::Wire);
     register(
         &mut table,
         &[Block::RepeaterInactive, Block::RepeaterActive],
-        &redstone::REPEATER,
+        &redstone::Repeater,
     );
     register(
         &mut table,
         &[Block::RedstoneTorchActive, Block::RedstoneTorchInactive],
-        &redstone::REDSTONE_TORCH,
+        &redstone::RedstoneTorch,
     );
-    register(&mut table, &[Block::Lever], &controls::LEVER);
-    register(&mut table, &[Block::StoneButton], &controls::BUTTON);
+    register(&mut table, &[Block::Lever], &controls::Lever);
+    register(&mut table, &[Block::StoneButton], &controls::Button);
     register(
         &mut table,
         &[Block::StonePressurePlate, Block::WoodenPressurePlate],
-        &controls::PLATE,
+        &controls::Plate,
     );
     register(
         &mut table,
         &[Block::Piston, Block::StickyPiston],
-        &piston::PISTON,
+        &piston::Piston,
     );
-    register(&mut table, &[Block::PistonHead], &piston::HEAD);
-    register(&mut table, &[Block::Rail, Block::PoweredRail], &rail::RAIL);
-    register(&mut table, &[Block::DetectorRail], &rail::DETECTOR);
-    register(&mut table, &[Block::NoteBlock], &note::NOTE);
-    register(&mut table, &[Block::Jukebox], &jukebox::JUKEBOX);
-    register(&mut table, &[Block::Tnt], &tnt::TNT);
-    register(&mut table, &[Block::Dispenser], &dispenser::DISPENSER);
+    register(&mut table, &[Block::PistonHead], &piston::PistonHead);
+    register(&mut table, &[Block::Rail, Block::PoweredRail], &rail::Rail);
+    register(&mut table, &[Block::DetectorRail], &rail::Detector);
+    register(&mut table, &[Block::NoteBlock], &note::Note);
+    register(&mut table, &[Block::Jukebox], &jukebox::Jukebox);
+    register(&mut table, &[Block::Tnt], &tnt::Tnt);
+    register(&mut table, &[Block::Dispenser], &dispenser::Dispenser);
     table
 }

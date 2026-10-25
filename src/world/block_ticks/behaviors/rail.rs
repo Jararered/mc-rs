@@ -6,9 +6,7 @@ use crate::world::block_ticks::behavior;
 use bevy::math::IVec3;
 
 pub struct Rail;
-pub static RAIL: Rail = Rail;
 pub struct Detector;
-pub static DETECTOR: Detector = Detector;
 
 fn is_rail(block: Block) -> bool {
     matches!(
@@ -387,10 +385,10 @@ impl BlockBehavior for Detector {
         side == 1 && self.weak_power(world, position, side)
     }
     fn on_added(&self, world: &mut TickWorld, position: IVec3) {
-        RAIL.on_added(world, position);
+        Rail.on_added(world, position);
     }
     fn neighbor_changed(&self, world: &mut TickWorld, position: IVec3, neighbor: Block) {
-        RAIL.neighbor_changed(world, position, neighbor);
+        Rail.neighbor_changed(world, position, neighbor);
     }
     fn entity_collided(&self, world: &mut TickWorld, position: IVec3) {
         if world.metadata(position) & 8 == 0 {

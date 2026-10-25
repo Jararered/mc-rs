@@ -7,9 +7,7 @@ use bevy::math::IVec3;
 use bevy::math::Vec3;
 
 pub struct Piston;
-pub static PISTON: Piston = Piston;
 pub struct PistonHead;
-pub static HEAD: PistonHead = PistonHead;
 
 const OFFSETS: [IVec3; 6] = [
     IVec3::NEG_Y,
@@ -281,7 +279,7 @@ impl BlockBehavior for PistonHead {
         };
         let base = pos - OFFSETS[face];
         if is_base(world.block(base)) {
-            PISTON.neighbor_changed(world, base, neighbor);
+            Piston.neighbor_changed(world, base, neighbor);
         } else {
             world.set_block_notify(pos, Block::Air);
         }

@@ -12,7 +12,6 @@ use super::fluid::is_water;
 /// block (including water, when the light above falls below 4) back into
 /// dirt, and let well-lit grass spread onto nearby dirt.
 pub struct Grass;
-pub static GRASS: Grass = Grass;
 
 impl BlockBehavior for Grass {
     fn ticks_randomly(&self, _block: Block) -> bool {
@@ -52,7 +51,6 @@ pub const MAX_MOISTURE: u8 = 7;
 /// water, dry it out otherwise, and turn dry farmland with no crop back into
 /// dirt. Trampling or covering it with a solid block also reverts it.
 pub struct Farmland;
-pub static FARMLAND: Farmland = Farmland;
 
 impl Farmland {
     /// `BlockFarmland.isWaterNearby`: water within four blocks across, on the

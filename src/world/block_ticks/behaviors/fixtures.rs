@@ -16,7 +16,6 @@ pub const OPEN: u8 = 4;
 pub const UPPER: u8 = 8;
 
 pub struct Door;
-pub static DOOR: Door = Door;
 
 impl Door {
     /// `BlockDoor.blockActivated`: swing both halves. The lower half holds
@@ -108,7 +107,6 @@ impl BlockBehavior for Door {
 }
 
 pub struct Trapdoor;
-pub static TRAPDOOR: Trapdoor = Trapdoor;
 
 impl Trapdoor {
     fn toggle(world: &mut TickWorld, position: IVec3) {
@@ -159,7 +157,6 @@ impl BlockBehavior for Trapdoor {
 /// `BlockStep.onBlockAdded`: a slab set on a slab of the same material
 /// becomes one double slab.
 pub struct Slab;
-pub static SLAB: Slab = Slab;
 
 impl BlockBehavior for Slab {
     fn on_added(&self, world: &mut TickWorld, position: IVec3) {

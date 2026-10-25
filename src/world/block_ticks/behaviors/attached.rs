@@ -38,7 +38,6 @@ fn break_off(world: &mut TickWorld, position: IVec3) {
 }
 
 pub struct Torch;
-pub static TORCH: Torch = Torch;
 
 impl Torch {
     /// `dropTorchIfCantStay`, then the check for the torch's own support.
@@ -77,7 +76,6 @@ impl BlockBehavior for Torch {
 /// `BlockSign.onNeighborBlockChange`: a post needs something solid under
 /// it, and a wall sign the block it hangs on.
 pub struct Sign;
-pub static SIGN: Sign = Sign;
 
 impl BlockBehavior for Sign {
     fn neighbor_changed(&self, world: &mut TickWorld, position: IVec3, _neighbor: Block) {
@@ -98,7 +96,6 @@ impl BlockBehavior for Sign {
 }
 
 pub struct Ladder;
-pub static LADDER: Ladder = Ladder;
 
 impl BlockBehavior for Ladder {
     fn neighbor_changed(&self, world: &mut TickWorld, position: IVec3, _neighbor: Block) {

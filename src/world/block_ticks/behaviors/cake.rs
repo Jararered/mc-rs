@@ -8,7 +8,6 @@ use crate::world::block_ticks::BlockBehavior;
 use crate::world::block_ticks::TickWorld;
 
 pub struct Cake;
-pub static CAKE: Cake = Cake;
 
 impl BlockBehavior for Cake {
     /// `BlockCake.onNeighborBlockChange`. `quantityDropped` is 0, so the

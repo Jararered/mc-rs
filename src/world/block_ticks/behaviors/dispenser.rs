@@ -8,7 +8,6 @@ use crate::world::block_ticks::TickEffect;
 use crate::world::block_ticks::TickWorld;
 
 pub struct Dispenser;
-pub static DISPENSER: Dispenser = Dispenser;
 
 fn powered(world: &mut TickWorld, pos: IVec3) -> bool {
     world.block_indirectly_getting_powered(pos)

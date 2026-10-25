@@ -9,7 +9,6 @@ use crate::world::block_ticks::BlockBehavior;
 use crate::world::block_ticks::TickWorld;
 
 pub struct Sponge;
-pub static SPONGE: Sponge = Sponge;
 
 impl BlockBehavior for Sponge {
     fn on_removed(&self, world: &mut TickWorld, position: IVec3, _previous: Block, _metadata: u8) {

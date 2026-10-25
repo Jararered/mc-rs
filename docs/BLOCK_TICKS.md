@@ -67,10 +67,12 @@ Every hook has a no-op default. Implement only what the block reacts to.
 | `activated(world, pos)` | `blockActivated` | The player right-clicked it |
 | `entity_walked(world, pos)` | `onEntityWalking` | An entity took a step on it |
 
-Behaviors are stateless unit structs with a `static` instance. One behavior
-serves every torch facing and every leaf species, since those live in metadata;
-read which one with `world.metadata(pos)`. As in Beta, random and scheduled
-ticks call the same `update_tick`.
+Behaviors are stateless unit structs, registered by reference to the struct
+itself: `&Foo` is a constant, so Rust promotes it to `'static` and no named
+instance is needed. One behavior serves every torch facing and every leaf
+species, since those live in metadata; read which one with
+`world.metadata(pos)`. As in Beta, random and scheduled ticks call the same
+`update_tick`.
 
 ## `TickWorld`: the world a behavior sees
 
@@ -152,7 +154,6 @@ Say a new block needs Beta's `BlockFoo.updateTick`.
    ```rust
    /// Beta `BlockFoo`: what it does, in a sentence.
    pub struct Foo;
-   pub static FOO: Foo = Foo;
 
    impl BlockBehavior for Foo {
        fn ticks_randomly(&self, _block: Id) -> bool {
@@ -184,7 +185,7 @@ Say a new block needs Beta's `BlockFoo.updateTick`.
    Keep the Java's order of random draws and its `WithNotify` choices; they
    decide what neighbors see. Name Beta methods and fields in doc comments.
 3. **Register it** in `behaviors::table()`:
-   `register(&mut table, &[Id::Foo], &foo::FOO);` List every compact value
+   `register(&mut table, &[Id::Foo], &foo::Foo);` List every compact value
    that shares the behavior.
 4. **If metadata changes how it looks**, teach the mesher to draw it and
    update `meshing::same_appearance`, which decides whether a change needs a

@@ -41,7 +41,6 @@ pub fn check_flower_change(world: &mut TickWorld, position: IVec3) {
 
 /// Beta `BlockFlower`: dandelions, roses, tall grass, ferns, and dead bushes.
 pub struct Flower;
-pub static FLOWER: Flower = Flower;
 
 impl BlockBehavior for Flower {
     fn ticks_randomly(&self, _block: Block) -> bool {
@@ -78,7 +77,6 @@ impl TreeWorld for TickWorld<'_> {
 /// Beta `BlockSapling`: a flower that, in light, turns into a tree on its
 /// second successful one-in-thirty random tick.
 pub struct Sapling;
-pub static SAPLING: Sapling = Sapling;
 
 impl Sapling {
     /// How far a big oak's branches reach from the trunk, in blocks. Beta
@@ -165,7 +163,6 @@ pub fn fertilize(world: &mut TickWorld, position: IVec3) {
 /// Beta `BlockMushroom`. A random tick has a 1 in 100 chance to spread a
 /// mushroom into a nearby shaded cell on solid ground.
 pub struct Mushroom;
-pub static MUSHROOM: Mushroom = Mushroom;
 
 impl BlockBehavior for Mushroom {
     fn ticks_randomly(&self, _block: Block) -> bool {
@@ -234,7 +231,6 @@ fn break_off(world: &mut TickWorld, position: IVec3) {
 /// Beta `BlockCactus`: grows, and breaks when a solid block touches its side
 /// or its sand or cactus support goes.
 pub struct Cactus;
-pub static CACTUS: Cactus = Cactus;
 
 impl BlockBehavior for Cactus {
     fn ticks_randomly(&self, _block: Block) -> bool {
@@ -257,7 +253,6 @@ impl BlockBehavior for Cactus {
 /// Beta `BlockReed` (sugar cane): grows, and breaks when its support or the
 /// water beside its ground goes.
 pub struct Reed;
-pub static REED: Reed = Reed;
 
 impl BlockBehavior for Reed {
     fn ticks_randomly(&self, _block: Block) -> bool {

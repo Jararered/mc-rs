@@ -182,7 +182,6 @@ fn settle(world: &mut TickWorld, position: IVec3, fluid: Fluid) {
 
 /// Beta `BlockFlowing`: water and lava that are spreading.
 pub struct Flowing;
-pub static FLOWING: Flowing = Flowing;
 
 impl BlockBehavior for Flowing {
     /// `BlockFluid` ticks on load, so a flowing block left without a
@@ -293,7 +292,6 @@ impl BlockBehavior for Flowing {
 
 /// Beta `BlockStationary`: settled water and lava.
 pub struct Stationary;
-pub static STATIONARY: Stationary = Stationary;
 
 impl BlockBehavior for Stationary {
     /// Only still lava ticks on load, to set fire to its surroundings.

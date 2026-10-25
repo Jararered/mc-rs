@@ -89,7 +89,6 @@ pub fn supported(world: &TickWorld, position: IVec3) -> bool {
 }
 
 pub struct Leaves;
-pub static LEAVES: Leaves = Leaves;
 
 impl BlockBehavior for Leaves {
     fn ticks_randomly(&self, _block: Block) -> bool {
@@ -120,7 +119,6 @@ impl BlockBehavior for Leaves {
 
 /// Beta `BlockLog`: removing a log asks nearby leaves to check their support.
 pub struct Log;
-pub static LOG: Log = Log;
 
 impl BlockBehavior for Log {
     fn on_removed(&self, world: &mut TickWorld, position: IVec3, _previous: Block, _metadata: u8) {

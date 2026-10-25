@@ -9,7 +9,6 @@ use crate::world::block_ticks::BlockBehavior;
 use crate::world::block_ticks::TickWorld;
 
 pub struct Bed;
-pub static BED: Bed = Bed;
 
 impl BlockBehavior for Bed {
     /// `BlockBed.onNeighborBlockChange`. Only the half without the foot bit

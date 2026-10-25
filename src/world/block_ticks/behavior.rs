@@ -92,8 +92,6 @@ pub(super) struct Inert;
 
 impl BlockBehavior for Inert {}
 
-static INERT: Inert = Inert;
-
 /// The implementation for every compact block value. Families that share
 /// behavior share an entry, as the block definition table does.
 static BEHAVIORS: std::sync::LazyLock<[&dyn BlockBehavior; 256]> =
@@ -103,7 +101,7 @@ static BEHAVIORS: std::sync::LazyLock<[&dyn BlockBehavior; 256]> =
 #[inline]
 pub fn behavior(block: Block) -> &'static dyn BlockBehavior {
     match block {
-        Block::Unknown(_) => &INERT,
+        Block::Unknown(_) => &Inert,
         _ => BEHAVIORS[usize::from(block.as_u8())],
     }
 }
@@ -126,5 +124,5 @@ pub fn ticks_randomly(raw: u8) -> bool {
 /// Start a behavior table with every value inert. `behaviors::table` fills
 /// in the registered blocks.
 pub(super) const fn inert_table() -> [&'static dyn BlockBehavior; 256] {
-    [&INERT as &dyn BlockBehavior; 256]
+    [&Inert as &dyn BlockBehavior; 256]
 }

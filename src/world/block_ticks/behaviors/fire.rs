@@ -6,7 +6,6 @@ use crate::world::block_ticks::TickWorld;
 use bevy::math::IVec3;
 
 pub struct Fire;
-pub static FIRE: Fire = Fire;
 
 use crate::block::properties::burn_rates as rates;
 

@@ -8,7 +8,6 @@ use crate::world::block_ticks::TickWorld;
 use crate::world::sound::Pitch;
 
 pub struct Wire;
-pub static WIRE: Wire = Wire;
 
 const HORIZONTAL: [IVec3; 4] = [IVec3::NEG_X, IVec3::X, IVec3::NEG_Z, IVec3::Z];
 
@@ -234,7 +233,6 @@ impl BlockBehavior for Wire {
 }
 
 pub struct Repeater;
-pub static REPEATER: Repeater = Repeater;
 
 fn repeater_input(world: &mut TickWorld, position: IVec3) -> bool {
     let direction = match world.metadata(position) & 3 {
@@ -305,7 +303,6 @@ impl BlockBehavior for Repeater {
 }
 
 pub struct RedstoneTorch;
-pub static REDSTONE_TORCH: RedstoneTorch = RedstoneTorch;
 
 /// `BlockTorch.canPlaceTorchOn` for a floor torch; side torches need a cube.
 fn torch_supported(world: &TickWorld, position: IVec3) -> bool {

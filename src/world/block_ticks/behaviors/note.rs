@@ -6,7 +6,6 @@ use crate::world::block_ticks::TickWorld;
 use bevy::math::IVec3;
 
 pub struct Note;
-pub static NOTE: Note = Note;
 
 /// `BlockNote.blockEventReceived`: the instrument follows the material of the
 /// block underneath. 1 bass drum, 2 snare, 3 click, 4 bass guitar.

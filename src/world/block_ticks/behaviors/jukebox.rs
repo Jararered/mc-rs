@@ -13,7 +13,6 @@ use bevy::math::IVec3;
 pub const RECORD_EFFECT: i32 = 1005;
 
 pub struct Jukebox;
-pub static JUKEBOX: Jukebox = Jukebox;
 
 /// `BlockJukeBox.func_28038_b_`.
 fn eject(world: &mut TickWorld, position: IVec3) {

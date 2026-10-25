@@ -31,7 +31,6 @@ pub fn can_land_in(block: Block) -> bool {
 }
 
 pub struct Falling;
-pub static FALLING: Falling = Falling;
 
 impl BlockBehavior for Falling {
     fn tick_rate(&self, _block: Block) -> u32 {

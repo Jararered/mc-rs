@@ -25,7 +25,6 @@ fn melt(world: &mut TickWorld, position: IVec3, with: Block) {
 /// harvested block leaves flowing water when it rested on something solid
 /// or liquid.
 pub struct Ice;
-pub static ICE: Ice = Ice;
 
 impl BlockBehavior for Ice {
     fn ticks_randomly(&self, _block: Block) -> bool {
@@ -49,7 +48,6 @@ impl BlockBehavior for Ice {
 /// Beta `BlockSnow`: the thin snow layer. Melts in block light above 11, and
 /// breaks off when the block under it is not a solid opaque cube.
 pub struct SnowLayer;
-pub static SNOW_LAYER: SnowLayer = SnowLayer;
 
 impl SnowLayer {
     /// `BlockSnow.canPlaceBlockAt`.
@@ -80,7 +78,6 @@ impl BlockBehavior for SnowLayer {
 /// Beta `BlockSnowBlock`: melts in block light above 11, dropping its four
 /// snowballs.
 pub struct SnowBlock;
-pub static SNOW_BLOCK: SnowBlock = SnowBlock;
 
 impl BlockBehavior for SnowBlock {
     fn ticks_randomly(&self, _block: Block) -> bool {

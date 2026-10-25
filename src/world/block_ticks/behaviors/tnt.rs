@@ -6,7 +6,6 @@ use crate::world::block_ticks::BlockBehavior;
 use crate::world::block_ticks::TickWorld;
 
 pub struct Tnt;
-pub static TNT: Tnt = Tnt;
 
 fn check_power(world: &mut TickWorld, position: IVec3) {
     if world.block(position) == Block::Tnt && world.block_indirectly_getting_powered(position) {

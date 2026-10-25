@@ -62,7 +62,6 @@ pub fn try_to_create_portal(world: &mut TickWorld, mut position: IVec3) -> bool 
 }
 
 pub struct Portal;
-pub static PORTAL: Portal = Portal;
 
 impl BlockBehavior for Portal {
     /// `onNeighborBlockChange`: the column must stand on obsidian, be three

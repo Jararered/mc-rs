@@ -8,7 +8,6 @@ use crate::world::block_ticks::BlockBehavior;
 use crate::world::block_ticks::TickWorld;
 
 pub struct RedstoneOre;
-pub static REDSTONE_ORE: RedstoneOre = RedstoneOre;
 
 /// `BlockRedstoneOre.func_320_h`: light unlit ore.
 fn glow(world: &mut TickWorld, position: IVec3) {

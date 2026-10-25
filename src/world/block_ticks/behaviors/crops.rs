@@ -16,7 +16,6 @@ use super::plants::check_flower_change;
 pub const RIPE: u8 = 7;
 
 pub struct Crops;
-pub static CROPS: Crops = Crops;
 
 impl Crops {
     /// `BlockCrops.getGrowthRate`: `1` plus the farmland under and around the

@@ -41,7 +41,6 @@ fn notify_switch(world: &mut TickWorld, position: IVec3, block: Block) {
 }
 
 pub struct Lever;
-pub static LEVER: Lever = Lever;
 impl BlockBehavior for Lever {
     fn can_provide_power(&self) -> bool {
         true
@@ -81,7 +80,6 @@ impl BlockBehavior for Lever {
 }
 
 pub struct Button;
-pub static BUTTON: Button = Button;
 impl BlockBehavior for Button {
     fn can_provide_power(&self) -> bool {
         true
@@ -137,7 +135,6 @@ impl BlockBehavior for Button {
 }
 
 pub struct Plate;
-pub static PLATE: Plate = Plate;
 impl BlockBehavior for Plate {
     fn can_provide_power(&self) -> bool {
         true

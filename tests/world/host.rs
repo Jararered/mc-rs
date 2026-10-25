@@ -1,11 +1,11 @@
 //! `WorldHost`: both dimensions of one world running at once, with players
 //! moving between them.
 
+use std::ops::Deref;
+use std::ops::DerefMut;
 use std::thread;
 use std::time::Duration;
 use std::time::Instant;
-use std::time::SystemTime;
-use std::time::UNIX_EPOCH;
 
 use bevy::mesh::MeshPlugin;
 use bevy::prelude::*;
@@ -23,21 +23,43 @@ use game::world::portal;
 use game::world::streaming::WorldStreaming;
 use game::world::tick::WorldTick;
 
-fn host(label: &str, format: SaveFormat) -> WorldHost {
-    let unique = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let saves = std::env::temp_dir().join(format!("game-host-{label}-{unique}"));
-    std::fs::create_dir_all(&saves).unwrap();
+use crate::temp::TempDir;
+
+/// A host and the folder its world is saved in. Fields drop in order, so
+/// the host lets go of its files before the folder is removed.
+struct TestHost {
+    host: WorldHost,
+    _saves: TempDir,
+}
+
+impl Deref for TestHost {
+    type Target = WorldHost;
+
+    fn deref(&self) -> &WorldHost {
+        &self.host
+    }
+}
+
+impl DerefMut for TestHost {
+    fn deref_mut(&mut self) -> &mut WorldHost {
+        &mut self.host
+    }
+}
+
+fn host(label: &str, format: SaveFormat) -> TestHost {
+    let saves = TempDir::new(&format!("host-{label}"));
     let storage = WorldStorage::create_in_format(&saves, 7, "Hosted", None, format).unwrap();
-    WorldHost::new(storage, 60.0, |app| {
+    let host = WorldHost::new(storage, 60.0, |app| {
         app.add_plugins((MinimalPlugins, AssetPlugin::default(), MeshPlugin))
             .init_asset::<Image>()
             .init_asset::<StandardMaterial>()
             .init_resource::<ButtonInput<KeyCode>>()
             .add_plugins((WorldPlugin, game::rendering::WorldRenderingPlugin));
-    })
+    });
+    TestHost {
+        host,
+        _saves: saves,
+    }
 }
 
 fn run_until(
@@ -79,45 +101,58 @@ fn block_at_feet(host: &WorldHost, dimension: Dimension, player: Entity) -> Opti
         )
 }
 
+// One test per format, so the two run side by side.
 #[test]
 fn two_players_can_be_in_different_dimensions_at_once() {
-    for format in [SaveFormat::Binary, SaveFormat::Original] {
-        let mut host = host("apart", format);
-        let (dimension, alice) = host.join("alice");
-        assert_eq!(dimension, Dimension::Overworld);
-        let (_, _bob) = host.join("bob");
-        assert_eq!(host.loaded(), [Dimension::Overworld]);
+    two_players_apart(SaveFormat::Binary);
+}
 
-        // Bob goes through; the teleporter builds him a portal to stand in.
-        host.travel("bob");
-        assert!(run_until(&mut host, Duration::from_secs(120), |host| {
+#[test]
+fn two_players_can_be_in_different_dimensions_of_an_original_world() {
+    two_players_apart(SaveFormat::Original);
+}
+
+fn two_players_apart(format: SaveFormat) {
+    let mut host = host("apart", format);
+    let (dimension, alice) = host.join("alice");
+    assert_eq!(dimension, Dimension::Overworld);
+    let (_, _bob) = host.join("bob");
+    assert_eq!(host.loaded(), [Dimension::Overworld]);
+
+    // Bob goes through; the teleporter builds him a portal to stand in.
+    host.travel("bob");
+    assert!(
+        run_until(&mut host, Duration::from_secs(120), |host| {
             host.find("bob")
                 .is_some_and(|(dimension, _)| dimension == Dimension::Nether)
-        }));
-        let (_, bob) = host.find("bob").unwrap();
-        assert_eq!(host.find("alice"), Some((Dimension::Overworld, alice)));
-        assert_eq!(host.loaded(), [Dimension::Overworld, Dimension::Nether]);
+        }),
+        "{format:?}: bob never reached the Nether"
+    );
+    let (_, bob) = host.find("bob").unwrap();
+    assert_eq!(host.find("alice"), Some((Dimension::Overworld, alice)));
+    assert_eq!(host.loaded(), [Dimension::Overworld, Dimension::Nether]);
+    assert_eq!(
+        block_at_feet(&host, Dimension::Nether, bob),
+        Some(Block::NetherPortal),
+        "{format:?}"
+    );
+    for dimension in [Dimension::Overworld, Dimension::Nether] {
         assert_eq!(
-            block_at_feet(&host, Dimension::Nether, bob),
-            Some(Block::NetherPortal),
-            "{format:?}"
+            host.world(dimension)
+                .unwrap()
+                .resource::<ActiveDimension>()
+                .0,
+            dimension
         );
-        for dimension in [Dimension::Overworld, Dimension::Nether] {
-            assert_eq!(
-                host.world(dimension)
-                    .unwrap()
-                    .resource::<ActiveDimension>()
-                    .0,
-                dimension
-            );
-        }
+    }
 
-        // Each dimension streams around its own player, on one clock.
-        let nether_chunk = {
-            let at = eye(&host, Dimension::Nether, bob);
-            ChunkPosition::from_world(at.x, at.z)
-        };
-        assert!(run_until(&mut host, Duration::from_secs(60), |host| {
+    // Each dimension streams around its own player, on one clock.
+    let nether_chunk = {
+        let at = eye(&host, Dimension::Nether, bob);
+        ChunkPosition::from_world(at.x, at.z)
+    };
+    assert!(
+        run_until(&mut host, Duration::from_secs(60), |host| {
             let loaded = |dimension, position| {
                 host.world(dimension)
                     .unwrap()
@@ -132,42 +167,46 @@ fn two_players_can_be_in_different_dimensions_at_once() {
                         z: nether_chunk.z,
                     },
                 )
-        }));
-        let before = host.world_time();
-        for _ in 0..5 {
-            host.update(0.05);
-        }
-        assert_eq!(host.world_time(), before + 5);
-        for dimension in [Dimension::Overworld, Dimension::Nether] {
-            let tick = host.world(dimension).unwrap().resource::<WorldTick>();
-            assert_eq!(tick.world_time(), host.world_time(), "{dimension:?}");
-        }
+        }),
+        "{format:?}: the chunks around each player never streamed in"
+    );
+    let before = host.world_time();
+    for _ in 0..5 {
+        host.update(0.05);
+    }
+    assert_eq!(host.world_time(), before + 5);
+    for dimension in [Dimension::Overworld, Dimension::Nether] {
+        let tick = host.world(dimension).unwrap().resource::<WorldTick>();
+        assert_eq!(tick.world_time(), host.world_time(), "{dimension:?}");
+    }
 
-        // Back through: the Nether has nobody left, so it saves and unloads,
-        // and what the teleporter built there is on disk.
-        host.travel("bob");
-        assert!(run_until(&mut host, Duration::from_secs(120), |host| {
+    // Back through: the Nether has nobody left, so it saves and unloads,
+    // and what the teleporter built there is on disk.
+    host.travel("bob");
+    assert!(
+        run_until(&mut host, Duration::from_secs(120), |host| {
             host.find("bob")
                 .is_some_and(|(dimension, _)| dimension == Dimension::Overworld)
-        }));
-        let (_, bob) = host.find("bob").unwrap();
-        assert_eq!(
-            block_at_feet(&host, Dimension::Overworld, bob),
-            Some(Block::NetherPortal),
-            "{format:?}"
-        );
-        assert!(
-            run_until(&mut host, Duration::from_secs(180), |host| {
-                host.loaded() == [Dimension::Overworld]
-            }),
-            "{format:?}: the empty Nether never unloaded"
-        );
-        let saved = host
-            .storage()
-            .load_chunk_in(Dimension::Nether, nether_chunk)
-            .unwrap_or_else(|| panic!("{format:?}: the Nether's portal chunk was not saved"));
-        assert!(portal::has_portal(&saved), "{format:?}");
-    }
+        }),
+        "{format:?}: bob never came back to the Overworld"
+    );
+    let (_, bob) = host.find("bob").unwrap();
+    assert_eq!(
+        block_at_feet(&host, Dimension::Overworld, bob),
+        Some(Block::NetherPortal),
+        "{format:?}"
+    );
+    assert!(
+        run_until(&mut host, Duration::from_secs(180), |host| {
+            host.loaded() == [Dimension::Overworld]
+        }),
+        "{format:?}: the empty Nether never unloaded"
+    );
+    let saved = host
+        .storage()
+        .load_chunk_in(Dimension::Nether, nether_chunk)
+        .unwrap_or_else(|| panic!("{format:?}: the Nether's portal chunk was not saved"));
+    assert!(portal::has_portal(&saved), "{format:?}");
 }
 
 #[test]
@@ -216,15 +255,19 @@ fn standing_in_a_portal_sends_a_player_through() {
         at.z.floor() as i32,
     );
     // Finished, so that no population pass is still to write into it.
-    assert!(run_until(&mut host, Duration::from_secs(60), |host| {
-        let world = host.world(Dimension::Overworld).unwrap();
-        let chunks = world.resource::<WorldChunks>();
-        world
-            .get_resource::<WorldStreaming>()
-            .is_some_and(|streaming| {
-                streaming.neighborhood_finished(chunks, ChunkPosition::from_block(cell.x, cell.z))
-            })
-    }));
+    assert!(
+        run_until(&mut host, Duration::from_secs(60), |host| {
+            let world = host.world(Dimension::Overworld).unwrap();
+            let chunks = world.resource::<WorldChunks>();
+            world
+                .get_resource::<WorldStreaming>()
+                .is_some_and(|streaming| {
+                    streaming
+                        .neighborhood_finished(chunks, ChunkPosition::from_block(cell.x, cell.z))
+                })
+        }),
+        "the chunks around the player never finished"
+    );
     // A new arrival cannot start a trip until `timeUntilPortal` has run out.
     for _ in 0..30 {
         host.update(0.05);
@@ -273,12 +316,15 @@ fn a_remote_rider_in_a_portal_is_put_off_its_boat() {
     for _ in 0..30 {
         host.update(0.05);
     }
-    assert!(run_until(&mut host, Duration::from_secs(60), |host| {
-        host.world(dimension)
-            .unwrap()
-            .resource::<WorldChunks>()
-            .contains(ChunkPosition::ZERO)
-    }));
+    assert!(
+        run_until(&mut host, Duration::from_secs(60), |host| {
+            host.world(dimension)
+                .unwrap()
+                .resource::<WorldChunks>()
+                .contains(ChunkPosition::ZERO)
+        }),
+        "the spawn chunk never streamed in"
+    );
     let feet = eye(&host, dimension, dave) - Vec3::Y * 1.62;
     let world = host.world_mut(dimension).unwrap();
     let boat = spawn_boat_at(&mut world.commands(), feet + Vec3::Y * 0.3, Boat::default());
@@ -300,11 +346,14 @@ fn a_remote_rider_in_a_portal_is_put_off_its_boat() {
             }
         }
     }
-    assert!(run_until(&mut host, Duration::from_secs(5), |host| {
-        host.world(dimension)
-            .unwrap()
-            .get::<Mounted>(dave)
-            .is_none()
-    }));
+    assert!(
+        run_until(&mut host, Duration::from_secs(5), |host| {
+            host.world(dimension)
+                .unwrap()
+                .get::<Mounted>(dave)
+                .is_none()
+        }),
+        "the rider was never put off the boat"
+    );
     assert_eq!(host.find("dave"), Some((dimension, dave)));
 }

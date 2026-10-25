@@ -139,14 +139,11 @@ fn sugar_cane_requires_water_next_to_its_ground_support() {
 
 #[test]
 fn world_generation_places_sugar_cane_near_water() {
-    let generator = OverworldGenerator::new(0);
-    for z in -16..=16 {
-        for x in -16..=16 {
-            let generated = generator.generate(ChunkPosition { x, z });
-            if generated.chunk.blocks().contains(&Block::SugarCane) {
-                return;
-            }
-        }
-    }
-    panic!("seeded chunks should contain a generated sugar-cane patch");
+    // The first chunk with sugar cane that a search of seed 0, out to 16
+    // chunks, found. Pinned, so the test does not walk there every run.
+    let generated = OverworldGenerator::new(0).generate(ChunkPosition { x: -16, z: -9 });
+    assert!(
+        generated.chunk.blocks().contains(&Block::SugarCane),
+        "seeded chunks should contain a generated sugar-cane patch"
+    );
 }

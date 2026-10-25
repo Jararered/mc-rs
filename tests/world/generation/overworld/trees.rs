@@ -92,29 +92,25 @@ fn forest_chunk_contains_grounded_trees_with_canopies() {
 
 #[test]
 fn taiga_chunks_generate_spruce_trees() {
-    for seed in 0..8 {
-        let generator = OverworldGenerator::new(seed);
-        for z in (-8..=8).step_by(2) {
-            for x in (-8..=8).step_by(2) {
-                let generated = generator.generate(ChunkPosition { x, z });
-                let contains_taiga = generated
-                    .biomes
-                    .cells()
-                    .iter()
-                    .any(|climate| climate.biome == Biome::Taiga);
-                if !contains_taiga {
-                    continue;
-                }
-                let spruce_trunks = count_species(&generated.chunk, Block::Wood, SPRUCE);
-                let spruce_leaves = count_species(&generated.chunk, Block::Leaves, SPRUCE);
-                if spruce_trunks > 0 {
-                    assert!(spruce_leaves > 0, "spruce trunks need spruce canopies");
-                    return;
-                }
-            }
-        }
-    }
-    panic!("expected a sampled taiga region to generate spruce trees");
+    // The first chunk with spruce in it that a search of seeds 0 to 7, out to
+    // 8 chunks, found. Pinned, so the test does not walk there every run.
+    let generated = OverworldGenerator::new(3).generate(ChunkPosition { x: -2, z: 2 });
+    assert!(
+        generated
+            .biomes
+            .cells()
+            .iter()
+            .any(|climate| climate.biome == Biome::Taiga),
+        "the pinned chunk is no longer taiga"
+    );
+    assert!(
+        count_species(&generated.chunk, Block::Wood, SPRUCE) > 0,
+        "taiga grows spruce trunks"
+    );
+    assert!(
+        count_species(&generated.chunk, Block::Leaves, SPRUCE) > 0,
+        "spruce trunks need spruce canopies"
+    );
 }
 
 #[test]
@@ -163,31 +159,27 @@ fn desert_chunks_generate_dead_bushes_on_sand() {
 
 #[test]
 fn pumpkin_patches_generate_facing_pumpkins_on_grass() {
-    let generator = OverworldGenerator::new(0);
-    for chunk_z in -16..=16 {
-        for chunk_x in -16..=16 {
-            let generated = generator.generate(ChunkPosition {
-                x: chunk_x,
-                z: chunk_z,
-            });
-            for z in 0..CHUNK_SIZE {
-                for x in 0..CHUNK_SIZE {
-                    for y in 1..CHUNK_HEIGHT {
-                        let Some(block) = generated.chunk.get(x, y, z) else {
-                            continue;
-                        };
-                        if block != Block::Pumpkin {
-                            continue;
-                        }
-                        assert_eq!(generated.chunk.get(x, y - 1, z), Some(Block::Grass));
-                        assert!(block.facing(generated.chunk.metadata(x, y, z)).is_some());
-                        return;
-                    }
+    // The first chunk with pumpkins that a search of seed 0, out to 16
+    // chunks, found. Pinned, so the test does not walk there every run.
+    let generated = OverworldGenerator::new(0).generate(ChunkPosition { x: 3, z: -8 });
+    let mut pumpkins = 0;
+    for z in 0..CHUNK_SIZE {
+        for x in 0..CHUNK_SIZE {
+            for y in 1..CHUNK_HEIGHT {
+                if generated.chunk.get(x, y, z) != Some(Block::Pumpkin) {
+                    continue;
                 }
+                pumpkins += 1;
+                assert_eq!(generated.chunk.get(x, y - 1, z), Some(Block::Grass));
+                assert!(
+                    Block::Pumpkin
+                        .facing(generated.chunk.metadata(x, y, z))
+                        .is_some()
+                );
             }
         }
     }
-    panic!("seeded terrain should eventually generate pumpkins");
+    assert!(pumpkins > 0, "the pinned chunk has no pumpkins");
 }
 
 fn assert_wood_components_do_not_merge_trunks(
@@ -511,7 +503,15 @@ fn canopies_over_sand_still_have_a_trunk() {
     }
 }
 
+/// How long 100 chunks take to generate, trees included. Game code is
+/// unoptimized under `cargo test`, so compare one run with another, not with
+/// frame times:
+///
+/// ```sh
+/// cargo test -- --ignored timing_probe --nocapture
+/// ```
 #[test]
+#[ignore = "manual performance measurement"]
 fn timing_probe() {
     use std::time::Instant;
     let generator = OverworldGenerator::new(0);

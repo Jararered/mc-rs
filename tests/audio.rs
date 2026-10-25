@@ -9,8 +9,6 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
-use std::time::SystemTime;
-use std::time::UNIX_EPOCH;
 
 use bevy::audio::ChannelCount;
 use bevy::audio::Sample;
@@ -36,12 +34,10 @@ use game::block::definition::StepSound;
 use game::entity::mobs::MobType;
 use game::entity::voice::voice;
 
-fn temp_folder(label: &str) -> PathBuf {
-    let unique = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    std::env::temp_dir().join(format!("game-sounds-{label}-{unique}"))
+use crate::temp::TempDir;
+
+fn temp_folder(label: &str) -> TempDir {
+    TempDir::new(&format!("sounds-{label}"))
 }
 
 fn touch(root: &Path, relative: &str) {
@@ -136,12 +132,14 @@ fn scan_sorts_the_folder_into_beta_pools() {
             ("13".to_string(), root.join("streaming/13.ogg")),
         ]
     );
-    let _ = fs::remove_dir_all(root);
 }
 
 #[test]
 fn a_missing_folder_is_an_empty_library() {
-    assert_eq!(scan(&temp_folder("missing")), Scan::default());
+    assert_eq!(
+        scan(&temp_folder("missing").join("resources")),
+        Scan::default()
+    );
 }
 
 #[test]
@@ -152,7 +150,6 @@ fn a_file_that_is_not_ogg_is_refused() {
     assert!(read_source(&root.join("empty.ogg")).is_none());
     assert!(read_source(&root.join("text.ogg")).is_none());
     assert!(read_source(&root.join("absent.ogg")).is_none());
-    let _ = fs::remove_dir_all(root);
 }
 
 #[test]

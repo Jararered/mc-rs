@@ -18,5 +18,7 @@ mod physics;
 mod player;
 mod random;
 mod rendering;
+/// Scratch folders shared by every test that writes files; not a `src/` mirror.
+mod temp;
 mod ui;
 mod world;

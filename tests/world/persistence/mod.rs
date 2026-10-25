@@ -3,12 +3,9 @@ mod original;
 
 use std::fs;
 use std::path::Path;
-use std::path::PathBuf;
 use std::thread;
 use std::time::Duration;
 use std::time::Instant;
-use std::time::SystemTime;
-use std::time::UNIX_EPOCH;
 
 use bevy::asset::AssetPlugin;
 use bevy::mesh::MeshPlugin;
@@ -45,15 +42,11 @@ use game::world::persistence::region_of;
 use game::world::plugin::WorldPlugin;
 use game::world::weather::WorldWeather;
 
-/// A unique, empty directory under the system temp directory.
-fn temp_saves(label: &str) -> PathBuf {
-    let unique = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let directory = std::env::temp_dir().join(format!("game-persistence-{label}-{unique}"));
-    fs::create_dir_all(&directory).unwrap();
-    directory
+use crate::temp::TempDir;
+
+/// A unique, empty saves folder, removed at the end of the test.
+fn temp_saves(label: &str) -> TempDir {
+    TempDir::new(&format!("persistence-{label}"))
 }
 
 fn assert_same_blocks(left: &Chunk, right: &Chunk) {
@@ -294,7 +287,6 @@ fn block_metadata_and_pending_ticks_round_trip_through_a_chunk_file() {
         .unwrap();
     let loaded = storage.load_chunk(ChunkPosition { x: 4, z: -2 }).unwrap();
     assert!(loaded.chunk.raw_metadata().is_none());
-    fs::remove_dir_all(saves).unwrap();
 }
 
 #[test]
@@ -925,7 +917,7 @@ fn list_worlds_returns_every_world_newest_played_first_with_its_difficulty() {
 #[test]
 fn a_deferred_persistence_plugin_loads_no_world_until_one_is_chosen() {
     let saves = temp_saves("deferred");
-    let mut app = app_with(PersistencePlugin::new(saves.clone()).deferred());
+    let mut app = app_with(PersistencePlugin::new(saves.to_path_buf()).deferred());
     app.update();
 
     assert!(app.world().get_resource::<WorldPersistence>().is_none());
@@ -961,12 +953,19 @@ fn delete_world_only_removes_world_folders_inside_the_saves_directory() {
     assert!(!world.root().exists());
 }
 
-/// How many of 20 far-away dirty chunks the first completed write holds.
+/// How many chunks the first write of a save holds, with 20 far-away dirty
+/// chunks among those waiting. Read from what is with the writer the frame it
+/// starts, so it does not depend on how soon the write reaches disk.
 fn first_batch_size(paused: bool) -> usize {
     let saves = temp_saves(if paused { "batch-paused" } else { "batch-live" });
-    let mut app = app_with(PersistencePlugin::new(saves).with_autosave(60.0));
+    let mut app = app_with(PersistencePlugin::new(saves.to_path_buf()).with_autosave(60.0));
     app.insert_resource(game::app::state::PauseMenu { open: paused });
     run_until_spawn_chunk(&mut app);
+    let in_flight = |app: &App| app.world().resource::<WorldPersistence>().write_in_flight();
+    assert!(
+        run_until(&mut app, Duration::from_secs(30), |app| !in_flight(app)),
+        "an earlier write never finished"
+    );
 
     let positions: Vec<ChunkPosition> = (0..20)
         .map(|index| ChunkPosition {
@@ -986,37 +985,32 @@ fn first_batch_size(paused: bool) -> usize {
         }
         persistence.request_save();
     }
-    let storage = app
-        .world()
-        .resource::<WorldPersistence>()
-        .storage()
-        .expect("persistence should be enabled")
-        .clone();
-    let saved = |storage: &WorldStorage| {
-        positions
-            .iter()
-            .filter(|position| storage.load_chunk(**position).is_some())
-            .count()
-    };
+    // Stop on the frame the first batch goes to the writer, before a second
+    // one can start. Its chunks stay `saving` until the next frame retires it.
     assert!(
-        run_until(&mut app, Duration::from_secs(30), |_| saved(&storage) > 0),
+        run_until(&mut app, Duration::from_secs(30), |app| in_flight(app)),
         "no batch ever started writing"
     );
-    // Stop updating so no second batch can start, and let the first finish.
-    thread::sleep(Duration::from_millis(500));
-    saved(&storage)
+    let persistence = app.world().resource::<WorldPersistence>();
+    app.world()
+        .resource::<WorldChunks>()
+        .positions()
+        .filter(|position| persistence.is_saving(*position))
+        .count()
 }
 
 #[test]
 fn a_save_while_paused_snapshots_far_more_chunks_per_frame() {
-    assert_eq!(
-        first_batch_size(true),
-        20,
-        "paused saves take the big batch"
-    );
+    let paused = first_batch_size(true);
     assert!(
-        first_batch_size(false) < 20,
-        "a live game keeps the small per-frame batch"
+        paused >= 20,
+        "paused saves take the big batch, not {paused}"
+    );
+    let live = first_batch_size(false);
+    // `MAX_SNAPSHOTS_PER_FRAME`.
+    assert!(
+        (1..=8).contains(&live),
+        "a live game keeps the small per-frame batch, not {live}"
     );
 }
 
@@ -1178,7 +1172,6 @@ fn opening_a_world_builds_its_spawn_area_in_the_background() {
     );
     let mut players = app.world_mut().query_filtered::<(), With<Player>>();
     assert_eq!(players.iter(app.world()).count(), 1);
-    std::fs::remove_dir_all(saves).ok();
 }
 
 #[test]
@@ -1308,7 +1301,7 @@ fn a_world_that_cannot_be_opened_leaves_a_notice_and_no_session() {
 #[test]
 fn a_chunk_changed_after_its_snapshot_still_counts_as_unsaved() {
     let saves = temp_saves("unsaved-after-drain");
-    let mut app = app_with(PersistencePlugin::new(saves).with_autosave(60.0));
+    let mut app = app_with(PersistencePlugin::new(saves.to_path_buf()).with_autosave(60.0));
     app.insert_resource(game::app::state::PauseMenu { open: true });
     run_until_spawn_chunk(&mut app);
 
@@ -1353,7 +1346,6 @@ fn what_is_written_on_a_sign_is_saved_in_both_formats() {
         assert_eq!(sign.lines, lines, "{format:?}");
         // A sign from a save has been written on already.
         assert!(!sign.editable);
-        fs::remove_dir_all(saves).unwrap();
     }
 }
 
@@ -1385,7 +1377,6 @@ fn dispenser_inventory_and_note_state_round_trip_with_their_blocks() {
     let note = loaded.chunk.notes().find(|(index, _)| *index == note_index);
     let (_, note) = note.unwrap();
     assert_eq!((note.pitch, note.previous_powered), (17, true));
-    fs::remove_dir_all(saves).unwrap();
 }
 
 #[test]
@@ -1460,5 +1451,4 @@ fn a_jukebox_keeps_its_disc_through_a_chunk_file() {
     assert_eq!(loaded.chunk.metadata(4, 90, 5), 1);
     assert_eq!(loaded.chunk.record(Chunk::index(6, 90, 5)), None);
     assert_eq!(loaded.chunk.records().count(), 1);
-    fs::remove_dir_all(saves).unwrap();
 }

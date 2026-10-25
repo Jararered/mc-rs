@@ -1,7 +1,5 @@
 use bevy::prelude::*;
 use std::fs;
-use std::time::SystemTime;
-use std::time::UNIX_EPOCH;
 
 use game::block::blocks::Block;
 use game::item::Item;
@@ -20,6 +18,8 @@ use game::world::persistence::region_dir_name;
 use game::world::persistence::region_of;
 use game::world::tick::WorldTick;
 
+use crate::temp::TempDir;
+
 fn stack(item: Item) -> ItemStack {
     ItemStack::new(item, 1).unwrap()
 }
@@ -28,14 +28,8 @@ fn block(block: Block) -> ItemStack {
     ItemStack::from_block(block, 1).unwrap()
 }
 
-fn temp_saves() -> std::path::PathBuf {
-    let unique = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let path = std::env::temp_dir().join(format!("game-furnace-{unique}"));
-    fs::create_dir_all(&path).unwrap();
-    path
+fn temp_saves() -> TempDir {
+    TempDir::new("furnace")
 }
 
 #[test]
@@ -223,6 +217,4 @@ fn furnace_inventory_and_progress_round_trip_and_old_chunks_still_load() {
     let old = storage.load_chunk(position).unwrap();
     let (_, legacy_furnace) = old.chunk.furnaces().next().unwrap();
     assert_eq!(legacy_furnace, &Furnace::default());
-
-    fs::remove_dir_all(saves).unwrap();
 }

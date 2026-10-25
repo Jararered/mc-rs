@@ -3,10 +3,10 @@
 use std::io::Read;
 use std::io::Write;
 use std::net::TcpStream;
+use std::ops::Deref;
+use std::ops::DerefMut;
 use std::time::Duration;
 use std::time::Instant;
-use std::time::SystemTime;
-use std::time::UNIX_EPOCH;
 
 use bevy::prelude::*;
 use flate2::read::ZlibDecoder;
@@ -33,6 +33,8 @@ use game::player::PlayerMovementInput;
 use game::world::chunk::WorldChunks;
 use game::world::dimension::Dimension;
 use game::world::persistence::WorldStorage;
+
+use crate::temp::TempDir;
 
 /// What the server sent, as far as these tests look.
 #[derive(Debug, Clone, PartialEq)]
@@ -530,6 +532,13 @@ impl Player {
         self.stream.set_nonblocking(true).unwrap();
     }
 
+    /// `Packet0KeepAlive`, which `GuiDownloadTerrain` sends every 20 ticks
+    /// while the client waits for its terrain. The server may already have
+    /// closed the connection, so a failed write is no error here.
+    fn keep_alive(&mut self) {
+        let _ = self.stream.write_all(&[0]);
+    }
+
     fn handshake(&mut self, name: &str) {
         let mut out = vec![2];
         string(&mut out, name);
@@ -647,19 +656,38 @@ impl Player {
     }
 }
 
-fn server(label: &str) -> BetaServer {
-    let unique = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let saves = std::env::temp_dir().join(format!("game-beta-server-{label}-{unique}"));
-    std::fs::create_dir_all(&saves).unwrap();
+/// A server and the folder its world is saved in. Fields drop in order, so
+/// the server lets go of its files before the folder is removed.
+struct TestServer {
+    server: BetaServer,
+    _saves: TempDir,
+}
+
+impl Deref for TestServer {
+    type Target = BetaServer;
+
+    fn deref(&self) -> &BetaServer {
+        &self.server
+    }
+}
+
+impl DerefMut for TestServer {
+    fn deref_mut(&mut self) -> &mut BetaServer {
+        &mut self.server
+    }
+}
+
+fn server(label: &str) -> TestServer {
+    let saves = TempDir::new(&format!("beta-server-{label}"));
     let storage = WorldStorage::create(&saves, 3, "Net").unwrap();
     let config = ServerConfig {
         view_distance: 2,
         ..ServerConfig::default()
     };
-    BetaServer::bind("127.0.0.1:0", storage, config).unwrap()
+    TestServer {
+        server: BetaServer::bind("127.0.0.1:0", storage, config).unwrap(),
+        _saves: saves,
+    }
 }
 
 /// Tick the server until `player` has heard something `wanted` accepts.
@@ -671,8 +699,15 @@ fn until(
 ) -> Heard {
     let deadline = Instant::now() + Duration::from_secs(60);
     let mut from = 0;
+    let mut ticks = 0u32;
     loop {
         server.tick();
+        // A busy machine can take more than the server's time-out, in ticks,
+        // to generate the spawn area, and a silent client is dropped then.
+        ticks += 1;
+        if ticks % 20 == 0 {
+            player.keep_alive();
+        }
         player.read();
         if let Some(found) = player.heard[from..].iter().find(|heard| wanted(heard)) {
             return found.clone();
@@ -1499,7 +1534,7 @@ fn primed_tnt_falls_and_a_riders_motion_steers() {
     out.extend(0f32.to_be_bytes());
     out.push(0);
     player.send(&out);
-    let mut input =
+    let input =
         |server: &mut BetaServer| *overworld(server).get::<PlayerMovementInput>(body).unwrap();
     // The packet may take a tick or two to cross the socket.
     let mut held = input(&mut server);
@@ -1637,33 +1672,36 @@ fn a_name_differing_only_in_case_cannot_join_twice() {
 }
 
 #[test]
-fn a_client_that_never_logs_in_or_floods_is_dropped() {
+fn a_client_that_never_logs_in_or_starts_an_endless_string_is_dropped() {
     let mut server = server("hostile");
     // Never says anything.
     let mut silent = Player::connect(&server);
-    // Sends one endless "packet": a chat string whose count never completes.
-    let mut flood = Player::connect(&server);
+    // Starts a chat string far longer than any packet may be, which would
+    // never finish arriving: its length alone is refused.
+    let mut endless = Player::connect(&server);
     let mut bytes = vec![3];
-    bytes.extend(100i16.to_be_bytes());
-    bytes.extend(vec![0u8; 4000]);
-    flood.send(&bytes);
+    bytes.extend(i16::MAX.to_be_bytes());
+    bytes.extend([0u8; 64]);
+    endless.send(&bytes);
+    let kick = |player: &Player| {
+        player.heard.iter().find_map(|heard| match heard {
+            Heard::Kick(reason) => Some(reason.clone()),
+            _ => None,
+        })
+    };
     // Tick the server through the login deadline.
-    let mut kicked = false;
     for _ in 0..700 {
         server.tick();
         silent.read();
-        kicked |= silent
-            .heard
-            .iter()
-            .any(|heard| matches!(heard, Heard::Kick(_)));
+        endless.read();
+        if kick(&silent).is_some() {
+            break;
+        }
     }
-    assert!(kicked, "a connection that never logs in is kicked");
-    flood.read();
-    assert!(
-        flood
-            .heard
-            .iter()
-            .any(|heard| matches!(heard, Heard::Kick(_)))
-            || flood.stream.peek(&mut [0u8; 1]).is_err()
+    assert_eq!(
+        kick(&endless).as_deref(),
+        Some("Bad packet"),
+        "the string is refused, not waited for"
     );
+    assert_eq!(kick(&silent).as_deref(), Some("Took too long to log in"));
 }

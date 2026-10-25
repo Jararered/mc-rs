@@ -1,7 +1,5 @@
 use std::fs;
 use std::path::PathBuf;
-use std::time::SystemTime;
-use std::time::UNIX_EPOCH;
 
 use bevy::asset::AssetPlugin;
 use bevy::camera::Exposure;
@@ -44,12 +42,15 @@ use game::world::sound::SoundCategory;
 use game::world::streaming::WorldStreaming;
 use game::world::tick::WorldTick;
 
-fn temp_settings_path(label: &str) -> PathBuf {
-    let unique = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    std::env::temp_dir().join(format!("game-settings-{label}-{unique}.json"))
+use crate::temp::TempDir;
+
+/// A settings file in a scratch folder, which also holds the backup a
+/// corrupt file is moved to. Bind the folder for the whole test: dropping it
+/// removes the folder.
+fn temp_settings(label: &str) -> (TempDir, PathBuf) {
+    let folder = TempDir::new(&format!("settings-{label}"));
+    let path = folder.join("settings.json");
+    (folder, path)
 }
 
 #[test]
@@ -379,13 +380,13 @@ fn water_material(app: &App) -> StandardMaterial {
 
 #[test]
 fn missing_settings_file_uses_defaults() {
-    let path = temp_settings_path("missing");
+    let (_folder, path) = temp_settings("missing");
     assert_eq!(load_settings(&path), GameSettings::default());
 }
 
 #[test]
 fn settings_round_trip_through_json() {
-    let path = temp_settings_path("roundtrip");
+    let (_folder, path) = temp_settings("roundtrip");
     let settings = GameSettings {
         render_distance: 12,
         max_fps: 120,
@@ -419,12 +420,11 @@ fn settings_round_trip_through_json() {
     };
     save_settings(&path, &settings).unwrap();
     assert_eq!(load_settings(&path), settings);
-    let _ = fs::remove_file(path);
 }
 
 #[test]
 fn settings_json_fills_in_missing_menu_fields() {
-    let path = temp_settings_path("partial");
+    let (_folder, path) = temp_settings("partial");
     fs::write(&path, r#"{ "render_distance": 16 }"#).unwrap();
     let loaded = load_settings(&path);
     assert_eq!(loaded.render_distance, 16);
@@ -433,12 +433,11 @@ fn settings_json_fills_in_missing_menu_fields() {
     assert_eq!(loaded.cloud_height, DEFAULT_CLOUD_HEIGHT);
     assert_eq!(loaded.gui_scale, DEFAULT_GUI_SCALE);
     assert_eq!(loaded.graphics, GraphicsQuality::Fancy);
-    let _ = fs::remove_file(path);
 }
 
 #[test]
 fn gui_scale_loads_as_a_whole_step_in_range() {
-    let path = temp_settings_path("gui_scale");
+    let (_folder, path) = temp_settings("gui_scale");
     for (stored, expected) in [
         ("0.0", MIN_GUI_SCALE),
         ("2.4", 2.0),
@@ -454,12 +453,11 @@ fn gui_scale_loads_as_a_whole_step_in_range() {
     };
     settings.clamp();
     assert_eq!(settings.gui_scale, DEFAULT_GUI_SCALE);
-    let _ = fs::remove_file(path);
 }
 
 #[test]
 fn settings_json_clamps_out_of_range_values() {
-    let path = temp_settings_path("clamp");
+    let (_folder, path) = temp_settings("clamp");
     fs::write(
         &path,
         r#"{
@@ -477,20 +475,18 @@ fn settings_json_clamps_out_of_range_values() {
     assert_eq!(loaded.fov, MAX_FOV);
     assert_eq!(loaded.cloud_height, MAX_CLOUD_HEIGHT);
     assert_eq!(loaded.graphics, GraphicsQuality::Fast);
-    let _ = fs::remove_file(path);
 }
 
 #[test]
 fn unreadable_settings_json_falls_back_to_defaults() {
-    let path = temp_settings_path("corrupt");
+    let (_folder, path) = temp_settings("corrupt");
     fs::write(&path, "not json").unwrap();
     assert_eq!(load_settings(&path), GameSettings::default());
-    let _ = fs::remove_file(path);
 }
 
 #[test]
 fn settings_plugin_loads_and_saves_menu_changes() {
-    let path = temp_settings_path("plugin");
+    let (_folder, path) = temp_settings("plugin");
     let initial = GameSettings {
         render_distance: 8,
         max_fps: 90,
@@ -530,7 +526,6 @@ fn settings_plugin_loads_and_saves_menu_changes() {
     assert_eq!(saved.graphics, GraphicsQuality::Fancy);
     assert_eq!(saved.fov, 65.0);
     assert_eq!(saved.cloud_height, 72.0);
-    let _ = fs::remove_file(path);
 }
 
 #[test]
@@ -568,7 +563,7 @@ fn atmosphere_does_not_mark_unchanged_camera_projections_changed() {
 
 #[test]
 fn frame_limit_defaults_round_trips_and_clamps() {
-    let path = temp_settings_path("frame-limit");
+    let (_folder, path) = temp_settings("frame-limit");
     fs::write(&path, "{}").unwrap();
     assert_eq!(load_settings(&path).max_fps, 60);
     for (stored, expected) in [(0, 0), (1, 30), (120, 120), (1000, 240)] {
@@ -578,7 +573,6 @@ fn frame_limit_defaults_round_trips_and_clamps() {
         save_settings(&path, &settings).unwrap();
         assert_eq!(load_settings(&path).max_fps, expected);
     }
-    let _ = fs::remove_file(path);
     let mut settings = GameSettings::default();
     for expected in [90, 120, 144, 240, 0, 30, 60] {
         settings.cycle_max_fps();
@@ -773,18 +767,16 @@ fn opaque_menu_disables_world_cameras_and_playing_restores_them() {
 
 #[test]
 fn unreadable_settings_json_is_kept_as_a_backup() {
-    let path = temp_settings_path("corrupt-backup");
+    let (_folder, path) = temp_settings("corrupt-backup");
     fs::write(&path, "not json").unwrap();
     load_settings(&path);
     let backup = game::app::settings::backup_path(&path);
     assert_eq!(fs::read_to_string(&backup).unwrap(), "not json");
-    let _ = fs::remove_file(path);
-    let _ = fs::remove_file(backup);
 }
 
 #[test]
 fn one_unreadable_field_does_not_reset_the_other_settings() {
-    let path = temp_settings_path("one-bad-field");
+    let (_folder, path) = temp_settings("one-bad-field");
     fs::write(
         &path,
         r#"{"graphics":"Cinematic","fov":95,"render_distance":"far","view_bobbing":false,"from_a_newer_build":[1,2]}"#,
@@ -798,19 +790,25 @@ fn one_unreadable_field_does_not_reset_the_other_settings() {
     );
     assert_eq!(loaded.fov, 95.0);
     assert!(!loaded.view_bobbing);
-    let _ = fs::remove_file(path);
 }
 
 #[test]
 fn settings_plugin_saves_after_the_options_settle_and_keeps_the_players_difficulty() {
+    use std::time::Duration;
+
+    use bevy::time::TimeUpdateStrategy;
     use game::app::settings::SAVE_DELAY_SECONDS;
     use game::world::difficulty::ClientDifficulty;
     use game::world::difficulty::Difficulty;
 
-    let path = temp_settings_path("debounce");
+    let (_folder, path) = temp_settings("debounce");
     let mut app = App::new();
     app.add_plugins(MinimalPlugins)
-        .add_plugins(SettingsPlugin::new(path.clone()));
+        .add_plugins(SettingsPlugin::new(path.clone()))
+        // Each frame is a quarter of the delay, whatever the wall clock does.
+        .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs_f32(
+            SAVE_DELAY_SECONDS / 4.0,
+        )));
     app.update();
 
     // A loaded world's difficulty stands in for the player's own option.
@@ -818,14 +816,15 @@ fn settings_plugin_saves_after_the_options_settle_and_keeps_the_players_difficul
     app.world_mut().resource_mut::<GameSettings>().difficulty = Difficulty::Peaceful;
     app.world_mut().resource_mut::<GameSettings>().fov = 100.0;
     app.update();
+    app.update();
+    app.update();
     assert!(!path.exists(), "the write waits for the options to settle");
 
-    std::thread::sleep(std::time::Duration::from_secs_f32(SAVE_DELAY_SECONDS + 0.1));
+    app.update();
     app.update();
     let saved = load_settings(&path);
     assert_eq!(saved.fov, 100.0);
     assert_eq!(saved.difficulty, Difficulty::Easy);
-    let _ = fs::remove_file(path);
 }
 
 #[test]
@@ -843,13 +842,12 @@ fn player_options_default_clamp_and_load_from_older_files() {
         settings.clamp();
         assert_eq!(settings.mouse_sensitivity, 1.0);
     }
-    let path = temp_settings_path("old-player-options");
+    let (_folder, path) = temp_settings("old-player-options");
     fs::write(&path, r#"{"fov":90}"#).unwrap();
     let loaded = load_settings(&path);
     assert_eq!(loaded.mouse_sensitivity, 1.0);
     assert!(loaded.view_bobbing);
     assert!(!loaded.fullscreen);
-    fs::remove_file(path).unwrap();
 }
 
 fn settings_menu_app() -> App {
@@ -1046,11 +1044,9 @@ fn main_menu_panorama_assembles_six_faces_and_stops_outside_menu() {
 fn missing_panorama_preserves_main_menu_background() {
     use bevy::light::Skybox;
 
-    let mut app = settings_menu_app_with_assets(
-        temp_settings_path("no-panorama")
-            .to_string_lossy()
-            .into_owned(),
-    );
+    // An empty folder: none of the reference art is there.
+    let assets = TempDir::new("settings-no-panorama");
+    let mut app = settings_menu_app_with_assets(assets.to_string_lossy().into_owned());
     click_menu_button(&mut app, "Back");
     for _ in 0..100 {
         std::thread::sleep(std::time::Duration::from_millis(1));
@@ -1288,8 +1284,9 @@ fn slider_thumb_tracks_value_and_leaving_settings_cancels_drag() {
 
 #[test]
 fn missing_reference_art_keeps_settings_labels_and_buttons_usable() {
-    let mut app =
-        settings_menu_app_with_assets(temp_settings_path("no-art").to_string_lossy().into_owned());
+    // An empty folder: none of the reference art is there.
+    let assets = TempDir::new("settings-no-art");
+    let mut app = settings_menu_app_with_assets(assets.to_string_lossy().into_owned());
     let fullscreen = button_named(&mut app, "Fullscreen: OFF");
     for _ in 0..200 {
         std::thread::sleep(std::time::Duration::from_millis(1));
@@ -1721,19 +1718,13 @@ fn right_clicking_a_world_offers_delete_with_a_confirmation() {
     use game::world::persistence::PersistencePlugin;
     use game::world::persistence::WorldStorage;
 
-    let saves = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(format!(
-        "delete-worlds-{}",
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
-    ));
+    let saves = TempDir::new("settings-delete-worlds");
     let keep = WorldStorage::create(&saves, 1, "Keep Me").unwrap();
     std::thread::sleep(std::time::Duration::from_millis(5));
     let doomed = WorldStorage::create(&saves, 2, "Doomed").unwrap();
 
     let mut app = world_screen_app();
-    app.add_plugins(PersistencePlugin::new(saves.clone()).deferred());
+    app.add_plugins(PersistencePlugin::new(saves.to_path_buf()).deferred());
     click_menu_button(&mut app, "Play");
     app.update();
     let row = button_named(&mut app, "Doomed");
@@ -1776,12 +1767,11 @@ fn right_clicking_a_world_offers_delete_with_a_confirmation() {
     let mut texts = app.world_mut().query::<&Text>();
     assert!(texts.iter(app.world()).all(|text| text.0 != "Doomed"));
     assert!(texts.iter(app.world()).any(|text| text.0 == "Keep Me"));
-    let _ = std::fs::remove_dir_all(&saves);
 }
 
 #[test]
 fn legacy_lighting_and_ultra_settings_migrate_without_losing_other_options() {
-    let path = temp_settings_path("legacy-lighting");
+    let (_folder, path) = temp_settings("legacy-lighting");
     fs::write(&path, r#"{"old_lighting":false,"brightness":500,"graphics":"Ultra","smooth_lighting":false,"render_distance":12,"anti_aliasing":true}"#).unwrap();
     let settings = load_settings(&path);
     assert_eq!(settings.graphics, GraphicsQuality::Fancy);
@@ -1794,7 +1784,6 @@ fn legacy_lighting_and_ultra_settings_migrate_without_losing_other_options() {
     assert!(!saved.contains("brightness"));
     assert!(!saved.contains("Ultra"));
     assert_eq!(load_settings(&path), settings);
-    fs::remove_file(path).unwrap();
 }
 
 #[test]
@@ -1879,14 +1868,13 @@ fn a_category_plays_at_its_own_volume_under_the_masters() {
 
 #[test]
 fn a_settings_file_from_before_sound_plays_at_full_volume() {
-    let path = temp_settings_path("no-volume");
+    let (_folder, path) = temp_settings("no-volume");
     fs::write(&path, r#"{ "render_distance": 9, "view_bobbing": false }"#).unwrap();
     let settings = load_settings(&path);
     assert_eq!(settings.render_distance, 9);
     for category in SoundCategory::ALL {
         assert_eq!(settings.volume(category), 1.0, "{category:?}");
     }
-    let _ = fs::remove_file(path);
 }
 
 #[test]

@@ -1,8 +1,3 @@
-use std::fs;
-use std::path::PathBuf;
-use std::time::SystemTime;
-use std::time::UNIX_EPOCH;
-
 use bevy::prelude::Vec3;
 use game::block::blocks::Block;
 use game::entity::drops::blocks::DropRoll;
@@ -37,6 +32,8 @@ use game::world::chunk::WorldChunks;
 use game::world::lighting::Skylight;
 use game::world::lighting::light_opacity;
 use game::world::persistence::WorldStorage;
+
+use crate::temp::TempDir;
 
 struct Rolls;
 
@@ -349,12 +346,7 @@ fn farmland_does_not_hide_a_neighboring_full_block_side() {
 
 #[test]
 fn farmland_round_trips_through_persistence() {
-    let unique = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let saves = PathBuf::from(std::env::temp_dir()).join(format!("farmland-{unique}"));
-    fs::create_dir_all(&saves).unwrap();
+    let saves = TempDir::new("farmland");
     let storage = WorldStorage::create(&saves, 0, "Farmland").unwrap();
     let position = ChunkPosition::ZERO;
     let mut generated = generated(Chunk::new());
@@ -365,7 +357,6 @@ fn farmland_round_trips_through_persistence() {
     let loaded = storage.load_chunk(position).unwrap();
     assert_eq!(loaded.chunk.get(8, 64, 8), Some(Block::Farmland));
     assert_eq!(loaded.heightmap.get(8, 8), 65);
-    fs::remove_dir_all(saves).unwrap();
 }
 
 #[test]

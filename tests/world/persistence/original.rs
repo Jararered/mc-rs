@@ -53,11 +53,12 @@ use super::assert_same_blocks;
 use super::persistence_app;
 use super::run_until;
 use super::temp_saves;
+use crate::temp::TempDir;
 use crate::world::generation::overworld::beta_reference;
 
 const SEED: u64 = 7;
 
-fn original_world(label: &str) -> (PathBuf, WorldStorage) {
+fn original_world(label: &str) -> (TempDir, WorldStorage) {
     let saves = temp_saves(label);
     let storage = WorldStorage::create_in_format(
         &saves,
@@ -848,7 +849,7 @@ fn copy_directory(from: &Path, to: &Path) {
 /// A copy of a saved Beta world in a fresh saves folder, or `None` when the
 /// reference checkout is missing. Opening a world rewrites `session.lock`, so
 /// the checked-in copy must never be opened directly.
-fn beta_world_copy(label: &str, relative: &str) -> Option<(PathBuf, PathBuf)> {
+fn beta_world_copy(label: &str, relative: &str) -> Option<(TempDir, PathBuf)> {
     let source = refs_directory().join(relative);
     if !source.join("level.dat").is_file() {
         eprintln!("skipping: {} is missing", source.display());
@@ -1024,7 +1025,7 @@ fn the_nether_generator_matches_the_beta_server_nether() {
 
 #[test]
 fn dispensers_and_note_blocks_use_beta_tile_entities() {
-    let (saves, storage) = original_world("redstone-tiles");
+    let (_saves, storage) = original_world("redstone-tiles");
     let position = ChunkPosition::ZERO;
     let mut generated = OverworldGenerator::new(SEED).generate(position);
     generated
@@ -1058,12 +1059,11 @@ fn dispensers_and_note_blocks_use_beta_tile_entities() {
         .find(|(index, _)| *index == Chunk::index(7, 90, 4))
         .unwrap();
     assert_eq!(note.pitch, 12);
-    fs::remove_dir_all(saves).unwrap();
 }
 
 #[test]
 fn a_jukebox_keeps_its_disc_as_a_record_player_tile() {
-    let (saves, storage) = original_world("jukebox");
+    let (_saves, storage) = original_world("jukebox");
     let position = ChunkPosition { x: 0, z: 0 };
     let mut generated = busy_chunk(position);
     generated
@@ -1082,7 +1082,6 @@ fn a_jukebox_keeps_its_disc_as_a_record_player_tile() {
         1,
         "an empty one has no tile"
     );
-    let _ = fs::remove_dir_all(saves);
 }
 
 /// `chunk`'s own record with zeros after it: still a chunk to a reader that

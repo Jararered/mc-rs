@@ -89,31 +89,33 @@ fn population_places_clay_and_dungeon_blocks() {
     let mut stored_chests = 0;
     let mut looted_chests = 0;
     let mut dungeon_loot_stacks = 0;
-    for z in -8..8 {
-        for x in -8..8 {
-            let generated = generator.generate(ChunkPosition { x, z });
-            for block in generated.chunk.blocks() {
-                match block {
-                    Block::Clay => clay += 1,
-                    Block::MobSpawner => spawners += 1,
-                    Block::Chest => chests += 1,
-                    Block::Lava => lake_lava += 1,
-                    Block::LavaFlowing => cave_lava += 1,
-                    Block::GoldOre => rare_ores[0] += 1,
-                    Block::RedstoneOreInactive => rare_ores[1] += 1,
-                    Block::DiamondOre => rare_ores[2] += 1,
-                    Block::LapisOre => rare_ores[3] += 1,
-                    Block::IronOre => rare_ores[4] += 1,
-                    _ => {}
-                }
+    // Chunks a count of seed 0 out to 8 chunks found: one holds the clay and
+    // every ore, one a looted dungeon and both kinds of lava, and one a
+    // dungeon with two chests. Pinned, so the test does not walk there every
+    // run.
+    for (x, z) in [(-2, -6), (5, -3), (-8, -1)] {
+        let generated = generator.generate(ChunkPosition { x, z });
+        for block in generated.chunk.blocks() {
+            match block {
+                Block::Clay => clay += 1,
+                Block::MobSpawner => spawners += 1,
+                Block::Chest => chests += 1,
+                Block::Lava => lake_lava += 1,
+                Block::LavaFlowing => cave_lava += 1,
+                Block::GoldOre => rare_ores[0] += 1,
+                Block::RedstoneOreInactive => rare_ores[1] += 1,
+                Block::DiamondOre => rare_ores[2] += 1,
+                Block::LapisOre => rare_ores[3] += 1,
+                Block::IronOre => rare_ores[4] += 1,
+                _ => {}
             }
-            for (_, chest) in generated.chunk.chests() {
-                stored_chests += 1;
-                let items = chest.slots.iter().flatten().count();
-                if items > 0 {
-                    looted_chests += 1;
-                    dungeon_loot_stacks += items;
-                }
+        }
+        for (_, chest) in generated.chunk.chests() {
+            stored_chests += 1;
+            let items = chest.slots.iter().flatten().count();
+            if items > 0 {
+                looted_chests += 1;
+                dungeon_loot_stacks += items;
             }
         }
     }
